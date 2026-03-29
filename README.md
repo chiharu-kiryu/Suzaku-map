@@ -1,117 +1,31 @@
 # Suzaku Map
 
-A quiet place for ideas that were not pursued.
+A small set of orthogonal system concepts.
 
----
+Start here:
 
-## What this is
+- [Map](./src/00-Map.md)
 
-Suzaku Map is a collection of thoughts, fragments, and directions  
-that were once considered, but not executed.
+## Set
 
-They are left here as-is, without optimization, validation, or continuation.
+1. [Signal](./src/01-Signal.md)
+2. [Control](./src/02-Control.md)
+3. [Resilience](./src/03-Resilience.md)
+4. [Coordination](./src/04-Coordination.md)
+5. [Expression](./src/05-Expression.md)
 
-Some may be incomplete.  
-Some may be outdated.  
-Some may never make sense again.
+## Rule
 
-That is intentional.
+Each document should answer one question only:
 
----
-
-## What this is not
-
-- Not a roadmap  
-- Not a product  
-- Not a knowledge base  
-- Not something to maintain or follow  
-
-There is no system to learn here.  
-No conclusion to reach.  
-No expectation to meet.
-
----
-
-## Why it exists
-
-Sometimes an idea is clear enough to be written down,  
-but not worth the cost of building.
-
-Instead of carrying it forward, it is placed here.
-
-That’s all.
-
----
-
-## How to read
-
-Read anything you want.  
-Skip anything you don’t.
-
-Take what resonates.  
-Ignore the rest.
-
-No context is required.  
-No continuity is assumed.
-
----
-
-## Notes
-
-- Entries are not updated or refined  
-- Structure is minimal on purpose  
-- No guarantee of accuracy or relevance  
-
----
+- `Signal`: what is true or no longer trustworthy
+- `Control`: what action must be gated or separated
+- `Resilience`: how continuity is preserved under constraint
+- `Coordination`: how actors cooperate without strong institutions
+- `Expression`: how intent becomes valid structured output
 
 ## 中文说明
 
-Suzaku Map 是一个存放“没有继续做下去的想法”的地方。
+这是一个压缩后的概念集合。
 
-这些想法可能完整，也可能只是片段。  
-它们不会被优化、不会被验证、也不会被延续。
-
----
-
-### 它不是什么
-
-- 不是路线图  
-- 不是产品  
-- 不是知识库  
-- 不是需要维护的系统  
-
-这里没有需要理解的体系，  
-也没有需要得到的结论。
-
----
-
-### 为什么存在
-
-有些想法足够清晰，可以写下来，  
-但不值得继续投入去实现。
-
-于是就放在这里。
-
-仅此而已。
-
----
-
-### 如何阅读
-
-随意阅读。  
-不需要按顺序，也不需要理解全部。
-
-看到有感觉的就好，  
-没有就跳过。
-
----
-
-### 说明
-
-- 内容不会持续更新或优化  
-- 结构保持简单  
-- 不保证正确或适用  
-
----
-
-> Leave it here. Move on.
+每篇文档只负责一个问题，尽量保持正交。
