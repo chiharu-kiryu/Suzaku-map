@@ -524,6 +524,8 @@ pub mod gpu {
     pub struct RenderScene {
         pub quads: Vec<CandidateQuad>,
         pub labels: Vec<String>,
+        pub selected_label: Option<String>,
+        pub draft_text: String,
     }
 
     pub struct WgpuCandidateRenderer {
@@ -567,6 +569,11 @@ pub mod gpu {
             RenderScene {
                 quads,
                 labels: snapshot.candidate_labels.clone(),
+                selected_label: snapshot
+                    .candidate_labels
+                    .get(snapshot.selected_index)
+                    .cloned(),
+                draft_text: snapshot.draft_text.clone(),
             }
         }
 

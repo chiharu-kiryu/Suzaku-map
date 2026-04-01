@@ -54,3 +54,16 @@ Yes, the project can use GPU rendering.
 - The engine remains UI-agnostic.
 - A feature-gated `wgpu` scene builder lives in [src/ime.rs](./src/ime.rs).
 - Enable it with `cargo test --features gpu` or integrate it into a windowed host renderer.
+- Launch the candidate panel with `cargo run --features gpu --bin panel`.
+
+## Panel Controls
+
+The GPU candidate panel is a lightweight host for XR/tablet-style selection:
+
+- `1`, `2`, `3`: load different seed phrases
+- `Up` / `Down`: move candidate selection
+- `D`: switch to degraded signal mode
+- `R`: restore normal signal mode
+- `Space`: force-commit the current selection
+
+The panel currently renders GPU candidate bars and mirrors the selected label, draft text, and committed text in the window title.

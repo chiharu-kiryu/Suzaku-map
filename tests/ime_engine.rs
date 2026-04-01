@@ -89,3 +89,23 @@ fn gpu_scene_builder_marks_selected_candidate() {
     assert_eq!(scene.labels[1], snapshot.candidate_labels[1]);
     assert_ne!(scene.quads[1].color, scene.quads[0].color);
 }
+
+#[cfg(feature = "gpu")]
+#[test]
+fn gpu_scene_builder_keeps_vertical_candidate_stack() {
+    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao xr");
+
+    let renderer = WgpuCandidateRenderer::new(1280.0, 800.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    assert!(scene.quads.len() >= 2);
+    assert!(scene.quads[1].rect[1] > scene.quads[0].rect[1]);
+    assert_eq!(
+        scene.selected_label.as_deref(),
+        Some(snapshot.candidate_labels[0].as_str())
+    );
+    assert_eq!(scene.draft_text, snapshot.draft_text);
+}
