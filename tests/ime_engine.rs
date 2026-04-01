@@ -1,6 +1,11 @@
+use std::sync::Arc;
+
 use suzaku_map::ime::{
-    CommitOptions, CommitReason, EngineConfig, InputSource, Mode, SignalState, Warning,
-    XRTabletImeEngine,
+    Candidate, CommitOptions, CommitReason, EngineConfig, InputSource, LanguagePlugin, Mode,
+    SignalState, Warning, XRTabletImeEngine,
+};
+use suzaku_map::languages::llm::{
+    LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmLanguagePlugin,
 };
 
 #[test]
@@ -9,9 +14,90 @@ fn builds_draft_candidates_from_seed_input() {
     let snapshot = engine.seed("ni hao");
 
     assert_eq!(snapshot.mode, Mode::Composing);
+    assert_eq!(snapshot.active_language, "en");
     assert_eq!(snapshot.seed_text, "ni hao");
     assert!(!snapshot.candidate_labels.is_empty());
     assert_eq!(snapshot.draft_text, snapshot.candidate_labels[0]);
+}
+
+#[test]
+fn engine_defaults_to_english_language_plugin() {
+    let engine = XRTabletImeEngine::new(EngineConfig::default());
+
+    assert_eq!(engine.available_languages(), vec!["en".to_string()]);
+}
+
+#[test]
+fn engine_can_switch_to_a_registered_language_plugin() {
+    struct EchoLanguagePlugin;
+
+    impl LanguagePlugin for EchoLanguagePlugin {
+        fn id(&self) -> &'static str {
+            "echo"
+        }
+
+        fn expand_token(&self, token: &str, _degraded: bool) -> Vec<String> {
+            vec![token.to_string()]
+        }
+
+        fn build_candidates(
+            &self,
+            parts: &[String],
+            seed_text: &str,
+            confidence: f32,
+        ) -> Vec<Candidate> {
+            vec![Candidate {
+                text: format!("echo {} :: {}", seed_text, parts.join("-")),
+                label: format!("echo {} :: {}", seed_text, parts.join("-")),
+                score: confidence + 1.0,
+            }]
+        }
+    }
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    engine.register_language_plugin(EchoLanguagePlugin);
+    engine.set_language("echo");
+
+    let snapshot = engine.seed("apple seed");
+
+    assert_eq!(snapshot.active_language, "echo");
+    assert_eq!(
+        snapshot.candidate_labels[0],
+        "echo apple seed :: apple-seed"
+    );
+}
+
+#[test]
+fn llm_language_plugin_can_drive_sentence_candidates() {
+    struct MockProvider;
+
+    impl LlmCompletionProvider for MockProvider {
+        fn provider_id(&self) -> &str {
+            "mock"
+        }
+
+        fn generate(&self, request: &LlmCompletionRequest) -> Vec<LlmCompletion> {
+            vec![LlmCompletion {
+                text: format!("{} becomes a full llm sentence", request.seed_text),
+                score_bias: 0.6,
+            }]
+        }
+    }
+
+    let plugin = LlmLanguagePlugin::new("llm-en", "LLM English", Arc::new(MockProvider), |_| {
+        vec!["fallback sentence".to_string()]
+    });
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    engine.register_language_plugin(plugin);
+    engine.set_language("llm-en");
+
+    let snapshot = engine.seed("apple");
+
+    assert_eq!(snapshot.active_language, "llm-en");
+    assert_eq!(
+        snapshot.candidate_labels[0],
+        "apple becomes a full llm sentence"
+    );
 }
 
 #[test]
@@ -73,6 +159,69 @@ fn keeps_source_and_selection_flow_visible_for_xr_hosts() {
     assert_eq!(snapshot.selected_index, 1);
 }
 
+#[test]
+fn starts_from_base_candidate_and_offers_sentence_continuations() {
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+
+    assert!(
+        snapshot
+            .candidate_labels
+            .iter()
+            .any(|candidate| candidate.split_whitespace().count() >= 4)
+    );
+    assert!(
+        snapshot
+            .candidate_labels
+            .iter()
+            .any(|candidate| candidate != "ni hao")
+    );
+}
+
+#[test]
+fn selecting_a_continuation_can_commit_a_full_sentence_without_more_typing() {
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("tablet ime");
+    let sentence_index = snapshot
+        .candidate_labels
+        .iter()
+        .position(|candidate| candidate.split_whitespace().count() >= 4)
+        .expect("sentence candidate");
+
+    engine.select_candidate(sentence_index);
+    let commit = engine.commit(CommitOptions { force: true });
+
+    assert!(commit.ok);
+    assert!(
+        commit
+            .text
+            .as_deref()
+            .is_some_and(|text| text.split_whitespace().count() >= 4)
+    );
+}
+
+#[test]
+fn degraded_mode_still_prefers_tap_selectable_sentence_candidates() {
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    engine.update_signal(SignalState {
+        pointer_precision: 0.2,
+        gaze_stability: 0.2,
+        host_intent_weight: 0.4,
+        source_confidence: 0.4,
+    });
+
+    let snapshot = engine.seed("xr");
+
+    assert!(snapshot.degraded);
+    assert!(snapshot.candidate_labels.len() <= 3);
+    assert!(
+        snapshot
+            .candidate_labels
+            .iter()
+            .all(|candidate| candidate.split_whitespace().count() >= 2)
+    );
+}
+
 #[cfg(feature = "gpu")]
 #[test]
 fn gpu_scene_builder_marks_selected_candidate() {
@@ -85,9 +234,9 @@ fn gpu_scene_builder_marks_selected_candidate() {
     let renderer = WgpuCandidateRenderer::new(1024.0, 768.0);
     let scene = renderer.build_scene(&snapshot);
 
-    assert_eq!(scene.quads.len(), snapshot.candidate_labels.len());
+    assert_eq!(scene.hit_targets.len(), snapshot.candidate_labels.len());
     assert_eq!(scene.labels[1], snapshot.candidate_labels[1]);
-    assert_ne!(scene.quads[1].color, scene.quads[0].color);
+    assert_ne!(scene.quads[2].color, scene.quads[1].color);
 }
 
 #[cfg(feature = "gpu")]
@@ -108,4 +257,354 @@ fn gpu_scene_builder_keeps_vertical_candidate_stack() {
         Some(snapshot.candidate_labels[0].as_str())
     );
     assert_eq!(scene.draft_text, snapshot.draft_text);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn gpu_scene_hit_test_returns_clicked_candidate() {
+    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao xr");
+    let renderer = WgpuCandidateRenderer::new(1280.0, 800.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    let target = scene.hit_targets[1];
+    let hit = scene.hit_test(target.rect[0] + 10.0, target.rect[1] + 10.0);
+
+    assert_eq!(hit, Some(1));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn gpu_scene_contains_text_geometry_for_panel_copy() {
+    use suzaku_map::ime::gpu::{TextRole, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("tablet ime");
+    let renderer = WgpuCandidateRenderer::new(1280.0, 800.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    assert!(!scene.text_quads.is_empty());
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .any(|layout| matches!(layout.role, TextRole::InputLabel | TextRole::InputValue))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn text_block_wraps_and_ellipsizes_long_copy() {
+    use suzaku_map::ime::gpu::{TextAlign, TextBlock, TextRole};
+
+    let layout = TextBlock {
+        text: "selected candidate for xr tablet testing long phrase with extra wrapping pressure"
+            .into(),
+        origin: [40.0, 40.0],
+        max_width: 90.0,
+        pixel_size: 3.0,
+        line_gap: 8.0,
+        max_lines: 2,
+        color: [1.0, 1.0, 1.0, 1.0],
+        align: TextAlign::Left,
+        role: TextRole::CandidatePrimary,
+    }
+    .layout();
+
+    assert_eq!(layout.lines.len(), 2);
+    assert!(layout.truncated);
+    assert!(layout.lines[1].ends_with('…'));
+    assert!(!layout.quads.is_empty());
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn text_block_center_alignment_offsets_bounds_inside_max_width() {
+    use suzaku_map::ime::gpu::{TextAlign, TextBlock, TextRole};
+
+    let layout = TextBlock {
+        text: "draft".into(),
+        origin: [20.0, 20.0],
+        max_width: 240.0,
+        pixel_size: 4.0,
+        line_gap: 10.0,
+        max_lines: 1,
+        color: [1.0, 1.0, 1.0, 1.0],
+        align: TextAlign::Center,
+        role: TextRole::HeaderTitle,
+    }
+    .layout();
+
+    assert!(!layout.quads.is_empty());
+    assert!(layout.bounds[0] >= 20.0);
+    assert!(layout.bounds[2] <= 240.0);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_exposes_hierarchical_text_sections() {
+    use suzaku_map::ime::gpu::{TextRole, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao xr");
+    let renderer = WgpuCandidateRenderer::new(1280.0, 800.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    assert!(scene.text_sections.len() >= 3);
+    assert_eq!(scene.text_sections[0].layouts.len(), 2);
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .any(|section| section.role == TextRole::ToolButton)
+    );
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .any(|section| section.role == TextRole::CandidatePrimary && section.layouts.len() >= 2)
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_candidate_primary_prefers_continuation_not_full_repeat() {
+    use suzaku_map::ime::gpu::{TextRole, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("tablet ime");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    let first_candidate = scene
+        .text_sections
+        .iter()
+        .skip(1)
+        .find_map(|section| {
+            section
+                .layouts
+                .iter()
+                .find(|layout| layout.role == TextRole::CandidatePrimary)
+        })
+        .expect("candidate primary layout");
+
+    assert!(!first_candidate.lines.is_empty());
+    assert!(
+        !first_candidate.lines[0]
+            .to_lowercase()
+            .contains("tablet ime")
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_contains_seed_input_and_input_method_controls() {
+    use suzaku_map::ime::gpu::{InputMode, InteractionKind, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SeedInput)
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::InputModesToggle)
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind
+                == InteractionKind::InputModeButton(InputMode::VirtualKeyboard))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_can_collapse_input_method_buttons() {
+    use suzaku_map::ime::gpu::{
+        InputMode, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: false,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+        },
+    );
+
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .all(|target| !matches!(target.kind, InteractionKind::InputModeButton(_)))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
+    use suzaku_map::ime::gpu::{
+        InputMode, InteractionKind, PanelChromeState, VirtualKeyboardKey, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 700.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+        },
+    );
+
+    assert!(scene.interactive_targets.iter().any(|target| target.kind
+        == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character('q'))));
+    assert!(scene.interactive_targets.iter().any(|target| target.kind
+        == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::ToggleNumeric)));
+    assert!(
+        scene.interactive_targets.iter().any(|target| target.kind
+            == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Backspace))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
+    use suzaku_map::ime::gpu::{
+        InputMode, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 700.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::Dictation,
+            input_focused: false,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+        },
+    );
+
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .all(|target| !matches!(target.kind, InteractionKind::VirtualKeyboardKey(_)))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_switches_to_numeric_keyboard_layout() {
+    use suzaku_map::ime::gpu::{
+        InputMode, InteractionKind, PanelChromeState, VirtualKeyboardKey, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 700.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: true,
+        },
+    );
+
+    assert!(scene.interactive_targets.iter().any(|target| target.kind
+        == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character('1'))));
+    assert!(scene.interactive_targets.iter().any(|target| target.kind
+        == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::ToggleAlphabetic)));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn panel_chrome_state_supports_real_text_editing() {
+    use suzaku_map::ime::gpu::PanelChromeState;
+
+    let mut chrome = PanelChromeState::default();
+    chrome.insert_text("apple");
+    chrome.move_caret_left();
+    chrome.move_caret_left();
+    chrome.insert_text(" ");
+    chrome.backspace();
+    chrome.move_caret_to_end();
+    chrome.insert_text(" pie");
+
+    assert_eq!(chrome.seed_text, "apple pie");
+    assert_eq!(chrome.caret_index, chrome.seed_text.chars().count());
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn panel_chrome_state_clamps_caret_before_backspace_after_text_normalization() {
+    use suzaku_map::ime::gpu::PanelChromeState;
+
+    let mut chrome = PanelChromeState {
+        seed_text: "apple".into(),
+        caret_index: 7,
+        keyboard_shifted: false,
+        keyboard_numeric: false,
+        ..PanelChromeState::default()
+    };
+
+    chrome.backspace();
+
+    assert_eq!(chrome.seed_text, "appl");
+    assert_eq!(chrome.caret_index, 4);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_centers_compact_panel_in_large_viewport() {
+    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("apple");
+    let renderer = WgpuCandidateRenderer::new(1200.0, 900.0);
+    let scene = renderer.build_scene(&snapshot);
+
+    let min_x = scene
+        .quads
+        .iter()
+        .map(|quad| quad.rect[0])
+        .fold(f32::INFINITY, f32::min);
+    assert!(min_x > 100.0);
 }

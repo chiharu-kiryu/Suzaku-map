@@ -1,0 +1,3 @@
+[alias]
+panel-macos = "run --features gpu --bin panel"
+test-gpu = "test --features gpu"

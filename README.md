@@ -56,14 +56,24 @@ Yes, the project can use GPU rendering.
 - Enable it with `cargo test --features gpu` or integrate it into a windowed host renderer.
 - Launch the candidate panel with `cargo run --features gpu --bin panel`.
 
+## macOS First
+
+The current host is optimized for testing on macOS first, while keeping the rendering path cross-platform:
+
+- The panel uses macOS activation policy `Regular`, so it behaves like a normal desktop app.
+- On macOS the window uses a more native tool-panel style titlebar setup for quick local testing.
+- You can quit with `Cmd+Q`.
+- You can use the shorthand aliases `cargo panel-macos` and `cargo test-gpu`.
+
 ## Panel Controls
 
 The GPU candidate panel is a lightweight host for XR/tablet-style selection:
 
 - `1`, `2`, `3`: load different seed phrases
 - `Up` / `Down`: move candidate selection
+- Left click: hit-test and select a candidate
 - `D`: switch to degraded signal mode
 - `R`: restore normal signal mode
-- `Space`: force-commit the current selection
+- `Enter` or `Space`: force-commit the current selection
 
-The panel currently renders GPU candidate bars and mirrors the selected label, draft text, and committed text in the window title.
+The panel now uses a cross-platform hierarchical text layout layer for in-panel copy, with title/status/candidate sections, width-constrained blocks, wrapping, max-line clipping, and ellipsis handling rendered as GPU quads. The window title still mirrors key state for quick debugging.
