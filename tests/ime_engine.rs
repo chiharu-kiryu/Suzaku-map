@@ -307,6 +307,7 @@ fn text_block_wraps_and_ellipsizes_long_copy() {
         origin: [40.0, 40.0],
         max_width: 90.0,
         pixel_size: 3.0,
+        letter_spacing: 0.0,
         line_gap: 8.0,
         max_lines: 2,
         color: [1.0, 1.0, 1.0, 1.0],
@@ -331,6 +332,7 @@ fn text_block_center_alignment_offsets_bounds_inside_max_width() {
         origin: [20.0, 20.0],
         max_width: 240.0,
         pixel_size: 4.0,
+        letter_spacing: 0.0,
         line_gap: 10.0,
         max_lines: 1,
         color: [1.0, 1.0, 1.0, 1.0],
@@ -467,6 +469,15 @@ fn render_scene_can_collapse_input_method_buttons() {
             text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
             candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
             preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
+            font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
+            text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
+            text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
+            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
         },
     );
 
@@ -502,6 +513,15 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
             candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
             preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
+            font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
+            text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
+            text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
+            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
         },
     );
 
@@ -539,6 +559,15 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
             candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
             preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
+            font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
+            text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
+            text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Listening,
+            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
+            voice_transcript: "hello xr panel".into(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
         },
     );
 
@@ -547,6 +576,12 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             .interactive_targets
             .iter()
             .all(|target| !matches!(target.kind, InteractionKind::VirtualKeyboardKey(_)))
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::ToggleVoiceCapture)
     );
 }
 
@@ -574,6 +609,15 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
             candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
             preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
+            font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
+            text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
+            text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
+            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
         },
     );
 
@@ -587,8 +631,8 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
 #[test]
 fn render_scene_exposes_display_settings_when_open() {
     use suzaku_map::ime::gpu::{
-        CandidateDensity, DisplayTextScale, InputMode, InteractionKind, PanelChromeState,
-        PreviewStyle, WgpuCandidateRenderer,
+        CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
+        PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing, WgpuCandidateRenderer,
     };
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
@@ -608,6 +652,15 @@ fn render_scene_exposes_display_settings_when_open() {
             text_scale: DisplayTextScale::Large,
             candidate_density: CandidateDensity::Compact,
             preview_style: PreviewStyle::Full,
+            font_face: FontFaceChoice::Geneva,
+            text_spacing: TextSpacing::Relaxed,
+            text_smoothing: TextSmoothing::Smooth,
+            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
+            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
         },
     );
 
@@ -624,7 +677,25 @@ fn render_scene_exposes_display_settings_when_open() {
         scene
             .interactive_targets
             .iter()
+            .any(|target| target.kind == InteractionKind::SetFontFace(FontFaceChoice::Geneva))
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
             .any(|target| target.kind == InteractionKind::SetPreviewStyle(PreviewStyle::Full))
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetTextSpacing(TextSpacing::Relaxed))
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetTextSmoothing(TextSmoothing::Smooth))
     );
 }
 
@@ -632,8 +703,8 @@ fn render_scene_exposes_display_settings_when_open() {
 #[test]
 fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
     use suzaku_map::ime::gpu::{
-        CandidateDensity, DisplayTextScale, InputMode, PanelChromeState, PreviewStyle, TextRole,
-        WgpuCandidateRenderer,
+        CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, PanelChromeState,
+        PreviewStyle, TextRole, TextSmoothing, TextSpacing, WgpuCandidateRenderer,
     };
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
@@ -653,6 +724,15 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             text_scale: DisplayTextScale::Large,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Full,
+            font_face: FontFaceChoice::Auto,
+            text_spacing: TextSpacing::Relaxed,
+            text_smoothing: TextSmoothing::Smooth,
+            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
+            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
         },
     );
 
@@ -663,6 +743,148 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             .flat_map(|section| section.layouts.iter())
             .any(|layout| layout.role == TextRole::CandidateMeta && layout.lines.len() >= 2)
     );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_shows_voice_permission_denied_message() {
+    use suzaku_map::ime::gpu::{
+        CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, PanelChromeState,
+        PreviewStyle, TextRole, TextSmoothing, TextSpacing, VoiceCaptureState,
+        VoicePermissionState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 760.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::Dictation,
+            input_focused: false,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+            settings_open: false,
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Auto,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Smooth,
+            voice_state: VoiceCaptureState::Idle,
+            voice_permission: VoicePermissionState::Denied,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: String::new(),
+        },
+    );
+
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .any(|layout| {
+                layout.role == TextRole::VoiceLabel
+                    && layout
+                        .lines
+                        .iter()
+                        .any(|line| line.to_lowercase().contains("denied"))
+            })
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_exposes_handwriting_canvas_and_candidates() {
+    use suzaku_map::ime::gpu::{
+        CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
+        PanelChromeState, PreviewStyle, TextRole, TextSmoothing, TextSpacing,
+        VoiceCaptureState, VoicePermissionState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 760.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::Handwriting,
+            input_focused: false,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+            settings_open: false,
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Auto,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Smooth,
+            voice_state: VoiceCaptureState::Idle,
+            voice_permission: VoicePermissionState::Unknown,
+            voice_transcript: String::new(),
+            handwriting_strokes: vec![vec![[320.0, 220.0], [350.0, 250.0]]],
+            handwriting_candidates: vec!["apple".into(), "input".into()],
+            handwriting_hint: "Tap a recognized seed to insert it.".into(),
+        },
+    );
+
+    assert!(scene
+        .interactive_targets
+        .iter()
+        .any(|target| target.kind == InteractionKind::HandwritingCanvas));
+    assert!(scene
+        .interactive_targets
+        .iter()
+        .any(|target| target.kind == InteractionKind::UseHandwritingCandidate(0)));
+    assert!(scene
+        .text_sections
+        .iter()
+        .flat_map(|section| section.layouts.iter())
+        .any(|layout| layout.role == TextRole::HandwritingCandidate));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn text_block_tracking_changes_layout_width() {
+    use suzaku_map::ime::gpu::{TextAlign, TextBlock, TextRole};
+
+    let tight = TextBlock {
+        text: "suzaku".into(),
+        origin: [10.0, 10.0],
+        max_width: 240.0,
+        pixel_size: 3.0,
+        letter_spacing: -0.4,
+        line_gap: 6.0,
+        max_lines: 1,
+        color: [1.0, 1.0, 1.0, 1.0],
+        align: TextAlign::Left,
+        role: TextRole::InputValue,
+    }
+    .layout();
+
+    let relaxed = TextBlock {
+        text: "suzaku".into(),
+        origin: [10.0, 10.0],
+        max_width: 240.0,
+        pixel_size: 3.0,
+        letter_spacing: 0.8,
+        line_gap: 6.0,
+        max_lines: 1,
+        color: [1.0, 1.0, 1.0, 1.0],
+        align: TextAlign::Left,
+        role: TextRole::InputValue,
+    }
+    .layout();
+
+    assert!(relaxed.bounds[2] > tight.bounds[2]);
 }
 
 #[cfg(feature = "gpu")]
@@ -693,6 +915,9 @@ fn panel_chrome_state_clamps_caret_before_backspace_after_text_normalization() {
         caret_index: 7,
         keyboard_shifted: false,
         keyboard_numeric: false,
+        voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
+        voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
+        voice_transcript: String::new(),
         ..PanelChromeState::default()
     };
 

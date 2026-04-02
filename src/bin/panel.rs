@@ -8,15 +8,17 @@ use std::sync::Arc;
 use bytemuck::{Pod, Zeroable};
 use fontdue::Font;
 use suzaku_map::ime::gpu::{
-    AtlasGlyph, CandidateDensity, CandidateQuad, DisplayTextScale, InputMode, InteractionKind,
-    PanelChromeState, PreviewStyle, RenderScene, VirtualKeyboardKey, WgpuCandidateRenderer,
+    AtlasGlyph, CandidateDensity, CandidateQuad, DisplayTextScale, FontFaceChoice, InputMode,
+    InteractionKind, PanelChromeState, PreviewStyle, RenderScene, TextSmoothing, TextSpacing,
+    VirtualKeyboardKey, VoiceCaptureState, VoicePermissionState, WgpuCandidateRenderer,
 };
 use suzaku_map::ime::{CommitOptions, EngineConfig, InputSource, SignalState, XRTabletImeEngine};
+use suzaku_map::languages::llama::default_llama_english_plugin;
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 #[cfg(target_os = "macos")]
@@ -158,16 +160,43 @@ impl ApplicationHandler for PanelApp {
             WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
             WindowEvent::CursorMoved { position, .. } => {
                 state.cursor_position = Some((position.x as f32, position.y as f32));
+                state.extend_handwriting_stroke();
+                state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 state.modifiers = modifiers.state();
+            }
+            WindowEvent::Touch(touch) => {
+                state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
+                match touch.phase {
+                    TouchPhase::Started => {
+                        let _ = state.try_begin_handwriting_stroke();
+                    }
+                    TouchPhase::Moved => {
+                        state.extend_handwriting_stroke();
+                    }
+                    TouchPhase::Ended | TouchPhase::Cancelled => {
+                        state.finish_handwriting_stroke();
+                    }
+                }
+                state.window.request_redraw();
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
                 ..
             } => {
-                state.select_at_cursor();
+                if !state.try_begin_handwriting_stroke() {
+                    state.select_at_cursor();
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => {
+                state.finish_handwriting_stroke();
                 state.window.request_redraw();
             }
             WindowEvent::KeyboardInput { event, .. } => {
@@ -175,10 +204,6 @@ impl ApplicationHandler for PanelApp {
                     if state.is_quit_shortcut(&event.physical_key) {
                         event_loop.exit();
                         return;
-                    }
-
-                    if let Some(text) = event.text.as_deref() {
-                        state.handle_text_input(text);
                     }
 
                     match event.physical_key {
@@ -199,26 +224,74 @@ impl ApplicationHandler for PanelApp {
                             state.engine.move_selection(-1);
                         }
                         PhysicalKey::Code(KeyCode::Digit1) => {
-                            state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                            if !(state.chrome.input_focused
+                                && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
+                            {
+                                state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                            }
                         }
                         PhysicalKey::Code(KeyCode::Digit2) => {
-                            state.chrome.active_input_mode = InputMode::Dictation;
+                            if !(state.chrome.input_focused
+                                && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
+                            {
+                                state.chrome.active_input_mode = InputMode::Dictation;
+                            }
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
-                            state.chrome.active_input_mode = InputMode::Handwriting;
+                            if !(state.chrome.input_focused
+                                && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
+                            {
+                                state.chrome.active_input_mode = InputMode::Handwriting;
+                            }
                         }
                         PhysicalKey::Code(KeyCode::Tab) => {
                             state.chrome.input_modes_expanded = !state.chrome.input_modes_expanded;
                         }
                         PhysicalKey::Code(KeyCode::KeyD) => {
-                            state.engine.update_signal(SignalState {
-                                pointer_precision: 0.2,
-                                gaze_stability: 0.2,
-                                host_intent_weight: 0.4,
-                                source_confidence: 0.4,
-                            });
+                            if !state.chrome.input_focused {
+                                state.engine.update_signal(SignalState {
+                                    pointer_precision: 0.2,
+                                    gaze_stability: 0.2,
+                                    host_intent_weight: 0.4,
+                                    source_confidence: 0.4,
+                                });
+                            }
                         }
-                        PhysicalKey::Code(KeyCode::KeyR) => state.reset_signal(),
+                        PhysicalKey::Code(KeyCode::KeyV) => {
+                            if state.chrome.active_input_mode == InputMode::Dictation {
+                                if state.chrome.voice_state == VoiceCaptureState::Listening {
+                                    if let Some(bridge) = &state.voice.bridge {
+                                        bridge.stop();
+                                    }
+                                    state.chrome.voice_state = VoiceCaptureState::Idle;
+                                } else {
+                                    let started = if let Some(bridge) = &state.voice.bridge {
+                                        bridge.start()
+                                    } else {
+                                        false
+                                    };
+                                    state.chrome.voice_state = VoiceCaptureState::Listening;
+                                    if !started {
+                                        state.advance_voice_sample();
+                                    }
+                                }
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyN) => {
+                            if state.chrome.active_input_mode == InputMode::Dictation {
+                                state.advance_voice_sample();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyI) => {
+                            if state.chrome.active_input_mode == InputMode::Dictation {
+                                state.insert_voice_transcript();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyR) => {
+                            if !state.chrome.input_focused {
+                                state.reset_signal();
+                            }
+                        }
                         PhysicalKey::Code(KeyCode::Backspace) => {
                             if state.chrome.input_focused {
                                 state.backspace_seed();
@@ -242,6 +315,9 @@ impl ApplicationHandler for PanelApp {
                         }
                         _ => {}
                     }
+                    if let Some(text) = event.text.as_deref() {
+                        state.handle_text_input(text);
+                    }
                     state.window.request_redraw();
                 }
             }
@@ -262,7 +338,8 @@ impl ApplicationHandler for PanelApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = self.state.as_ref() {
+        if let Some(state) = self.state.as_mut() {
+            state.poll_voice_bridge();
             state.window.request_redraw();
         }
     }
@@ -338,6 +415,7 @@ struct FontAtlas {
     bind_group: wgpu::BindGroup,
     uv_map: HashMap<char, [f32; 4]>,
     uses_runtime_font: bool,
+    font_label: String,
 }
 
 struct PanelState {
@@ -353,8 +431,110 @@ struct PanelState {
     renderer: WgpuCandidateRenderer,
     engine: XRTabletImeEngine,
     chrome: PanelChromeState,
+    voice: VoiceInputController,
     cursor_position: Option<(f32, f32)>,
     modifiers: ModifiersState,
+    handwriting_dragging: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PersistedDisplaySettings {
+    text_scale: DisplayTextScale,
+    candidate_density: CandidateDensity,
+    preview_style: PreviewStyle,
+    font_face: FontFaceChoice,
+    text_spacing: TextSpacing,
+    text_smoothing: TextSmoothing,
+}
+
+struct VoiceInputController {
+    samples: Vec<&'static str>,
+    next_index: usize,
+    bridge: Option<MacOsSpeechRecognizer>,
+}
+
+impl VoiceInputController {
+    fn new() -> Self {
+        Self {
+            samples: vec![
+                "hello xr panel",
+                "tablet ime voice seed",
+                "continue this sentence by tap",
+                "spatial input feels lighter with speech",
+            ],
+            next_index: 0,
+            bridge: MacOsSpeechRecognizer::new(),
+        }
+    }
+
+    fn next_sample(&mut self) -> String {
+        let sample = self.samples[self.next_index % self.samples.len()].to_string();
+        self.next_index = (self.next_index + 1) % self.samples.len();
+        sample
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct MacOsSpeechRecognizer;
+
+#[cfg(target_os = "macos")]
+impl MacOsSpeechRecognizer {
+    fn new() -> Option<Self> {
+        if unsafe { suzaku_speech_is_supported() } {
+            Some(Self)
+        } else {
+            None
+        }
+    }
+
+    fn start(&self) -> bool {
+        unsafe { suzaku_speech_start() }
+    }
+
+    fn stop(&self) {
+        unsafe { suzaku_speech_stop() }
+    }
+
+    fn permission_state(&self) -> VoicePermissionState {
+        match unsafe { suzaku_speech_state() } {
+            1 => VoicePermissionState::Ready,
+            2 => VoicePermissionState::Ready,
+            3 => VoicePermissionState::Pending,
+            4 => VoicePermissionState::Denied,
+            5 => VoicePermissionState::Error,
+            0 => VoicePermissionState::Unavailable,
+            _ => VoicePermissionState::Unknown,
+        }
+    }
+
+    fn poll_transcript(&self) -> Option<String> {
+        let mut buf = vec![0u8; 2048];
+        let ok = unsafe { suzaku_speech_consume_transcript(buf.as_mut_ptr().cast(), buf.len()) };
+        if !ok {
+            return None;
+        }
+        let nul = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+        String::from_utf8(buf[..nul].to_vec()).ok()
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+struct MacOsSpeechRecognizer;
+
+#[cfg(not(target_os = "macos"))]
+impl MacOsSpeechRecognizer {
+    fn new() -> Option<Self> {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn suzaku_speech_is_supported() -> bool;
+    fn suzaku_speech_state() -> i32;
+    fn suzaku_speech_start() -> bool;
+    fn suzaku_speech_stop();
+    fn suzaku_speech_consume_transcript(buffer: *mut std::ffi::c_char, capacity: usize) -> bool;
 }
 
 impl PanelState {
@@ -472,7 +652,39 @@ impl PanelState {
                     },
                 ],
             });
-        let font_atlas = create_font_atlas(&device, &queue, &text_bind_group_layout);
+        let mut chrome = PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: "ni hao".chars().count(),
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+            settings_open: false,
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Auto,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Smooth,
+            voice_state: VoiceCaptureState::Idle,
+            voice_permission: VoicePermissionState::Unknown,
+            voice_transcript: String::new(),
+            handwriting_strokes: Vec::new(),
+            handwriting_candidates: Vec::new(),
+            handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
+        };
+        if let Some(saved) = load_display_settings() {
+            apply_display_settings(&mut chrome, &saved);
+        }
+
+        let font_atlas = create_font_atlas(
+            &device,
+            &queue,
+            &text_bind_group_layout,
+            chrome.font_face,
+            chrome.text_smoothing,
+        );
         let text_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("suzaku-panel-text-layout"),
             bind_group_layouts: &[&text_bind_group_layout],
@@ -513,6 +725,8 @@ impl PanelState {
         });
 
         let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+        engine.register_language_plugin(default_llama_english_plugin());
+        engine.set_language("llama-en");
         engine.set_source(InputSource::GazeDwell);
         engine.update_signal(SignalState {
             pointer_precision: 0.42,
@@ -534,21 +748,11 @@ impl PanelState {
             size,
             renderer: WgpuCandidateRenderer::new(config.width as f32, config.height as f32),
             engine,
-            chrome: PanelChromeState {
-                seed_text: "ni hao".into(),
-                input_modes_expanded: true,
-                active_input_mode: InputMode::VirtualKeyboard,
-                input_focused: true,
-                caret_index: "ni hao".chars().count(),
-                keyboard_shifted: false,
-                keyboard_numeric: false,
-                settings_open: false,
-                text_scale: DisplayTextScale::Medium,
-                candidate_density: CandidateDensity::Cozy,
-                preview_style: PreviewStyle::Compact,
-            },
+            chrome,
+            voice: VoiceInputController::new(),
             cursor_position: None,
             modifiers: ModifiersState::default(),
+            handwriting_dragging: false,
         })
     }
 
@@ -560,6 +764,150 @@ impl PanelState {
             source_confidence: 0.70,
         });
         self.refresh_seed();
+    }
+
+    fn rebuild_font_atlas(&mut self) {
+        let text_bind_group_layout = self.text_pipeline.get_bind_group_layout(0);
+        self.font_atlas = create_font_atlas(
+            &self.device,
+            &self.queue,
+            &text_bind_group_layout,
+            self.chrome.font_face,
+            self.chrome.text_smoothing,
+        );
+    }
+
+    fn persist_display_settings(&self) {
+        let _ = save_display_settings(&PersistedDisplaySettings::from(&self.chrome));
+    }
+
+    fn advance_voice_sample(&mut self) {
+        self.chrome.voice_transcript = self.voice.next_sample();
+    }
+
+    fn poll_voice_bridge(&mut self) {
+        if let Some(bridge) = &self.voice.bridge {
+            self.chrome.voice_permission = bridge.permission_state();
+            if let Some(transcript) = bridge.poll_transcript() {
+                self.chrome.voice_transcript = transcript;
+            }
+        } else {
+            self.chrome.voice_permission = VoicePermissionState::Unavailable;
+        }
+    }
+
+    fn insert_voice_transcript(&mut self) {
+        if self.chrome.voice_transcript.is_empty() {
+            return;
+        }
+
+        if !self.chrome.seed_text.is_empty() && !self.chrome.seed_text.ends_with(' ') {
+            self.chrome.insert_text(" ");
+        }
+        let transcript = self.chrome.voice_transcript.clone();
+        self.chrome.insert_text(&transcript);
+        self.chrome.active_input_mode = InputMode::VirtualKeyboard;
+        self.chrome.input_focused = true;
+        self.chrome.move_caret_to_end();
+        self.refresh_seed();
+    }
+
+    fn current_scene(&self) -> RenderScene {
+        self.renderer
+            .build_panel_scene(&self.engine.snapshot(), &self.chrome)
+    }
+
+    fn handwriting_canvas_rect(&self) -> Option<[f32; 4]> {
+        self.current_scene()
+            .interactive_targets
+            .iter()
+            .find(|target| matches!(target.kind, InteractionKind::HandwritingCanvas))
+            .map(|target| target.rect)
+    }
+
+    fn try_begin_handwriting_stroke(&mut self) -> bool {
+        if self.chrome.active_input_mode != InputMode::Handwriting {
+            return false;
+        }
+
+        let Some((x, y)) = self.cursor_position else {
+            return false;
+        };
+        let Some(rect) = self.handwriting_canvas_rect() else {
+            return false;
+        };
+        if !point_in_rect(x, y, rect) {
+            return false;
+        }
+
+        self.chrome.blur_input();
+        self.handwriting_dragging = true;
+        self.chrome.handwriting_strokes.push(vec![[x, y]]);
+        self.chrome.handwriting_hint = "Tracing… release to recognize".to_string();
+        true
+    }
+
+    fn extend_handwriting_stroke(&mut self) {
+        if !self.handwriting_dragging || self.chrome.active_input_mode != InputMode::Handwriting {
+            return;
+        }
+
+        let Some((x, y)) = self.cursor_position else {
+            return;
+        };
+        let Some(rect) = self.handwriting_canvas_rect() else {
+            return;
+        };
+        let clamped = [
+            x.clamp(rect[0] + 4.0, rect[0] + rect[2] - 4.0),
+            y.clamp(rect[1] + 4.0, rect[1] + rect[3] - 4.0),
+        ];
+        let Some(stroke) = self.chrome.handwriting_strokes.last_mut() else {
+            return;
+        };
+        if stroke
+            .last()
+            .map(|last| (last[0] - clamped[0]).hypot(last[1] - clamped[1]) >= 3.0)
+            .unwrap_or(true)
+        {
+            stroke.push(clamped);
+        }
+    }
+
+    fn finish_handwriting_stroke(&mut self) {
+        if !self.handwriting_dragging {
+            return;
+        }
+        self.handwriting_dragging = false;
+        self.chrome.handwriting_candidates =
+            recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
+        self.chrome.handwriting_hint = if self.chrome.handwriting_candidates.is_empty() {
+            "Try a clearer trace, then tap a recognized seed.".to_string()
+        } else {
+            "Tap a recognized seed to insert it.".to_string()
+        };
+    }
+
+    fn clear_handwriting(&mut self) {
+        self.handwriting_dragging = false;
+        self.chrome.handwriting_strokes.clear();
+        self.chrome.handwriting_candidates.clear();
+        self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
+    }
+
+    fn insert_handwriting_candidate(&mut self, index: usize) {
+        let Some(candidate) = self.chrome.handwriting_candidates.get(index).cloned() else {
+            return;
+        };
+        if !self.chrome.seed_text.is_empty() && !self.chrome.seed_text.ends_with(' ') {
+            self.chrome.insert_text(" ");
+        }
+        self.chrome.insert_text(&candidate);
+        self.chrome.active_input_mode = InputMode::VirtualKeyboard;
+        self.chrome.focus_input();
+        self.chrome.move_caret_to_end();
+        self.refresh_seed();
+        self.clear_handwriting();
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -578,12 +926,12 @@ impl PanelState {
     fn render(&mut self) -> Result<(), SurfaceError> {
         let snapshot = self.engine.snapshot();
         let scene = self.renderer.build_panel_scene(&snapshot, &self.chrome);
-        self.window
-            .set_title(&window_title(
-                &scene,
-                &snapshot.committed_text,
-                self.font_atlas.uses_runtime_font,
-            ));
+        self.window.set_title(&window_title(
+            &scene,
+            &snapshot.committed_text,
+            self.font_atlas.uses_runtime_font,
+            &self.font_atlas.font_label,
+        ));
 
         let shape_vertices =
             build_shape_vertices(&scene, self.config.width as f32, self.config.height as f32);
@@ -673,9 +1021,7 @@ impl PanelState {
             return;
         };
 
-        let scene = self
-            .renderer
-            .build_panel_scene(&self.engine.snapshot(), &self.chrome);
+        let scene = self.current_scene();
         if let Some(kind) = scene.hit_interaction(x, y) {
             match kind {
                 InteractionKind::SeedInput => {
@@ -695,12 +1041,64 @@ impl PanelState {
                 }
                 InteractionKind::SetTextScale(scale) => {
                     self.chrome.text_scale = scale;
+                    self.persist_display_settings();
                 }
                 InteractionKind::SetCandidateDensity(density) => {
                     self.chrome.candidate_density = density;
+                    self.persist_display_settings();
                 }
                 InteractionKind::SetPreviewStyle(style) => {
                     self.chrome.preview_style = style;
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetFontFace(font_face) => {
+                    self.chrome.font_face = font_face;
+                    self.rebuild_font_atlas();
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetTextSpacing(spacing) => {
+                    self.chrome.text_spacing = spacing;
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetTextSmoothing(smoothing) => {
+                    self.chrome.text_smoothing = smoothing;
+                    self.rebuild_font_atlas();
+                    self.persist_display_settings();
+                }
+                InteractionKind::ToggleVoiceCapture => {
+                    if self.chrome.voice_state == VoiceCaptureState::Listening {
+                        if let Some(bridge) = &self.voice.bridge {
+                            bridge.stop();
+                        }
+                        self.chrome.voice_state = VoiceCaptureState::Idle;
+                    } else {
+                        let started = if let Some(bridge) = &self.voice.bridge {
+                            bridge.start()
+                        } else {
+                            false
+                        };
+                        self.chrome.voice_state = VoiceCaptureState::Listening;
+                        if !started {
+                            self.advance_voice_sample();
+                        }
+                    }
+                }
+                InteractionKind::CycleVoiceSample => {
+                    self.advance_voice_sample();
+                }
+                InteractionKind::InsertVoiceTranscript => {
+                    self.insert_voice_transcript();
+                }
+                InteractionKind::ClearVoiceTranscript => {
+                    self.chrome.voice_transcript.clear();
+                    self.chrome.voice_state = VoiceCaptureState::Idle;
+                }
+                InteractionKind::HandwritingCanvas => {}
+                InteractionKind::ClearHandwriting => {
+                    self.clear_handwriting();
+                }
+                InteractionKind::UseHandwritingCandidate(index) => {
+                    self.insert_handwriting_candidate(index);
                 }
                 InteractionKind::VirtualKeyboardKey(key) => {
                     self.chrome.active_input_mode = InputMode::VirtualKeyboard;
@@ -790,6 +1188,63 @@ impl PanelState {
                 self.modifiers.control_key()
             }
     }
+}
+
+fn point_in_rect(x: f32, y: f32, rect: [f32; 4]) -> bool {
+    let [rx, ry, rw, rh] = rect;
+    x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
+}
+
+fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
+    let points: Vec<[f32; 2]> = strokes.iter().flat_map(|stroke| stroke.iter().copied()).collect();
+    if points.len() < 2 {
+        return Vec::new();
+    }
+
+    let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
+    let max_x = points.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max);
+    let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+    let max_y = points.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max);
+    let width = (max_x - min_x).max(1.0);
+    let height = (max_y - min_y).max(1.0);
+    let aspect = width / height;
+    let start = points[0];
+    let end = *points.last().unwrap_or(&start);
+    let end_distance = (end[0] - start[0]).hypot(end[1] - start[1]);
+    let path_length: f32 = points
+        .windows(2)
+        .map(|window| (window[1][0] - window[0][0]).hypot(window[1][1] - window[0][1]))
+        .sum();
+    let straightness = end_distance / path_length.max(1.0);
+    let closure = end_distance / width.max(height);
+    let dx = end[0] - start[0];
+    let dy = end[1] - start[1];
+
+    if strokes.len() >= 2 && strokes.iter().all(|stroke| stroke.len() >= 2) {
+        return vec!["t".into(), "tap".into(), "text".into()];
+    }
+
+    if closure < 0.35 && path_length > (width + height) * 1.2 {
+        return vec!["o".into(), "open".into(), "okay".into()];
+    }
+
+    if straightness > 0.9 {
+        if aspect < 0.55 {
+            return vec!["i".into(), "line".into(), "input".into()];
+        }
+        if aspect > 1.8 {
+            return vec!["to".into(), "go".into(), "next".into()];
+        }
+        if dx.abs() > dy.abs() {
+            return vec!["hi".into(), "hello".into(), "hand".into()];
+        }
+    }
+
+    if dx.abs() > dy.abs() && aspect > 1.25 && path_length > width * 1.4 {
+        return vec!["wave".into(), "write".into(), "word".into()];
+    }
+
+    vec!["apple".into(), "hello".into(), "input".into()]
 }
 
 fn build_shape_vertices(scene: &RenderScene, width: f32, height: f32) -> Vec<PanelVertex> {
@@ -929,12 +1384,21 @@ fn create_font_atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
+    font_face: FontFaceChoice,
+    smoothing: TextSmoothing,
 ) -> FontAtlas {
-    if let Some(runtime_font) = load_runtime_font() {
-        return create_runtime_font_atlas(device, queue, bind_group_layout, &runtime_font);
+    if let Some((runtime_font, font_label)) = load_runtime_font(font_face) {
+        return create_runtime_font_atlas(
+            device,
+            queue,
+            bind_group_layout,
+            &runtime_font,
+            smoothing,
+            font_label,
+        );
     }
 
-    create_bitmap_font_atlas(device, queue, bind_group_layout)
+    create_bitmap_font_atlas(device, queue, bind_group_layout, smoothing)
 }
 
 fn create_runtime_font_atlas(
@@ -942,6 +1406,8 @@ fn create_runtime_font_atlas(
     queue: &wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
     font: &Font,
+    smoothing: TextSmoothing,
+    font_label: String,
 ) -> FontAtlas {
     const GLYPH_SIZE: f32 = 28.0;
     let glyphs = atlas_charset();
@@ -1000,6 +1466,8 @@ fn create_runtime_font_atlas(
         bytes,
         uv_map,
         true,
+        smoothing,
+        font_label,
     )
 }
 
@@ -1007,6 +1475,7 @@ fn create_bitmap_font_atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
+    smoothing: TextSmoothing,
 ) -> FontAtlas {
     const CELL_W: u32 = 8;
     const CELL_H: u32 = 10;
@@ -1052,6 +1521,8 @@ fn create_bitmap_font_atlas(
         bytes,
         uv_map,
         false,
+        smoothing,
+        "Fallback".to_string(),
     )
 }
 
@@ -1064,6 +1535,8 @@ fn create_font_atlas_resources(
     bytes: Vec<u8>,
     uv_map: HashMap<char, [f32; 4]>,
     uses_runtime_font: bool,
+    smoothing: TextSmoothing,
+    font_label: String,
 ) -> FontAtlas {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("suzaku-font-atlas"),
@@ -1096,8 +1569,16 @@ fn create_font_atlas_resources(
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("suzaku-font-atlas-sampler"),
-        mag_filter: wgpu::FilterMode::Nearest,
-        min_filter: wgpu::FilterMode::Nearest,
+        mag_filter: if smoothing == TextSmoothing::Smooth {
+            wgpu::FilterMode::Linear
+        } else {
+            wgpu::FilterMode::Nearest
+        },
+        min_filter: if smoothing == TextSmoothing::Smooth {
+            wgpu::FilterMode::Linear
+        } else {
+            wgpu::FilterMode::Nearest
+        },
         mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     });
@@ -1120,6 +1601,7 @@ fn create_font_atlas_resources(
         bind_group,
         uv_map,
         uses_runtime_font,
+        font_label,
     }
 }
 
@@ -1141,33 +1623,338 @@ fn atlas_lookup_char(ch: char) -> char {
     }
 }
 
-fn load_runtime_font() -> Option<Font> {
-    for path in preferred_font_paths() {
+fn load_runtime_font(font_face: FontFaceChoice) -> Option<(Font, String)> {
+    for (path, label) in preferred_font_paths(font_face) {
         if let Ok(bytes) = fs::read(path) {
             if let Ok(font) = Font::from_bytes(bytes, fontdue::FontSettings::default()) {
-                return Some(font);
+                return Some((font, label.to_string()));
             }
         }
     }
     None
 }
 
-fn preferred_font_paths() -> &'static [&'static str] {
-    &[
-        "/System/Library/Fonts/Monaco.ttf",
-        "/System/Library/Fonts/Geneva.ttf",
-        "/Library/Fonts/Arial Unicode.ttf",
-    ]
+fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'static str)> {
+    match font_face {
+        FontFaceChoice::Auto => vec![
+            ("/System/Library/Fonts/Monaco.ttf", "Monaco"),
+            ("/System/Library/Fonts/Geneva.ttf", "Geneva"),
+            ("/Library/Fonts/Arial Unicode.ttf", "Arial Unicode"),
+        ],
+        FontFaceChoice::Monaco => vec![("/System/Library/Fonts/Monaco.ttf", "Monaco")],
+        FontFaceChoice::Geneva => vec![("/System/Library/Fonts/Geneva.ttf", "Geneva")],
+        FontFaceChoice::ArialUnicode => {
+            vec![("/Library/Fonts/Arial Unicode.ttf", "Arial Unicode")]
+        }
+    }
 }
 
-fn window_title(scene: &RenderScene, committed_text: &str, uses_runtime_font: bool) -> String {
+fn display_settings_path() -> &'static str {
+    ".suzaku-panel-settings"
+}
+
+impl From<&PanelChromeState> for PersistedDisplaySettings {
+    fn from(chrome: &PanelChromeState) -> Self {
+        Self {
+            text_scale: chrome.text_scale,
+            candidate_density: chrome.candidate_density,
+            preview_style: chrome.preview_style,
+            font_face: chrome.font_face,
+            text_spacing: chrome.text_spacing,
+            text_smoothing: chrome.text_smoothing,
+        }
+    }
+}
+
+fn apply_display_settings(chrome: &mut PanelChromeState, settings: &PersistedDisplaySettings) {
+    chrome.text_scale = settings.text_scale;
+    chrome.candidate_density = settings.candidate_density;
+    chrome.preview_style = settings.preview_style;
+    chrome.font_face = settings.font_face;
+    chrome.text_spacing = settings.text_spacing;
+    chrome.text_smoothing = settings.text_smoothing;
+}
+
+fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
+    let contents = format!(
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\n",
+        encode_text_scale(settings.text_scale),
+        encode_candidate_density(settings.candidate_density),
+        encode_preview_style(settings.preview_style),
+        encode_font_face(settings.font_face),
+        encode_text_spacing(settings.text_spacing),
+        encode_text_smoothing(settings.text_smoothing),
+    );
+    fs::write(display_settings_path(), contents)
+}
+
+fn load_display_settings() -> Option<PersistedDisplaySettings> {
+    let contents = fs::read_to_string(display_settings_path()).ok()?;
+    let mut settings = PersistedDisplaySettings {
+        text_scale: DisplayTextScale::Medium,
+        candidate_density: CandidateDensity::Cozy,
+        preview_style: PreviewStyle::Compact,
+        font_face: FontFaceChoice::Auto,
+        text_spacing: TextSpacing::Normal,
+        text_smoothing: TextSmoothing::Smooth,
+    };
+
+    for line in contents.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "text_scale" => {
+                if let Some(parsed) = decode_text_scale(value.trim()) {
+                    settings.text_scale = parsed;
+                }
+            }
+            "candidate_density" => {
+                if let Some(parsed) = decode_candidate_density(value.trim()) {
+                    settings.candidate_density = parsed;
+                }
+            }
+            "preview_style" => {
+                if let Some(parsed) = decode_preview_style(value.trim()) {
+                    settings.preview_style = parsed;
+                }
+            }
+            "font_face" => {
+                if let Some(parsed) = decode_font_face(value.trim()) {
+                    settings.font_face = parsed;
+                }
+            }
+            "text_spacing" => {
+                if let Some(parsed) = decode_text_spacing(value.trim()) {
+                    settings.text_spacing = parsed;
+                }
+            }
+            "text_smoothing" => {
+                if let Some(parsed) = decode_text_smoothing(value.trim()) {
+                    settings.text_smoothing = parsed;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Some(settings)
+}
+
+fn encode_text_scale(value: DisplayTextScale) -> &'static str {
+    match value {
+        DisplayTextScale::Small => "small",
+        DisplayTextScale::Medium => "medium",
+        DisplayTextScale::Large => "large",
+    }
+}
+
+fn decode_text_scale(value: &str) -> Option<DisplayTextScale> {
+    match value {
+        "small" => Some(DisplayTextScale::Small),
+        "medium" => Some(DisplayTextScale::Medium),
+        "large" => Some(DisplayTextScale::Large),
+        _ => None,
+    }
+}
+
+fn encode_candidate_density(value: CandidateDensity) -> &'static str {
+    match value {
+        CandidateDensity::Compact => "compact",
+        CandidateDensity::Cozy => "cozy",
+    }
+}
+
+fn decode_candidate_density(value: &str) -> Option<CandidateDensity> {
+    match value {
+        "compact" => Some(CandidateDensity::Compact),
+        "cozy" => Some(CandidateDensity::Cozy),
+        _ => None,
+    }
+}
+
+fn encode_preview_style(value: PreviewStyle) -> &'static str {
+    match value {
+        PreviewStyle::Compact => "compact",
+        PreviewStyle::Full => "full",
+    }
+}
+
+fn decode_preview_style(value: &str) -> Option<PreviewStyle> {
+    match value {
+        "compact" => Some(PreviewStyle::Compact),
+        "full" => Some(PreviewStyle::Full),
+        _ => None,
+    }
+}
+
+fn encode_font_face(value: FontFaceChoice) -> &'static str {
+    match value {
+        FontFaceChoice::Auto => "auto",
+        FontFaceChoice::Monaco => "monaco",
+        FontFaceChoice::Geneva => "geneva",
+        FontFaceChoice::ArialUnicode => "arial_unicode",
+    }
+}
+
+fn decode_font_face(value: &str) -> Option<FontFaceChoice> {
+    match value {
+        "auto" => Some(FontFaceChoice::Auto),
+        "monaco" => Some(FontFaceChoice::Monaco),
+        "geneva" => Some(FontFaceChoice::Geneva),
+        "arial_unicode" => Some(FontFaceChoice::ArialUnicode),
+        _ => None,
+    }
+}
+
+fn encode_text_spacing(value: TextSpacing) -> &'static str {
+    match value {
+        TextSpacing::Tight => "tight",
+        TextSpacing::Normal => "normal",
+        TextSpacing::Relaxed => "relaxed",
+    }
+}
+
+fn decode_text_spacing(value: &str) -> Option<TextSpacing> {
+    match value {
+        "tight" => Some(TextSpacing::Tight),
+        "normal" => Some(TextSpacing::Normal),
+        "relaxed" => Some(TextSpacing::Relaxed),
+        _ => None,
+    }
+}
+
+fn encode_text_smoothing(value: TextSmoothing) -> &'static str {
+    match value {
+        TextSmoothing::Sharp => "sharp",
+        TextSmoothing::Smooth => "smooth",
+    }
+}
+
+fn decode_text_smoothing(value: &str) -> Option<TextSmoothing> {
+    match value {
+        "sharp" => Some(TextSmoothing::Sharp),
+        "smooth" => Some(TextSmoothing::Smooth),
+        _ => None,
+    }
+}
+
+fn window_title(
+    scene: &RenderScene,
+    committed_text: &str,
+    uses_runtime_font: bool,
+    font_label: &str,
+) -> String {
     let selected = scene.selected_label.as_deref().unwrap_or("no candidate");
     format!(
-        "Suzaku XR Candidate Panel | font: {} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
-        if uses_runtime_font { "system-atlas" } else { "bitmap-fallback" },
+        "Suzaku XR Candidate Panel | font: {}:{} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
+        if uses_runtime_font {
+            "system-atlas"
+        } else {
+            "bitmap-fallback"
+        },
+        font_label,
         scene.draft_text,
     )
 }
 
 #[allow(dead_code)]
 fn _quad_debug(_quad: &CandidateQuad) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_settings_round_trip_codec() {
+        let settings = PersistedDisplaySettings {
+            text_scale: DisplayTextScale::Large,
+            candidate_density: CandidateDensity::Compact,
+            preview_style: PreviewStyle::Full,
+            font_face: FontFaceChoice::Geneva,
+            text_spacing: TextSpacing::Relaxed,
+            text_smoothing: TextSmoothing::Sharp,
+        };
+
+        let encoded = format!(
+            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\n",
+            encode_text_scale(settings.text_scale),
+            encode_candidate_density(settings.candidate_density),
+            encode_preview_style(settings.preview_style),
+            encode_font_face(settings.font_face),
+            encode_text_spacing(settings.text_spacing),
+            encode_text_smoothing(settings.text_smoothing),
+        );
+
+        let mut decoded = PersistedDisplaySettings {
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Auto,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Smooth,
+        };
+
+        for line in encoded.lines() {
+            let (key, value) = line.split_once('=').expect("kv");
+            match key {
+                "text_scale" => decoded.text_scale = decode_text_scale(value).expect("scale"),
+                "candidate_density" => {
+                    decoded.candidate_density = decode_candidate_density(value).expect("density")
+                }
+                "preview_style" => {
+                    decoded.preview_style = decode_preview_style(value).expect("preview")
+                }
+                "font_face" => decoded.font_face = decode_font_face(value).expect("font"),
+                "text_spacing" => {
+                    decoded.text_spacing = decode_text_spacing(value).expect("spacing")
+                }
+                "text_smoothing" => {
+                    decoded.text_smoothing = decode_text_smoothing(value).expect("smooth")
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(decoded, settings);
+    }
+
+    #[test]
+    fn voice_controller_cycles_samples() {
+        let mut voice = VoiceInputController::new();
+
+        let first = voice.next_sample();
+        let second = voice.next_sample();
+
+        assert_ne!(first, second);
+        assert!(!first.is_empty());
+        assert!(!second.is_empty());
+    }
+
+    #[test]
+    fn handwriting_recognizer_returns_loop_candidates() {
+        let stroke = vec![
+            [10.0, 10.0],
+            [20.0, 8.0],
+            [28.0, 16.0],
+            [26.0, 28.0],
+            [16.0, 32.0],
+            [8.0, 22.0],
+            [10.0, 10.0],
+        ];
+
+        let candidates = recognize_handwriting_candidates(&[stroke]);
+
+        assert!(candidates.iter().any(|candidate| candidate == "o"));
+    }
+
+    #[test]
+    fn handwriting_recognizer_returns_cross_candidates_for_multi_stroke_input() {
+        let candidates = recognize_handwriting_candidates(&[
+            vec![[10.0, 10.0], [24.0, 24.0]],
+            vec![[24.0, 10.0], [10.0, 24.0]],
+        ]);
+
+        assert_eq!(candidates.first().map(String::as_str), Some("t"));
+    }
+}

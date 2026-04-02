@@ -1597,6 +1597,7 @@ name = "suzaku-map"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "cc",
  "fontdue",
  "pollster",
  "wgpu",

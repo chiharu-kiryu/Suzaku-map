@@ -652,12 +652,17 @@ fn compact_phrase(text: &str) -> String {
     )
 }
 
-fn measure_text_prefix_width(text: &str, char_count: usize, pixel_size: f32) -> f32 {
+fn measure_text_prefix_width(
+    text: &str,
+    char_count: usize,
+    pixel_size: f32,
+    letter_spacing: f32,
+) -> f32 {
     text.chars().take(char_count).fold(0.0, |acc, ch| {
         acc + if ch == ' ' {
             pixel_size * 4.0
         } else {
-            pixel_size * 6.5
+            pixel_size * 6.5 + letter_spacing
         }
     })
 }
@@ -699,6 +704,12 @@ pub mod gpu {
         KeyboardKey,
         SettingLabel,
         SettingOption,
+        VoiceLabel,
+        VoiceButton,
+        VoiceTranscript,
+        HandwritingLabel,
+        HandwritingButton,
+        HandwritingCandidate,
         CandidatePrimary,
         CandidateMeta,
     }
@@ -740,6 +751,43 @@ pub mod gpu {
         Full,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum FontFaceChoice {
+        Auto,
+        Monaco,
+        Geneva,
+        ArialUnicode,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum TextSpacing {
+        Tight,
+        Normal,
+        Relaxed,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum TextSmoothing {
+        Sharp,
+        Smooth,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum VoiceCaptureState {
+        Idle,
+        Listening,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum VoicePermissionState {
+        Unknown,
+        Ready,
+        Pending,
+        Denied,
+        Error,
+        Unavailable,
+    }
+
     #[derive(Clone, Debug, PartialEq)]
     pub struct PanelChromeState {
         pub seed_text: String,
@@ -753,6 +801,15 @@ pub mod gpu {
         pub text_scale: DisplayTextScale,
         pub candidate_density: CandidateDensity,
         pub preview_style: PreviewStyle,
+        pub font_face: FontFaceChoice,
+        pub text_spacing: TextSpacing,
+        pub text_smoothing: TextSmoothing,
+        pub voice_state: VoiceCaptureState,
+        pub voice_permission: VoicePermissionState,
+        pub voice_transcript: String,
+        pub handwriting_strokes: Vec<Vec<[f32; 2]>>,
+        pub handwriting_candidates: Vec<String>,
+        pub handwriting_hint: String,
     }
 
     impl Default for PanelChromeState {
@@ -769,6 +826,15 @@ pub mod gpu {
                 text_scale: DisplayTextScale::Medium,
                 candidate_density: CandidateDensity::Cozy,
                 preview_style: PreviewStyle::Compact,
+                font_face: FontFaceChoice::Auto,
+                text_spacing: TextSpacing::Normal,
+                text_smoothing: TextSmoothing::Smooth,
+                voice_state: VoiceCaptureState::Idle,
+                voice_permission: VoicePermissionState::Unknown,
+                voice_transcript: String::new(),
+                handwriting_strokes: Vec::new(),
+                handwriting_candidates: Vec::new(),
+                handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
             }
         }
     }
@@ -853,6 +919,16 @@ pub mod gpu {
         SetTextScale(DisplayTextScale),
         SetCandidateDensity(CandidateDensity),
         SetPreviewStyle(PreviewStyle),
+        SetFontFace(FontFaceChoice),
+        SetTextSpacing(TextSpacing),
+        SetTextSmoothing(TextSmoothing),
+        ToggleVoiceCapture,
+        CycleVoiceSample,
+        InsertVoiceTranscript,
+        ClearVoiceTranscript,
+        HandwritingCanvas,
+        ClearHandwriting,
+        UseHandwritingCandidate(usize),
         Candidate(usize),
     }
 
@@ -868,6 +944,7 @@ pub mod gpu {
         pub origin: [f32; 2],
         pub max_width: f32,
         pub pixel_size: f32,
+        pub letter_spacing: f32,
         pub line_gap: f32,
         pub max_lines: usize,
         pub color: [f32; 4],
@@ -970,23 +1047,35 @@ pub mod gpu {
                 DisplayTextScale::Medium => 2.0,
                 DisplayTextScale::Large => 3.0,
             };
+            let tracking = match chrome.text_spacing {
+                TextSpacing::Tight => -0.4,
+                TextSpacing::Normal => 0.0,
+                TextSpacing::Relaxed => 0.8,
+            };
+            let base_line_gap = match chrome.text_spacing {
+                TextSpacing::Tight => 4.0,
+                TextSpacing::Normal => 6.0,
+                TextSpacing::Relaxed => 9.0,
+            };
             let input_box_h = 52.0;
             let tools_header_h = 28.0;
             let tool_button_h = 28.0;
             let tool_gap = 8.0;
-            let keyboard_panel_h = if chrome.input_modes_expanded
-                && chrome.active_input_mode == InputMode::VirtualKeyboard
-            {
-                170.0
+            let extended_input_panel_h = if chrome.input_modes_expanded {
+                match chrome.active_input_mode {
+                    InputMode::VirtualKeyboard => 170.0,
+                    InputMode::Dictation => 116.0,
+                    InputMode::Handwriting => 196.0,
+                }
             } else {
                 0.0
             };
             let tools_content_h = if chrome.input_modes_expanded {
-                tool_button_h + 10.0 + keyboard_panel_h
+                tool_button_h + 10.0 + extended_input_panel_h
             } else {
                 0.0
             };
-            let settings_panel_h = if chrome.settings_open { 92.0 } else { 0.0 };
+            let settings_panel_h = if chrome.settings_open { 144.0 } else { 0.0 };
             let item_height = match (chrome.candidate_density, chrome.preview_style) {
                 (CandidateDensity::Compact, PreviewStyle::Compact) => 48.0,
                 (CandidateDensity::Compact, PreviewStyle::Full) => 62.0,
@@ -1042,7 +1131,8 @@ pub mod gpu {
                     origin: [panel_x + 16.0, input_box_y + 8.0],
                     max_width: panel_width - 36.0,
                     pixel_size: label_px,
-                    line_gap: 6.0,
+                    letter_spacing: tracking,
+                    line_gap: base_line_gap,
                     max_lines: 1,
                     color: [0.66, 0.76, 0.90, 1.0],
                     align: TextAlign::Left,
@@ -1058,7 +1148,8 @@ pub mod gpu {
                     origin: [panel_x + 16.0, input_box_y + 24.0],
                     max_width: panel_width - 36.0,
                     pixel_size: input_value_px,
-                    line_gap: 6.0,
+                    letter_spacing: tracking,
+                    line_gap: base_line_gap,
                     max_lines: 1,
                     color: if chrome.seed_text.is_empty() {
                         [0.58, 0.66, 0.78, 1.0]
@@ -1081,7 +1172,12 @@ pub mod gpu {
             if chrome.input_focused {
                 let caret_x = panel_x
                     + 16.0
-                    + measure_text_prefix_width(&chrome.seed_text, chrome.caret_index, 3.0);
+                    + measure_text_prefix_width(
+                        &chrome.seed_text,
+                        chrome.caret_index,
+                        input_value_px,
+                        tracking,
+                    );
                 quads.push(CandidateQuad {
                     rect: [caret_x, input_box_y + 22.0, 2.0, 22.0],
                     color: [0.72, 0.88, 1.0, 1.0],
@@ -1120,7 +1216,8 @@ pub mod gpu {
                     origin: [panel_x + 16.0, tools_y + 7.0],
                     max_width: panel_width - 140.0,
                     pixel_size: 2.0,
-                    line_gap: 6.0,
+                    letter_spacing: tracking,
+                    line_gap: base_line_gap,
                     max_lines: 1,
                     color: [0.78, 0.86, 0.96, 1.0],
                     align: TextAlign::Left,
@@ -1138,7 +1235,8 @@ pub mod gpu {
                     origin: [display_button_rect[0] + 8.0, display_button_rect[1] + 6.0],
                     max_width: display_button_rect[2] - 16.0,
                     pixel_size: 2.0,
-                    line_gap: 6.0,
+                    letter_spacing: tracking,
+                    line_gap: base_line_gap,
                     max_lines: 1,
                     color: if chrome.settings_open {
                         [0.01, 0.10, 0.16, 1.0]
@@ -1194,7 +1292,8 @@ pub mod gpu {
                         origin: [x + 10.0, button_y + 8.0],
                         max_width: button_w - 20.0,
                         pixel_size: 2.0,
-                        line_gap: 6.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
                         max_lines: 1,
                         color: if selected {
                             [0.01, 0.10, 0.16, 1.0]
@@ -1335,7 +1434,8 @@ pub mod gpu {
                                 origin: [x + 8.0, row_y + 8.0],
                                 max_width: key_w - 16.0,
                                 pixel_size: 2.0,
-                                line_gap: 6.0,
+                                letter_spacing: tracking,
+                                line_gap: base_line_gap,
                                 max_lines: 1,
                                 color: [0.90, 0.95, 1.0, 1.0],
                                 align: TextAlign::Center,
@@ -1461,7 +1561,8 @@ pub mod gpu {
                             origin: [rect[0] + 10.0, rect[1] + 8.0],
                             max_width: rect[2] - 20.0,
                             pixel_size: 2.0,
-                            line_gap: 6.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
                             max_lines: 1,
                             color: [0.94, 0.97, 1.0, 1.0],
                             align: TextAlign::Center,
@@ -1476,6 +1577,298 @@ pub mod gpu {
                     text_sections.push(TextSection {
                         role: TextRole::KeyboardKey,
                         layouts: keyboard_layouts,
+                    });
+                } else if chrome.active_input_mode == InputMode::Dictation {
+                    let voice_y = button_y + tool_button_h + 10.0;
+                    let voice_rect = [panel_x, voice_y, panel_width, 108.0];
+                    quads.push(CandidateQuad {
+                        rect: voice_rect,
+                        color: [0.10, 0.14, 0.22, 0.96],
+                    });
+
+                    let transcript = if chrome.voice_transcript.is_empty() {
+                        match chrome.voice_permission {
+                            VoicePermissionState::Pending => {
+                                "Waiting for microphone and speech permission".to_string()
+                            }
+                            VoicePermissionState::Denied => {
+                                "Microphone or speech permission denied in macOS".to_string()
+                            }
+                            VoicePermissionState::Error => {
+                                "Speech recognition hit an error. Stop and try again.".to_string()
+                            }
+                            VoicePermissionState::Unavailable => {
+                                "Speech framework unavailable. Using local fallback samples."
+                                    .to_string()
+                            }
+                            _ => "Tap Listen to capture a voice seed".to_string(),
+                        }
+                    } else {
+                        chrome.voice_transcript.clone()
+                    };
+                    let status_text = if chrome.voice_state == VoiceCaptureState::Listening {
+                        "Voice listening"
+                    } else {
+                        match chrome.voice_permission {
+                            VoicePermissionState::Pending => "Voice permission pending",
+                            VoicePermissionState::Denied => "Voice permission denied",
+                            VoicePermissionState::Error => "Voice recognition error",
+                            VoicePermissionState::Unavailable => "Voice fallback mode",
+                            VoicePermissionState::Ready => {
+                                if chrome.voice_transcript.is_empty() {
+                                    "Voice ready"
+                                } else {
+                                    "Transcript ready"
+                                }
+                            }
+                            VoicePermissionState::Unknown => "Voice setup",
+                        }
+                    };
+                    let voice_layouts = vec![
+                        TextBlock {
+                            text: status_text.to_string(),
+                            origin: [panel_x + 14.0, voice_y + 10.0],
+                            max_width: panel_width - 28.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: if chrome.voice_state == VoiceCaptureState::Listening {
+                                [0.49, 0.84, 0.98, 1.0]
+                            } else if matches!(
+                                chrome.voice_permission,
+                                VoicePermissionState::Denied | VoicePermissionState::Error
+                            ) {
+                                [0.98, 0.62, 0.62, 1.0]
+                            } else {
+                                [0.76, 0.84, 0.94, 1.0]
+                            },
+                            align: TextAlign::Left,
+                            role: TextRole::VoiceLabel,
+                        }
+                        .layout(),
+                        TextBlock {
+                            text: transcript,
+                            origin: [panel_x + 14.0, voice_y + 28.0],
+                            max_width: panel_width - 28.0,
+                            pixel_size: input_value_px,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 2,
+                            color: if chrome.voice_transcript.is_empty() {
+                                [0.58, 0.66, 0.78, 1.0]
+                            } else {
+                                [0.93, 0.97, 1.0, 1.0]
+                            },
+                            align: TextAlign::Left,
+                            role: TextRole::VoiceTranscript,
+                        }
+                        .layout(),
+                    ];
+                    for layout in &voice_layouts {
+                        text_quads.extend(layout.quads.iter().copied());
+                        atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                    }
+                    text_sections.push(TextSection {
+                        role: TextRole::VoiceTranscript,
+                        layouts: voice_layouts,
+                    });
+
+                    let voice_actions = [
+                        (
+                            InteractionKind::ToggleVoiceCapture,
+                            if chrome.voice_state == VoiceCaptureState::Listening {
+                                "Stop"
+                            } else if chrome.voice_permission == VoicePermissionState::Pending {
+                                "Waiting"
+                            } else if chrome.voice_permission == VoicePermissionState::Denied {
+                                "Denied"
+                            } else {
+                                "Listen"
+                            },
+                            [panel_x, voice_y + 74.0, 72.0, 24.0],
+                            chrome.voice_state == VoiceCaptureState::Listening,
+                        ),
+                        (
+                            InteractionKind::CycleVoiceSample,
+                            "Next",
+                            [panel_x + 80.0, voice_y + 74.0, 64.0, 24.0],
+                            false,
+                        ),
+                        (
+                            InteractionKind::InsertVoiceTranscript,
+                            "Use Seed",
+                            [panel_x + 152.0, voice_y + 74.0, 92.0, 24.0],
+                            false,
+                        ),
+                        (
+                            InteractionKind::ClearVoiceTranscript,
+                            "Clear",
+                            [panel_x + 252.0, voice_y + 74.0, 64.0, 24.0],
+                            false,
+                        ),
+                    ];
+                    let mut voice_action_layouts = Vec::new();
+                    for (kind, label, rect, emphasized) in voice_actions {
+                        quads.push(CandidateQuad {
+                            rect,
+                            color: if emphasized {
+                                [0.40, 0.77, 0.96, 1.0]
+                            } else {
+                                [0.18, 0.22, 0.30, 0.98]
+                            },
+                        });
+                        interactive_targets.push(InteractiveTarget { kind, rect });
+                        let layout = TextBlock {
+                            text: label.to_string(),
+                            origin: [rect[0] + 8.0, rect[1] + 6.0],
+                            max_width: rect[2] - 16.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: if emphasized {
+                                [0.01, 0.10, 0.16, 1.0]
+                            } else {
+                                [0.92, 0.96, 1.0, 1.0]
+                            },
+                            align: TextAlign::Center,
+                            role: TextRole::VoiceButton,
+                        }
+                        .layout();
+                        text_quads.extend(layout.quads.iter().copied());
+                        atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                        voice_action_layouts.push(layout);
+                    }
+                    text_sections.push(TextSection {
+                        role: TextRole::VoiceButton,
+                        layouts: voice_action_layouts,
+                    });
+                } else if chrome.active_input_mode == InputMode::Handwriting {
+                    let handwriting_y = button_y + tool_button_h + 10.0;
+                    let canvas_rect = [panel_x, handwriting_y + 22.0, panel_width, 108.0];
+                    quads.push(CandidateQuad {
+                        rect: canvas_rect,
+                        color: [0.10, 0.14, 0.22, 0.96],
+                    });
+                    interactive_targets.push(InteractiveTarget {
+                        kind: InteractionKind::HandwritingCanvas,
+                        rect: canvas_rect,
+                    });
+
+                    for stroke in &chrome.handwriting_strokes {
+                        for point in sample_stroke_points(stroke) {
+                            quads.push(CandidateQuad {
+                                rect: [point[0] - 2.5, point[1] - 2.5, 5.0, 5.0],
+                                color: [0.52, 0.88, 0.98, 0.98],
+                            });
+                        }
+                    }
+
+                    let handwriting_layouts = vec![
+                        TextBlock {
+                            text: "Trace handwriting".to_string(),
+                            origin: [panel_x + 14.0, handwriting_y + 2.0],
+                            max_width: panel_width - 28.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: [0.78, 0.86, 0.96, 1.0],
+                            align: TextAlign::Left,
+                            role: TextRole::HandwritingLabel,
+                        }
+                        .layout(),
+                        TextBlock {
+                            text: chrome.handwriting_hint.clone(),
+                            origin: [panel_x + 14.0, handwriting_y + 36.0],
+                            max_width: panel_width - 28.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 2,
+                            color: [0.75, 0.82, 0.92, 1.0],
+                            align: TextAlign::Left,
+                            role: TextRole::HandwritingLabel,
+                        }
+                        .layout(),
+                    ];
+                    for layout in &handwriting_layouts {
+                        text_quads.extend(layout.quads.iter().copied());
+                        atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                    }
+                    text_sections.push(TextSection {
+                        role: TextRole::HandwritingLabel,
+                        layouts: handwriting_layouts,
+                    });
+
+                    let clear_rect = [panel_x, handwriting_y + 140.0, 74.0, 24.0];
+                    quads.push(CandidateQuad {
+                        rect: clear_rect,
+                        color: [0.18, 0.22, 0.30, 0.98],
+                    });
+                    interactive_targets.push(InteractiveTarget {
+                        kind: InteractionKind::ClearHandwriting,
+                        rect: clear_rect,
+                    });
+                    let mut handwriting_action_layouts = vec![
+                        TextBlock {
+                            text: "Clear".to_string(),
+                            origin: [clear_rect[0] + 8.0, clear_rect[1] + 6.0],
+                            max_width: clear_rect[2] - 16.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: [0.92, 0.96, 1.0, 1.0],
+                            align: TextAlign::Center,
+                            role: TextRole::HandwritingButton,
+                        }
+                        .layout(),
+                    ];
+
+                    let mut chip_x = panel_x + 84.0;
+                    for (index, candidate) in chrome.handwriting_candidates.iter().take(3).enumerate()
+                    {
+                        let chip_w = (candidate.chars().count() as f32 * 9.5).max(52.0) + 16.0;
+                        let rect = [chip_x, handwriting_y + 140.0, chip_w, 24.0];
+                        quads.push(CandidateQuad {
+                            rect,
+                            color: if index == 0 {
+                                [0.40, 0.77, 0.96, 1.0]
+                            } else {
+                                [0.16, 0.20, 0.28, 0.96]
+                            },
+                        });
+                        interactive_targets.push(InteractiveTarget {
+                            kind: InteractionKind::UseHandwritingCandidate(index),
+                            rect,
+                        });
+                        let layout = TextBlock {
+                            text: candidate.clone(),
+                            origin: [rect[0] + 8.0, rect[1] + 6.0],
+                            max_width: rect[2] - 16.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: if index == 0 {
+                                [0.01, 0.10, 0.16, 1.0]
+                            } else {
+                                [0.92, 0.96, 1.0, 1.0]
+                            },
+                            align: TextAlign::Center,
+                            role: TextRole::HandwritingCandidate,
+                        }
+                        .layout();
+                        text_quads.extend(layout.quads.iter().copied());
+                        atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                        handwriting_action_layouts.push(layout);
+                        chip_x += chip_w + 8.0;
+                    }
+                    text_sections.push(TextSection {
+                        role: TextRole::HandwritingButton,
+                        layouts: handwriting_action_layouts,
                     });
                 }
             }
@@ -1517,6 +1910,32 @@ pub mod gpu {
                         .to_vec(),
                     ),
                     (
+                        "Font",
+                        [
+                            (
+                                InteractionKind::SetFontFace(FontFaceChoice::Auto),
+                                "Auto",
+                                chrome.font_face == FontFaceChoice::Auto,
+                            ),
+                            (
+                                InteractionKind::SetFontFace(FontFaceChoice::Monaco),
+                                "Monaco",
+                                chrome.font_face == FontFaceChoice::Monaco,
+                            ),
+                            (
+                                InteractionKind::SetFontFace(FontFaceChoice::Geneva),
+                                "Geneva",
+                                chrome.font_face == FontFaceChoice::Geneva,
+                            ),
+                            (
+                                InteractionKind::SetFontFace(FontFaceChoice::ArialUnicode),
+                                "Arial",
+                                chrome.font_face == FontFaceChoice::ArialUnicode,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
                         "Density",
                         [
                             (
@@ -1528,6 +1947,43 @@ pub mod gpu {
                                 InteractionKind::SetCandidateDensity(CandidateDensity::Cozy),
                                 "Cozy",
                                 chrome.candidate_density == CandidateDensity::Cozy,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Spacing",
+                        [
+                            (
+                                InteractionKind::SetTextSpacing(TextSpacing::Tight),
+                                "Tight",
+                                chrome.text_spacing == TextSpacing::Tight,
+                            ),
+                            (
+                                InteractionKind::SetTextSpacing(TextSpacing::Normal),
+                                "Normal",
+                                chrome.text_spacing == TextSpacing::Normal,
+                            ),
+                            (
+                                InteractionKind::SetTextSpacing(TextSpacing::Relaxed),
+                                "Relaxed",
+                                chrome.text_spacing == TextSpacing::Relaxed,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Smooth",
+                        [
+                            (
+                                InteractionKind::SetTextSmoothing(TextSmoothing::Sharp),
+                                "Sharp",
+                                chrome.text_smoothing == TextSmoothing::Sharp,
+                            ),
+                            (
+                                InteractionKind::SetTextSmoothing(TextSmoothing::Smooth),
+                                "Smooth",
+                                chrome.text_smoothing == TextSmoothing::Smooth,
                             ),
                         ]
                         .to_vec(),
@@ -1557,7 +2013,8 @@ pub mod gpu {
                         origin: [panel_x + 14.0, row_y + 2.0],
                         max_width: 72.0,
                         pixel_size: 2.0,
-                        line_gap: 6.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
                         max_lines: 1,
                         color: [0.70, 0.80, 0.92, 1.0],
                         align: TextAlign::Left,
@@ -1586,7 +2043,8 @@ pub mod gpu {
                             origin: [chip_x + 6.0, row_y + 5.0],
                             max_width: chip_w - 12.0,
                             pixel_size: 2.0,
-                            line_gap: 6.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
                             max_lines: 1,
                             color: if *selected {
                                 [0.01, 0.10, 0.16, 1.0]
@@ -1643,7 +2101,8 @@ pub mod gpu {
                         origin: [panel_x + 18.0, y + 13.0],
                         max_width: panel_width - 36.0,
                         pixel_size: input_value_px,
-                        line_gap: 6.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
                         max_lines: 1,
                         color: if selected {
                             [0.01, 0.10, 0.16, 1.0]
@@ -1674,7 +2133,8 @@ pub mod gpu {
                         ],
                         max_width: panel_width - 36.0,
                         pixel_size: 2.0,
-                        line_gap: 6.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
                         max_lines: if chrome.preview_style == PreviewStyle::Full {
                             2
                         } else {
@@ -1729,8 +2189,33 @@ pub mod gpu {
         x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
     }
 
+    fn sample_stroke_points(stroke: &[[f32; 2]]) -> Vec<[f32; 2]> {
+        if stroke.is_empty() {
+            return Vec::new();
+        }
+        if stroke.len() == 1 {
+            return vec![stroke[0]];
+        }
+
+        let mut points = Vec::with_capacity(stroke.len() * 4);
+        for window in stroke.windows(2) {
+            let start = window[0];
+            let end = window[1];
+            let dx = end[0] - start[0];
+            let dy = end[1] - start[1];
+            let distance = dx.hypot(dy).max(1.0);
+            let steps = (distance / 4.0).ceil() as usize;
+            for step in 0..=steps {
+                let t = step as f32 / steps.max(1) as f32;
+                points.push([start[0] + dx * t, start[1] + dy * t]);
+            }
+        }
+        points
+    }
+
     fn layout_text_block(block: &TextBlock) -> TextLayout {
-        let glyph_advance = block.pixel_size * 6.5;
+        let glyph_advance =
+            (block.pixel_size * 6.5 + block.letter_spacing).max(block.pixel_size * 4.0);
         let line_height = block.pixel_size * 7.0 + block.line_gap;
         let max_chars_per_line = ((block.max_width / glyph_advance).floor() as usize).max(1);
         let mut lines = wrap_text(&block.text, max_chars_per_line);

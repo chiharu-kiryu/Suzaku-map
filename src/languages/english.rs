@@ -83,7 +83,7 @@ fn default_english_lexicon() -> HashMap<String, Vec<String>> {
     ])
 }
 
-fn english_sentence_variants(phrase: &str) -> Vec<String> {
+pub fn english_sentence_variants(phrase: &str) -> Vec<String> {
     let normalized = phrase.to_lowercase();
     if contains_all(&normalized, &["ni", "hao", "xr"])
         || contains_all(&normalized, &["hello", "xr"])
