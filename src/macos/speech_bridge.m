@@ -211,6 +211,12 @@ int suzaku_speech_state(void) {
     return (int)[SuzakuSpeechBridge shared].state;
 }
 
+void suzaku_speech_request_permissions(void) {
+    SuzakuSpeechBridge *bridge = [SuzakuSpeechBridge shared];
+    [bridge requestPermissionsIfNeeded];
+    [bridge refreshState];
+}
+
 bool suzaku_speech_start(void) {
     return [[SuzakuSpeechBridge shared] startListening];
 }

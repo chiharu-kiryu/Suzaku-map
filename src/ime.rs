@@ -639,19 +639,6 @@ fn display_candidate_continuation(seed_text: &str, candidate: &str) -> String {
     candidate.to_string()
 }
 
-fn compact_phrase(text: &str) -> String {
-    let words: Vec<&str> = text.split_whitespace().collect();
-    if words.len() <= 4 {
-        return text.to_string();
-    }
-
-    format!(
-        "{} ... {}",
-        words[..2].join(" "),
-        words[words.len() - 2..].join(" ")
-    )
-}
-
 fn measure_text_prefix_width(
     text: &str,
     char_count: usize,
@@ -667,10 +654,47 @@ fn measure_text_prefix_width(
     })
 }
 
+fn append_gear_icon_quads(
+    quads: &mut Vec<gpu::CandidateQuad>,
+    rect: [f32; 4],
+    color: [f32; 4],
+    cutout: [f32; 4],
+) {
+    let [x, y, w, h] = rect;
+    let cx = x + w / 2.0;
+    let cy = y + h / 2.0;
+
+    let teeth = [
+        [cx - 1.5, y + 2.0, 3.0, 4.0],
+        [cx - 1.5, y + h - 6.0, 3.0, 4.0],
+        [x + 2.0, cy - 1.5, 4.0, 3.0],
+        [x + w - 6.0, cy - 1.5, 4.0, 3.0],
+        [x + 4.0, y + 4.0, 3.0, 3.0],
+        [x + w - 7.0, y + 4.0, 3.0, 3.0],
+        [x + 4.0, y + h - 7.0, 3.0, 3.0],
+        [x + w - 7.0, y + h - 7.0, 3.0, 3.0],
+    ];
+
+    for tooth in teeth {
+        quads.push(gpu::CandidateQuad { rect: tooth, color });
+    }
+
+    quads.push(gpu::CandidateQuad {
+        rect: [cx - 4.0, cy - 4.0, 8.0, 8.0],
+        color,
+    });
+    quads.push(gpu::CandidateQuad {
+        rect: [cx - 1.5, cy - 1.5, 3.0, 3.0],
+        color: cutout,
+    });
+}
+
 #[cfg(feature = "gpu")]
 pub mod gpu {
+    use crate::platform::gpu_host::{voice_status_text, voice_transcript_placeholder};
+
     use super::{
-        Snapshot, compact_phrase, display_candidate_continuation, measure_text_prefix_width,
+        Snapshot, append_gear_icon_quads, display_candidate_continuation, measure_text_prefix_width,
     };
     use bytemuck::{Pod, Zeroable};
 
@@ -852,7 +876,7 @@ pub mod gpu {
                 voice_state: VoiceCaptureState::Idle,
                 voice_permission: VoicePermissionState::Unknown,
                 voice_transcript: String::new(),
-                llm_enabled: true,
+                llm_enabled: false,
                 llm_model: LlmModelPreset::Llama32_3b,
                 llm_temperature: LlmTemperaturePreset::Balanced,
                 composed_tokens: Vec::new(),
@@ -1030,6 +1054,7 @@ pub mod gpu {
         pub fn hit_interaction(&self, x: f32, y: f32) -> Option<InteractionKind> {
             self.interactive_targets
                 .iter()
+                .rev()
                 .find(|target| point_in_rect(x, y, target.rect))
                 .map(|target| target.kind)
         }
@@ -1054,6 +1079,12 @@ pub mod gpu {
             }
         }
 
+        fn responsive_scale(&self) -> f32 {
+            let width_factor = self.scene_width / 900.0;
+            let height_factor = self.scene_height / 780.0;
+            (width_factor * 0.65 + height_factor * 0.35).clamp(0.92, 1.28)
+        }
+
         pub fn build_scene(&self, snapshot: &Snapshot) -> RenderScene {
             let chrome = PanelChromeState {
                 seed_text: snapshot.seed_text.clone(),
@@ -1068,57 +1099,64 @@ pub mod gpu {
             snapshot: &Snapshot,
             chrome: &PanelChromeState,
         ) -> RenderScene {
-            let panel_width = self.scene_width.clamp(360.0, 520.0) - 32.0;
+            let responsive_scale = self.responsive_scale();
+            let scene_margin = (16.0 * responsive_scale).max(12.0);
+            let max_panel_width = (self.scene_width - scene_margin * 2.0).max(320.0);
+            let min_panel_width = 360.0_f32.min(max_panel_width);
+            let desired_panel_width = self.scene_width * 0.78;
+            let panel_width = desired_panel_width
+                .min(max_panel_width)
+                .max(min_panel_width);
             let input_value_px = match chrome.text_scale {
                 DisplayTextScale::Small => 2.0,
                 DisplayTextScale::Medium => 3.0,
                 DisplayTextScale::Large => 4.0,
-            };
+            } * responsive_scale;
             let label_px = match chrome.text_scale {
                 DisplayTextScale::Small => 2.0,
                 DisplayTextScale::Medium => 2.0,
                 DisplayTextScale::Large => 3.0,
-            };
+            } * responsive_scale;
             let tracking = match chrome.text_spacing {
                 TextSpacing::Tight => -0.4,
                 TextSpacing::Normal => 0.0,
                 TextSpacing::Relaxed => 0.8,
-            };
+            } * responsive_scale;
             let base_line_gap = match chrome.text_spacing {
                 TextSpacing::Tight => 4.0,
                 TextSpacing::Normal => 6.0,
                 TextSpacing::Relaxed => 9.0,
-            };
-            let input_box_h = 52.0;
-            let tools_header_h = 28.0;
-            let tool_button_h = 28.0;
-            let tool_gap = 8.0;
+            } * responsive_scale;
+            let input_box_h = 82.0 * responsive_scale;
+            let tools_header_h = 28.0 * responsive_scale;
+            let tool_button_h = 28.0 * responsive_scale;
+            let tool_gap = 8.0 * responsive_scale;
             let extended_input_panel_h = if chrome.input_modes_expanded {
                 match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 170.0,
-                    InputMode::Dictation => 116.0,
-                    InputMode::Handwriting => 196.0,
+                    InputMode::VirtualKeyboard => 170.0 * responsive_scale,
+                    InputMode::Dictation => 116.0 * responsive_scale,
+                    InputMode::Handwriting => 196.0 * responsive_scale,
                 }
             } else {
                 0.0
             };
             let tools_content_h = if chrome.input_modes_expanded {
-                tool_button_h + 10.0 + extended_input_panel_h
+                tool_button_h + 10.0 * responsive_scale + extended_input_panel_h
             } else {
                 0.0
             };
             let settings_panel_h = if chrome.settings_open { 208.0 } else { 0.0 };
             let item_height = match (chrome.candidate_density, chrome.preview_style) {
-                (CandidateDensity::Compact, PreviewStyle::Compact) => 48.0,
-                (CandidateDensity::Compact, PreviewStyle::Full) => 62.0,
-                (CandidateDensity::Cozy, PreviewStyle::Compact) => 56.0,
-                (CandidateDensity::Cozy, PreviewStyle::Full) => 76.0,
-            };
+                (CandidateDensity::Compact, PreviewStyle::Compact) => 84.0,
+                (CandidateDensity::Compact, PreviewStyle::Full) => 108.0,
+                (CandidateDensity::Cozy, PreviewStyle::Compact) => 96.0,
+                (CandidateDensity::Cozy, PreviewStyle::Full) => 124.0,
+            } * responsive_scale;
             let gap = if chrome.candidate_density == CandidateDensity::Compact {
                 6.0
             } else {
                 10.0
-            };
+            } * responsive_scale;
             let visible_sentence_candidates: Vec<String> =
                 chrome.sentence_candidates.iter().take(4).cloned().collect();
             let sentence_count = visible_sentence_candidates.len() as f32;
@@ -1135,22 +1173,22 @@ pub mod gpu {
             let chip_section_h = if chip_rows == 0.0 {
                 0.0
             } else {
-                82.0
+                82.0 * responsive_scale
             };
             let panel_height = input_box_h
-                + 12.0
+                + 12.0 * responsive_scale
                 + tools_header_h
                 + tools_content_h
                 + settings_panel_h
-                + 16.0
+                + 16.0 * responsive_scale
                 + chip_section_h
                 + sentence_height;
-            let panel_x = ((self.scene_width - panel_width) / 2.0).max(12.0);
-            let panel_y = ((self.scene_height - panel_height) / 2.0).max(12.0);
+            let panel_x = ((self.scene_width - panel_width) / 2.0).max(scene_margin);
+            let panel_y = ((self.scene_height - panel_height) / 2.0).max(16.0 * responsive_scale);
             let input_box_y = panel_y;
-            let tools_y = input_box_y + input_box_h + 12.0;
+            let tools_y = input_box_y + input_box_h + 12.0 * responsive_scale;
             let settings_y = tools_y + tools_header_h + tools_content_h;
-            let suggestions_y = settings_y + settings_panel_h + 16.0;
+            let suggestions_y = settings_y + settings_panel_h + 16.0 * responsive_scale;
             let mut quads = Vec::with_capacity(snapshot.candidate_labels.len() + 6);
             let mut text_quads = Vec::new();
             let mut atlas_glyphs = Vec::new();
@@ -1173,8 +1211,11 @@ pub mod gpu {
             let header_layouts = vec![
                 TextBlock {
                     text: "Seed input".to_string(),
-                    origin: [panel_x + 16.0, input_box_y + 8.0],
-                    max_width: panel_width - 36.0,
+                    origin: [
+                        panel_x + 16.0 * responsive_scale,
+                        input_box_y + 8.0 * responsive_scale,
+                    ],
+                    max_width: panel_width - 36.0 * responsive_scale,
                     pixel_size: label_px,
                     letter_spacing: tracking,
                     line_gap: base_line_gap,
@@ -1188,14 +1229,17 @@ pub mod gpu {
                     text: if chrome.seed_text.is_empty() {
                         "Type a seed word or phrase".to_string()
                     } else {
-                        compact_phrase(&chrome.display_text())
+                        chrome.display_text()
                     },
-                    origin: [panel_x + 16.0, input_box_y + 24.0],
-                    max_width: panel_width - 36.0,
+                    origin: [
+                        panel_x + 16.0 * responsive_scale,
+                        input_box_y + 24.0 * responsive_scale,
+                    ],
+                    max_width: panel_width - 54.0 * responsive_scale,
                     pixel_size: input_value_px,
                     letter_spacing: tracking,
                     line_gap: base_line_gap,
-                    max_lines: 1,
+                    max_lines: 3,
                     color: if chrome.seed_text.is_empty() {
                         [0.58, 0.66, 0.78, 1.0]
                     } else {
@@ -1216,7 +1260,7 @@ pub mod gpu {
             });
             if chrome.input_focused {
                 let caret_x = panel_x
-                    + 16.0
+                    + 16.0 * responsive_scale
                     + measure_text_prefix_width(
                         &chrome.seed_text,
                         chrome.caret_index,
@@ -1224,10 +1268,48 @@ pub mod gpu {
                         tracking,
                     );
                 quads.push(CandidateQuad {
-                    rect: [caret_x, input_box_y + 22.0, 2.0, 22.0],
+                    rect: [
+                        caret_x,
+                        input_box_y + 22.0 * responsive_scale,
+                        2.0 * responsive_scale,
+                        22.0 * responsive_scale,
+                    ],
                     color: [0.72, 0.88, 1.0, 1.0],
                 });
             }
+
+            let settings_button_rect = [
+                panel_x + panel_width - 34.0 * responsive_scale,
+                input_box_y + 8.0 * responsive_scale,
+                20.0 * responsive_scale,
+                20.0 * responsive_scale,
+            ];
+            quads.push(CandidateQuad {
+                rect: settings_button_rect,
+                color: if chrome.settings_open {
+                    [0.40, 0.77, 0.96, 1.0]
+                } else {
+                    [0.18, 0.23, 0.31, 0.98]
+                },
+            });
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsToggle,
+                rect: settings_button_rect,
+            });
+            append_gear_icon_quads(
+                &mut quads,
+                settings_button_rect,
+                if chrome.settings_open {
+                    [0.01, 0.10, 0.16, 1.0]
+                } else {
+                    [0.90, 0.95, 1.0, 1.0]
+                },
+                if chrome.settings_open {
+                    [0.40, 0.77, 0.96, 1.0]
+                } else {
+                    [0.18, 0.23, 0.31, 0.98]
+                },
+            );
 
             let tools_header_rect = [panel_x, tools_y, panel_width, tools_header_h];
             quads.push(CandidateQuad {
@@ -1238,19 +1320,6 @@ pub mod gpu {
                 kind: InteractionKind::InputModesToggle,
                 rect: tools_header_rect,
             });
-            let display_button_rect = [panel_x + panel_width - 94.0, tools_y + 3.0, 78.0, 22.0];
-            quads.push(CandidateQuad {
-                rect: display_button_rect,
-                color: if chrome.settings_open {
-                    [0.40, 0.77, 0.96, 1.0]
-                } else {
-                    [0.18, 0.23, 0.31, 0.98]
-                },
-            });
-            interactive_targets.push(InteractiveTarget {
-                kind: InteractionKind::SettingsToggle,
-                rect: display_button_rect,
-            });
             let tool_header_layout = vec![
                 TextBlock {
                     text: if chrome.input_modes_expanded {
@@ -1258,9 +1327,12 @@ pub mod gpu {
                     } else {
                         "Input methods  show".to_string()
                     },
-                    origin: [panel_x + 16.0, tools_y + 7.0],
-                    max_width: panel_width - 140.0,
-                    pixel_size: 2.0,
+                    origin: [
+                        panel_x + 16.0 * responsive_scale,
+                        tools_y + 7.0 * responsive_scale,
+                    ],
+                    max_width: panel_width - 32.0 * responsive_scale,
+                    pixel_size: 2.0 * responsive_scale,
                     letter_spacing: tracking,
                     line_gap: base_line_gap,
                     max_lines: 1,
@@ -1274,41 +1346,14 @@ pub mod gpu {
                 text_quads.extend(layout.quads.iter().copied());
                 atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
             }
-            let display_layout = vec![
-                TextBlock {
-                    text: "Display".to_string(),
-                    origin: [display_button_rect[0] + 8.0, display_button_rect[1] + 6.0],
-                    max_width: display_button_rect[2] - 16.0,
-                    pixel_size: 2.0,
-                    letter_spacing: tracking,
-                    line_gap: base_line_gap,
-                    max_lines: 1,
-                    color: if chrome.settings_open {
-                        [0.01, 0.10, 0.16, 1.0]
-                    } else {
-                        [0.90, 0.95, 1.0, 1.0]
-                    },
-                    align: TextAlign::Center,
-                    role: TextRole::SettingOption,
-                }
-                .layout(),
-            ];
-            for layout in &display_layout {
-                text_quads.extend(layout.quads.iter().copied());
-                atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
-            }
             text_sections.push(TextSection {
                 role: TextRole::ToolLabel,
                 layouts: tool_header_layout,
             });
-            text_sections.push(TextSection {
-                role: TextRole::SettingOption,
-                layouts: display_layout,
-            });
 
             if chrome.input_modes_expanded {
-                let button_y = tools_y + tools_header_h + 8.0;
-                let button_w = (panel_width - 16.0 - tool_gap * 2.0) / 3.0;
+                let button_y = tools_y + tools_header_h + 8.0 * responsive_scale;
+                let button_w = (panel_width - 16.0 * responsive_scale - tool_gap * 2.0) / 3.0;
                 let buttons = [
                     (InputMode::VirtualKeyboard, "Keyboard"),
                     (InputMode::Dictation, "Voice"),
@@ -1334,9 +1379,12 @@ pub mod gpu {
                     });
                     let layout = TextBlock {
                         text: (*label).to_string(),
-                        origin: [x + 10.0, button_y + 8.0],
-                        max_width: button_w - 20.0,
-                        pixel_size: 2.0,
+                        origin: [
+                            x + 10.0 * responsive_scale,
+                            button_y + 8.0 * responsive_scale,
+                        ],
+                        max_width: button_w - 20.0 * responsive_scale,
+                        pixel_size: 2.0 * responsive_scale,
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
@@ -1359,9 +1407,9 @@ pub mod gpu {
                 });
 
                 if chrome.active_input_mode == InputMode::VirtualKeyboard {
-                    let keyboard_y = button_y + tool_button_h + 10.0;
-                    let key_gap = 6.0;
-                    let row_h = 28.0;
+                    let keyboard_y = button_y + tool_button_h + 10.0 * responsive_scale;
+                    let key_gap = 6.0 * responsive_scale;
+                    let row_h = 28.0 * responsive_scale;
                     let mut keyboard_layouts = Vec::new();
                     let key_rows = if chrome.keyboard_numeric {
                         vec![
@@ -1434,11 +1482,15 @@ pub mod gpu {
                         let key_count = keys.len() as f32;
                         let row_y = keyboard_y + row_index as f32 * (row_h + key_gap);
                         let inset = if chrome.keyboard_numeric {
-                            if row_index == 1 { 12.0 } else { 0.0 }
+                            if row_index == 1 {
+                                12.0 * responsive_scale
+                            } else {
+                                0.0
+                            }
                         } else if row_index == 1 {
-                            18.0
+                            18.0 * responsive_scale
                         } else if row_index == 2 {
-                            8.0
+                            8.0 * responsive_scale
                         } else {
                             0.0
                         };
@@ -1471,14 +1523,26 @@ pub mod gpu {
                                 VirtualKeyboardKey::Space => "Space".to_string(),
                                 VirtualKeyboardKey::Backspace => "Back".to_string(),
                                 VirtualKeyboardKey::Shift => "Shift".to_string(),
-                                VirtualKeyboardKey::ToggleNumeric => "?123".to_string(),
+                                VirtualKeyboardKey::ToggleNumeric => "123".to_string(),
                                 VirtualKeyboardKey::ToggleAlphabetic => "ABC".to_string(),
                             };
                             let layout = TextBlock {
                                 text: label,
-                                origin: [x + 8.0, row_y + 8.0],
-                                max_width: key_w - 16.0,
-                                pixel_size: 2.0,
+                                origin: [
+                                    x + 8.0 * responsive_scale,
+                                    row_y + 8.0 * responsive_scale,
+                                ],
+                                max_width: key_w - 16.0 * responsive_scale,
+                                pixel_size: if matches!(
+                                    key,
+                                    VirtualKeyboardKey::Backspace
+                                        | VirtualKeyboardKey::ToggleNumeric
+                                        | VirtualKeyboardKey::ToggleAlphabetic
+                                ) {
+                                    1.5 * responsive_scale
+                                } else {
+                                    2.0 * responsive_scale
+                                },
                                 letter_spacing: tracking,
                                 line_gap: base_line_gap,
                                 max_lines: 1,
@@ -1494,9 +1558,9 @@ pub mod gpu {
                     }
 
                     let action_y = keyboard_y + 3.0 * (row_h + key_gap);
-                    let left_w = 64.0;
-                    let mid_key_w = 44.0;
-                    let right_w = 86.0;
+                    let left_w = 78.0 * responsive_scale;
+                    let mid_key_w = 40.0 * responsive_scale;
+                    let right_w = 118.0 * responsive_scale;
                     let space_w = panel_width - left_w - right_w - key_gap * 3.0 - mid_key_w * 2.0;
                     let action_keys = if chrome.keyboard_numeric {
                         vec![
@@ -1532,7 +1596,7 @@ pub mod gpu {
                             ),
                             (
                                 VirtualKeyboardKey::Backspace,
-                                "Backspace",
+                                "Back",
                                 [
                                     panel_x + left_w + key_gap * 4.0 + mid_key_w * 2.0 + space_w,
                                     action_y,
@@ -1545,7 +1609,7 @@ pub mod gpu {
                         vec![
                             (
                                 VirtualKeyboardKey::ToggleNumeric,
-                                "?123",
+                                "123",
                                 [panel_x, action_y, left_w, row_h],
                             ),
                             (
@@ -1575,7 +1639,7 @@ pub mod gpu {
                             ),
                             (
                                 VirtualKeyboardKey::Backspace,
-                                "Backspace",
+                                "Back",
                                 [
                                     panel_x + left_w + key_gap * 4.0 + mid_key_w * 2.0 + space_w,
                                     action_y,
@@ -1603,12 +1667,19 @@ pub mod gpu {
                         });
                         let layout = TextBlock {
                             text: label.to_string(),
-                            origin: [rect[0] + 10.0, rect[1] + 8.0],
-                            max_width: rect[2] - 20.0,
-                            pixel_size: 2.0,
+                            origin: [
+                                rect[0] + 10.0 * responsive_scale,
+                                rect[1] + 8.0 * responsive_scale,
+                            ],
+                            max_width: rect[2] - 20.0 * responsive_scale,
+                            pixel_size: if label.chars().count() > 6 {
+                                1.5 * responsive_scale
+                            } else {
+                                2.0 * responsive_scale
+                            },
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
-                            max_lines: 1,
+                            max_lines: if label.chars().count() > 6 { 2 } else { 1 },
                             color: [0.94, 0.97, 1.0, 1.0],
                             align: TextAlign::Center,
                             role: TextRole::KeyboardKey,
@@ -1632,43 +1703,15 @@ pub mod gpu {
                     });
 
                     let transcript = if chrome.voice_transcript.is_empty() {
-                        match chrome.voice_permission {
-                            VoicePermissionState::Pending => {
-                                "Waiting for microphone and speech permission".to_string()
-                            }
-                            VoicePermissionState::Denied => {
-                                "Microphone or speech permission denied in macOS".to_string()
-                            }
-                            VoicePermissionState::Error => {
-                                "Speech recognition hit an error. Stop and try again.".to_string()
-                            }
-                            VoicePermissionState::Unavailable => {
-                                "Speech framework unavailable. Using local fallback samples."
-                                    .to_string()
-                            }
-                            _ => "Tap Listen to capture a voice seed".to_string(),
-                        }
+                        voice_transcript_placeholder(chrome.voice_permission).to_string()
                     } else {
                         chrome.voice_transcript.clone()
                     };
-                    let status_text = if chrome.voice_state == VoiceCaptureState::Listening {
-                        "Voice listening"
-                    } else {
-                        match chrome.voice_permission {
-                            VoicePermissionState::Pending => "Voice permission pending",
-                            VoicePermissionState::Denied => "Voice permission denied",
-                            VoicePermissionState::Error => "Voice recognition error",
-                            VoicePermissionState::Unavailable => "Voice fallback mode",
-                            VoicePermissionState::Ready => {
-                                if chrome.voice_transcript.is_empty() {
-                                    "Voice ready"
-                                } else {
-                                    "Transcript ready"
-                                }
-                            }
-                            VoicePermissionState::Unknown => "Voice setup",
-                        }
-                    };
+                    let status_text = voice_status_text(
+                        chrome.voice_state,
+                        chrome.voice_permission,
+                        !chrome.voice_transcript.is_empty(),
+                    );
                     let voice_layouts = vec![
                         TextBlock {
                             text: status_text.to_string(),
@@ -1873,7 +1916,8 @@ pub mod gpu {
                     ];
 
                     let mut chip_x = panel_x + 84.0;
-                    for (index, candidate) in chrome.handwriting_candidates.iter().take(3).enumerate()
+                    for (index, candidate) in
+                        chrome.handwriting_candidates.iter().take(3).enumerate()
                     {
                         let chip_w = (candidate.chars().count() as f32 * 9.5).max(52.0) + 16.0;
                         let rect = [chip_x, handwriting_y + 140.0, chip_w, 24.0];
@@ -2067,29 +2111,23 @@ pub mod gpu {
                     ),
                     (
                         "Model",
-                        [
-                            (
-                                InteractionKind::SetLlmModel(LlmModelPreset::Llama32_3b),
-                                "Llama3.2 3B",
-                                chrome.llm_model == LlmModelPreset::Llama32_3b,
-                            ),
-                        ]
+                        [(
+                            InteractionKind::SetLlmModel(LlmModelPreset::Llama32_3b),
+                            "Llama3.2 3B",
+                            chrome.llm_model == LlmModelPreset::Llama32_3b,
+                        )]
                         .to_vec(),
                     ),
                     (
                         "Heat",
                         [
                             (
-                                InteractionKind::SetLlmTemperature(
-                                    LlmTemperaturePreset::Focused,
-                                ),
+                                InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Focused),
                                 "Focused",
                                 chrome.llm_temperature == LlmTemperaturePreset::Focused,
                             ),
                             (
-                                InteractionKind::SetLlmTemperature(
-                                    LlmTemperaturePreset::Balanced,
-                                ),
+                                InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Balanced),
                                 "Balanced",
                                 chrome.llm_temperature == LlmTemperaturePreset::Balanced,
                             ),
@@ -2180,9 +2218,9 @@ pub mod gpu {
                         } else {
                             format!("Next tokens  |  {}", chrome.composed_tokens.join(" "))
                         },
-                        origin: [panel_x + 2.0, chip_section_y],
-                        max_width: panel_width - 96.0,
-                        pixel_size: 2.0,
+                        origin: [panel_x + 2.0 * responsive_scale, chip_section_y],
+                        max_width: panel_width - 96.0 * responsive_scale,
+                        pixel_size: 2.0 * responsive_scale,
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
@@ -2202,7 +2240,12 @@ pub mod gpu {
                 });
 
                 if !chrome.composed_tokens.is_empty() {
-                    let back_rect = [panel_x + panel_width - 78.0, chip_section_y - 2.0, 78.0, 22.0];
+                    let back_rect = [
+                        panel_x + panel_width - 78.0 * responsive_scale,
+                        chip_section_y - 2.0 * responsive_scale,
+                        78.0 * responsive_scale,
+                        22.0 * responsive_scale,
+                    ];
                     quads.push(CandidateQuad {
                         rect: back_rect,
                         color: [0.22, 0.19, 0.24, 0.98],
@@ -2213,9 +2256,12 @@ pub mod gpu {
                     });
                     let back_layout = TextBlock {
                         text: "Back".to_string(),
-                        origin: [back_rect[0] + 8.0, back_rect[1] + 6.0],
-                        max_width: back_rect[2] - 16.0,
-                        pixel_size: 2.0,
+                        origin: [
+                            back_rect[0] + 8.0 * responsive_scale,
+                            back_rect[1] + 6.0 * responsive_scale,
+                        ],
+                        max_width: back_rect[2] - 16.0 * responsive_scale,
+                        pixel_size: 2.0 * responsive_scale,
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
@@ -2232,12 +2278,13 @@ pub mod gpu {
                     });
                 }
 
-                let chip_y = chip_section_y + 24.0;
+                let chip_y = chip_section_y + 24.0 * responsive_scale;
                 let mut chip_x = panel_x;
                 let mut row = 0;
                 let mut chip_layouts = Vec::new();
                 for (index, token) in chrome.next_token_candidates.iter().take(6).enumerate() {
-                    let chip_w = (token.chars().count() as f32 * 10.0).max(52.0) + 18.0;
+                    let chip_w =
+                        ((token.chars().count() as f32 * 12.0).max(60.0) + 20.0) * responsive_scale;
                     if chip_x + chip_w > panel_x + panel_width {
                         row += 1;
                         chip_x = panel_x;
@@ -2245,7 +2292,12 @@ pub mod gpu {
                     if row >= 2 {
                         break;
                     }
-                    let rect = [chip_x, chip_y + row as f32 * 30.0, chip_w, 24.0];
+                    let rect = [
+                        chip_x,
+                        chip_y + row as f32 * 30.0 * responsive_scale,
+                        chip_w,
+                        24.0 * responsive_scale,
+                    ];
                     quads.push(CandidateQuad {
                         rect,
                         color: if index == 0 {
@@ -2260,9 +2312,12 @@ pub mod gpu {
                     });
                     let layout = TextBlock {
                         text: token.clone(),
-                        origin: [rect[0] + 8.0, rect[1] + 6.0],
-                        max_width: rect[2] - 16.0,
-                        pixel_size: 2.0,
+                        origin: [
+                            rect[0] + 8.0 * responsive_scale,
+                            rect[1] + 6.0 * responsive_scale,
+                        ],
+                        max_width: rect[2] - 16.0 * responsive_scale,
+                        pixel_size: 2.0 * responsive_scale,
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
@@ -2278,7 +2333,7 @@ pub mod gpu {
                     text_quads.extend(layout.quads.iter().copied());
                     atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                     chip_layouts.push(layout);
-                    chip_x += chip_w + 8.0;
+                    chip_x += chip_w + 8.0 * responsive_scale;
                 }
                 if !chip_layouts.is_empty() {
                     text_sections.push(TextSection {
@@ -2289,12 +2344,22 @@ pub mod gpu {
             }
 
             let sentence_y = suggestions_y + chip_section_h;
+            let candidate_columns = if panel_width >= 760.0 { 2 } else { 1 };
+            let candidate_gap_x = 12.0 * responsive_scale;
+            let candidate_card_w = if candidate_columns == 2 {
+                (panel_width - candidate_gap_x) / 2.0
+            } else {
+                panel_width
+            };
             for (index, label) in visible_sentence_candidates.iter().enumerate() {
-                let y = sentence_y + index as f32 * (item_height + gap);
+                let column = index % candidate_columns;
+                let row = index / candidate_columns;
+                let x = panel_x + column as f32 * (candidate_card_w + candidate_gap_x);
+                let y = sentence_y + row as f32 * (item_height + gap);
                 let selected = index == snapshot.selected_index;
                 let continuation = display_candidate_continuation(&snapshot.seed_text, label);
                 let quad = CandidateQuad {
-                    rect: [panel_x, y, panel_width, item_height],
+                    rect: [x, y, candidate_card_w, item_height],
                     color: if selected {
                         [0.39, 0.78, 0.96, 1.0]
                     } else if snapshot.degraded {
@@ -2315,12 +2380,16 @@ pub mod gpu {
                 let candidate_layouts = vec![
                     TextBlock {
                         text: continuation,
-                        origin: [panel_x + 18.0, y + 13.0],
-                        max_width: panel_width - 36.0,
+                        origin: [x + 18.0 * responsive_scale, y + 13.0 * responsive_scale],
+                        max_width: candidate_card_w - 36.0 * responsive_scale,
                         pixel_size: input_value_px,
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
-                        max_lines: 1,
+                        max_lines: if chrome.preview_style == PreviewStyle::Full {
+                            3
+                        } else {
+                            2
+                        },
                         color: if selected {
                             [0.01, 0.10, 0.16, 1.0]
                         } else {
@@ -2331,32 +2400,17 @@ pub mod gpu {
                     }
                     .layout(),
                     TextBlock {
-                        text: format!(
-                            "{}  |  {}",
-                            if selected { "selected" } else { "tap" },
-                            if chrome.preview_style == PreviewStyle::Full {
-                                label.to_string()
-                            } else {
-                                compact_phrase(label)
-                            }
-                        ),
-                        origin: [
-                            panel_x + 18.0,
-                            y + if chrome.preview_style == PreviewStyle::Full {
-                                35.0
-                            } else {
-                                34.0
-                            },
-                        ],
-                        max_width: panel_width - 36.0,
-                        pixel_size: 2.0,
+                        text: if selected {
+                            "Selected sentence".to_string()
+                        } else {
+                            "Tap to use this sentence".to_string()
+                        },
+                        origin: [x + 18.0 * responsive_scale, y + 44.0 * responsive_scale],
+                        max_width: candidate_card_w - 36.0 * responsive_scale,
+                        pixel_size: 2.0 * responsive_scale,
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
-                        max_lines: if chrome.preview_style == PreviewStyle::Full {
-                            2
-                        } else {
-                            1
-                        },
+                        max_lines: 2,
                         color: if selected {
                             [0.02, 0.18, 0.26, 1.0]
                         } else {
@@ -2390,6 +2444,316 @@ pub mod gpu {
                     .get(snapshot.selected_index)
                     .cloned(),
                 draft_text: snapshot.draft_text.clone(),
+            }
+        }
+
+        pub fn build_settings_scene(&self, chrome: &PanelChromeState) -> RenderScene {
+            let tracking = match chrome.text_spacing {
+                TextSpacing::Tight => -0.3,
+                TextSpacing::Normal => 0.0,
+                TextSpacing::Relaxed => 0.8,
+            };
+            let base_line_gap = match chrome.candidate_density {
+                CandidateDensity::Compact => 4.0,
+                CandidateDensity::Cozy => 6.0,
+            };
+            let panel_width = self.scene_width.clamp(320.0, 520.0) - 28.0;
+            let panel_x = ((self.scene_width - panel_width) / 2.0).max(12.0);
+            let panel_y = 14.0;
+            let row_h = 24.0;
+            let title_h = 34.0;
+            let panel_height = title_h + 18.0 + 9.0 * row_h + 18.0;
+
+            let mut quads = Vec::new();
+            let mut text_quads = Vec::new();
+            let mut atlas_glyphs = Vec::new();
+            let mut text_sections = Vec::new();
+            let hit_targets = Vec::new();
+            let mut interactive_targets = Vec::new();
+
+            quads.push(CandidateQuad {
+                rect: [panel_x, panel_y, panel_width, panel_height],
+                color: [0.08, 0.12, 0.19, 0.98],
+            });
+
+            let close_rect = [panel_x + panel_width - 32.0, panel_y + 8.0, 18.0, 18.0];
+            quads.push(CandidateQuad {
+                rect: close_rect,
+                color: [0.18, 0.23, 0.31, 0.98],
+            });
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsToggle,
+                rect: close_rect,
+            });
+            append_gear_icon_quads(
+                &mut quads,
+                close_rect,
+                [0.90, 0.95, 1.0, 1.0],
+                [0.18, 0.23, 0.31, 0.98],
+            );
+
+            let title_layout = TextBlock {
+                text: "Panel settings".to_string(),
+                origin: [panel_x + 14.0, panel_y + 10.0],
+                max_width: panel_width - 56.0,
+                pixel_size: 3.0,
+                letter_spacing: tracking,
+                line_gap: base_line_gap,
+                max_lines: 1,
+                color: [0.92, 0.96, 1.0, 1.0],
+                align: TextAlign::Left,
+                role: TextRole::HeaderTitle,
+            }
+            .layout();
+            text_quads.extend(title_layout.quads.iter().copied());
+            atlas_glyphs.extend(title_layout.atlas_glyphs.iter().cloned());
+            text_sections.push(TextSection {
+                role: TextRole::HeaderTitle,
+                layouts: vec![title_layout],
+            });
+
+            let sections = [
+                (
+                    "Text",
+                    [
+                        (
+                            InteractionKind::SetTextScale(DisplayTextScale::Small),
+                            "S",
+                            chrome.text_scale == DisplayTextScale::Small,
+                        ),
+                        (
+                            InteractionKind::SetTextScale(DisplayTextScale::Medium),
+                            "M",
+                            chrome.text_scale == DisplayTextScale::Medium,
+                        ),
+                        (
+                            InteractionKind::SetTextScale(DisplayTextScale::Large),
+                            "L",
+                            chrome.text_scale == DisplayTextScale::Large,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Font",
+                    [
+                        (
+                            InteractionKind::SetFontFace(FontFaceChoice::Auto),
+                            "Auto",
+                            chrome.font_face == FontFaceChoice::Auto,
+                        ),
+                        (
+                            InteractionKind::SetFontFace(FontFaceChoice::Monaco),
+                            "Monaco",
+                            chrome.font_face == FontFaceChoice::Monaco,
+                        ),
+                        (
+                            InteractionKind::SetFontFace(FontFaceChoice::Geneva),
+                            "Geneva",
+                            chrome.font_face == FontFaceChoice::Geneva,
+                        ),
+                        (
+                            InteractionKind::SetFontFace(FontFaceChoice::ArialUnicode),
+                            "Arial",
+                            chrome.font_face == FontFaceChoice::ArialUnicode,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Density",
+                    [
+                        (
+                            InteractionKind::SetCandidateDensity(CandidateDensity::Compact),
+                            "Compact",
+                            chrome.candidate_density == CandidateDensity::Compact,
+                        ),
+                        (
+                            InteractionKind::SetCandidateDensity(CandidateDensity::Cozy),
+                            "Cozy",
+                            chrome.candidate_density == CandidateDensity::Cozy,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Spacing",
+                    [
+                        (
+                            InteractionKind::SetTextSpacing(TextSpacing::Tight),
+                            "Tight",
+                            chrome.text_spacing == TextSpacing::Tight,
+                        ),
+                        (
+                            InteractionKind::SetTextSpacing(TextSpacing::Normal),
+                            "Normal",
+                            chrome.text_spacing == TextSpacing::Normal,
+                        ),
+                        (
+                            InteractionKind::SetTextSpacing(TextSpacing::Relaxed),
+                            "Relaxed",
+                            chrome.text_spacing == TextSpacing::Relaxed,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Smooth",
+                    [
+                        (
+                            InteractionKind::SetTextSmoothing(TextSmoothing::Sharp),
+                            "Sharp",
+                            chrome.text_smoothing == TextSmoothing::Sharp,
+                        ),
+                        (
+                            InteractionKind::SetTextSmoothing(TextSmoothing::Smooth),
+                            "Smooth",
+                            chrome.text_smoothing == TextSmoothing::Smooth,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Preview",
+                    [
+                        (
+                            InteractionKind::SetPreviewStyle(PreviewStyle::Compact),
+                            "Trim",
+                            chrome.preview_style == PreviewStyle::Compact,
+                        ),
+                        (
+                            InteractionKind::SetPreviewStyle(PreviewStyle::Full),
+                            "Full",
+                            chrome.preview_style == PreviewStyle::Full,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "LLM",
+                    [
+                        (
+                            InteractionKind::SetLlmEnabled(true),
+                            "On",
+                            chrome.llm_enabled,
+                        ),
+                        (
+                            InteractionKind::SetLlmEnabled(false),
+                            "Off",
+                            !chrome.llm_enabled,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Model",
+                    [(
+                        InteractionKind::SetLlmModel(LlmModelPreset::Llama32_3b),
+                        "Llama3.2 3B",
+                        chrome.llm_model == LlmModelPreset::Llama32_3b,
+                    )]
+                    .to_vec(),
+                ),
+                (
+                    "Heat",
+                    [
+                        (
+                            InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Focused),
+                            "Focused",
+                            chrome.llm_temperature == LlmTemperaturePreset::Focused,
+                        ),
+                        (
+                            InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Balanced),
+                            "Balanced",
+                            chrome.llm_temperature == LlmTemperaturePreset::Balanced,
+                        ),
+                        (
+                            InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Expressive),
+                            "Expressive",
+                            chrome.llm_temperature == LlmTemperaturePreset::Expressive,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+            ];
+
+            let mut label_layouts = Vec::new();
+            let mut option_layouts = Vec::new();
+            for (section_index, (label, options)) in sections.iter().enumerate() {
+                let row_y = panel_y + title_h + 10.0 + section_index as f32 * row_h;
+                let label_layout = TextBlock {
+                    text: (*label).to_string(),
+                    origin: [panel_x + 14.0, row_y + 2.0],
+                    max_width: 72.0,
+                    pixel_size: 2.0,
+                    letter_spacing: tracking,
+                    line_gap: base_line_gap,
+                    max_lines: 1,
+                    color: [0.70, 0.80, 0.92, 1.0],
+                    align: TextAlign::Left,
+                    role: TextRole::SettingLabel,
+                }
+                .layout();
+                text_quads.extend(label_layout.quads.iter().copied());
+                atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
+                label_layouts.push(label_layout);
+
+                let mut chip_x = panel_x + 86.0;
+                for (kind, chip_label, selected) in options {
+                    let chip_w = (chip_label.chars().count() as f32 * 10.0).max(34.0) + 12.0;
+                    let rect = [chip_x, row_y, chip_w, 20.0];
+                    quads.push(CandidateQuad {
+                        rect,
+                        color: if *selected {
+                            [0.40, 0.77, 0.96, 1.0]
+                        } else {
+                            [0.16, 0.20, 0.28, 0.96]
+                        },
+                    });
+                    interactive_targets.push(InteractiveTarget { kind: *kind, rect });
+                    let option_layout = TextBlock {
+                        text: (*chip_label).to_string(),
+                        origin: [chip_x + 6.0, row_y + 5.0],
+                        max_width: chip_w - 12.0,
+                        pixel_size: 2.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
+                        max_lines: 1,
+                        color: if *selected {
+                            [0.01, 0.10, 0.16, 1.0]
+                        } else {
+                            [0.90, 0.95, 1.0, 1.0]
+                        },
+                        align: TextAlign::Center,
+                        role: TextRole::SettingOption,
+                    }
+                    .layout();
+                    text_quads.extend(option_layout.quads.iter().copied());
+                    atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
+                    option_layouts.push(option_layout);
+                    chip_x += chip_w + 8.0;
+                }
+            }
+
+            text_sections.push(TextSection {
+                role: TextRole::SettingLabel,
+                layouts: label_layouts,
+            });
+            text_sections.push(TextSection {
+                role: TextRole::SettingOption,
+                layouts: option_layouts,
+            });
+
+            RenderScene {
+                quads,
+                text_quads,
+                atlas_glyphs,
+                text_sections,
+                hit_targets,
+                interactive_targets,
+                labels: Vec::new(),
+                selected_label: None,
+                draft_text: String::new(),
             }
         }
 

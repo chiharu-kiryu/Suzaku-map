@@ -65,6 +65,31 @@ The current host is optimized for testing on macOS first, while keeping the rend
 - You can quit with `Cmd+Q`.
 - You can use the shorthand aliases `cargo panel-macos` and `cargo test-gpu`.
 
+## Platform Roadmap
+
+The current rollout priority is explicit and now reflected in code:
+
+1. macOS
+2. Windows
+3. Ubuntu
+4. Arch Linux
+5. SteamOS
+
+The shared support roadmap lives in [src/platform/mod.rs](./src/platform/mod.rs), with host-specific stubs in:
+
+- [src/platform/macos.rs](./src/platform/macos.rs)
+- [src/platform/windows.rs](./src/platform/windows.rs)
+- [src/platform/linux.rs](./src/platform/linux.rs)
+
+The intent is to keep the IME engine and renderer portable, while moving platform-specific work into adapters for:
+
+- window lifecycle and chrome
+- permission prompts
+- voice input bridges
+- future IME host integration points
+
+Today, macOS is the most complete target. Windows is the next primary host target. Ubuntu, Arch Linux, and SteamOS remain planned secondary hosts after the desktop path is stable on macOS and Windows.
+
 ## Panel Controls
 
 The GPU candidate panel is a lightweight host for XR/tablet-style selection:

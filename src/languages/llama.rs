@@ -63,8 +63,7 @@ impl OpenAiCompatibleLlamaProvider {
             "Seed: {}\nConfidence: {:.2}\nDegraded: {}\n{}\nReturn three concise continuations, each on its own line.",
             request.seed_text,
             request.confidence,
-            if request.degraded { "yes" } else { "no" }
-            ,
+            if request.degraded { "yes" } else { "no" },
             self.config
                 .handwriting_hint
                 .as_deref()

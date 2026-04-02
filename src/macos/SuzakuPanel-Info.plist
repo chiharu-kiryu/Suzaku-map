@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.suzaku.panel</string>
+    <key>CFBundleName</key>
+    <string>Suzaku Panel</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Suzaku Panel uses the microphone to capture voice seeds for IME composition.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Suzaku Panel uses speech recognition to turn voice input into IME seed text.</string>
+</dict>
+</plist>

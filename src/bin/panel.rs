@@ -15,6 +15,11 @@ use suzaku_map::ime::gpu::{
 };
 use suzaku_map::ime::{CommitOptions, EngineConfig, InputSource, SignalState, XRTabletImeEngine};
 use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
+use suzaku_map::platform::gpu_host::{
+    HostSpeechRecognizer, configure_event_loop_builder, decorate_main_window_attributes,
+    decorate_settings_window_attributes, is_quit_shortcut, preferred_font_paths,
+};
+use suzaku_map::platform::{host_platform, support_for};
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
@@ -22,10 +27,6 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
-#[cfg(target_os = "macos")]
-use winit::platform::macos::{
-    ActivationPolicy, EventLoopBuilderExtMacOS, WindowAttributesExtMacOS,
-};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 const SHADER: &str = r#"
@@ -94,12 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn build_event_loop() -> Result<EventLoop<()>, winit::error::EventLoopError> {
     let mut builder = EventLoop::builder();
-    #[cfg(target_os = "macos")]
-    {
-        builder.with_activation_policy(ActivationPolicy::Regular);
-        builder.with_default_menu(true);
-        builder.with_activate_ignoring_other_apps(true);
-    }
+    configure_event_loop_builder(&mut builder);
     builder.build()
 }
 
@@ -108,27 +104,32 @@ fn panel_window_attributes() -> WindowAttributes {
         .with_title("Suzaku XR Candidate Panel")
         .with_inner_size(LogicalSize::new(420.0, 520.0))
         .with_resizable(true);
+    decorate_main_window_attributes(attrs)
+}
 
-    #[cfg(target_os = "macos")]
-    let attrs = attrs
-        .with_title_hidden(true)
-        .with_titlebar_transparent(true)
-        .with_fullsize_content_view(true)
-        .with_movable_by_window_background(true)
-        .with_accepts_first_mouse(true)
-        .with_tabbing_identifier("suzaku.xr.panel");
+fn settings_window_attributes() -> WindowAttributes {
+    let attrs = WindowAttributes::default()
+        .with_title("Suzaku Panel Settings")
+        .with_inner_size(LogicalSize::new(520.0, 340.0))
+        .with_resizable(false);
+    decorate_settings_window_attributes(attrs)
+}
 
-    attrs
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PanelWindowKind {
+    Main,
+    Settings,
 }
 
 #[derive(Default)]
 struct PanelApp {
-    state: Option<PanelState>,
+    panel: Option<PanelState>,
+    settings: Option<PanelState>,
 }
 
 impl ApplicationHandler for PanelApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.state.is_some() {
+        if self.panel.is_some() {
             return;
         }
 
@@ -138,7 +139,7 @@ impl ApplicationHandler for PanelApp {
                 .expect("create panel window"),
         );
         let state = pollster::block_on(PanelState::new(window)).expect("initialize panel state");
-        self.state = Some(state);
+        self.panel = Some(state);
     }
 
     fn window_event(
@@ -147,73 +148,147 @@ impl ApplicationHandler for PanelApp {
         window_id: WindowId,
         event: WindowEvent,
     ) {
-        let Some(state) = self.state.as_mut() else {
+        let Some(panel) = self.panel.as_mut() else {
             return;
         };
 
-        if state.window.id() != window_id {
+        if let Some(settings) = self.settings.as_mut() {
+            if settings.window.id() == window_id {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        panel.chrome.settings_open = false;
+                        self.settings = None;
+                    }
+                    _ => {
+                        handle_panel_window_event(settings, event_loop, event, false);
+                        panel.chrome.settings_open = settings.chrome.settings_open;
+                        panel.adopt_settings_from(&settings.chrome);
+                        panel.window.request_redraw();
+                        if panel.chrome.settings_open {
+                            settings.chrome = panel.chrome.clone();
+                            settings.window.request_redraw();
+                        } else {
+                            self.settings = None;
+                        }
+                    }
+                }
+                return;
+            }
+        }
+
+        if panel.window.id() != window_id {
             return;
         }
 
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
-            WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
-            WindowEvent::CursorMoved { position, .. } => {
-                state.cursor_position = Some((position.x as f32, position.y as f32));
+        let should_exit = matches!(event, WindowEvent::CloseRequested);
+        handle_panel_window_event(panel, event_loop, event, true);
+        if should_exit {
+            event_loop.exit();
+            return;
+        }
+
+        if panel.chrome.settings_open && self.settings.is_none() {
+            let window = Arc::new(
+                event_loop
+                    .create_window(settings_window_attributes())
+                    .expect("create settings window"),
+            );
+            let settings =
+                pollster::block_on(PanelState::new_settings(window, panel.chrome.clone()))
+                    .expect("initialize settings window");
+            self.settings = Some(settings);
+        } else if !panel.chrome.settings_open {
+            self.settings = None;
+        }
+        if let Some(settings) = self.settings.as_mut() {
+            settings.chrome = panel.chrome.clone();
+            settings.window.request_redraw();
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(panel) = self.panel.as_mut() {
+            panel.poll_voice_bridge();
+            panel.window.request_redraw();
+            if let Some(settings) = self.settings.as_mut() {
+                settings.chrome = panel.chrome.clone();
+                settings.window.request_redraw();
+            }
+        }
+    }
+}
+
+fn handle_panel_window_event(
+    state: &mut PanelState,
+    event_loop: &ActiveEventLoop,
+    event: WindowEvent,
+    allow_exit: bool,
+) {
+    match event {
+        WindowEvent::CloseRequested => {
+            if allow_exit {
+                event_loop.exit();
+            }
+        }
+        WindowEvent::Resized(size) => state.resize(size.width, size.height),
+        WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
+        WindowEvent::CursorMoved { position, .. } => {
+            state.cursor_position = Some((position.x as f32, position.y as f32));
+            if state.kind == PanelWindowKind::Main {
                 state.extend_handwriting_stroke();
-                state.window.request_redraw();
             }
-            WindowEvent::ModifiersChanged(modifiers) => {
-                state.modifiers = modifiers.state();
-            }
-            WindowEvent::Touch(touch) => {
-                state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
+            state.window.request_redraw();
+        }
+        WindowEvent::ModifiersChanged(modifiers) => {
+            state.modifiers = modifiers.state();
+        }
+        WindowEvent::Touch(touch) => {
+            state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
+            if state.kind == PanelWindowKind::Main {
                 match touch.phase {
                     TouchPhase::Started => {
                         let _ = state.try_begin_handwriting_stroke();
                     }
-                    TouchPhase::Moved => {
-                        state.extend_handwriting_stroke();
-                    }
-                    TouchPhase::Ended | TouchPhase::Cancelled => {
-                        state.finish_handwriting_stroke();
-                    }
+                    TouchPhase::Moved => state.extend_handwriting_stroke(),
+                    TouchPhase::Ended | TouchPhase::Cancelled => state.finish_handwriting_stroke(),
                 }
-                state.window.request_redraw();
             }
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-                ..
-            } => {
-                if !state.try_begin_handwriting_stroke() {
-                    state.select_at_cursor();
-                }
-                state.window.request_redraw();
+            state.window.request_redraw();
+        }
+        WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            button: MouseButton::Left,
+            ..
+        } => {
+            if !(state.kind == PanelWindowKind::Main && state.try_begin_handwriting_stroke()) {
+                state.select_at_cursor();
             }
-            WindowEvent::MouseInput {
-                state: ElementState::Released,
-                button: MouseButton::Left,
-                ..
-            } => {
+            state.window.request_redraw();
+        }
+        WindowEvent::MouseInput {
+            state: ElementState::Released,
+            button: MouseButton::Left,
+            ..
+        } => {
+            if state.kind == PanelWindowKind::Main {
                 state.finish_handwriting_stroke();
-                state.window.request_redraw();
             }
-            WindowEvent::KeyboardInput { event, .. } => {
-                if event.state == ElementState::Pressed {
-                    if state.is_quit_shortcut(&event.physical_key) {
-                        event_loop.exit();
-                        return;
+            state.window.request_redraw();
+        }
+        WindowEvent::KeyboardInput { event, .. } => {
+            if event.state == ElementState::Pressed {
+                if allow_exit && state.is_quit_shortcut(&event.physical_key) {
+                    event_loop.exit();
+                    return;
+                }
+                if state.kind == PanelWindowKind::Settings {
+                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                        state.chrome.settings_open = false;
                     }
-
+                } else {
                     match event.physical_key {
-                        PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            state.chrome.move_caret_left();
-                        }
-                        PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            state.chrome.move_caret_right();
-                        }
+                        PhysicalKey::Code(KeyCode::ArrowLeft) => state.chrome.move_caret_left(),
+                        PhysicalKey::Code(KeyCode::ArrowRight) => state.chrome.move_caret_right(),
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
                             if state.chrome.input_focused {
                                 state.chrome.blur_input();
@@ -261,20 +336,9 @@ impl ApplicationHandler for PanelApp {
                         PhysicalKey::Code(KeyCode::KeyV) => {
                             if state.chrome.active_input_mode == InputMode::Dictation {
                                 if state.chrome.voice_state == VoiceCaptureState::Listening {
-                                    if let Some(bridge) = &state.voice.bridge {
-                                        bridge.stop();
-                                    }
-                                    state.chrome.voice_state = VoiceCaptureState::Idle;
+                                    state.stop_voice_capture();
                                 } else {
-                                    let started = if let Some(bridge) = &state.voice.bridge {
-                                        bridge.start()
-                                    } else {
-                                        false
-                                    };
-                                    state.chrome.voice_state = VoiceCaptureState::Listening;
-                                    if !started {
-                                        state.advance_voice_sample();
-                                    }
+                                    state.start_voice_capture();
                                 }
                             }
                         }
@@ -319,30 +383,26 @@ impl ApplicationHandler for PanelApp {
                     if let Some(text) = event.text.as_deref() {
                         state.handle_text_input(text);
                     }
-                    state.window.request_redraw();
                 }
+                state.window.request_redraw();
             }
-            WindowEvent::RedrawRequested => {
-                if let Err(err) = state.render() {
-                    match err {
-                        SurfaceError::Lost | SurfaceError::Outdated => {
-                            state.resize(state.size.width, state.size.height);
-                        }
-                        SurfaceError::OutOfMemory => event_loop.exit(),
-                        SurfaceError::Timeout => {}
-                        SurfaceError::Other => {}
+        }
+        WindowEvent::RedrawRequested => {
+            if let Err(err) = state.render() {
+                match err {
+                    SurfaceError::Lost | SurfaceError::Outdated => {
+                        state.resize(state.size.width, state.size.height);
                     }
+                    SurfaceError::OutOfMemory => {
+                        if allow_exit {
+                            event_loop.exit();
+                        }
+                    }
+                    SurfaceError::Timeout | SurfaceError::Other => {}
                 }
             }
-            _ => {}
         }
-    }
-
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = self.state.as_mut() {
-            state.poll_voice_bridge();
-            state.window.request_redraw();
-        }
+        _ => {}
     }
 }
 
@@ -420,6 +480,7 @@ struct FontAtlas {
 }
 
 struct PanelState {
+    kind: PanelWindowKind,
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -457,7 +518,7 @@ struct PersistedDisplaySettings {
 struct VoiceInputController {
     samples: Vec<&'static str>,
     next_index: usize,
-    bridge: Option<MacOsSpeechRecognizer>,
+    bridge: Option<HostSpeechRecognizer>,
 }
 
 impl VoiceInputController {
@@ -470,7 +531,7 @@ impl VoiceInputController {
                 "spatial input feels lighter with speech",
             ],
             next_index: 0,
-            bridge: MacOsSpeechRecognizer::new(),
+            bridge: HostSpeechRecognizer::new(),
         }
     }
 
@@ -481,71 +542,23 @@ impl VoiceInputController {
     }
 }
 
-#[cfg(target_os = "macos")]
-struct MacOsSpeechRecognizer;
-
-#[cfg(target_os = "macos")]
-impl MacOsSpeechRecognizer {
-    fn new() -> Option<Self> {
-        if unsafe { suzaku_speech_is_supported() } {
-            Some(Self)
-        } else {
-            None
-        }
-    }
-
-    fn start(&self) -> bool {
-        unsafe { suzaku_speech_start() }
-    }
-
-    fn stop(&self) {
-        unsafe { suzaku_speech_stop() }
-    }
-
-    fn permission_state(&self) -> VoicePermissionState {
-        match unsafe { suzaku_speech_state() } {
-            1 => VoicePermissionState::Ready,
-            2 => VoicePermissionState::Ready,
-            3 => VoicePermissionState::Pending,
-            4 => VoicePermissionState::Denied,
-            5 => VoicePermissionState::Error,
-            0 => VoicePermissionState::Unavailable,
-            _ => VoicePermissionState::Unknown,
-        }
-    }
-
-    fn poll_transcript(&self) -> Option<String> {
-        let mut buf = vec![0u8; 2048];
-        let ok = unsafe { suzaku_speech_consume_transcript(buf.as_mut_ptr().cast(), buf.len()) };
-        if !ok {
-            return None;
-        }
-        let nul = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
-        String::from_utf8(buf[..nul].to_vec()).ok()
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-struct MacOsSpeechRecognizer;
-
-#[cfg(not(target_os = "macos"))]
-impl MacOsSpeechRecognizer {
-    fn new() -> Option<Self> {
-        None
-    }
-}
-
-#[cfg(target_os = "macos")]
-unsafe extern "C" {
-    fn suzaku_speech_is_supported() -> bool;
-    fn suzaku_speech_state() -> i32;
-    fn suzaku_speech_start() -> bool;
-    fn suzaku_speech_stop();
-    fn suzaku_speech_consume_transcript(buffer: *mut std::ffi::c_char, capacity: usize) -> bool;
-}
-
 impl PanelState {
     async fn new(window: Arc<Window>) -> Result<Self, Box<dyn Error>> {
+        Self::new_with_kind(window, PanelWindowKind::Main, None).await
+    }
+
+    async fn new_settings(
+        window: Arc<Window>,
+        chrome: PanelChromeState,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::new_with_kind(window, PanelWindowKind::Settings, Some(chrome)).await
+    }
+
+    async fn new_with_kind(
+        window: Arc<Window>,
+        kind: PanelWindowKind,
+        initial_chrome: Option<PanelChromeState>,
+    ) -> Result<Self, Box<dyn Error>> {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(window.clone())?;
@@ -659,7 +672,8 @@ impl PanelState {
                     },
                 ],
             });
-        let mut chrome = PanelChromeState {
+        let had_initial_chrome = initial_chrome.is_some();
+        let mut chrome = initial_chrome.unwrap_or(PanelChromeState {
             seed_text: "ni hao".into(),
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
@@ -677,7 +691,7 @@ impl PanelState {
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_transcript: String::new(),
-            llm_enabled: true,
+            llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
             composed_tokens: Vec::new(),
@@ -686,8 +700,12 @@ impl PanelState {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
-        };
-        if let Some(saved) = load_display_settings() {
+        });
+        if !had_initial_chrome {
+            if let Some(saved) = load_display_settings() {
+                apply_display_settings(&mut chrome, &saved);
+            }
+        } else if let Some(saved) = load_display_settings() {
             apply_display_settings(&mut chrome, &saved);
         }
 
@@ -749,6 +767,7 @@ impl PanelState {
 
         let composition_base_seed = chrome.seed_text.clone();
         let mut state = Self {
+            kind,
             window,
             surface,
             device,
@@ -769,7 +788,9 @@ impl PanelState {
             composition_base_seed,
             selected_next_tokens: Vec::new(),
         };
-        state.reconfigure_llama_plugin();
+        if kind == PanelWindowKind::Main {
+            state.reconfigure_llama_plugin();
+        }
 
         Ok(state)
     }
@@ -803,11 +824,11 @@ impl PanelState {
     }
 
     fn reconfigure_llama_plugin(&mut self) {
-        self.engine
-            .register_language_plugin(llama_english_plugin_with_config(
-                self.current_llama_config(),
-            ));
         if self.chrome.llm_enabled {
+            self.engine
+                .register_language_plugin(llama_english_plugin_with_config(
+                    self.current_llama_config(),
+                ));
             self.engine.set_language("llama-en");
         } else {
             self.engine.set_language("en");
@@ -843,12 +864,7 @@ impl PanelState {
         self.chrome.next_token_candidates =
             derive_next_token_candidates(&normalized_seed, &snapshot.candidate_labels, 6);
         self.chrome.sentence_candidates = if normalized_seed.split_whitespace().count() >= 2 {
-            snapshot
-                .candidate_labels
-                .iter()
-                .take(4)
-                .cloned()
-                .collect()
+            snapshot.candidate_labels.iter().take(4).cloned().collect()
         } else {
             Vec::new()
         };
@@ -904,15 +920,66 @@ impl PanelState {
         self.chrome.voice_transcript = self.voice.next_sample();
     }
 
+    fn voice_fallback_allowed(permission: VoicePermissionState, bridge_available: bool) -> bool {
+        !bridge_available || permission == VoicePermissionState::Unavailable
+    }
+
     fn poll_voice_bridge(&mut self) {
         if let Some(bridge) = &self.voice.bridge {
             self.chrome.voice_permission = bridge.permission_state();
+            if self.chrome.voice_permission != VoicePermissionState::Ready
+                && self.chrome.voice_state == VoiceCaptureState::Listening
+            {
+                self.chrome.voice_state = VoiceCaptureState::Idle;
+            }
             if let Some(transcript) = bridge.poll_transcript() {
                 self.chrome.voice_transcript = transcript;
             }
         } else {
             self.chrome.voice_permission = VoicePermissionState::Unavailable;
         }
+    }
+
+    fn start_voice_capture(&mut self) {
+        let Some(bridge) = &self.voice.bridge else {
+            self.chrome.voice_permission = VoicePermissionState::Unavailable;
+            self.chrome.voice_state = VoiceCaptureState::Idle;
+            self.advance_voice_sample();
+            return;
+        };
+
+        bridge.request_permissions();
+        let permission = bridge.permission_state();
+        self.chrome.voice_permission = permission;
+
+        if permission != VoicePermissionState::Ready {
+            self.chrome.voice_state = VoiceCaptureState::Idle;
+            if Self::voice_fallback_allowed(permission, true) {
+                self.advance_voice_sample();
+            }
+            return;
+        }
+
+        if bridge.start() {
+            self.chrome.voice_state = VoiceCaptureState::Listening;
+        } else {
+            let permission = bridge.permission_state();
+            self.chrome.voice_permission = permission;
+            self.chrome.voice_state = VoiceCaptureState::Idle;
+            if Self::voice_fallback_allowed(permission, true) {
+                self.advance_voice_sample();
+            }
+        }
+    }
+
+    fn stop_voice_capture(&mut self) {
+        if let Some(bridge) = &self.voice.bridge {
+            bridge.stop();
+            self.chrome.voice_permission = bridge.permission_state();
+        } else {
+            self.chrome.voice_permission = VoicePermissionState::Unavailable;
+        }
+        self.chrome.voice_state = VoiceCaptureState::Idle;
     }
 
     fn insert_voice_transcript(&mut self) {
@@ -933,8 +1000,41 @@ impl PanelState {
     }
 
     fn current_scene(&self) -> RenderScene {
-        self.renderer
-            .build_panel_scene(&self.engine.snapshot(), &self.chrome)
+        match self.kind {
+            PanelWindowKind::Main => {
+                let mut chrome = self.chrome.clone();
+                chrome.settings_open = false;
+                self.renderer
+                    .build_panel_scene(&self.engine.snapshot(), &chrome)
+            }
+            PanelWindowKind::Settings => self.renderer.build_settings_scene(&self.chrome),
+        }
+    }
+
+    fn adopt_settings_from(&mut self, other: &PanelChromeState) {
+        let needs_font_rebuild = self.chrome.font_face != other.font_face
+            || self.chrome.text_smoothing != other.text_smoothing;
+        let needs_llm_reconfigure = self.chrome.llm_enabled != other.llm_enabled
+            || self.chrome.llm_model != other.llm_model
+            || self.chrome.llm_temperature != other.llm_temperature;
+
+        self.chrome.text_scale = other.text_scale;
+        self.chrome.candidate_density = other.candidate_density;
+        self.chrome.preview_style = other.preview_style;
+        self.chrome.font_face = other.font_face;
+        self.chrome.text_spacing = other.text_spacing;
+        self.chrome.text_smoothing = other.text_smoothing;
+        self.chrome.llm_enabled = other.llm_enabled;
+        self.chrome.llm_model = other.llm_model;
+        self.chrome.llm_temperature = other.llm_temperature;
+        self.persist_display_settings();
+
+        if needs_font_rebuild {
+            self.rebuild_font_atlas();
+        }
+        if self.kind == PanelWindowKind::Main && needs_llm_reconfigure {
+            self.reconfigure_llama_plugin();
+        }
     }
 
     fn handwriting_canvas_rect(&self) -> Option<[f32; 4]> {
@@ -999,8 +1099,9 @@ impl PanelState {
             return;
         }
         self.handwriting_dragging = false;
-        self.last_handwriting_summary =
-            Some(summarize_handwriting_strokes(&self.chrome.handwriting_strokes));
+        self.last_handwriting_summary = Some(summarize_handwriting_strokes(
+            &self.chrome.handwriting_strokes,
+        ));
         self.chrome.handwriting_candidates =
             recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
         self.reconfigure_llama_plugin();
@@ -1051,13 +1152,16 @@ impl PanelState {
 
     fn render(&mut self) -> Result<(), SurfaceError> {
         let snapshot = self.engine.snapshot();
-        let scene = self.renderer.build_panel_scene(&snapshot, &self.chrome);
-        self.window.set_title(&window_title(
-            &scene,
-            &snapshot.committed_text,
-            self.font_atlas.uses_runtime_font,
-            &self.font_atlas.font_label,
-        ));
+        let scene = self.current_scene();
+        match self.kind {
+            PanelWindowKind::Main => self.window.set_title(&window_title(
+                &scene,
+                &snapshot.committed_text,
+                self.font_atlas.uses_runtime_font,
+                &self.font_atlas.font_label,
+            )),
+            PanelWindowKind::Settings => self.window.set_title("Suzaku Panel Settings"),
+        }
 
         let shape_vertices =
             build_shape_vertices(&scene, self.config.width as f32, self.config.height as f32);
@@ -1161,6 +1265,14 @@ impl PanelState {
                 InteractionKind::InputModeButton(mode) => {
                     self.chrome.blur_input();
                     self.chrome.active_input_mode = mode;
+                    if mode == InputMode::Dictation {
+                        if let Some(bridge) = &self.voice.bridge {
+                            bridge.request_permissions();
+                            self.chrome.voice_permission = bridge.permission_state();
+                        } else {
+                            self.chrome.voice_permission = VoicePermissionState::Unavailable;
+                        }
+                    }
                 }
                 InteractionKind::SettingsToggle => {
                     self.chrome.settings_open = !self.chrome.settings_open;
@@ -1214,20 +1326,9 @@ impl PanelState {
                 }
                 InteractionKind::ToggleVoiceCapture => {
                     if self.chrome.voice_state == VoiceCaptureState::Listening {
-                        if let Some(bridge) = &self.voice.bridge {
-                            bridge.stop();
-                        }
-                        self.chrome.voice_state = VoiceCaptureState::Idle;
+                        self.stop_voice_capture();
                     } else {
-                        let started = if let Some(bridge) = &self.voice.bridge {
-                            bridge.start()
-                        } else {
-                            false
-                        };
-                        self.chrome.voice_state = VoiceCaptureState::Listening;
-                        if !started {
-                            self.advance_voice_sample();
-                        }
+                        self.start_voice_capture();
                     }
                 }
                 InteractionKind::CycleVoiceSample => {
@@ -1331,12 +1432,7 @@ impl PanelState {
     }
 
     fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {
-        matches!(key, PhysicalKey::Code(KeyCode::KeyQ))
-            && if cfg!(target_os = "macos") {
-                self.modifiers.super_key()
-            } else {
-                self.modifiers.control_key()
-            }
+        matches!(key, PhysicalKey::Code(KeyCode::KeyQ)) && is_quit_shortcut(self.modifiers)
     }
 }
 
@@ -1350,8 +1446,12 @@ fn derive_next_token_candidates(
     sentence_candidates: &[String],
     limit: usize,
 ) -> Vec<String> {
-    let seed_tokens: Vec<&str> = seed_text.split_whitespace().collect();
+    let seed_tokens: Vec<String> = seed_text
+        .split_whitespace()
+        .map(|token| token.to_ascii_lowercase())
+        .collect();
     let mut next = Vec::new();
+    let mut later = Vec::new();
 
     for sentence in sentence_candidates {
         let words: Vec<&str> = sentence.split_whitespace().collect();
@@ -1363,24 +1463,49 @@ fn derive_next_token_candidates(
             prefix_len += 1;
         }
 
-        let candidate = if prefix_len < words.len() {
-            words[prefix_len]
-        } else {
-            words.first().copied().unwrap_or("")
-        };
-        let token = candidate
+        if prefix_len >= words.len() {
+            continue;
+        }
+
+        let token = words[prefix_len]
             .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
-            .to_string();
-        if !token.is_empty() && !next.iter().any(|existing| existing == &token) {
+            .to_ascii_lowercase();
+        if !token.is_empty()
+            && !seed_tokens.iter().any(|existing| existing == &token)
+            && !next.iter().any(|existing| existing == &token)
+        {
             next.push(token);
         }
+        if next.len() >= limit {
+            return next;
+        }
+
+        for candidate in words.iter().skip(prefix_len + 1) {
+            let token = candidate
+                .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
+                .to_ascii_lowercase();
+            if token.is_empty()
+                || seed_tokens.iter().any(|existing| existing == &token)
+                || next.iter().any(|existing| existing == &token)
+                || later.iter().any(|existing| existing == &token)
+            {
+                continue;
+            }
+            later.push(token);
+        }
+    }
+
+    for token in later {
+        next.push(token);
         if next.len() >= limit {
             return next;
         }
     }
 
     for fallback in ["is", "can", "will", "for", "with", "next"] {
-        if !next.iter().any(|existing| existing == fallback) {
+        if !seed_tokens.iter().any(|existing| existing == fallback)
+            && !next.iter().any(|existing| existing == fallback)
+        {
             next.push(fallback.to_string());
         }
         if next.len() >= limit {
@@ -1391,15 +1516,24 @@ fn derive_next_token_candidates(
 }
 
 fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
-    let points: Vec<[f32; 2]> = strokes.iter().flat_map(|stroke| stroke.iter().copied()).collect();
+    let points: Vec<[f32; 2]> = strokes
+        .iter()
+        .flat_map(|stroke| stroke.iter().copied())
+        .collect();
     if points.len() < 2 {
         return Vec::new();
     }
 
     let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
-    let max_x = points.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max);
+    let max_x = points
+        .iter()
+        .map(|p| p[0])
+        .fold(f32::NEG_INFINITY, f32::max);
     let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
-    let max_y = points.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = points
+        .iter()
+        .map(|p| p[1])
+        .fold(f32::NEG_INFINITY, f32::max);
     let width = (max_x - min_x).max(1.0);
     let height = (max_y - min_y).max(1.0);
     let aspect = width / height;
@@ -1443,15 +1577,24 @@ fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
 }
 
 fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
-    let points: Vec<[f32; 2]> = strokes.iter().flat_map(|stroke| stroke.iter().copied()).collect();
+    let points: Vec<[f32; 2]> = strokes
+        .iter()
+        .flat_map(|stroke| stroke.iter().copied())
+        .collect();
     if points.len() < 2 {
         return "very short trace".to_string();
     }
 
     let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
-    let max_x = points.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max);
+    let max_x = points
+        .iter()
+        .map(|p| p[0])
+        .fold(f32::NEG_INFINITY, f32::max);
     let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
-    let max_y = points.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = points
+        .iter()
+        .map(|p| p[1])
+        .fold(f32::NEG_INFINITY, f32::max);
     let width = (max_x - min_x).max(1.0);
     let height = (max_y - min_y).max(1.0);
     let aspect = width / height;
@@ -1864,21 +2007,6 @@ fn load_runtime_font(font_face: FontFaceChoice) -> Option<(Font, String)> {
     None
 }
 
-fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'static str)> {
-    match font_face {
-        FontFaceChoice::Auto => vec![
-            ("/System/Library/Fonts/Monaco.ttf", "Monaco"),
-            ("/System/Library/Fonts/Geneva.ttf", "Geneva"),
-            ("/Library/Fonts/Arial Unicode.ttf", "Arial Unicode"),
-        ],
-        FontFaceChoice::Monaco => vec![("/System/Library/Fonts/Monaco.ttf", "Monaco")],
-        FontFaceChoice::Geneva => vec![("/System/Library/Fonts/Geneva.ttf", "Geneva")],
-        FontFaceChoice::ArialUnicode => {
-            vec![("/Library/Fonts/Arial Unicode.ttf", "Arial Unicode")]
-        }
-    }
-}
-
 fn display_settings_path() -> &'static str {
     ".suzaku-panel-settings"
 }
@@ -1920,7 +2048,11 @@ fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result
         encode_font_face(settings.font_face),
         encode_text_spacing(settings.text_spacing),
         encode_text_smoothing(settings.text_smoothing),
-        if settings.llm_enabled { "true" } else { "false" },
+        if settings.llm_enabled {
+            "true"
+        } else {
+            "false"
+        },
         encode_llm_model(settings.llm_model),
         encode_llm_temperature(settings.llm_temperature),
     );
@@ -1936,7 +2068,7 @@ fn load_display_settings() -> Option<PersistedDisplaySettings> {
         font_face: FontFaceChoice::Auto,
         text_spacing: TextSpacing::Normal,
         text_smoothing: TextSmoothing::Smooth,
-        llm_enabled: true,
+        llm_enabled: false,
         llm_model: LlmModelPreset::Llama32_3b,
         llm_temperature: LlmTemperaturePreset::Balanced,
     };
@@ -2131,8 +2263,11 @@ fn window_title(
     font_label: &str,
 ) -> String {
     let selected = scene.selected_label.as_deref().unwrap_or("no candidate");
+    let host = support_for(host_platform());
     format!(
-        "Suzaku XR Candidate Panel | font: {}:{} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
+        "Suzaku XR Candidate Panel | host: {:?} ({:?}) | font: {}:{} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
+        host.platform,
+        host.tier,
         if uses_runtime_font {
             "system-atlas"
         } else {
@@ -2159,7 +2294,7 @@ mod tests {
             font_face: FontFaceChoice::Geneva,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Sharp,
-            llm_enabled: true,
+            llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Expressive,
         };
@@ -2172,7 +2307,11 @@ mod tests {
             encode_font_face(settings.font_face),
             encode_text_spacing(settings.text_spacing),
             encode_text_smoothing(settings.text_smoothing),
-            if settings.llm_enabled { "true" } else { "false" },
+            if settings.llm_enabled {
+                "true"
+            } else {
+                "false"
+            },
             encode_llm_model(settings.llm_model),
             encode_llm_temperature(settings.llm_temperature),
         );
@@ -2219,6 +2358,31 @@ mod tests {
     }
 
     #[test]
+    fn panel_chrome_defaults_to_llm_disabled() {
+        let chrome = PanelChromeState::default();
+
+        assert!(!chrome.llm_enabled);
+    }
+
+    #[test]
+    fn next_token_derivation_advances_after_selected_token() {
+        let tokens = derive_next_token_candidates(
+            "apple can",
+            &[
+                "apple can is ready as the next full sentence".into(),
+                "apple can continue by tapping the next suggestion".into(),
+                "apple can now expands into a complete candidate".into(),
+            ],
+            6,
+        );
+
+        assert!(
+            tokens.starts_with(&["is".to_string(), "continue".to_string(), "now".to_string(),])
+        );
+        assert!(!tokens.iter().any(|token| token == "can"));
+    }
+
+    #[test]
     fn voice_controller_cycles_samples() {
         let mut voice = VoiceInputController::new();
 
@@ -2228,6 +2392,26 @@ mod tests {
         assert_ne!(first, second);
         assert!(!first.is_empty());
         assert!(!second.is_empty());
+    }
+
+    #[test]
+    fn voice_fallback_only_runs_when_bridge_is_unavailable() {
+        assert!(!PanelState::voice_fallback_allowed(
+            VoicePermissionState::Pending,
+            true
+        ));
+        assert!(!PanelState::voice_fallback_allowed(
+            VoicePermissionState::Denied,
+            true
+        ));
+        assert!(PanelState::voice_fallback_allowed(
+            VoicePermissionState::Unavailable,
+            true
+        ));
+        assert!(PanelState::voice_fallback_allowed(
+            VoicePermissionState::Unknown,
+            false
+        ));
     }
 
     #[test]

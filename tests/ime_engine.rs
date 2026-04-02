@@ -234,7 +234,10 @@ fn gpu_scene_builder_marks_selected_candidate() {
     let renderer = WgpuCandidateRenderer::new(1024.0, 768.0);
     let scene = renderer.build_scene(&snapshot);
 
-    assert_eq!(scene.hit_targets.len(), snapshot.candidate_labels.len().min(4));
+    assert_eq!(
+        scene.hit_targets.len(),
+        snapshot.candidate_labels.len().min(4)
+    );
     assert_eq!(scene.labels[1], snapshot.candidate_labels[1]);
     assert_ne!(scene.quads[2].color, scene.quads[1].color);
 }
@@ -349,7 +352,7 @@ fn text_block_center_alignment_offsets_bounds_inside_max_width() {
 #[cfg(feature = "gpu")]
 #[test]
 fn render_scene_exposes_hierarchical_text_sections() {
-    use suzaku_map::ime::gpu::{TextRole, WgpuCandidateRenderer};
+    use suzaku_map::ime::gpu::{PanelChromeState, TextRole, WgpuCandidateRenderer};
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     let snapshot = engine.seed("ni hao xr");
@@ -368,13 +371,18 @@ fn render_scene_exposes_hierarchical_text_sections() {
         scene
             .text_sections
             .iter()
-            .any(|section| section.role == TextRole::SettingOption)
+            .any(|section| section.role == TextRole::CandidatePrimary && section.layouts.len() >= 2)
     );
+
+    let settings_scene = renderer.build_settings_scene(&PanelChromeState {
+        settings_open: true,
+        ..PanelChromeState::default()
+    });
     assert!(
-        scene
+        settings_scene
             .text_sections
             .iter()
-            .any(|section| section.role == TextRole::CandidatePrimary && section.layouts.len() >= 2)
+            .any(|section| section.role == TextRole::SettingOption)
     );
 }
 
@@ -443,6 +451,27 @@ fn render_scene_contains_seed_input_and_input_method_controls() {
             .iter()
             .any(|target| target.kind == InteractionKind::SettingsToggle)
     );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_prefers_settings_toggle_over_seed_input_when_overlapping() {
+    use suzaku_map::ime::gpu::{InteractionKind, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+    let scene = renderer.build_scene(&snapshot);
+    let toggle_rect = scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == InteractionKind::SettingsToggle)
+        .map(|target| target.rect)
+        .expect("settings toggle");
+
+    let hit = scene.hit_interaction(toggle_rect[0] + 4.0, toggle_rect[1] + 4.0);
+
+    assert_eq!(hit, Some(InteractionKind::SettingsToggle));
 }
 
 #[cfg(feature = "gpu")]
@@ -545,6 +574,18 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
         scene.interactive_targets.iter().any(|target| target.kind
             == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Backspace))
     );
+    let keyboard_text = scene
+        .text_sections
+        .iter()
+        .flat_map(|section| section.layouts.iter())
+        .filter(|layout| layout.role == suzaku_map::ime::gpu::TextRole::KeyboardKey)
+        .flat_map(|layout| layout.lines.iter())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(keyboard_text.contains("Back"));
+    assert!(keyboard_text.contains("123"));
+    assert!(keyboard_text.contains("Space"));
 }
 
 #[cfg(feature = "gpu")]
@@ -733,14 +774,37 @@ fn render_scene_exposes_display_settings_when_open() {
             .iter()
             .any(|target| target.kind == InteractionKind::SetLlmEnabled(true))
     );
+    assert!(scene.interactive_targets.iter().any(|target| target.kind
+        == InteractionKind::SetLlmTemperature(
+            suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced
+        )));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn settings_scene_exposes_settings_controls_in_a_standalone_window() {
+    use suzaku_map::ime::gpu::{
+        DisplayTextScale, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let renderer = WgpuCandidateRenderer::new(520.0, 340.0);
+    let scene = renderer.build_settings_scene(&PanelChromeState {
+        settings_open: true,
+        text_scale: DisplayTextScale::Large,
+        ..PanelChromeState::default()
+    });
+
     assert!(
         scene
             .interactive_targets
             .iter()
-            .any(|target| target.kind
-                == InteractionKind::SetLlmTemperature(
-                    suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced
-                ))
+            .any(|target| target.kind == InteractionKind::SettingsToggle)
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetTextScale(DisplayTextScale::Large))
     );
 }
 
@@ -794,8 +858,55 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             .text_sections
             .iter()
             .flat_map(|section| section.layouts.iter())
-            .any(|layout| layout.role == TextRole::CandidateMeta && layout.lines.len() >= 2)
+            .any(|layout| layout.role == TextRole::CandidatePrimary && layout.lines.len() >= 2)
     );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_shows_full_strings_without_compacting_to_ellipsis() {
+    use suzaku_map::ime::gpu::{InputMode, PanelChromeState, TextRole, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("tablet ime");
+    let renderer = WgpuCandidateRenderer::new(900.0, 900.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "tablet ime can continue by tapping the next suggestion".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 54,
+            sentence_candidates: vec![
+                "tablet ime can continue by tapping the next suggestion and then commit a full sentence".into(),
+            ],
+            ..PanelChromeState::default()
+        },
+    );
+
+    let input_value = scene
+        .text_sections
+        .iter()
+        .flat_map(|section| section.layouts.iter())
+        .find(|layout| layout.role == TextRole::InputValue)
+        .expect("input value layout");
+    assert!(
+        input_value
+            .lines
+            .join(" ")
+            .contains("tapping the next suggestion")
+    );
+    assert!(!input_value.lines.join(" ").contains("..."));
+
+    let candidate_meta = scene
+        .text_sections
+        .iter()
+        .flat_map(|section| section.layouts.iter())
+        .find(|layout| layout.role == TextRole::CandidateMeta)
+        .expect("candidate meta layout");
+    assert!(candidate_meta.lines.join(" ").contains("sentence"));
+    assert!(!candidate_meta.lines.join(" ").contains("..."));
 }
 
 #[cfg(feature = "gpu")]
@@ -862,8 +973,8 @@ fn render_scene_shows_voice_permission_denied_message() {
 fn render_scene_exposes_handwriting_canvas_and_candidates() {
     use suzaku_map::ime::gpu::{
         CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
-        PanelChromeState, PreviewStyle, TextRole, TextSmoothing, TextSpacing,
-        VoiceCaptureState, VoicePermissionState, WgpuCandidateRenderer,
+        PanelChromeState, PreviewStyle, TextRole, TextSmoothing, TextSpacing, VoiceCaptureState,
+        VoicePermissionState, WgpuCandidateRenderer,
     };
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
@@ -901,19 +1012,25 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
         },
     );
 
-    assert!(scene
-        .interactive_targets
-        .iter()
-        .any(|target| target.kind == InteractionKind::HandwritingCanvas));
-    assert!(scene
-        .interactive_targets
-        .iter()
-        .any(|target| target.kind == InteractionKind::UseHandwritingCandidate(0)));
-    assert!(scene
-        .text_sections
-        .iter()
-        .flat_map(|section| section.layouts.iter())
-        .any(|layout| layout.role == TextRole::HandwritingCandidate));
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::HandwritingCanvas)
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::UseHandwritingCandidate(0))
+    );
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .any(|layout| layout.role == TextRole::HandwritingCandidate)
+    );
 }
 
 #[cfg(feature = "gpu")]
@@ -971,10 +1088,12 @@ fn render_scene_caps_next_token_chips_at_six_and_sentences_at_four() {
             .count(),
         4
     );
-    assert!(scene
-        .interactive_targets
-        .iter()
-        .any(|target| target.kind == InteractionKind::RewindNextToken));
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::RewindNextToken)
+    );
 }
 
 #[cfg(feature = "gpu")]
@@ -1001,10 +1120,12 @@ fn render_scene_hides_sentence_cards_until_sentence_stage_is_ready() {
         },
     );
 
-    assert!(scene
-        .interactive_targets
-        .iter()
-        .all(|target| !matches!(target.kind, InteractionKind::Candidate(_))));
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .all(|target| !matches!(target.kind, InteractionKind::Candidate(_)))
+    );
     assert_eq!(
         scene
             .interactive_targets
@@ -1110,4 +1231,36 @@ fn render_scene_centers_compact_panel_in_large_viewport() {
         .map(|quad| quad.rect[0])
         .fold(f32::INFINITY, f32::min);
     assert!(min_x > 100.0);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_scales_panel_width_with_viewport_size() {
+    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("apple");
+    let small = WgpuCandidateRenderer::new(900.0, 700.0).build_scene(&snapshot);
+    let large = WgpuCandidateRenderer::new(1440.0, 900.0).build_scene(&snapshot);
+
+    let small_panel_w = small.quads.first().expect("small panel").rect[2];
+    let large_panel_w = large.quads.first().expect("large panel").rect[2];
+
+    assert!(large_panel_w > small_panel_w + 120.0);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_uses_two_column_candidates_in_wide_viewports() {
+    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("apple");
+    let scene = WgpuCandidateRenderer::new(1440.0, 960.0).build_scene(&snapshot);
+
+    assert!(scene.hit_targets.len() >= 2);
+    let first = scene.hit_targets[0].rect;
+    let second = scene.hit_targets[1].rect;
+    assert!((first[1] - second[1]).abs() < 1.0);
+    assert!(second[0] > first[0] + first[2] * 0.5);
 }
