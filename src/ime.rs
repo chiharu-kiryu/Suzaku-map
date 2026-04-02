@@ -710,6 +710,8 @@ pub mod gpu {
         HandwritingLabel,
         HandwritingButton,
         HandwritingCandidate,
+        NextTokenLabel,
+        NextTokenChip,
         CandidatePrimary,
         CandidateMeta,
     }
@@ -773,6 +775,18 @@ pub mod gpu {
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum LlmModelPreset {
+        Llama32_3b,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum LlmTemperaturePreset {
+        Focused,
+        Balanced,
+        Expressive,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum VoiceCaptureState {
         Idle,
         Listening,
@@ -807,6 +821,12 @@ pub mod gpu {
         pub voice_state: VoiceCaptureState,
         pub voice_permission: VoicePermissionState,
         pub voice_transcript: String,
+        pub llm_enabled: bool,
+        pub llm_model: LlmModelPreset,
+        pub llm_temperature: LlmTemperaturePreset,
+        pub composed_tokens: Vec<String>,
+        pub next_token_candidates: Vec<String>,
+        pub sentence_candidates: Vec<String>,
         pub handwriting_strokes: Vec<Vec<[f32; 2]>>,
         pub handwriting_candidates: Vec<String>,
         pub handwriting_hint: String,
@@ -832,6 +852,12 @@ pub mod gpu {
                 voice_state: VoiceCaptureState::Idle,
                 voice_permission: VoicePermissionState::Unknown,
                 voice_transcript: String::new(),
+                llm_enabled: true,
+                llm_model: LlmModelPreset::Llama32_3b,
+                llm_temperature: LlmTemperaturePreset::Balanced,
+                composed_tokens: Vec::new(),
+                next_token_candidates: Vec::new(),
+                sentence_candidates: Vec::new(),
                 handwriting_strokes: Vec::new(),
                 handwriting_candidates: Vec::new(),
                 handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
@@ -922,6 +948,11 @@ pub mod gpu {
         SetFontFace(FontFaceChoice),
         SetTextSpacing(TextSpacing),
         SetTextSmoothing(TextSmoothing),
+        SetLlmEnabled(bool),
+        SetLlmModel(LlmModelPreset),
+        SetLlmTemperature(LlmTemperaturePreset),
+        SelectNextToken(usize),
+        RewindNextToken,
         ToggleVoiceCapture,
         CycleVoiceSample,
         InsertVoiceTranscript,
@@ -1026,6 +1057,7 @@ pub mod gpu {
         pub fn build_scene(&self, snapshot: &Snapshot) -> RenderScene {
             let chrome = PanelChromeState {
                 seed_text: snapshot.seed_text.clone(),
+                sentence_candidates: snapshot.candidate_labels.iter().take(4).cloned().collect(),
                 ..PanelChromeState::default()
             };
             self.build_panel_scene(snapshot, &chrome)
@@ -1075,7 +1107,7 @@ pub mod gpu {
             } else {
                 0.0
             };
-            let settings_panel_h = if chrome.settings_open { 144.0 } else { 0.0 };
+            let settings_panel_h = if chrome.settings_open { 208.0 } else { 0.0 };
             let item_height = match (chrome.candidate_density, chrome.preview_style) {
                 (CandidateDensity::Compact, PreviewStyle::Compact) => 48.0,
                 (CandidateDensity::Compact, PreviewStyle::Full) => 62.0,
@@ -1087,11 +1119,23 @@ pub mod gpu {
             } else {
                 10.0
             };
-            let suggestions_count = snapshot.candidate_labels.len().min(4) as f32;
-            let suggestions_height = if suggestions_count == 0.0 {
+            let visible_sentence_candidates: Vec<String> =
+                chrome.sentence_candidates.iter().take(4).cloned().collect();
+            let sentence_count = visible_sentence_candidates.len() as f32;
+            let sentence_height = if sentence_count == 0.0 {
                 0.0
             } else {
-                suggestions_count * item_height + (suggestions_count - 1.0) * gap
+                sentence_count * item_height + (sentence_count - 1.0) * gap
+            };
+            let chip_rows = if chrome.next_token_candidates.is_empty() {
+                0.0
+            } else {
+                2.0
+            };
+            let chip_section_h = if chip_rows == 0.0 {
+                0.0
+            } else {
+                82.0
             };
             let panel_height = input_box_h
                 + 12.0
@@ -1099,7 +1143,8 @@ pub mod gpu {
                 + tools_content_h
                 + settings_panel_h
                 + 16.0
-                + suggestions_height;
+                + chip_section_h
+                + sentence_height;
             let panel_x = ((self.scene_width - panel_width) / 2.0).max(12.0);
             let panel_y = ((self.scene_height - panel_height) / 2.0).max(12.0);
             let input_box_y = panel_y;
@@ -2004,6 +2049,60 @@ pub mod gpu {
                         ]
                         .to_vec(),
                     ),
+                    (
+                        "LLM",
+                        [
+                            (
+                                InteractionKind::SetLlmEnabled(true),
+                                "On",
+                                chrome.llm_enabled,
+                            ),
+                            (
+                                InteractionKind::SetLlmEnabled(false),
+                                "Off",
+                                !chrome.llm_enabled,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Model",
+                        [
+                            (
+                                InteractionKind::SetLlmModel(LlmModelPreset::Llama32_3b),
+                                "Llama3.2 3B",
+                                chrome.llm_model == LlmModelPreset::Llama32_3b,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Heat",
+                        [
+                            (
+                                InteractionKind::SetLlmTemperature(
+                                    LlmTemperaturePreset::Focused,
+                                ),
+                                "Focused",
+                                chrome.llm_temperature == LlmTemperaturePreset::Focused,
+                            ),
+                            (
+                                InteractionKind::SetLlmTemperature(
+                                    LlmTemperaturePreset::Balanced,
+                                ),
+                                "Balanced",
+                                chrome.llm_temperature == LlmTemperaturePreset::Balanced,
+                            ),
+                            (
+                                InteractionKind::SetLlmTemperature(
+                                    LlmTemperaturePreset::Expressive,
+                                ),
+                                "Expressive",
+                                chrome.llm_temperature == LlmTemperaturePreset::Expressive,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
                 ];
 
                 for (section_index, (label, options)) in sections.iter().enumerate() {
@@ -2072,8 +2171,126 @@ pub mod gpu {
                 });
             }
 
-            for (index, label) in snapshot.candidate_labels.iter().enumerate() {
-                let y = suggestions_y + index as f32 * (item_height + gap);
+            let chip_section_y = suggestions_y;
+            if !chrome.next_token_candidates.is_empty() {
+                let next_label_layouts = vec![
+                    TextBlock {
+                        text: if chrome.composed_tokens.is_empty() {
+                            "Next tokens".to_string()
+                        } else {
+                            format!("Next tokens  |  {}", chrome.composed_tokens.join(" "))
+                        },
+                        origin: [panel_x + 2.0, chip_section_y],
+                        max_width: panel_width - 96.0,
+                        pixel_size: 2.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
+                        max_lines: 1,
+                        color: [0.78, 0.86, 0.96, 1.0],
+                        align: TextAlign::Left,
+                        role: TextRole::NextTokenLabel,
+                    }
+                    .layout(),
+                ];
+                for layout in &next_label_layouts {
+                    text_quads.extend(layout.quads.iter().copied());
+                    atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                }
+                text_sections.push(TextSection {
+                    role: TextRole::NextTokenLabel,
+                    layouts: next_label_layouts,
+                });
+
+                if !chrome.composed_tokens.is_empty() {
+                    let back_rect = [panel_x + panel_width - 78.0, chip_section_y - 2.0, 78.0, 22.0];
+                    quads.push(CandidateQuad {
+                        rect: back_rect,
+                        color: [0.22, 0.19, 0.24, 0.98],
+                    });
+                    interactive_targets.push(InteractiveTarget {
+                        kind: InteractionKind::RewindNextToken,
+                        rect: back_rect,
+                    });
+                    let back_layout = TextBlock {
+                        text: "Back".to_string(),
+                        origin: [back_rect[0] + 8.0, back_rect[1] + 6.0],
+                        max_width: back_rect[2] - 16.0,
+                        pixel_size: 2.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
+                        max_lines: 1,
+                        color: [0.92, 0.96, 1.0, 1.0],
+                        align: TextAlign::Center,
+                        role: TextRole::NextTokenChip,
+                    }
+                    .layout();
+                    text_quads.extend(back_layout.quads.iter().copied());
+                    atlas_glyphs.extend(back_layout.atlas_glyphs.iter().cloned());
+                    text_sections.push(TextSection {
+                        role: TextRole::NextTokenChip,
+                        layouts: vec![back_layout],
+                    });
+                }
+
+                let chip_y = chip_section_y + 24.0;
+                let mut chip_x = panel_x;
+                let mut row = 0;
+                let mut chip_layouts = Vec::new();
+                for (index, token) in chrome.next_token_candidates.iter().take(6).enumerate() {
+                    let chip_w = (token.chars().count() as f32 * 10.0).max(52.0) + 18.0;
+                    if chip_x + chip_w > panel_x + panel_width {
+                        row += 1;
+                        chip_x = panel_x;
+                    }
+                    if row >= 2 {
+                        break;
+                    }
+                    let rect = [chip_x, chip_y + row as f32 * 30.0, chip_w, 24.0];
+                    quads.push(CandidateQuad {
+                        rect,
+                        color: if index == 0 {
+                            [0.40, 0.77, 0.96, 1.0]
+                        } else {
+                            [0.15, 0.19, 0.28, 0.96]
+                        },
+                    });
+                    interactive_targets.push(InteractiveTarget {
+                        kind: InteractionKind::SelectNextToken(index),
+                        rect,
+                    });
+                    let layout = TextBlock {
+                        text: token.clone(),
+                        origin: [rect[0] + 8.0, rect[1] + 6.0],
+                        max_width: rect[2] - 16.0,
+                        pixel_size: 2.0,
+                        letter_spacing: tracking,
+                        line_gap: base_line_gap,
+                        max_lines: 1,
+                        color: if index == 0 {
+                            [0.01, 0.10, 0.16, 1.0]
+                        } else {
+                            [0.92, 0.96, 1.0, 1.0]
+                        },
+                        align: TextAlign::Center,
+                        role: TextRole::NextTokenChip,
+                    }
+                    .layout();
+                    text_quads.extend(layout.quads.iter().copied());
+                    atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                    chip_layouts.push(layout);
+                    chip_x += chip_w + 8.0;
+                }
+                if !chip_layouts.is_empty() {
+                    text_sections.push(TextSection {
+                        role: TextRole::NextTokenChip,
+                        layouts: chip_layouts,
+                    });
+                }
+            }
+
+            let sentence_y = suggestions_y + chip_section_h;
+            for (index, label) in visible_sentence_candidates.iter().enumerate() {
+                let y = sentence_y + index as f32 * (item_height + gap);
                 let selected = index == snapshot.selected_index;
                 let continuation = display_candidate_continuation(&snapshot.seed_text, label);
                 let quad = CandidateQuad {

@@ -234,7 +234,7 @@ fn gpu_scene_builder_marks_selected_candidate() {
     let renderer = WgpuCandidateRenderer::new(1024.0, 768.0);
     let scene = renderer.build_scene(&snapshot);
 
-    assert_eq!(scene.hit_targets.len(), snapshot.candidate_labels.len());
+    assert_eq!(scene.hit_targets.len(), snapshot.candidate_labels.len().min(4));
     assert_eq!(scene.labels[1], snapshot.candidate_labels[1]);
     assert_ne!(scene.quads[2].color, scene.quads[1].color);
 }
@@ -475,6 +475,12 @@ fn render_scene_can_collapse_input_method_buttons() {
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -519,6 +525,12 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -565,6 +577,12 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Listening,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
             voice_transcript: "hello xr panel".into(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -615,6 +633,12 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -658,6 +682,12 @@ fn render_scene_exposes_display_settings_when_open() {
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -697,6 +727,21 @@ fn render_scene_exposes_display_settings_when_open() {
             .iter()
             .any(|target| target.kind == InteractionKind::SetTextSmoothing(TextSmoothing::Smooth))
     );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetLlmEnabled(true))
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind
+                == InteractionKind::SetLlmTemperature(
+                    suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced
+                ))
+    );
 }
 
 #[cfg(feature = "gpu")]
@@ -730,6 +775,14 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            sentence_candidates: vec![
+                "tablet ime keeps composing into a much longer preview sentence that should wrap inside the panel".into(),
+            ],
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -777,6 +830,12 @@ fn render_scene_shows_voice_permission_denied_message() {
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Denied,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
@@ -830,6 +889,12 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: vec![vec![[320.0, 220.0], [350.0, 250.0]]],
             handwriting_candidates: vec!["apple".into(), "input".into()],
             handwriting_hint: "Tap a recognized seed to insert it.".into(),
@@ -849,6 +914,105 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
         .iter()
         .flat_map(|section| section.layouts.iter())
         .any(|layout| layout.role == TextRole::HandwritingCandidate));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_caps_next_token_chips_at_six_and_sentences_at_four() {
+    use suzaku_map::ime::gpu::{
+        InputMode, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("apple");
+    let renderer = WgpuCandidateRenderer::new(900.0, 760.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "apple".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 5,
+            composed_tokens: vec!["apple".into()],
+            next_token_candidates: vec![
+                "is".into(),
+                "can".into(),
+                "will".into(),
+                "for".into(),
+                "with".into(),
+                "next".into(),
+                "extra".into(),
+            ],
+            sentence_candidates: vec![
+                "apple is ready for xr input".into(),
+                "apple can become a full sentence".into(),
+                "apple will keep composing from taps".into(),
+                "apple works well with panel input".into(),
+                "apple extra sentence should be hidden".into(),
+            ],
+            ..PanelChromeState::default()
+        },
+    );
+
+    assert_eq!(
+        scene
+            .interactive_targets
+            .iter()
+            .filter(|target| matches!(target.kind, InteractionKind::SelectNextToken(_)))
+            .count(),
+        6
+    );
+    assert_eq!(
+        scene
+            .interactive_targets
+            .iter()
+            .filter(|target| matches!(target.kind, InteractionKind::Candidate(_)))
+            .count(),
+        4
+    );
+    assert!(scene
+        .interactive_targets
+        .iter()
+        .any(|target| target.kind == InteractionKind::RewindNextToken));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_hides_sentence_cards_until_sentence_stage_is_ready() {
+    use suzaku_map::ime::gpu::{
+        InputMode, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("apple");
+    let renderer = WgpuCandidateRenderer::new(900.0, 760.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "apple".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 5,
+            next_token_candidates: vec!["is".into(), "can".into(), "will".into()],
+            sentence_candidates: Vec::new(),
+            ..PanelChromeState::default()
+        },
+    );
+
+    assert!(scene
+        .interactive_targets
+        .iter()
+        .all(|target| !matches!(target.kind, InteractionKind::Candidate(_))));
+    assert_eq!(
+        scene
+            .interactive_targets
+            .iter()
+            .filter(|target| matches!(target.kind, InteractionKind::SelectNextToken(_)))
+            .count(),
+        3
+    );
 }
 
 #[cfg(feature = "gpu")]
@@ -918,6 +1082,9 @@ fn panel_chrome_state_clamps_caret_before_backspace_after_text_normalization() {
         voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
         voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
         voice_transcript: String::new(),
+        llm_enabled: true,
+        llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
+        llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
         ..PanelChromeState::default()
     };
 

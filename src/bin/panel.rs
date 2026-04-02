@@ -9,11 +9,12 @@ use bytemuck::{Pod, Zeroable};
 use fontdue::Font;
 use suzaku_map::ime::gpu::{
     AtlasGlyph, CandidateDensity, CandidateQuad, DisplayTextScale, FontFaceChoice, InputMode,
-    InteractionKind, PanelChromeState, PreviewStyle, RenderScene, TextSmoothing, TextSpacing,
-    VirtualKeyboardKey, VoiceCaptureState, VoicePermissionState, WgpuCandidateRenderer,
+    InteractionKind, LlmModelPreset, LlmTemperaturePreset, PanelChromeState, PreviewStyle,
+    RenderScene, TextSmoothing, TextSpacing, VirtualKeyboardKey, VoiceCaptureState,
+    VoicePermissionState, WgpuCandidateRenderer,
 };
 use suzaku_map::ime::{CommitOptions, EngineConfig, InputSource, SignalState, XRTabletImeEngine};
-use suzaku_map::languages::llama::default_llama_english_plugin;
+use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
@@ -435,6 +436,9 @@ struct PanelState {
     cursor_position: Option<(f32, f32)>,
     modifiers: ModifiersState,
     handwriting_dragging: bool,
+    last_handwriting_summary: Option<String>,
+    composition_base_seed: String,
+    selected_next_tokens: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -445,6 +449,9 @@ struct PersistedDisplaySettings {
     font_face: FontFaceChoice,
     text_spacing: TextSpacing,
     text_smoothing: TextSmoothing,
+    llm_enabled: bool,
+    llm_model: LlmModelPreset,
+    llm_temperature: LlmTemperaturePreset,
 }
 
 struct VoiceInputController {
@@ -670,6 +677,12 @@ impl PanelState {
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_transcript: String::new(),
+            llm_enabled: true,
+            llm_model: LlmModelPreset::Llama32_3b,
+            llm_temperature: LlmTemperaturePreset::Balanced,
+            composed_tokens: Vec::new(),
+            next_token_candidates: Vec::new(),
+            sentence_candidates: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
@@ -725,8 +738,6 @@ impl PanelState {
         });
 
         let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-        engine.register_language_plugin(default_llama_english_plugin());
-        engine.set_language("llama-en");
         engine.set_source(InputSource::GazeDwell);
         engine.update_signal(SignalState {
             pointer_precision: 0.42,
@@ -736,7 +747,8 @@ impl PanelState {
         });
         engine.seed("ni hao");
 
-        Ok(Self {
+        let composition_base_seed = chrome.seed_text.clone();
+        let mut state = Self {
             window,
             surface,
             device,
@@ -753,7 +765,13 @@ impl PanelState {
             cursor_position: None,
             modifiers: ModifiersState::default(),
             handwriting_dragging: false,
-        })
+            last_handwriting_summary: None,
+            composition_base_seed,
+            selected_next_tokens: Vec::new(),
+        };
+        state.reconfigure_llama_plugin();
+
+        Ok(state)
     }
 
     fn reset_signal(&mut self) {
@@ -764,6 +782,107 @@ impl PanelState {
             source_confidence: 0.70,
         });
         self.refresh_seed();
+    }
+
+    fn current_llama_config(&self) -> LlamaProviderConfig {
+        LlamaProviderConfig {
+            endpoint: "http://127.0.0.1:11434/v1/chat/completions".to_string(),
+            model: match self.chrome.llm_model {
+                LlmModelPreset::Llama32_3b => "llama3.2:3b".to_string(),
+            },
+            system_prompt: "You are a sentence-completion engine for an XR and tablet IME. Expand the user's seed into 3 short, tap-friendly English sentence candidates. Return plain text only, one candidate per line, no numbering.".to_string(),
+            max_tokens: 96,
+            temperature_tenths: match self.chrome.llm_temperature {
+                LlmTemperaturePreset::Focused => 2,
+                LlmTemperaturePreset::Balanced => 4,
+                LlmTemperaturePreset::Expressive => 7,
+            },
+            timeout_ms: 1200,
+            handwriting_hint: self.last_handwriting_summary.clone(),
+        }
+    }
+
+    fn reconfigure_llama_plugin(&mut self) {
+        self.engine
+            .register_language_plugin(llama_english_plugin_with_config(
+                self.current_llama_config(),
+            ));
+        if self.chrome.llm_enabled {
+            self.engine.set_language("llama-en");
+        } else {
+            self.engine.set_language("en");
+        }
+        self.refresh_seed();
+    }
+
+    fn sync_manual_seed_base(&mut self) {
+        self.selected_next_tokens.clear();
+        self.composition_base_seed = self
+            .chrome
+            .seed_text
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+    }
+
+    fn full_composed_seed(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.composition_base_seed.is_empty() {
+            parts.push(self.composition_base_seed.clone());
+        }
+        if !self.selected_next_tokens.is_empty() {
+            parts.push(self.selected_next_tokens.join(" "));
+        }
+        parts.join(" ").trim().to_string()
+    }
+
+    fn refresh_composition_candidates(&mut self) {
+        let snapshot = self.engine.snapshot();
+        let normalized_seed = snapshot.seed_text.trim().to_string();
+        self.chrome.composed_tokens = self.selected_next_tokens.clone();
+        self.chrome.next_token_candidates =
+            derive_next_token_candidates(&normalized_seed, &snapshot.candidate_labels, 6);
+        self.chrome.sentence_candidates = if normalized_seed.split_whitespace().count() >= 2 {
+            snapshot
+                .candidate_labels
+                .iter()
+                .take(4)
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
+    }
+
+    fn select_next_token(&mut self, index: usize) {
+        let Some(token) = self.chrome.next_token_candidates.get(index).cloned() else {
+            return;
+        };
+        if self.selected_next_tokens.is_empty() {
+            self.composition_base_seed = self
+                .chrome
+                .seed_text
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
+        self.selected_next_tokens.push(token);
+        let full_seed = self.full_composed_seed();
+        self.chrome.set_seed_text(full_seed.clone());
+        self.chrome.move_caret_to_end();
+        self.engine.seed(&full_seed);
+        self.refresh_composition_candidates();
+    }
+
+    fn rewind_next_token(&mut self) {
+        if self.selected_next_tokens.pop().is_none() {
+            return;
+        }
+        let full_seed = self.full_composed_seed();
+        self.chrome.set_seed_text(full_seed.clone());
+        self.chrome.move_caret_to_end();
+        self.engine.seed(&full_seed);
+        self.refresh_composition_candidates();
     }
 
     fn rebuild_font_atlas(&mut self) {
@@ -809,6 +928,7 @@ impl PanelState {
         self.chrome.active_input_mode = InputMode::VirtualKeyboard;
         self.chrome.input_focused = true;
         self.chrome.move_caret_to_end();
+        self.sync_manual_seed_base();
         self.refresh_seed();
     }
 
@@ -879,8 +999,11 @@ impl PanelState {
             return;
         }
         self.handwriting_dragging = false;
+        self.last_handwriting_summary =
+            Some(summarize_handwriting_strokes(&self.chrome.handwriting_strokes));
         self.chrome.handwriting_candidates =
             recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
+        self.reconfigure_llama_plugin();
         self.chrome.handwriting_hint = if self.chrome.handwriting_candidates.is_empty() {
             "Try a clearer trace, then tap a recognized seed.".to_string()
         } else {
@@ -893,6 +1016,8 @@ impl PanelState {
         self.chrome.handwriting_strokes.clear();
         self.chrome.handwriting_candidates.clear();
         self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
+        self.last_handwriting_summary = None;
+        self.reconfigure_llama_plugin();
     }
 
     fn insert_handwriting_candidate(&mut self, index: usize) {
@@ -906,6 +1031,7 @@ impl PanelState {
         self.chrome.active_input_mode = InputMode::VirtualKeyboard;
         self.chrome.focus_input();
         self.chrome.move_caret_to_end();
+        self.sync_manual_seed_base();
         self.refresh_seed();
         self.clear_handwriting();
     }
@@ -1065,6 +1191,27 @@ impl PanelState {
                     self.rebuild_font_atlas();
                     self.persist_display_settings();
                 }
+                InteractionKind::SetLlmEnabled(enabled) => {
+                    self.chrome.llm_enabled = enabled;
+                    self.reconfigure_llama_plugin();
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetLlmModel(model) => {
+                    self.chrome.llm_model = model;
+                    self.reconfigure_llama_plugin();
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetLlmTemperature(temp) => {
+                    self.chrome.llm_temperature = temp;
+                    self.reconfigure_llama_plugin();
+                    self.persist_display_settings();
+                }
+                InteractionKind::SelectNextToken(index) => {
+                    self.select_next_token(index);
+                }
+                InteractionKind::RewindNextToken => {
+                    self.rewind_next_token();
+                }
                 InteractionKind::ToggleVoiceCapture => {
                     if self.chrome.voice_state == VoiceCaptureState::Listening {
                         if let Some(bridge) = &self.voice.bridge {
@@ -1161,12 +1308,14 @@ impl PanelState {
 
         if !accepted.is_empty() {
             self.chrome.insert_text(&accepted);
+            self.sync_manual_seed_base();
             self.refresh_seed();
         }
     }
 
     fn backspace_seed(&mut self) {
         self.chrome.backspace();
+        self.sync_manual_seed_base();
         self.refresh_seed();
     }
 
@@ -1178,6 +1327,7 @@ impl PanelState {
             .collect::<Vec<_>>()
             .join(" ");
         self.engine.seed(&normalized);
+        self.refresh_composition_candidates();
     }
 
     fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {
@@ -1193,6 +1343,51 @@ impl PanelState {
 fn point_in_rect(x: f32, y: f32, rect: [f32; 4]) -> bool {
     let [rx, ry, rw, rh] = rect;
     x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
+}
+
+fn derive_next_token_candidates(
+    seed_text: &str,
+    sentence_candidates: &[String],
+    limit: usize,
+) -> Vec<String> {
+    let seed_tokens: Vec<&str> = seed_text.split_whitespace().collect();
+    let mut next = Vec::new();
+
+    for sentence in sentence_candidates {
+        let words: Vec<&str> = sentence.split_whitespace().collect();
+        let mut prefix_len = 0;
+        while prefix_len < seed_tokens.len()
+            && prefix_len < words.len()
+            && seed_tokens[prefix_len].eq_ignore_ascii_case(words[prefix_len])
+        {
+            prefix_len += 1;
+        }
+
+        let candidate = if prefix_len < words.len() {
+            words[prefix_len]
+        } else {
+            words.first().copied().unwrap_or("")
+        };
+        let token = candidate
+            .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
+            .to_string();
+        if !token.is_empty() && !next.iter().any(|existing| existing == &token) {
+            next.push(token);
+        }
+        if next.len() >= limit {
+            return next;
+        }
+    }
+
+    for fallback in ["is", "can", "will", "for", "with", "next"] {
+        if !next.iter().any(|existing| existing == fallback) {
+            next.push(fallback.to_string());
+        }
+        if next.len() >= limit {
+            break;
+        }
+    }
+    next
 }
 
 fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
@@ -1245,6 +1440,41 @@ fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
     }
 
     vec!["apple".into(), "hello".into(), "input".into()]
+}
+
+fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
+    let points: Vec<[f32; 2]> = strokes.iter().flat_map(|stroke| stroke.iter().copied()).collect();
+    if points.len() < 2 {
+        return "very short trace".to_string();
+    }
+
+    let min_x = points.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
+    let max_x = points.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max);
+    let min_y = points.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+    let max_y = points.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max);
+    let width = (max_x - min_x).max(1.0);
+    let height = (max_y - min_y).max(1.0);
+    let aspect = width / height;
+    let start = points[0];
+    let end = *points.last().unwrap_or(&start);
+    let closure = (end[0] - start[0]).hypot(end[1] - start[1]) / width.max(height);
+
+    let shape = if closure < 0.35 {
+        "looped"
+    } else if aspect > 1.6 {
+        "wide"
+    } else if aspect < 0.65 {
+        "tall"
+    } else {
+        "balanced"
+    };
+
+    format!(
+        "{} handwriting trace with {} stroke(s) and {} points",
+        shape,
+        strokes.len(),
+        points.len()
+    )
 }
 
 fn build_shape_vertices(scene: &RenderScene, width: f32, height: f32) -> Vec<PanelVertex> {
@@ -1662,6 +1892,9 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             font_face: chrome.font_face,
             text_spacing: chrome.text_spacing,
             text_smoothing: chrome.text_smoothing,
+            llm_enabled: chrome.llm_enabled,
+            llm_model: chrome.llm_model,
+            llm_temperature: chrome.llm_temperature,
         }
     }
 }
@@ -1673,17 +1906,23 @@ fn apply_display_settings(chrome: &mut PanelChromeState, settings: &PersistedDis
     chrome.font_face = settings.font_face;
     chrome.text_spacing = settings.text_spacing;
     chrome.text_smoothing = settings.text_smoothing;
+    chrome.llm_enabled = settings.llm_enabled;
+    chrome.llm_model = settings.llm_model;
+    chrome.llm_temperature = settings.llm_temperature;
 }
 
 fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
     let contents = format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\n",
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
         encode_font_face(settings.font_face),
         encode_text_spacing(settings.text_spacing),
         encode_text_smoothing(settings.text_smoothing),
+        if settings.llm_enabled { "true" } else { "false" },
+        encode_llm_model(settings.llm_model),
+        encode_llm_temperature(settings.llm_temperature),
     );
     fs::write(display_settings_path(), contents)
 }
@@ -1697,6 +1936,9 @@ fn load_display_settings() -> Option<PersistedDisplaySettings> {
         font_face: FontFaceChoice::Auto,
         text_spacing: TextSpacing::Normal,
         text_smoothing: TextSmoothing::Smooth,
+        llm_enabled: true,
+        llm_model: LlmModelPreset::Llama32_3b,
+        llm_temperature: LlmTemperaturePreset::Balanced,
     };
 
     for line in contents.lines() {
@@ -1732,6 +1974,19 @@ fn load_display_settings() -> Option<PersistedDisplaySettings> {
             "text_smoothing" => {
                 if let Some(parsed) = decode_text_smoothing(value.trim()) {
                     settings.text_smoothing = parsed;
+                }
+            }
+            "llm_enabled" => {
+                settings.llm_enabled = value.trim() == "true";
+            }
+            "llm_model" => {
+                if let Some(parsed) = decode_llm_model(value.trim()) {
+                    settings.llm_model = parsed;
+                }
+            }
+            "llm_temperature" => {
+                if let Some(parsed) = decode_llm_temperature(value.trim()) {
+                    settings.llm_temperature = parsed;
                 }
             }
             _ => {}
@@ -1839,6 +2094,36 @@ fn decode_text_smoothing(value: &str) -> Option<TextSmoothing> {
     }
 }
 
+fn encode_llm_model(value: LlmModelPreset) -> &'static str {
+    match value {
+        LlmModelPreset::Llama32_3b => "llama32_3b",
+    }
+}
+
+fn decode_llm_model(value: &str) -> Option<LlmModelPreset> {
+    match value {
+        "llama32_3b" => Some(LlmModelPreset::Llama32_3b),
+        _ => None,
+    }
+}
+
+fn encode_llm_temperature(value: LlmTemperaturePreset) -> &'static str {
+    match value {
+        LlmTemperaturePreset::Focused => "focused",
+        LlmTemperaturePreset::Balanced => "balanced",
+        LlmTemperaturePreset::Expressive => "expressive",
+    }
+}
+
+fn decode_llm_temperature(value: &str) -> Option<LlmTemperaturePreset> {
+    match value {
+        "focused" => Some(LlmTemperaturePreset::Focused),
+        "balanced" => Some(LlmTemperaturePreset::Balanced),
+        "expressive" => Some(LlmTemperaturePreset::Expressive),
+        _ => None,
+    }
+}
+
 fn window_title(
     scene: &RenderScene,
     committed_text: &str,
@@ -1874,16 +2159,22 @@ mod tests {
             font_face: FontFaceChoice::Geneva,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Sharp,
+            llm_enabled: true,
+            llm_model: LlmModelPreset::Llama32_3b,
+            llm_temperature: LlmTemperaturePreset::Expressive,
         };
 
         let encoded = format!(
-            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\n",
+            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
             encode_text_scale(settings.text_scale),
             encode_candidate_density(settings.candidate_density),
             encode_preview_style(settings.preview_style),
             encode_font_face(settings.font_face),
             encode_text_spacing(settings.text_spacing),
             encode_text_smoothing(settings.text_smoothing),
+            if settings.llm_enabled { "true" } else { "false" },
+            encode_llm_model(settings.llm_model),
+            encode_llm_temperature(settings.llm_temperature),
         );
 
         let mut decoded = PersistedDisplaySettings {
@@ -1893,6 +2184,9 @@ mod tests {
             font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Smooth,
+            llm_enabled: true,
+            llm_model: LlmModelPreset::Llama32_3b,
+            llm_temperature: LlmTemperaturePreset::Balanced,
         };
 
         for line in encoded.lines() {
@@ -1911,6 +2205,11 @@ mod tests {
                 }
                 "text_smoothing" => {
                     decoded.text_smoothing = decode_text_smoothing(value).expect("smooth")
+                }
+                "llm_enabled" => decoded.llm_enabled = value == "true",
+                "llm_model" => decoded.llm_model = decode_llm_model(value).expect("llm model"),
+                "llm_temperature" => {
+                    decoded.llm_temperature = decode_llm_temperature(value).expect("llm temp")
                 }
                 _ => {}
             }

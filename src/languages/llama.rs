@@ -16,17 +16,19 @@ pub struct LlamaProviderConfig {
     pub max_tokens: u32,
     pub temperature_tenths: u32,
     pub timeout_ms: u64,
+    pub handwriting_hint: Option<String>,
 }
 
 impl Default for LlamaProviderConfig {
     fn default() -> Self {
         Self {
             endpoint: "http://127.0.0.1:11434/v1/chat/completions".to_string(),
-            model: "llama3.2:3b-instruct".to_string(),
+            model: "llama3.2:3b".to_string(),
             system_prompt: "You are a sentence-completion engine for an XR and tablet IME. Expand the user's seed into 3 short, tap-friendly English sentence candidates. Return plain text only, one candidate per line, no numbering.".to_string(),
             max_tokens: 96,
             temperature_tenths: 4,
             timeout_ms: 1200,
+            handwriting_hint: None,
         }
     }
 }
@@ -58,10 +60,16 @@ impl OpenAiCompatibleLlamaProvider {
 
     fn prompt_for(&self, request: &LlmCompletionRequest) -> String {
         format!(
-            "Seed: {}\nConfidence: {:.2}\nDegraded: {}\nReturn three concise continuations, each on its own line.",
+            "Seed: {}\nConfidence: {:.2}\nDegraded: {}\n{}\nReturn three concise continuations, each on its own line.",
             request.seed_text,
             request.confidence,
             if request.degraded { "yes" } else { "no" }
+            ,
+            self.config
+                .handwriting_hint
+                .as_deref()
+                .map(|hint| format!("Handwriting trace summary: {hint}"))
+                .unwrap_or_default()
         )
     }
 
@@ -118,14 +126,18 @@ impl LlmCompletionProvider for OpenAiCompatibleLlamaProvider {
     }
 }
 
-pub fn default_llama_english_plugin() -> LlmLanguagePlugin {
-    let provider = OpenAiCompatibleLlamaProvider::new(LlamaProviderConfig::default());
+pub fn llama_english_plugin_with_config(config: LlamaProviderConfig) -> LlmLanguagePlugin {
+    let provider = OpenAiCompatibleLlamaProvider::new(config);
     LlmLanguagePlugin::new(
         "llama-en",
         "Llama English",
         Arc::new(provider),
         english_sentence_variants,
     )
+}
+
+pub fn default_llama_english_plugin() -> LlmLanguagePlugin {
+    llama_english_plugin_with_config(LlamaProviderConfig::default())
 }
 
 fn parse_http_endpoint(endpoint: &str) -> Option<ParsedHttpEndpoint> {
