@@ -1,12 +1,15 @@
 #![cfg(feature = "gpu")]
 
+use std::collections::HashMap;
 use std::error::Error;
+use std::fs;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
+use fontdue::Font;
 use suzaku_map::ime::gpu::{
-    CandidateQuad, InputMode, InteractionKind, PanelChromeState, RenderScene, VirtualKeyboardKey,
-    WgpuCandidateRenderer,
+    AtlasGlyph, CandidateDensity, CandidateQuad, DisplayTextScale, InputMode, InteractionKind,
+    PanelChromeState, PreviewStyle, RenderScene, VirtualKeyboardKey, WgpuCandidateRenderer,
 };
 use suzaku_map::ime::{CommitOptions, EngineConfig, InputSource, SignalState, XRTabletImeEngine};
 use wgpu::SurfaceError;
@@ -44,6 +47,38 @@ fn vs_main(input: VsIn) -> VsOut {
 @fragment
 fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
     return input.color;
+}
+"#;
+
+const TEXT_SHADER: &str = r#"
+struct VsIn {
+    @location(0) position: vec2<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) color: vec4<f32>,
+};
+
+struct VsOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) color: vec4<f32>,
+};
+
+@group(0) @binding(0) var atlas_texture: texture_2d<f32>;
+@group(0) @binding(1) var atlas_sampler: sampler;
+
+@vertex
+fn vs_main(input: VsIn) -> VsOut {
+    var out: VsOut;
+    out.position = vec4<f32>(input.position, 0.0, 1.0);
+    out.uv = input.uv;
+    out.color = input.color;
+    return out;
+}
+
+@fragment
+fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
+    let alpha = textureSample(atlas_texture, atlas_sampler, input.uv).r;
+    return vec4<f32>(input.color.rgb, input.color.a * alpha);
 }
 "#;
 
@@ -263,13 +298,57 @@ impl PanelVertex {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct TextVertex {
+    position: [f32; 2],
+    uv: [f32; 2],
+    color: [f32; 4],
+}
+
+impl TextVertex {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        use std::mem;
+
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<TextVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 2]>() as u64,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 4]>() as u64,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
+}
+
+struct FontAtlas {
+    bind_group: wgpu::BindGroup,
+    uv_map: HashMap<char, [f32; 4]>,
+    uses_runtime_font: bool,
+}
+
 struct PanelState {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    pipeline: wgpu::RenderPipeline,
+    shape_pipeline: wgpu::RenderPipeline,
+    text_pipeline: wgpu::RenderPipeline,
+    font_atlas: FontAtlas,
     size: winit::dpi::PhysicalSize<u32>,
     renderer: WgpuCandidateRenderer,
     engine: XRTabletImeEngine,
@@ -322,9 +401,13 @@ impl PanelState {
         };
         surface.configure(&device, &config);
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let shape_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("suzaku-panel-shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+        });
+        let text_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("suzaku-panel-text-shader"),
+            source: wgpu::ShaderSource::Wgsl(TEXT_SHADER.into()),
         });
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -333,11 +416,11 @@ impl PanelState {
             push_constant_ranges: &[],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let shape_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("suzaku-panel-pipeline"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &shape_shader,
                 entry_point: Some("vs_main"),
                 buffers: &[PanelVertex::desc()],
                 compilation_options: Default::default(),
@@ -354,7 +437,69 @@ impl PanelState {
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &shape_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            multiview: None,
+            cache: None,
+        });
+
+        let text_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("suzaku-font-atlas-bind-group-layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let font_atlas = create_font_atlas(&device, &queue, &text_bind_group_layout);
+        let text_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("suzaku-panel-text-layout"),
+            bind_group_layouts: &[&text_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("suzaku-panel-text-pipeline"),
+            layout: Some(&text_layout),
+            vertex: wgpu::VertexState {
+                module: &text_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[TextVertex::desc()],
+                compilation_options: Default::default(),
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &text_shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
@@ -383,7 +528,9 @@ impl PanelState {
             device,
             queue,
             config: config.clone(),
-            pipeline,
+            shape_pipeline,
+            text_pipeline,
+            font_atlas,
             size,
             renderer: WgpuCandidateRenderer::new(config.width as f32, config.height as f32),
             engine,
@@ -395,6 +542,10 @@ impl PanelState {
                 caret_index: "ni hao".chars().count(),
                 keyboard_shifted: false,
                 keyboard_numeric: false,
+                settings_open: false,
+                text_scale: DisplayTextScale::Medium,
+                candidate_density: CandidateDensity::Cozy,
+                preview_style: PreviewStyle::Compact,
             },
             cursor_position: None,
             modifiers: ModifiersState::default(),
@@ -428,16 +579,34 @@ impl PanelState {
         let snapshot = self.engine.snapshot();
         let scene = self.renderer.build_panel_scene(&snapshot, &self.chrome);
         self.window
-            .set_title(&window_title(&scene, &snapshot.committed_text));
+            .set_title(&window_title(
+                &scene,
+                &snapshot.committed_text,
+                self.font_atlas.uses_runtime_font,
+            ));
 
-        let vertices = build_vertices(&scene, self.config.width as f32, self.config.height as f32);
-        let vertex_buffer = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("suzaku-panel-vertices"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        let shape_vertices =
+            build_shape_vertices(&scene, self.config.width as f32, self.config.height as f32);
+        let shape_vertex_buffer =
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("suzaku-panel-shape-vertices"),
+                    contents: bytemuck::cast_slice(&shape_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+        let text_vertices = build_text_vertices(
+            &scene.atlas_glyphs,
+            &self.font_atlas,
+            self.config.width as f32,
+            self.config.height as f32,
+        );
+        let text_vertex_buffer =
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("suzaku-panel-text-vertices"),
+                    contents: bytemuck::cast_slice(&text_vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -483,9 +652,15 @@ impl PanelState {
                 timestamp_writes: None,
             });
 
-            pass.set_pipeline(&self.pipeline);
-            pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            pass.draw(0..vertices.len() as u32, 0..1);
+            pass.set_pipeline(&self.shape_pipeline);
+            pass.set_vertex_buffer(0, shape_vertex_buffer.slice(..));
+            pass.draw(0..shape_vertices.len() as u32, 0..1);
+            if !text_vertices.is_empty() {
+                pass.set_pipeline(&self.text_pipeline);
+                pass.set_bind_group(0, &self.font_atlas.bind_group, &[]);
+                pass.set_vertex_buffer(0, text_vertex_buffer.slice(..));
+                pass.draw(0..text_vertices.len() as u32, 0..1);
+            }
         }
 
         self.queue.submit([encoder.finish()]);
@@ -514,6 +689,18 @@ impl PanelState {
                 InteractionKind::InputModeButton(mode) => {
                     self.chrome.blur_input();
                     self.chrome.active_input_mode = mode;
+                }
+                InteractionKind::SettingsToggle => {
+                    self.chrome.settings_open = !self.chrome.settings_open;
+                }
+                InteractionKind::SetTextScale(scale) => {
+                    self.chrome.text_scale = scale;
+                }
+                InteractionKind::SetCandidateDensity(density) => {
+                    self.chrome.candidate_density = density;
+                }
+                InteractionKind::SetPreviewStyle(style) => {
+                    self.chrome.preview_style = style;
                 }
                 InteractionKind::VirtualKeyboardKey(key) => {
                     self.chrome.active_input_mode = InputMode::VirtualKeyboard;
@@ -605,15 +792,10 @@ impl PanelState {
     }
 }
 
-fn build_vertices(scene: &RenderScene, width: f32, height: f32) -> Vec<PanelVertex> {
-    let total_quads = scene.quads.len() + scene.text_quads.len();
-    let mut vertices = Vec::with_capacity(total_quads * 6);
+fn build_shape_vertices(scene: &RenderScene, width: f32, height: f32) -> Vec<PanelVertex> {
+    let mut vertices = Vec::with_capacity(scene.quads.len() * 6);
 
     for quad in &scene.quads {
-        push_quad_vertices(&mut vertices, quad, width, height);
-    }
-
-    for quad in &scene.text_quads {
         push_quad_vertices(&mut vertices, quad, width, height);
     }
 
@@ -669,11 +851,321 @@ fn px_to_ndc_y(y: f32, height: f32) -> f32 {
     1.0 - (y / height) * 2.0
 }
 
-fn window_title(scene: &RenderScene, committed_text: &str) -> String {
+fn build_text_vertices(
+    glyphs: &[AtlasGlyph],
+    atlas: &FontAtlas,
+    width: f32,
+    height: f32,
+) -> Vec<TextVertex> {
+    let mut vertices = Vec::with_capacity(glyphs.len() * 6);
+    for glyph in glyphs {
+        let uv = atlas.uv_for(glyph.ch);
+        push_text_quad_vertices(&mut vertices, glyph, uv, width, height);
+    }
+    vertices
+}
+
+fn push_text_quad_vertices(
+    vertices: &mut Vec<TextVertex>,
+    glyph: &AtlasGlyph,
+    uv: [f32; 4],
+    width: f32,
+    height: f32,
+) {
+    let [x, y, w, h] = glyph.rect;
+    let color = glyph.color;
+    let x1 = px_to_ndc_x(x, width);
+    let x2 = px_to_ndc_x(x + w, width);
+    let y1 = px_to_ndc_y(y, height);
+    let y2 = px_to_ndc_y(y + h, height);
+    let [u1, v1, u2, v2] = uv;
+
+    vertices.extend_from_slice(&[
+        TextVertex {
+            position: [x1, y1],
+            uv: [u1, v1],
+            color,
+        },
+        TextVertex {
+            position: [x2, y1],
+            uv: [u2, v1],
+            color,
+        },
+        TextVertex {
+            position: [x2, y2],
+            uv: [u2, v2],
+            color,
+        },
+        TextVertex {
+            position: [x1, y1],
+            uv: [u1, v1],
+            color,
+        },
+        TextVertex {
+            position: [x2, y2],
+            uv: [u2, v2],
+            color,
+        },
+        TextVertex {
+            position: [x1, y2],
+            uv: [u1, v2],
+            color,
+        },
+    ]);
+}
+
+impl FontAtlas {
+    fn uv_for(&self, ch: char) -> [f32; 4] {
+        let key = atlas_lookup_char(ch);
+        self.uv_map
+            .get(&key)
+            .copied()
+            .or_else(|| self.uv_map.get(&'?').copied())
+            .expect("font atlas must contain fallback glyph")
+    }
+}
+
+fn create_font_atlas(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bind_group_layout: &wgpu::BindGroupLayout,
+) -> FontAtlas {
+    if let Some(runtime_font) = load_runtime_font() {
+        return create_runtime_font_atlas(device, queue, bind_group_layout, &runtime_font);
+    }
+
+    create_bitmap_font_atlas(device, queue, bind_group_layout)
+}
+
+fn create_runtime_font_atlas(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    font: &Font,
+) -> FontAtlas {
+    const GLYPH_SIZE: f32 = 28.0;
+    let glyphs = atlas_charset();
+    let mut rendered = Vec::with_capacity(glyphs.len());
+    let mut max_w = 0u32;
+    let mut max_h = 0u32;
+
+    for ch in &glyphs {
+        let (metrics, bitmap) = font.rasterize(*ch, GLYPH_SIZE);
+        max_w = max_w.max(metrics.width as u32);
+        max_h = max_h.max(metrics.height as u32);
+        rendered.push((*ch, metrics, bitmap));
+    }
+
+    let cell_w = max_w.max(12) + 4;
+    let cell_h = max_h.max(16) + 4;
+    let cols = 16u32;
+    let rows = (glyphs.len() as u32).div_ceil(cols);
+    let atlas_w = cols * cell_w;
+    let atlas_h = rows * cell_h;
+    let mut bytes = vec![0u8; (atlas_w * atlas_h) as usize];
+    let mut uv_map = HashMap::new();
+
+    for (index, (ch, metrics, bitmap)) in rendered.iter().enumerate() {
+        let col = index as u32 % cols;
+        let row = index as u32 / cols;
+        let origin_x = col * cell_w + ((cell_w - metrics.width as u32) / 2);
+        let origin_y = row * cell_h + ((cell_h - metrics.height as u32) / 2);
+
+        for y in 0..metrics.height as u32 {
+            for x in 0..metrics.width as u32 {
+                let src = bitmap[(y * metrics.width as u32 + x) as usize];
+                let dst_x = origin_x + x;
+                let dst_y = origin_y + y;
+                bytes[(dst_y * atlas_w + dst_x) as usize] = src;
+            }
+        }
+
+        uv_map.insert(
+            *ch,
+            [
+                (col * cell_w) as f32 / atlas_w as f32,
+                (row * cell_h) as f32 / atlas_h as f32,
+                ((col + 1) * cell_w) as f32 / atlas_w as f32,
+                ((row + 1) * cell_h) as f32 / atlas_h as f32,
+            ],
+        );
+    }
+
+    create_font_atlas_resources(
+        device,
+        queue,
+        bind_group_layout,
+        atlas_w,
+        atlas_h,
+        bytes,
+        uv_map,
+        true,
+    )
+}
+
+fn create_bitmap_font_atlas(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bind_group_layout: &wgpu::BindGroupLayout,
+) -> FontAtlas {
+    const CELL_W: u32 = 8;
+    const CELL_H: u32 = 10;
+    const COLS: u32 = 16;
+    let glyphs = atlas_charset();
+    let rows = (glyphs.len() as u32).div_ceil(COLS);
+    let atlas_w = COLS * CELL_W;
+    let atlas_h = rows * CELL_H;
+    let mut bytes = vec![0u8; (atlas_w * atlas_h) as usize];
+    let mut uv_map = HashMap::new();
+
+    for (index, ch) in glyphs.iter().enumerate() {
+        let col = index as u32 % COLS;
+        let row = index as u32 / COLS;
+        let origin_x = col * CELL_W + 1;
+        let origin_y = row * CELL_H + 1;
+        for (bitmap_row, pattern) in suzaku_map::ime::gpu::glyph_bitmap(*ch).iter().enumerate() {
+            for bitmap_col in 0..5 {
+                if (pattern >> (4 - bitmap_col)) & 1 == 1 {
+                    let x = origin_x + bitmap_col;
+                    let y = origin_y + bitmap_row as u32;
+                    bytes[(y * atlas_w + x) as usize] = 255;
+                }
+            }
+        }
+        uv_map.insert(
+            *ch,
+            [
+                (col * CELL_W) as f32 / atlas_w as f32,
+                (row * CELL_H) as f32 / atlas_h as f32,
+                ((col + 1) * CELL_W) as f32 / atlas_w as f32,
+                ((row + 1) * CELL_H) as f32 / atlas_h as f32,
+            ],
+        );
+    }
+
+    create_font_atlas_resources(
+        device,
+        queue,
+        bind_group_layout,
+        atlas_w,
+        atlas_h,
+        bytes,
+        uv_map,
+        false,
+    )
+}
+
+fn create_font_atlas_resources(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    atlas_w: u32,
+    atlas_h: u32,
+    bytes: Vec<u8>,
+    uv_map: HashMap<char, [f32; 4]>,
+    uses_runtime_font: bool,
+) -> FontAtlas {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("suzaku-font-atlas"),
+        size: wgpu::Extent3d {
+            width: atlas_w,
+            height: atlas_h,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        texture.as_image_copy(),
+        &bytes,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(atlas_w),
+            rows_per_image: Some(atlas_h),
+        },
+        wgpu::Extent3d {
+            width: atlas_w,
+            height: atlas_h,
+            depth_or_array_layers: 1,
+        },
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("suzaku-font-atlas-sampler"),
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("suzaku-font-atlas-bind-group"),
+        layout: bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+
+    FontAtlas {
+        bind_group,
+        uv_map,
+        uses_runtime_font,
+    }
+}
+
+fn atlas_charset() -> Vec<char> {
+    let mut glyphs: Vec<char> = (32u8..=126u8).map(char::from).collect();
+    glyphs.push('…');
+    glyphs
+}
+
+fn atlas_lookup_char(ch: char) -> char {
+    if ch.is_ascii_alphabetic() {
+        ch.to_ascii_lowercase()
+    } else if ch == '…' {
+        '…'
+    } else if ch.is_ascii() {
+        ch
+    } else {
+        '?'
+    }
+}
+
+fn load_runtime_font() -> Option<Font> {
+    for path in preferred_font_paths() {
+        if let Ok(bytes) = fs::read(path) {
+            if let Ok(font) = Font::from_bytes(bytes, fontdue::FontSettings::default()) {
+                return Some(font);
+            }
+        }
+    }
+    None
+}
+
+fn preferred_font_paths() -> &'static [&'static str] {
+    &[
+        "/System/Library/Fonts/Monaco.ttf",
+        "/System/Library/Fonts/Geneva.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ]
+}
+
+fn window_title(scene: &RenderScene, committed_text: &str, uses_runtime_font: bool) -> String {
     let selected = scene.selected_label.as_deref().unwrap_or("no candidate");
     format!(
-        "Suzaku XR Candidate Panel | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
-        scene.draft_text
+        "Suzaku XR Candidate Panel | font: {} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
+        if uses_runtime_font { "system-atlas" } else { "bitmap-fallback" },
+        scene.draft_text,
     )
 }
 

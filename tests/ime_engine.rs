@@ -286,6 +286,7 @@ fn gpu_scene_contains_text_geometry_for_panel_copy() {
     let scene = renderer.build_scene(&snapshot);
 
     assert!(!scene.text_quads.is_empty());
+    assert!(!scene.atlas_glyphs.is_empty());
     assert!(
         scene
             .text_sections
@@ -365,6 +366,12 @@ fn render_scene_exposes_hierarchical_text_sections() {
         scene
             .text_sections
             .iter()
+            .any(|section| section.role == TextRole::SettingOption)
+    );
+    assert!(
+        scene
+            .text_sections
+            .iter()
             .any(|section| section.role == TextRole::CandidatePrimary && section.layouts.len() >= 2)
     );
 }
@@ -428,6 +435,12 @@ fn render_scene_contains_seed_input_and_input_method_controls() {
             .any(|target| target.kind
                 == InteractionKind::InputModeButton(InputMode::VirtualKeyboard))
     );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SettingsToggle)
+    );
 }
 
 #[cfg(feature = "gpu")]
@@ -450,6 +463,10 @@ fn render_scene_can_collapse_input_method_buttons() {
             caret_index: 5,
             keyboard_shifted: false,
             keyboard_numeric: false,
+            settings_open: false,
+            text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
+            candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
+            preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
         },
     );
 
@@ -481,6 +498,10 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             caret_index: 5,
             keyboard_shifted: false,
             keyboard_numeric: false,
+            settings_open: false,
+            text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
+            candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
+            preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
         },
     );
 
@@ -514,6 +535,10 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             caret_index: 5,
             keyboard_shifted: false,
             keyboard_numeric: false,
+            settings_open: false,
+            text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
+            candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
+            preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
         },
     );
 
@@ -545,6 +570,10 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             caret_index: 5,
             keyboard_shifted: false,
             keyboard_numeric: true,
+            settings_open: false,
+            text_scale: suzaku_map::ime::gpu::DisplayTextScale::Medium,
+            candidate_density: suzaku_map::ime::gpu::CandidateDensity::Cozy,
+            preview_style: suzaku_map::ime::gpu::PreviewStyle::Compact,
         },
     );
 
@@ -552,6 +581,88 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
         == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character('1'))));
     assert!(scene.interactive_targets.iter().any(|target| target.kind
         == InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::ToggleAlphabetic)));
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_exposes_display_settings_when_open() {
+    use suzaku_map::ime::gpu::{
+        CandidateDensity, DisplayTextScale, InputMode, InteractionKind, PanelChromeState,
+        PreviewStyle, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 760.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "ni hao".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 5,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+            settings_open: true,
+            text_scale: DisplayTextScale::Large,
+            candidate_density: CandidateDensity::Compact,
+            preview_style: PreviewStyle::Full,
+        },
+    );
+
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetTextScale(DisplayTextScale::Large))
+    );
+    assert!(scene.interactive_targets.iter().any(
+        |target| target.kind == InteractionKind::SetCandidateDensity(CandidateDensity::Compact)
+    ));
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetPreviewStyle(PreviewStyle::Full))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
+    use suzaku_map::ime::gpu::{
+        CandidateDensity, DisplayTextScale, InputMode, PanelChromeState, PreviewStyle, TextRole,
+        WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("tablet ime");
+    let renderer = WgpuCandidateRenderer::new(680.0, 760.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            seed_text: "tablet ime".into(),
+            input_modes_expanded: true,
+            active_input_mode: InputMode::VirtualKeyboard,
+            input_focused: true,
+            caret_index: 10,
+            keyboard_shifted: false,
+            keyboard_numeric: false,
+            settings_open: true,
+            text_scale: DisplayTextScale::Large,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Full,
+        },
+    );
+
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .any(|layout| layout.role == TextRole::CandidateMeta && layout.lines.len() >= 2)
+    );
 }
 
 #[cfg(feature = "gpu")]

@@ -697,6 +697,8 @@ pub mod gpu {
         ToolLabel,
         ToolButton,
         KeyboardKey,
+        SettingLabel,
+        SettingOption,
         CandidatePrimary,
         CandidateMeta,
     }
@@ -719,6 +721,25 @@ pub mod gpu {
         ToggleAlphabetic,
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum DisplayTextScale {
+        Small,
+        Medium,
+        Large,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum CandidateDensity {
+        Compact,
+        Cozy,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum PreviewStyle {
+        Compact,
+        Full,
+    }
+
     #[derive(Clone, Debug, PartialEq)]
     pub struct PanelChromeState {
         pub seed_text: String,
@@ -728,6 +749,10 @@ pub mod gpu {
         pub caret_index: usize,
         pub keyboard_shifted: bool,
         pub keyboard_numeric: bool,
+        pub settings_open: bool,
+        pub text_scale: DisplayTextScale,
+        pub candidate_density: CandidateDensity,
+        pub preview_style: PreviewStyle,
     }
 
     impl Default for PanelChromeState {
@@ -740,6 +765,10 @@ pub mod gpu {
                 caret_index: 0,
                 keyboard_shifted: false,
                 keyboard_numeric: false,
+                settings_open: false,
+                text_scale: DisplayTextScale::Medium,
+                candidate_density: CandidateDensity::Cozy,
+                preview_style: PreviewStyle::Compact,
             }
         }
     }
@@ -820,6 +849,10 @@ pub mod gpu {
         InputModesToggle,
         InputModeButton(InputMode),
         VirtualKeyboardKey(VirtualKeyboardKey),
+        SettingsToggle,
+        SetTextScale(DisplayTextScale),
+        SetCandidateDensity(CandidateDensity),
+        SetPreviewStyle(PreviewStyle),
         Candidate(usize),
     }
 
@@ -845,6 +878,7 @@ pub mod gpu {
     #[derive(Clone, Debug, PartialEq)]
     pub struct TextLayout {
         pub quads: Vec<CandidateQuad>,
+        pub atlas_glyphs: Vec<AtlasGlyph>,
         pub lines: Vec<String>,
         pub truncated: bool,
         pub bounds: [f32; 4],
@@ -861,12 +895,20 @@ pub mod gpu {
     pub struct RenderScene {
         pub quads: Vec<CandidateQuad>,
         pub text_quads: Vec<CandidateQuad>,
+        pub atlas_glyphs: Vec<AtlasGlyph>,
         pub text_sections: Vec<TextSection>,
         pub hit_targets: Vec<HitTarget>,
         pub interactive_targets: Vec<InteractiveTarget>,
         pub labels: Vec<String>,
         pub selected_label: Option<String>,
         pub draft_text: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct AtlasGlyph {
+        pub ch: char,
+        pub rect: [f32; 4],
+        pub color: [f32; 4],
     }
 
     impl RenderScene {
@@ -918,6 +960,16 @@ pub mod gpu {
             chrome: &PanelChromeState,
         ) -> RenderScene {
             let panel_width = self.scene_width.clamp(360.0, 520.0) - 32.0;
+            let input_value_px = match chrome.text_scale {
+                DisplayTextScale::Small => 2.0,
+                DisplayTextScale::Medium => 3.0,
+                DisplayTextScale::Large => 4.0,
+            };
+            let label_px = match chrome.text_scale {
+                DisplayTextScale::Small => 2.0,
+                DisplayTextScale::Medium => 2.0,
+                DisplayTextScale::Large => 3.0,
+            };
             let input_box_h = 52.0;
             let tools_header_h = 28.0;
             let tool_button_h = 28.0;
@@ -934,23 +986,40 @@ pub mod gpu {
             } else {
                 0.0
             };
-            let item_height = 54.0;
-            let gap = 8.0;
+            let settings_panel_h = if chrome.settings_open { 92.0 } else { 0.0 };
+            let item_height = match (chrome.candidate_density, chrome.preview_style) {
+                (CandidateDensity::Compact, PreviewStyle::Compact) => 48.0,
+                (CandidateDensity::Compact, PreviewStyle::Full) => 62.0,
+                (CandidateDensity::Cozy, PreviewStyle::Compact) => 56.0,
+                (CandidateDensity::Cozy, PreviewStyle::Full) => 76.0,
+            };
+            let gap = if chrome.candidate_density == CandidateDensity::Compact {
+                6.0
+            } else {
+                10.0
+            };
             let suggestions_count = snapshot.candidate_labels.len().min(4) as f32;
             let suggestions_height = if suggestions_count == 0.0 {
                 0.0
             } else {
                 suggestions_count * item_height + (suggestions_count - 1.0) * gap
             };
-            let panel_height =
-                input_box_h + 12.0 + tools_header_h + tools_content_h + 16.0 + suggestions_height;
+            let panel_height = input_box_h
+                + 12.0
+                + tools_header_h
+                + tools_content_h
+                + settings_panel_h
+                + 16.0
+                + suggestions_height;
             let panel_x = ((self.scene_width - panel_width) / 2.0).max(12.0);
             let panel_y = ((self.scene_height - panel_height) / 2.0).max(12.0);
             let input_box_y = panel_y;
             let tools_y = input_box_y + input_box_h + 12.0;
-            let suggestions_y = tools_y + tools_header_h + tools_content_h + 16.0;
+            let settings_y = tools_y + tools_header_h + tools_content_h;
+            let suggestions_y = settings_y + settings_panel_h + 16.0;
             let mut quads = Vec::with_capacity(snapshot.candidate_labels.len() + 6);
             let mut text_quads = Vec::new();
+            let mut atlas_glyphs = Vec::new();
             let mut text_sections = Vec::new();
             let mut hit_targets = Vec::with_capacity(snapshot.candidate_labels.len());
             let mut interactive_targets = Vec::new();
@@ -972,7 +1041,7 @@ pub mod gpu {
                     text: "Seed input".to_string(),
                     origin: [panel_x + 16.0, input_box_y + 8.0],
                     max_width: panel_width - 36.0,
-                    pixel_size: 2.0,
+                    pixel_size: label_px,
                     line_gap: 6.0,
                     max_lines: 1,
                     color: [0.66, 0.76, 0.90, 1.0],
@@ -988,7 +1057,7 @@ pub mod gpu {
                     },
                     origin: [panel_x + 16.0, input_box_y + 24.0],
                     max_width: panel_width - 36.0,
-                    pixel_size: 3.0,
+                    pixel_size: input_value_px,
                     line_gap: 6.0,
                     max_lines: 1,
                     color: if chrome.seed_text.is_empty() {
@@ -1003,6 +1072,7 @@ pub mod gpu {
             ];
             for layout in &header_layouts {
                 text_quads.extend(layout.quads.iter().copied());
+                atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
             }
             text_sections.push(TextSection {
                 role: TextRole::InputLabel,
@@ -1027,6 +1097,19 @@ pub mod gpu {
                 kind: InteractionKind::InputModesToggle,
                 rect: tools_header_rect,
             });
+            let display_button_rect = [panel_x + panel_width - 94.0, tools_y + 3.0, 78.0, 22.0];
+            quads.push(CandidateQuad {
+                rect: display_button_rect,
+                color: if chrome.settings_open {
+                    [0.40, 0.77, 0.96, 1.0]
+                } else {
+                    [0.18, 0.23, 0.31, 0.98]
+                },
+            });
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsToggle,
+                rect: display_button_rect,
+            });
             let tool_header_layout = vec![
                 TextBlock {
                     text: if chrome.input_modes_expanded {
@@ -1035,7 +1118,7 @@ pub mod gpu {
                         "Input methods  show".to_string()
                     },
                     origin: [panel_x + 16.0, tools_y + 7.0],
-                    max_width: panel_width - 32.0,
+                    max_width: panel_width - 140.0,
                     pixel_size: 2.0,
                     line_gap: 6.0,
                     max_lines: 1,
@@ -1047,10 +1130,37 @@ pub mod gpu {
             ];
             for layout in &tool_header_layout {
                 text_quads.extend(layout.quads.iter().copied());
+                atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+            }
+            let display_layout = vec![
+                TextBlock {
+                    text: "Display".to_string(),
+                    origin: [display_button_rect[0] + 8.0, display_button_rect[1] + 6.0],
+                    max_width: display_button_rect[2] - 16.0,
+                    pixel_size: 2.0,
+                    line_gap: 6.0,
+                    max_lines: 1,
+                    color: if chrome.settings_open {
+                        [0.01, 0.10, 0.16, 1.0]
+                    } else {
+                        [0.90, 0.95, 1.0, 1.0]
+                    },
+                    align: TextAlign::Center,
+                    role: TextRole::SettingOption,
+                }
+                .layout(),
+            ];
+            for layout in &display_layout {
+                text_quads.extend(layout.quads.iter().copied());
+                atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
             }
             text_sections.push(TextSection {
                 role: TextRole::ToolLabel,
                 layouts: tool_header_layout,
+            });
+            text_sections.push(TextSection {
+                role: TextRole::SettingOption,
+                layouts: display_layout,
             });
 
             if chrome.input_modes_expanded {
@@ -1096,6 +1206,7 @@ pub mod gpu {
                     }
                     .layout();
                     text_quads.extend(layout.quads.iter().copied());
+                    atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                     tool_layouts.push(layout);
                 }
                 text_sections.push(TextSection {
@@ -1232,6 +1343,7 @@ pub mod gpu {
                             }
                             .layout();
                             text_quads.extend(layout.quads.iter().copied());
+                            atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                             keyboard_layouts.push(layout);
                         }
                     }
@@ -1357,6 +1469,7 @@ pub mod gpu {
                         }
                         .layout();
                         text_quads.extend(layout.quads.iter().copied());
+                        atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         keyboard_layouts.push(layout);
                     }
 
@@ -1365,6 +1478,140 @@ pub mod gpu {
                         layouts: keyboard_layouts,
                     });
                 }
+            }
+
+            if chrome.settings_open {
+                let settings_rect = [
+                    panel_x,
+                    settings_y + 8.0,
+                    panel_width,
+                    settings_panel_h - 8.0,
+                ];
+                quads.push(CandidateQuad {
+                    rect: settings_rect,
+                    color: [0.09, 0.13, 0.20, 0.97],
+                });
+                let mut settings_layouts = Vec::new();
+                let mut option_layouts = Vec::new();
+
+                let sections = [
+                    (
+                        "Text",
+                        [
+                            (
+                                InteractionKind::SetTextScale(DisplayTextScale::Small),
+                                "S",
+                                chrome.text_scale == DisplayTextScale::Small,
+                            ),
+                            (
+                                InteractionKind::SetTextScale(DisplayTextScale::Medium),
+                                "M",
+                                chrome.text_scale == DisplayTextScale::Medium,
+                            ),
+                            (
+                                InteractionKind::SetTextScale(DisplayTextScale::Large),
+                                "L",
+                                chrome.text_scale == DisplayTextScale::Large,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Density",
+                        [
+                            (
+                                InteractionKind::SetCandidateDensity(CandidateDensity::Compact),
+                                "Compact",
+                                chrome.candidate_density == CandidateDensity::Compact,
+                            ),
+                            (
+                                InteractionKind::SetCandidateDensity(CandidateDensity::Cozy),
+                                "Cozy",
+                                chrome.candidate_density == CandidateDensity::Cozy,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Preview",
+                        [
+                            (
+                                InteractionKind::SetPreviewStyle(PreviewStyle::Compact),
+                                "Trim",
+                                chrome.preview_style == PreviewStyle::Compact,
+                            ),
+                            (
+                                InteractionKind::SetPreviewStyle(PreviewStyle::Full),
+                                "Full",
+                                chrome.preview_style == PreviewStyle::Full,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                ];
+
+                for (section_index, (label, options)) in sections.iter().enumerate() {
+                    let row_y = settings_rect[1] + 10.0 + section_index as f32 * 24.0;
+                    let label_layout = TextBlock {
+                        text: (*label).to_string(),
+                        origin: [panel_x + 14.0, row_y + 2.0],
+                        max_width: 72.0,
+                        pixel_size: 2.0,
+                        line_gap: 6.0,
+                        max_lines: 1,
+                        color: [0.70, 0.80, 0.92, 1.0],
+                        align: TextAlign::Left,
+                        role: TextRole::SettingLabel,
+                    }
+                    .layout();
+                    text_quads.extend(label_layout.quads.iter().copied());
+                    atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
+                    settings_layouts.push(label_layout);
+
+                    let mut chip_x = panel_x + 86.0;
+                    for (kind, chip_label, selected) in options {
+                        let chip_w = (chip_label.chars().count() as f32 * 10.0).max(34.0) + 12.0;
+                        let rect = [chip_x, row_y, chip_w, 20.0];
+                        quads.push(CandidateQuad {
+                            rect,
+                            color: if *selected {
+                                [0.40, 0.77, 0.96, 1.0]
+                            } else {
+                                [0.16, 0.20, 0.28, 0.96]
+                            },
+                        });
+                        interactive_targets.push(InteractiveTarget { kind: *kind, rect });
+                        let option_layout = TextBlock {
+                            text: (*chip_label).to_string(),
+                            origin: [chip_x + 6.0, row_y + 5.0],
+                            max_width: chip_w - 12.0,
+                            pixel_size: 2.0,
+                            line_gap: 6.0,
+                            max_lines: 1,
+                            color: if *selected {
+                                [0.01, 0.10, 0.16, 1.0]
+                            } else {
+                                [0.90, 0.95, 1.0, 1.0]
+                            },
+                            align: TextAlign::Center,
+                            role: TextRole::SettingOption,
+                        }
+                        .layout();
+                        text_quads.extend(option_layout.quads.iter().copied());
+                        atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
+                        option_layouts.push(option_layout);
+                        chip_x += chip_w + 8.0;
+                    }
+                }
+
+                text_sections.push(TextSection {
+                    role: TextRole::SettingLabel,
+                    layouts: settings_layouts,
+                });
+                text_sections.push(TextSection {
+                    role: TextRole::SettingOption,
+                    layouts: option_layouts,
+                });
             }
 
             for (index, label) in snapshot.candidate_labels.iter().enumerate() {
@@ -1395,7 +1642,7 @@ pub mod gpu {
                         text: continuation,
                         origin: [panel_x + 18.0, y + 13.0],
                         max_width: panel_width - 36.0,
-                        pixel_size: 3.0,
+                        pixel_size: input_value_px,
                         line_gap: 6.0,
                         max_lines: 1,
                         color: if selected {
@@ -1409,15 +1656,30 @@ pub mod gpu {
                     .layout(),
                     TextBlock {
                         text: format!(
-                            "{}  |  full {}",
+                            "{}  |  {}",
                             if selected { "selected" } else { "tap" },
-                            compact_phrase(label)
+                            if chrome.preview_style == PreviewStyle::Full {
+                                label.to_string()
+                            } else {
+                                compact_phrase(label)
+                            }
                         ),
-                        origin: [panel_x + 18.0, y + 34.0],
+                        origin: [
+                            panel_x + 18.0,
+                            y + if chrome.preview_style == PreviewStyle::Full {
+                                35.0
+                            } else {
+                                34.0
+                            },
+                        ],
                         max_width: panel_width - 36.0,
                         pixel_size: 2.0,
                         line_gap: 6.0,
-                        max_lines: 1,
+                        max_lines: if chrome.preview_style == PreviewStyle::Full {
+                            2
+                        } else {
+                            1
+                        },
                         color: if selected {
                             [0.02, 0.18, 0.26, 1.0]
                         } else {
@@ -1430,6 +1692,7 @@ pub mod gpu {
                 ];
                 for layout in &candidate_layouts {
                     text_quads.extend(layout.quads.iter().copied());
+                    atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                 }
                 text_sections.push(TextSection {
                     role: TextRole::CandidatePrimary,
@@ -1440,6 +1703,7 @@ pub mod gpu {
             RenderScene {
                 quads,
                 text_quads,
+                atlas_glyphs,
                 text_sections,
                 hit_targets,
                 interactive_targets,
@@ -1490,6 +1754,7 @@ pub mod gpu {
         }
 
         let mut quads = Vec::new();
+        let mut atlas_glyphs = Vec::new();
         let mut max_line_width: f32 = 0.0;
 
         for (line_index, line) in lines.iter().enumerate() {
@@ -1513,6 +1778,17 @@ pub mod gpu {
                     cursor_x += block.pixel_size * 4.0;
                     continue;
                 }
+
+                atlas_glyphs.push(AtlasGlyph {
+                    ch,
+                    rect: [
+                        cursor_x,
+                        cursor_y,
+                        block.pixel_size * 5.0,
+                        block.pixel_size * 7.0,
+                    ],
+                    color: block.color,
+                });
 
                 for (row, pattern) in glyph_bitmap(ch).iter().enumerate() {
                     for col in 0..5 {
@@ -1542,6 +1818,7 @@ pub mod gpu {
 
         TextLayout {
             quads,
+            atlas_glyphs,
             lines,
             truncated,
             bounds: [block.origin[0], block.origin[1], max_line_width, height],
@@ -1622,7 +1899,7 @@ pub mod gpu {
         result
     }
 
-    fn glyph_bitmap(ch: char) -> [u8; 7] {
+    pub fn glyph_bitmap(ch: char) -> [u8; 7] {
         match ch.to_ascii_lowercase() {
             'a' => [
                 0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001,
