@@ -691,7 +691,7 @@ fn append_gear_icon_quads(
 
 #[cfg(feature = "gpu")]
 pub mod gpu {
-    use crate::platform::gpu_host::{voice_status_text, voice_transcript_placeholder};
+    use crate::platform::voice_host::{voice_status_text, voice_transcript_placeholder};
 
     use super::{
         Snapshot, append_gear_icon_quads, display_candidate_continuation, measure_text_prefix_width,
@@ -844,6 +844,8 @@ pub mod gpu {
         pub text_smoothing: TextSmoothing,
         pub voice_state: VoiceCaptureState,
         pub voice_permission: VoicePermissionState,
+        pub voice_backend_label: String,
+        pub voice_supports_live_capture: bool,
         pub voice_transcript: String,
         pub llm_enabled: bool,
         pub llm_model: LlmModelPreset,
@@ -875,6 +877,8 @@ pub mod gpu {
                 text_smoothing: TextSmoothing::Smooth,
                 voice_state: VoiceCaptureState::Idle,
                 voice_permission: VoicePermissionState::Unknown,
+                voice_backend_label: "Unknown Voice Host".to_string(),
+                voice_supports_live_capture: false,
                 voice_transcript: String::new(),
                 llm_enabled: false,
                 llm_model: LlmModelPreset::Llama32_3b,
@@ -1703,7 +1707,11 @@ pub mod gpu {
                     });
 
                     let transcript = if chrome.voice_transcript.is_empty() {
-                        voice_transcript_placeholder(chrome.voice_permission).to_string()
+                        voice_transcript_placeholder(
+                            chrome.voice_permission,
+                            &chrome.voice_backend_label,
+                            chrome.voice_supports_live_capture,
+                        )
                     } else {
                         chrome.voice_transcript.clone()
                     };
@@ -1711,10 +1719,11 @@ pub mod gpu {
                         chrome.voice_state,
                         chrome.voice_permission,
                         !chrome.voice_transcript.is_empty(),
+                        &chrome.voice_backend_label,
                     );
                     let voice_layouts = vec![
                         TextBlock {
-                            text: status_text.to_string(),
+                            text: status_text,
                             origin: [panel_x + 14.0, voice_y + 10.0],
                             max_width: panel_width - 28.0,
                             pixel_size: 2.0,

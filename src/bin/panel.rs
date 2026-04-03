@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
@@ -16,9 +17,11 @@ use suzaku_map::ime::gpu::{
 use suzaku_map::ime::{CommitOptions, EngineConfig, InputSource, SignalState, XRTabletImeEngine};
 use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
 use suzaku_map::platform::gpu_host::{
-    HostSpeechRecognizer, configure_event_loop_builder, decorate_main_window_attributes,
+    configure_event_loop_builder, decorate_main_window_attributes,
     decorate_settings_window_attributes, is_quit_shortcut, preferred_font_paths,
 };
+use suzaku_map::platform::settings_host::display_settings_path;
+use suzaku_map::platform::voice_host::HostSpeechRecognizer;
 use suzaku_map::platform::{host_platform, support_for};
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
@@ -672,6 +675,7 @@ impl PanelState {
                     },
                 ],
             });
+        let voice = VoiceInputController::new();
         let had_initial_chrome = initial_chrome.is_some();
         let mut chrome = initial_chrome.unwrap_or(PanelChromeState {
             seed_text: "ni hao".into(),
@@ -690,6 +694,8 @@ impl PanelState {
             text_smoothing: TextSmoothing::Smooth,
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
+            voice_backend_label: "Unknown Voice Host".to_string(),
+            voice_supports_live_capture: false,
             voice_transcript: String::new(),
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
@@ -707,6 +713,16 @@ impl PanelState {
             }
         } else if let Some(saved) = load_display_settings() {
             apply_display_settings(&mut chrome, &saved);
+        }
+
+        if let Some(bridge) = &voice.bridge {
+            chrome.voice_backend_label = bridge.source_label().to_string();
+            chrome.voice_supports_live_capture = bridge.supports_live_capture();
+            chrome.voice_permission = bridge.permission_state();
+        } else {
+            chrome.voice_backend_label = "Fallback Samples".to_string();
+            chrome.voice_supports_live_capture = false;
+            chrome.voice_permission = VoicePermissionState::Unavailable;
         }
 
         let font_atlas = create_font_atlas(
@@ -780,7 +796,7 @@ impl PanelState {
             renderer: WgpuCandidateRenderer::new(config.width as f32, config.height as f32),
             engine,
             chrome,
-            voice: VoiceInputController::new(),
+            voice,
             cursor_position: None,
             modifiers: ModifiersState::default(),
             handwriting_dragging: false,
@@ -927,6 +943,8 @@ impl PanelState {
     fn poll_voice_bridge(&mut self) {
         if let Some(bridge) = &self.voice.bridge {
             self.chrome.voice_permission = bridge.permission_state();
+            self.chrome.voice_backend_label = bridge.source_label().to_string();
+            self.chrome.voice_supports_live_capture = bridge.supports_live_capture();
             if self.chrome.voice_permission != VoicePermissionState::Ready
                 && self.chrome.voice_state == VoiceCaptureState::Listening
             {
@@ -937,6 +955,8 @@ impl PanelState {
             }
         } else {
             self.chrome.voice_permission = VoicePermissionState::Unavailable;
+            self.chrome.voice_backend_label = "Fallback Samples".to_string();
+            self.chrome.voice_supports_live_capture = false;
         }
     }
 
@@ -961,6 +981,7 @@ impl PanelState {
         }
 
         if bridge.start() {
+            bridge.seed_debug_transcript_from_env();
             self.chrome.voice_state = VoiceCaptureState::Listening;
         } else {
             let permission = bridge.permission_state();
@@ -2007,10 +2028,6 @@ fn load_runtime_font(font_face: FontFaceChoice) -> Option<(Font, String)> {
     None
 }
 
-fn display_settings_path() -> &'static str {
-    ".suzaku-panel-settings"
-}
-
 impl From<&PanelChromeState> for PersistedDisplaySettings {
     fn from(chrome: &PanelChromeState) -> Self {
         Self {
@@ -2056,7 +2073,9 @@ fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result
         encode_llm_model(settings.llm_model),
         encode_llm_temperature(settings.llm_temperature),
     );
-    fs::write(display_settings_path(), contents)
+    let path = display_settings_path();
+    ensure_settings_parent(&path)?;
+    fs::write(path, contents)
 }
 
 fn load_display_settings() -> Option<PersistedDisplaySettings> {
@@ -2126,6 +2145,13 @@ fn load_display_settings() -> Option<PersistedDisplaySettings> {
     }
 
     Some(settings)
+}
+
+fn ensure_settings_parent(path: &PathBuf) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    Ok(())
 }
 
 fn encode_text_scale(value: DisplayTextScale) -> &'static str {

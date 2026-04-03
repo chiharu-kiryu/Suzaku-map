@@ -60,10 +60,16 @@ pub fn support_for(platform: TargetPlatform) -> PlatformSupport {
     }
 }
 
+pub mod fallback_voice;
+pub mod gpu_host;
 pub mod linux;
 pub mod macos;
+#[cfg(target_os = "macos")]
+pub mod macos_voice;
+pub mod settings_host;
+pub mod voice_host;
 pub mod windows;
-pub mod gpu_host;
+pub mod windows_voice;
 
 pub const PLATFORM_SUPPORT_ROADMAP: [PlatformSupport; 5] = [
     support_for_const(TargetPlatform::MacOs),

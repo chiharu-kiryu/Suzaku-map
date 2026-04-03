@@ -90,6 +90,30 @@ The intent is to keep the IME engine and renderer portable, while moving platfor
 
 Today, macOS is the most complete target. Windows is the next primary host target. Ubuntu, Arch Linux, and SteamOS remain planned secondary hosts after the desktop path is stable on macOS and Windows.
 
+## Windows Voice Status
+
+Windows voice input now has a native bridge boundary in place:
+
+- Native bridge: [src/windows/speech_bridge.cpp](./src/windows/speech_bridge.cpp)
+- Rust host wrapper: [src/platform/windows_voice.rs](./src/platform/windows_voice.rs)
+- Host selector: [src/platform/voice_host.rs](./src/platform/voice_host.rs)
+
+Today this Windows path supports:
+
+- native FFI state, permission, start, stop, and transcript polling entry points
+- debug transcript injection through `SUZAKU_WINDOWS_VOICE_SAMPLE`
+- debug live-capture and error-state toggles through environment variables
+- full panel-to-transcript-to-seed integration on the Rust side
+
+It does not yet ship real live speech capture from the Windows system recognizer. The current bridge reports that live capture is not available yet, so the remaining work is concentrated in the native bridge implementation rather than the panel host flow.
+
+Current Windows bridge debug toggles:
+
+- `SUZAKU_WINDOWS_VOICE_SAMPLE="hello world"` seeds a transcript into the native bridge
+- `SUZAKU_WINDOWS_VOICE_NATIVE_LIVE=1` reports that live capture is available
+- `SUZAKU_WINDOWS_VOICE_FORCE_DENIED=1` forces a denied permission state
+- `SUZAKU_WINDOWS_VOICE_FORCE_ERROR=1` forces an error state
+
 ## Panel Controls
 
 The GPU candidate panel is a lightweight host for XR/tablet-style selection:

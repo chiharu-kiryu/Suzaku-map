@@ -15,4 +15,16 @@ fn main() {
             "cargo:rustc-link-arg-bin=panel=-Wl,-sectcreate,__TEXT,__info_plist,src/macos/SuzakuPanel-Info.plist"
         );
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        cc::Build::new()
+            .cpp(true)
+            .flag_if_supported("/std:c++17")
+            .flag_if_supported("-std=c++17")
+            .file("src/windows/speech_bridge.cpp")
+            .compile("suzaku_windows_speech_bridge");
+
+        println!("cargo:rerun-if-changed=src/windows/speech_bridge.cpp");
+    }
 }
