@@ -1075,6 +1075,120 @@ pub mod gpu {
         pub scene_height: f32,
     }
 
+    #[derive(Debug, Clone, Copy)]
+    struct PanelSceneMetrics {
+        panel_width: f32,
+        panel_x: f32,
+        panel_y: f32,
+        section_gap: f32,
+        input_box_h: f32,
+        tools_header_h: f32,
+        tool_button_h: f32,
+        tool_gap: f32,
+        tools_content_h: f32,
+        settings_panel_h: f32,
+        item_height: f32,
+        item_gap: f32,
+        chip_section_h: f32,
+        candidate_columns: usize,
+    }
+
+    impl PanelSceneMetrics {
+        fn new(
+            scene_width: f32,
+            scene_height: f32,
+            responsive_scale: f32,
+            chrome: &PanelChromeState,
+            sentence_count: usize,
+        ) -> Self {
+            let scene_margin = (14.0 * responsive_scale).max(10.0);
+            let max_panel_width = (scene_width - scene_margin * 2.0).max(320.0);
+            let min_panel_width = 380.0_f32.min(max_panel_width);
+            let desired_panel_width = scene_width * 0.84;
+            let panel_width = desired_panel_width
+                .min(max_panel_width)
+                .max(min_panel_width);
+            let input_box_h = 74.0 * responsive_scale;
+            let tools_header_h = 24.0 * responsive_scale;
+            let tool_button_h = 26.0 * responsive_scale;
+            let tool_gap = 8.0 * responsive_scale;
+            let section_gap = 12.0 * responsive_scale;
+            let extended_input_panel_h = if chrome.input_modes_expanded {
+                match chrome.active_input_mode {
+                    InputMode::VirtualKeyboard => 154.0 * responsive_scale,
+                    InputMode::Dictation => 104.0 * responsive_scale,
+                    InputMode::Handwriting => 178.0 * responsive_scale,
+                }
+            } else {
+                0.0
+            };
+            let tools_content_h = if chrome.input_modes_expanded {
+                tool_button_h + 8.0 * responsive_scale + extended_input_panel_h
+            } else {
+                0.0
+            };
+            let settings_panel_h = if chrome.settings_open { 196.0 } else { 0.0 };
+            let item_height = match (chrome.candidate_density, chrome.preview_style) {
+                (CandidateDensity::Compact, PreviewStyle::Compact) => 74.0,
+                (CandidateDensity::Compact, PreviewStyle::Full) => 94.0,
+                (CandidateDensity::Cozy, PreviewStyle::Compact) => 84.0,
+                (CandidateDensity::Cozy, PreviewStyle::Full) => 108.0,
+            } * responsive_scale;
+            let item_gap = if chrome.candidate_density == CandidateDensity::Compact {
+                6.0
+            } else {
+                8.0
+            } * responsive_scale;
+            let chip_section_h = if chrome.next_token_candidates.is_empty() {
+                0.0
+            } else {
+                68.0 * responsive_scale
+            };
+            let candidate_columns = if panel_width >= 720.0 && sentence_count > 2 {
+                2
+            } else {
+                1
+            };
+            let sentence_rows = if sentence_count == 0 {
+                0
+            } else {
+                sentence_count.div_ceil(candidate_columns)
+            };
+            let sentence_height = if sentence_rows == 0 {
+                0.0
+            } else {
+                sentence_rows as f32 * item_height + (sentence_rows as f32 - 1.0) * item_gap
+            };
+            let panel_height = input_box_h
+                + section_gap
+                + tools_header_h
+                + tools_content_h
+                + settings_panel_h
+                + section_gap
+                + chip_section_h
+                + sentence_height;
+            let panel_x = ((scene_width - panel_width) / 2.0).max(scene_margin);
+            let panel_y = ((scene_height - panel_height) / 2.0).max(10.0 * responsive_scale);
+
+            Self {
+                panel_width,
+                panel_x,
+                panel_y,
+                section_gap,
+                input_box_h,
+                tools_header_h,
+                tool_button_h,
+                tool_gap,
+                tools_content_h,
+                settings_panel_h,
+                item_height,
+                item_gap,
+                chip_section_h,
+                candidate_columns,
+            }
+        }
+    }
+
     impl WgpuCandidateRenderer {
         pub fn new(scene_width: f32, scene_height: f32) -> Self {
             Self {
@@ -1104,13 +1218,6 @@ pub mod gpu {
             chrome: &PanelChromeState,
         ) -> RenderScene {
             let responsive_scale = self.responsive_scale();
-            let scene_margin = (16.0 * responsive_scale).max(12.0);
-            let max_panel_width = (self.scene_width - scene_margin * 2.0).max(320.0);
-            let min_panel_width = 360.0_f32.min(max_panel_width);
-            let desired_panel_width = self.scene_width * 0.78;
-            let panel_width = desired_panel_width
-                .min(max_panel_width)
-                .max(min_panel_width);
             let input_value_px = match chrome.text_scale {
                 DisplayTextScale::Small => 2.0,
                 DisplayTextScale::Medium => 3.0,
@@ -1131,68 +1238,22 @@ pub mod gpu {
                 TextSpacing::Normal => 6.0,
                 TextSpacing::Relaxed => 9.0,
             } * responsive_scale;
-            let input_box_h = 82.0 * responsive_scale;
-            let tools_header_h = 28.0 * responsive_scale;
-            let tool_button_h = 28.0 * responsive_scale;
-            let tool_gap = 8.0 * responsive_scale;
-            let extended_input_panel_h = if chrome.input_modes_expanded {
-                match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 170.0 * responsive_scale,
-                    InputMode::Dictation => 116.0 * responsive_scale,
-                    InputMode::Handwriting => 196.0 * responsive_scale,
-                }
-            } else {
-                0.0
-            };
-            let tools_content_h = if chrome.input_modes_expanded {
-                tool_button_h + 10.0 * responsive_scale + extended_input_panel_h
-            } else {
-                0.0
-            };
-            let settings_panel_h = if chrome.settings_open { 208.0 } else { 0.0 };
-            let item_height = match (chrome.candidate_density, chrome.preview_style) {
-                (CandidateDensity::Compact, PreviewStyle::Compact) => 84.0,
-                (CandidateDensity::Compact, PreviewStyle::Full) => 108.0,
-                (CandidateDensity::Cozy, PreviewStyle::Compact) => 96.0,
-                (CandidateDensity::Cozy, PreviewStyle::Full) => 124.0,
-            } * responsive_scale;
-            let gap = if chrome.candidate_density == CandidateDensity::Compact {
-                6.0
-            } else {
-                10.0
-            } * responsive_scale;
             let visible_sentence_candidates: Vec<String> =
                 chrome.sentence_candidates.iter().take(4).cloned().collect();
-            let sentence_count = visible_sentence_candidates.len() as f32;
-            let sentence_height = if sentence_count == 0.0 {
-                0.0
-            } else {
-                sentence_count * item_height + (sentence_count - 1.0) * gap
-            };
-            let chip_rows = if chrome.next_token_candidates.is_empty() {
-                0.0
-            } else {
-                2.0
-            };
-            let chip_section_h = if chip_rows == 0.0 {
-                0.0
-            } else {
-                82.0 * responsive_scale
-            };
-            let panel_height = input_box_h
-                + 12.0 * responsive_scale
-                + tools_header_h
-                + tools_content_h
-                + settings_panel_h
-                + 16.0 * responsive_scale
-                + chip_section_h
-                + sentence_height;
-            let panel_x = ((self.scene_width - panel_width) / 2.0).max(scene_margin);
-            let panel_y = ((self.scene_height - panel_height) / 2.0).max(16.0 * responsive_scale);
+            let metrics = PanelSceneMetrics::new(
+                self.scene_width,
+                self.scene_height,
+                responsive_scale,
+                chrome,
+                visible_sentence_candidates.len(),
+            );
+            let panel_width = metrics.panel_width;
+            let panel_x = metrics.panel_x;
+            let panel_y = metrics.panel_y;
             let input_box_y = panel_y;
-            let tools_y = input_box_y + input_box_h + 12.0 * responsive_scale;
-            let settings_y = tools_y + tools_header_h + tools_content_h;
-            let suggestions_y = settings_y + settings_panel_h + 16.0 * responsive_scale;
+            let tools_y = input_box_y + metrics.input_box_h + metrics.section_gap;
+            let settings_y = tools_y + metrics.tools_header_h + metrics.tools_content_h;
+            let suggestions_y = settings_y + metrics.settings_panel_h + metrics.section_gap;
             let mut quads = Vec::with_capacity(snapshot.candidate_labels.len() + 6);
             let mut text_quads = Vec::new();
             let mut atlas_glyphs = Vec::new();
@@ -1200,7 +1261,7 @@ pub mod gpu {
             let mut hit_targets = Vec::with_capacity(snapshot.candidate_labels.len());
             let mut interactive_targets = Vec::new();
             quads.push(CandidateQuad {
-                rect: [panel_x, input_box_y, panel_width, input_box_h],
+                rect: [panel_x, input_box_y, panel_width, metrics.input_box_h],
                 color: if chrome.input_focused {
                     [0.11, 0.16, 0.24, 0.99]
                 } else {
@@ -1209,7 +1270,7 @@ pub mod gpu {
             });
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::SeedInput,
-                rect: [panel_x, input_box_y, panel_width, input_box_h],
+                rect: [panel_x, input_box_y, panel_width, metrics.input_box_h],
             });
 
             let header_layouts = vec![
@@ -1315,7 +1376,7 @@ pub mod gpu {
                 },
             );
 
-            let tools_header_rect = [panel_x, tools_y, panel_width, tools_header_h];
+            let tools_header_rect = [panel_x, tools_y, panel_width, metrics.tools_header_h];
             quads.push(CandidateQuad {
                 rect: tools_header_rect,
                 color: [0.12, 0.16, 0.24, 0.96],
@@ -1356,8 +1417,9 @@ pub mod gpu {
             });
 
             if chrome.input_modes_expanded {
-                let button_y = tools_y + tools_header_h + 8.0 * responsive_scale;
-                let button_w = (panel_width - 16.0 * responsive_scale - tool_gap * 2.0) / 3.0;
+                let button_y = tools_y + metrics.tools_header_h + 6.0 * responsive_scale;
+                let button_w =
+                    (panel_width - 16.0 * responsive_scale - metrics.tool_gap * 2.0) / 3.0;
                 let buttons = [
                     (InputMode::VirtualKeyboard, "Keyboard"),
                     (InputMode::Dictation, "Voice"),
@@ -1366,9 +1428,9 @@ pub mod gpu {
 
                 let mut tool_layouts = Vec::new();
                 for (index, (mode, label)) in buttons.iter().enumerate() {
-                    let x = panel_x + index as f32 * (button_w + tool_gap);
+                    let x = panel_x + index as f32 * (button_w + metrics.tool_gap);
                     let selected = *mode == chrome.active_input_mode;
-                    let rect = [x, button_y, button_w, tool_button_h];
+                    let rect = [x, button_y, button_w, metrics.tool_button_h];
                     quads.push(CandidateQuad {
                         rect,
                         color: if selected {
@@ -1411,7 +1473,7 @@ pub mod gpu {
                 });
 
                 if chrome.active_input_mode == InputMode::VirtualKeyboard {
-                    let keyboard_y = button_y + tool_button_h + 10.0 * responsive_scale;
+                    let keyboard_y = button_y + metrics.tool_button_h + 8.0 * responsive_scale;
                     let key_gap = 6.0 * responsive_scale;
                     let row_h = 28.0 * responsive_scale;
                     let mut keyboard_layouts = Vec::new();
@@ -1699,7 +1761,7 @@ pub mod gpu {
                         layouts: keyboard_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Dictation {
-                    let voice_y = button_y + tool_button_h + 10.0;
+                    let voice_y = button_y + metrics.tool_button_h + 8.0 * responsive_scale;
                     let voice_rect = [panel_x, voice_y, panel_width, 108.0];
                     quads.push(CandidateQuad {
                         rect: voice_rect,
@@ -1842,7 +1904,7 @@ pub mod gpu {
                         layouts: voice_action_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Handwriting {
-                    let handwriting_y = button_y + tool_button_h + 10.0;
+                    let handwriting_y = button_y + metrics.tool_button_h + 8.0 * responsive_scale;
                     let canvas_rect = [panel_x, handwriting_y + 22.0, panel_width, 108.0];
                     quads.push(CandidateQuad {
                         rect: canvas_rect,
@@ -1976,7 +2038,7 @@ pub mod gpu {
                     panel_x,
                     settings_y + 8.0,
                     panel_width,
-                    settings_panel_h - 8.0,
+                    metrics.settings_panel_h - 8.0,
                 ];
                 quads.push(CandidateQuad {
                     rect: settings_rect,
@@ -2352,8 +2414,8 @@ pub mod gpu {
                 }
             }
 
-            let sentence_y = suggestions_y + chip_section_h;
-            let candidate_columns = if panel_width >= 760.0 { 2 } else { 1 };
+            let sentence_y = suggestions_y + metrics.chip_section_h;
+            let candidate_columns = metrics.candidate_columns;
             let candidate_gap_x = 12.0 * responsive_scale;
             let candidate_card_w = if candidate_columns == 2 {
                 (panel_width - candidate_gap_x) / 2.0
@@ -2364,11 +2426,11 @@ pub mod gpu {
                 let column = index % candidate_columns;
                 let row = index / candidate_columns;
                 let x = panel_x + column as f32 * (candidate_card_w + candidate_gap_x);
-                let y = sentence_y + row as f32 * (item_height + gap);
+                let y = sentence_y + row as f32 * (metrics.item_height + metrics.item_gap);
                 let selected = index == snapshot.selected_index;
                 let continuation = display_candidate_continuation(&snapshot.seed_text, label);
                 let quad = CandidateQuad {
-                    rect: [x, y, candidate_card_w, item_height],
+                    rect: [x, y, candidate_card_w, metrics.item_height],
                     color: if selected {
                         [0.39, 0.78, 0.96, 1.0]
                     } else if snapshot.degraded {

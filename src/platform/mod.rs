@@ -63,6 +63,7 @@ pub fn support_for(platform: TargetPlatform) -> PlatformSupport {
 pub mod fallback_voice;
 pub mod gpu_host;
 pub mod linux;
+pub mod linux_voice;
 pub mod macos;
 #[cfg(target_os = "macos")]
 pub mod macos_voice;

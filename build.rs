@@ -27,4 +27,13 @@ fn main() {
 
         println!("cargo:rerun-if-changed=src/windows/speech_bridge.cpp");
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        cc::Build::new()
+            .file("src/linux/speech_bridge.c")
+            .compile("suzaku_linux_speech_bridge");
+
+        println!("cargo:rerun-if-changed=src/linux/speech_bridge.c");
+    }
 }

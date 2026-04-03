@@ -95,7 +95,7 @@ Today, macOS is the most complete target. Windows is the next primary host targe
 Ubuntu now has a dedicated host path instead of falling straight into the generic fallback:
 
 - Linux support profile: [src/platform/linux.rs](./src/platform/linux.rs)
-- Ubuntu voice backend: [src/platform/ubuntu_voice.rs](./src/platform/ubuntu_voice.rs)
+- Linux voice backend: [src/platform/linux_voice.rs](./src/platform/linux_voice.rs)
 - Shared host selector: [src/platform/voice_host.rs](./src/platform/voice_host.rs)
 
 Today this Ubuntu path supports:
@@ -108,6 +108,53 @@ Today this Ubuntu path supports:
 - runtime probe for Portal/PipeWire availability, with explicit override flags through `SUZAKU_LINUX_PORTAL_AVAILABLE=1` and `SUZAKU_LINUX_PIPEWIRE_AVAILABLE=1`
 
 It does not yet expose real live speech capture on Ubuntu, but it is now a first-class host path rather than a generic fallback bucket.
+
+## Linux Host Flavors
+
+Ubuntu, Arch Linux, and SteamOS now share the same Linux host selector and voice-backend shape:
+
+- Linux support profile: [src/platform/linux.rs](./src/platform/linux.rs)
+- Shared Linux voice backend: [src/platform/linux_voice.rs](./src/platform/linux_voice.rs)
+- Host selector: [src/platform/voice_host.rs](./src/platform/voice_host.rs)
+
+The current Linux flavor can be overridden with:
+
+- `SUZAKU_LINUX_HOST=ubuntu`
+- `SUZAKU_LINUX_HOST=arch`
+- `SUZAKU_LINUX_HOST=steamos`
+
+All three flavors currently share:
+
+- the same `PipeWire / Portal Host` voice backend family
+- a Linux native bridge skeleton at [src/linux/speech_bridge.c](./src/linux/speech_bridge.c)
+- runtime probe for `xdg-desktop-portal`, `DBUS_SESSION_BUS_ADDRESS`, `pipewire`, `pipewire-pulse`, and `PIPEWIRE_RUNTIME_DIR`
+- explicit environment overrides through `SUZAKU_LINUX_PORTAL_AVAILABLE=1` and `SUZAKU_LINUX_PIPEWIRE_AVAILABLE=1`
+- debug transcript injection through `SUZAKU_LINUX_VOICE_SAMPLE`
+
+The current Linux native bridge already owns:
+
+- portal availability detection
+- PipeWire availability detection
+- live-capture readiness gating
+- transcript queue plumbing for debug-seeded end-to-end panel testing
+
+What it does not do yet is open a real PipeWire stream or xdg-desktop-portal speech session. That remaining work is now concentrated in [src/linux/speech_bridge.c](./src/linux/speech_bridge.c), without needing more Rust-side host refactors.
+
+### Arch Linux Host Status
+
+Arch Linux currently uses the shared Linux selector with an Arch-specific host flavor label:
+
+- backend label: `PipeWire / Portal Host · Arch`
+- support tier: secondary desktop host
+- current limitation: live capture is still gated on the shared Linux backend probe and has not been wired to a real system recognizer yet
+
+### SteamOS Host Status
+
+SteamOS currently uses the shared Linux selector with a SteamOS-specific host flavor label:
+
+- backend label: `PipeWire / Portal Host · SteamOS`
+- support tier: secondary desktop/handheld host
+- current limitation: live capture is still gated on the shared Linux backend probe and has not been wired to a real system recognizer yet
 
 ## Windows Voice Status
 

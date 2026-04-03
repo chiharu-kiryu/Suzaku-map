@@ -195,6 +195,34 @@ mod tests {
     }
 
     #[test]
+    fn linux_host_flavor_override_updates_arch_label() {
+        unsafe {
+            std::env::set_var("SUZAKU_LINUX_HOST", "arch");
+        }
+
+        assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Arch);
+        assert!(linux_voice_backend_label().contains("Arch"));
+
+        unsafe {
+            std::env::remove_var("SUZAKU_LINUX_HOST");
+        }
+    }
+
+    #[test]
+    fn linux_host_flavor_override_updates_steamos_label() {
+        unsafe {
+            std::env::set_var("SUZAKU_LINUX_HOST", "steamos");
+        }
+
+        assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::SteamOs);
+        assert!(linux_voice_backend_label().contains("SteamOS"));
+
+        unsafe {
+            std::env::remove_var("SUZAKU_LINUX_HOST");
+        }
+    }
+
+    #[test]
     fn linux_portal_and_pipewire_flags_default_off() {
         unsafe {
             std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
