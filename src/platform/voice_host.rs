@@ -3,6 +3,8 @@ use crate::ime::gpu::{VoiceCaptureState, VoicePermissionState};
 use crate::platform::fallback_voice::FallbackSpeechBridge;
 #[cfg(target_os = "macos")]
 use crate::platform::macos_voice::MacOsSpeechBridge;
+#[cfg(target_os = "linux")]
+use crate::platform::ubuntu_voice::UbuntuSpeechBridge;
 #[cfg(target_os = "windows")]
 use crate::platform::windows_voice::WindowsSpeechBridge;
 
@@ -70,6 +72,8 @@ enum VoiceBackend {
     MacOs(MacOsSpeechBridge),
     #[cfg(target_os = "windows")]
     Windows(WindowsSpeechBridge),
+    #[cfg(target_os = "linux")]
+    Ubuntu(UbuntuSpeechBridge),
     Fallback(FallbackSpeechBridge),
 }
 
@@ -96,7 +100,14 @@ impl HostSpeechRecognizer {
             });
         }
 
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(target_os = "linux")]
+        {
+            return Some(Self {
+                backend: VoiceBackend::Ubuntu(UbuntuSpeechBridge::new()),
+            });
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
             return Some(Self {
                 backend: VoiceBackend::Fallback(FallbackSpeechBridge::new()),
@@ -110,6 +121,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.start(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.start(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.start(),
             VoiceBackend::Fallback(bridge) => bridge.start(),
         }
     }
@@ -120,6 +133,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.request_permissions(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.request_permissions(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.request_permissions(),
             VoiceBackend::Fallback(bridge) => bridge.request_permissions(),
         }
     }
@@ -130,6 +145,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.stop(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.stop(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.stop(),
             VoiceBackend::Fallback(bridge) => bridge.stop(),
         }
     }
@@ -140,6 +157,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.permission_state(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.permission_state(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.permission_state(),
             VoiceBackend::Fallback(bridge) => bridge.permission_state(),
         }
     }
@@ -150,6 +169,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.poll_transcript(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.poll_transcript(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.poll_transcript(),
             VoiceBackend::Fallback(bridge) => bridge.poll_transcript(),
         }
     }
@@ -160,6 +181,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(_) => {}
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.seed_debug_transcript_from_env(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.seed_debug_transcript_from_env(),
             VoiceBackend::Fallback(_) => {}
         }
     }
@@ -170,6 +193,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.source_label(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.source_label(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.source_label(),
             VoiceBackend::Fallback(bridge) => bridge.source_label(),
         }
     }
@@ -180,6 +205,8 @@ impl HostSpeechRecognizer {
             VoiceBackend::MacOs(bridge) => bridge.supports_live_capture(),
             #[cfg(target_os = "windows")]
             VoiceBackend::Windows(bridge) => bridge.supports_live_capture(),
+            #[cfg(target_os = "linux")]
+            VoiceBackend::Ubuntu(bridge) => bridge.supports_live_capture(),
             VoiceBackend::Fallback(bridge) => bridge.supports_live_capture(),
         }
     }

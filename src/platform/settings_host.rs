@@ -1,6 +1,8 @@
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(target_os = "linux")]
+use crate::platform::linux;
 #[cfg(target_os = "windows")]
 use crate::platform::windows;
 
@@ -31,10 +33,12 @@ fn settings_directory() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
         if let Some(config_home) = env::var_os("XDG_CONFIG_HOME") {
-            return PathBuf::from(config_home).join("suzaku-panel");
+            return PathBuf::from(config_home).join(linux::ubuntu_settings_directory_name());
         }
         if let Some(home) = env::var_os("HOME") {
-            return PathBuf::from(home).join(".config").join("suzaku-panel");
+            return PathBuf::from(home)
+                .join(".config")
+                .join(linux::ubuntu_settings_directory_name());
         }
     }
 

@@ -67,6 +67,7 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub mod macos_voice;
 pub mod settings_host;
+pub mod ubuntu_voice;
 pub mod voice_host;
 pub mod windows;
 pub mod windows_voice;

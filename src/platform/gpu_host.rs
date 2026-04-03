@@ -1,4 +1,6 @@
 use crate::ime::gpu::FontFaceChoice;
+#[cfg(target_os = "linux")]
+use crate::platform::linux;
 #[cfg(target_os = "windows")]
 use crate::platform::windows;
 use winit::event_loop::EventLoopBuilder;
@@ -107,40 +109,7 @@ pub fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'s
 
     #[cfg(target_os = "linux")]
     {
-        return match font_face {
-            FontFaceChoice::Auto => vec![
-                (
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                    "DejaVu Sans Mono",
-                ),
-                (
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "DejaVu Sans",
-                ),
-                (
-                    "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
-                    "Noto Sans CJK",
-                ),
-            ],
-            FontFaceChoice::Monaco => {
-                vec![(
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                    "DejaVu Sans Mono",
-                )]
-            }
-            FontFaceChoice::Geneva => {
-                vec![(
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "DejaVu Sans",
-                )]
-            }
-            FontFaceChoice::ArialUnicode => {
-                vec![(
-                    "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
-                    "Noto Sans CJK",
-                )]
-            }
-        };
+        return linux::ubuntu_preferred_font_paths(font_face);
     }
 
     #[allow(unreachable_code)]

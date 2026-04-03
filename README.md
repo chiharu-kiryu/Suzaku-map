@@ -90,6 +90,25 @@ The intent is to keep the IME engine and renderer portable, while moving platfor
 
 Today, macOS is the most complete target. Windows is the next primary host target. Ubuntu, Arch Linux, and SteamOS remain planned secondary hosts after the desktop path is stable on macOS and Windows.
 
+## Ubuntu Host Status
+
+Ubuntu now has a dedicated host path instead of falling straight into the generic fallback:
+
+- Linux support profile: [src/platform/linux.rs](./src/platform/linux.rs)
+- Ubuntu voice backend: [src/platform/ubuntu_voice.rs](./src/platform/ubuntu_voice.rs)
+- Shared host selector: [src/platform/voice_host.rs](./src/platform/voice_host.rs)
+
+Today this Ubuntu path supports:
+
+- Ubuntu-specific font preference order
+- Ubuntu-specific settings directory naming
+- a dedicated Linux voice backend shared across Ubuntu, Arch, and SteamOS host selection
+- debug transcript injection through `SUZAKU_LINUX_VOICE_SAMPLE` and the Ubuntu compatibility key `SUZAKU_UBUNTU_VOICE_SAMPLE`
+- panel integration that reports `PipeWire / Portal Host` with the current Linux host flavor
+- runtime probe for Portal/PipeWire availability, with explicit override flags through `SUZAKU_LINUX_PORTAL_AVAILABLE=1` and `SUZAKU_LINUX_PIPEWIRE_AVAILABLE=1`
+
+It does not yet expose real live speech capture on Ubuntu, but it is now a first-class host path rather than a generic fallback bucket.
+
 ## Windows Voice Status
 
 Windows voice input now has a native bridge boundary in place:
