@@ -20,8 +20,17 @@ impl PanelState {
             PanelWindowKind::Main => {
                 let mut chrome = self.chrome.clone();
                 chrome.settings_open = false;
-                self.renderer
-                    .build_panel_scene(&self.engine.snapshot(), &chrome)
+                if chrome.compact_mode {
+                    self.renderer.build_compact_scene(
+                        &self.engine.snapshot(),
+                        &chrome,
+                        self.compact_hovered,
+                        self.compact_dragging,
+                    )
+                } else {
+                    self.renderer
+                        .build_panel_scene(&self.engine.snapshot(), &chrome)
+                }
             }
             PanelWindowKind::Settings => self.renderer.build_settings_scene(&self.chrome),
         }
@@ -48,6 +57,11 @@ impl PanelState {
     pub(super) fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
             return;
+        }
+        if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
+            self.expanded_window_size =
+                Some(winit::dpi::LogicalSize::new(width as f64, height as f64));
+            self.note_expanded_window_position();
         }
         self.size.width = width;
         self.size.height = height;
@@ -101,16 +115,16 @@ impl PanelState {
 
         let background = if snapshot.degraded {
             wgpu::Color {
-                r: 0.07,
-                g: 0.07,
-                b: 0.09,
+                r: 0.85,
+                g: 0.88,
+                b: 0.93,
                 a: 1.0,
             }
         } else {
             wgpu::Color {
-                r: 0.03,
-                g: 0.05,
-                b: 0.08,
+                r: 0.93,
+                g: 0.95,
+                b: 0.98,
                 a: 1.0,
             }
         };
@@ -165,6 +179,9 @@ impl PanelState {
                 InteractionKind::SeedInput => {
                     self.chrome.focus_input();
                     self.chrome.move_caret_to_end();
+                }
+                InteractionKind::ToggleCompactMode => {
+                    self.apply_compact_mode(!self.chrome.compact_mode);
                 }
                 InteractionKind::InputModesToggle => {
                     self.chrome.blur_input();

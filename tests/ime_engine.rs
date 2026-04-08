@@ -488,6 +488,7 @@ fn render_scene_can_collapse_input_method_buttons() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: false,
             active_input_mode: InputMode::VirtualKeyboard,
             input_focused: true,
@@ -540,6 +541,7 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
             input_focused: true,
@@ -606,6 +608,7 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::Dictation,
             input_focused: false,
@@ -664,6 +667,7 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
             input_focused: true,
@@ -715,6 +719,7 @@ fn render_scene_exposes_display_settings_when_open() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
             input_focused: true,
@@ -820,6 +825,37 @@ fn settings_scene_exposes_settings_controls_in_a_standalone_window() {
 
 #[cfg(feature = "gpu")]
 #[test]
+fn render_scene_switches_to_compact_floating_bubble_mode() {
+    use suzaku_map::ime::gpu::{InteractionKind, PanelChromeState, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(96.0, 96.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            compact_mode: true,
+            seed_text: "ni hao".into(),
+            ..PanelChromeState::default()
+        },
+    );
+
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::ToggleCompactMode)
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .all(|target| !matches!(target.kind, InteractionKind::Candidate(_)))
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
 fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
     use suzaku_map::ime::gpu::{
         CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, PanelChromeState,
@@ -833,6 +869,7 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
         &snapshot,
         &PanelChromeState {
             seed_text: "tablet ime".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
             input_focused: true,
@@ -937,6 +974,7 @@ fn render_scene_shows_voice_permission_denied_message() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::Dictation,
             input_focused: false,
@@ -998,6 +1036,7 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
         &snapshot,
         &PanelChromeState {
             seed_text: "ni hao".into(),
+            compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::Handwriting,
             input_focused: false,

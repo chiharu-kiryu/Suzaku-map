@@ -22,7 +22,9 @@ pub(super) fn handle_panel_window_event(
         WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
         WindowEvent::CursorMoved { position, .. } => {
             state.cursor_position = Some((position.x as f32, position.y as f32));
-            if state.kind == PanelWindowKind::Main {
+            if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                state.update_compact_hover();
+            } else if state.kind == PanelWindowKind::Main {
                 state.extend_handwriting_stroke();
             }
             state.window.request_redraw();
@@ -48,7 +50,10 @@ pub(super) fn handle_panel_window_event(
             button: MouseButton::Left,
             ..
         } => {
-            if !(state.kind == PanelWindowKind::Main && state.try_begin_handwriting_stroke()) {
+            if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                state.begin_compact_drag();
+            } else if !(state.kind == PanelWindowKind::Main && state.try_begin_handwriting_stroke())
+            {
                 state.select_at_cursor();
             }
             state.window.request_redraw();
@@ -58,7 +63,11 @@ pub(super) fn handle_panel_window_event(
             button: MouseButton::Left,
             ..
         } => {
-            if state.kind == PanelWindowKind::Main {
+            if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                if !state.end_compact_drag() {
+                    state.select_at_cursor();
+                }
+            } else if state.kind == PanelWindowKind::Main {
                 state.finish_handwriting_stroke();
             }
             state.window.request_redraw();

@@ -689,12 +689,57 @@ fn append_gear_icon_quads(
     });
 }
 
+fn append_suzaku_bird_icon_quads(
+    quads: &mut Vec<gpu::CandidateQuad>,
+    rect: [f32; 4],
+    primary: [f32; 4],
+    secondary: [f32; 4],
+    beak: [f32; 4],
+    eye: [f32; 4],
+) {
+    let [x, y, w, h] = rect;
+    let unit = w.min(h);
+    let body = [x + unit * 0.22, y + unit * 0.38, unit * 0.30, unit * 0.24];
+    let neck = [x + unit * 0.44, y + unit * 0.24, unit * 0.12, unit * 0.18];
+    let head = [x + unit * 0.50, y + unit * 0.20, unit * 0.14, unit * 0.14];
+    let wing_top = [x + unit * 0.28, y + unit * 0.24, unit * 0.18, unit * 0.14];
+    let wing_mid = [x + unit * 0.20, y + unit * 0.32, unit * 0.28, unit * 0.12];
+    let tail = [x + unit * 0.14, y + unit * 0.50, unit * 0.14, unit * 0.10];
+    let tail_tip = [x + unit * 0.10, y + unit * 0.56, unit * 0.12, unit * 0.08];
+    let beak_rect = [x + unit * 0.63, y + unit * 0.24, unit * 0.12, unit * 0.07];
+    let eye_rect = [x + unit * 0.56, y + unit * 0.24, unit * 0.03, unit * 0.03];
+
+    for bird_rect in [body, neck, head, wing_top, wing_mid, tail, tail_tip] {
+        quads.push(gpu::CandidateQuad {
+            rect: bird_rect,
+            color: primary,
+        });
+    }
+    quads.push(gpu::CandidateQuad {
+        rect: [x + unit * 0.28, y + unit * 0.56, unit * 0.22, unit * 0.08],
+        color: secondary,
+    });
+    quads.push(gpu::CandidateQuad {
+        rect: [x + unit * 0.36, y + unit * 0.64, unit * 0.14, unit * 0.04],
+        color: secondary,
+    });
+    quads.push(gpu::CandidateQuad {
+        rect: beak_rect,
+        color: beak,
+    });
+    quads.push(gpu::CandidateQuad {
+        rect: eye_rect,
+        color: eye,
+    });
+}
+
 #[cfg(feature = "gpu")]
 pub mod gpu {
     use crate::platform::voice_host::{voice_status_text, voice_transcript_placeholder};
 
     use super::{
-        Snapshot, append_gear_icon_quads, display_candidate_continuation, measure_text_prefix_width,
+        Snapshot, append_gear_icon_quads, append_suzaku_bird_icon_quads,
+        display_candidate_continuation, measure_text_prefix_width,
     };
     use bytemuck::{Pod, Zeroable};
 
@@ -829,6 +874,7 @@ pub mod gpu {
     #[derive(Clone, Debug, PartialEq)]
     pub struct PanelChromeState {
         pub seed_text: String,
+        pub compact_mode: bool,
         pub input_modes_expanded: bool,
         pub active_input_mode: InputMode,
         pub input_focused: bool,
@@ -862,6 +908,7 @@ pub mod gpu {
         fn default() -> Self {
             Self {
                 seed_text: String::new(),
+                compact_mode: false,
                 input_modes_expanded: true,
                 active_input_mode: InputMode::VirtualKeyboard,
                 input_focused: true,
@@ -966,6 +1013,7 @@ pub mod gpu {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum InteractionKind {
         SeedInput,
+        ToggleCompactMode,
         InputModesToggle,
         InputModeButton(InputMode),
         VirtualKeyboardKey(VirtualKeyboardKey),
@@ -1101,38 +1149,38 @@ pub mod gpu {
             chrome: &PanelChromeState,
             sentence_count: usize,
         ) -> Self {
-            let scene_margin = (14.0 * responsive_scale).max(10.0);
+            let scene_margin = (10.0 * responsive_scale).max(8.0);
             let max_panel_width = (scene_width - scene_margin * 2.0).max(320.0);
             let min_panel_width = 380.0_f32.min(max_panel_width);
-            let desired_panel_width = scene_width * 0.84;
+            let desired_panel_width = scene_width * 0.90;
             let panel_width = desired_panel_width
                 .min(max_panel_width)
                 .max(min_panel_width);
-            let input_box_h = 74.0 * responsive_scale;
-            let tools_header_h = 24.0 * responsive_scale;
-            let tool_button_h = 26.0 * responsive_scale;
-            let tool_gap = 8.0 * responsive_scale;
-            let section_gap = 12.0 * responsive_scale;
+            let input_box_h = 68.0 * responsive_scale;
+            let tools_header_h = 22.0 * responsive_scale;
+            let tool_button_h = 28.0 * responsive_scale;
+            let tool_gap = 6.0 * responsive_scale;
+            let section_gap = 10.0 * responsive_scale;
             let extended_input_panel_h = if chrome.input_modes_expanded {
                 match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 154.0 * responsive_scale,
-                    InputMode::Dictation => 104.0 * responsive_scale,
-                    InputMode::Handwriting => 178.0 * responsive_scale,
+                    InputMode::VirtualKeyboard => 146.0 * responsive_scale,
+                    InputMode::Dictation => 100.0 * responsive_scale,
+                    InputMode::Handwriting => 170.0 * responsive_scale,
                 }
             } else {
                 0.0
             };
             let tools_content_h = if chrome.input_modes_expanded {
-                tool_button_h + 8.0 * responsive_scale + extended_input_panel_h
+                tool_button_h + 6.0 * responsive_scale + extended_input_panel_h
             } else {
                 0.0
             };
             let settings_panel_h = if chrome.settings_open { 196.0 } else { 0.0 };
             let item_height = match (chrome.candidate_density, chrome.preview_style) {
-                (CandidateDensity::Compact, PreviewStyle::Compact) => 74.0,
-                (CandidateDensity::Compact, PreviewStyle::Full) => 94.0,
-                (CandidateDensity::Cozy, PreviewStyle::Compact) => 84.0,
-                (CandidateDensity::Cozy, PreviewStyle::Full) => 108.0,
+                (CandidateDensity::Compact, PreviewStyle::Compact) => 70.0,
+                (CandidateDensity::Compact, PreviewStyle::Full) => 90.0,
+                (CandidateDensity::Cozy, PreviewStyle::Compact) => 80.0,
+                (CandidateDensity::Cozy, PreviewStyle::Full) => 102.0,
             } * responsive_scale;
             let item_gap = if chrome.candidate_density == CandidateDensity::Compact {
                 6.0
@@ -1142,9 +1190,9 @@ pub mod gpu {
             let chip_section_h = if chrome.next_token_candidates.is_empty() {
                 0.0
             } else {
-                68.0 * responsive_scale
+                60.0 * responsive_scale
             };
-            let candidate_columns = if panel_width >= 720.0 && sentence_count > 2 {
+            let candidate_columns = if panel_width >= 680.0 && sentence_count > 2 {
                 2
             } else {
                 1
@@ -1212,11 +1260,130 @@ pub mod gpu {
             self.build_panel_scene(snapshot, &chrome)
         }
 
+        pub fn build_compact_scene(
+            &self,
+            snapshot: &Snapshot,
+            _chrome: &PanelChromeState,
+            hovered: bool,
+            pressed: bool,
+        ) -> RenderScene {
+            let page_bg = [0.93, 0.95, 0.98, 0.98];
+            let shell = if pressed {
+                [0.98, 0.86, 0.87, 1.0]
+            } else if hovered {
+                [0.99, 0.90, 0.90, 1.0]
+            } else {
+                [0.99, 0.93, 0.93, 1.0]
+            };
+            let shell_inner = if pressed {
+                [1.0, 0.94, 0.94, 1.0]
+            } else {
+                [1.0, 0.97, 0.97, 1.0]
+            };
+            let bird_primary = if pressed {
+                [0.77, 0.16, 0.16, 1.0]
+            } else if hovered {
+                [0.84, 0.19, 0.19, 1.0]
+            } else {
+                [0.85, 0.23, 0.23, 1.0]
+            };
+            let bird_secondary = [0.95, 0.47, 0.40, 1.0];
+            let bird_beak = [0.96, 0.67, 0.30, 1.0];
+            let bird_eye = [0.44, 0.09, 0.09, 1.0];
+            let mut quads = Vec::new();
+            let text_quads = Vec::new();
+            let atlas_glyphs = Vec::new();
+            let text_sections = Vec::new();
+            let hit_targets = Vec::new();
+            quads.push(CandidateQuad {
+                rect: [0.0, 0.0, self.scene_width, self.scene_height],
+                color: page_bg,
+            });
+            let orb_size = self.scene_width.min(self.scene_height) - 20.0;
+            let orb_size = orb_size.clamp(48.0, 92.0);
+            let orb_rect = [
+                (self.scene_width - orb_size) / 2.0,
+                (self.scene_height - orb_size) / 2.0,
+                orb_size,
+                orb_size,
+            ];
+            let inner_rect = [
+                orb_rect[0] + orb_size * 0.10,
+                orb_rect[1] + orb_size * 0.10,
+                orb_size * 0.80,
+                orb_size * 0.80,
+            ];
+            let core_rect = [
+                orb_rect[0] + orb_size * 0.24,
+                orb_rect[1] + orb_size * 0.24,
+                orb_size * 0.52,
+                orb_size * 0.52,
+            ];
+            quads.push(CandidateQuad {
+                rect: orb_rect,
+                color: shell,
+            });
+            quads.push(CandidateQuad {
+                rect: inner_rect,
+                color: shell_inner,
+            });
+            quads.push(CandidateQuad {
+                rect: core_rect,
+                color: [1.0, 1.0, 1.0, 1.0],
+            });
+            let mut targets = vec![InteractiveTarget {
+                kind: InteractionKind::ToggleCompactMode,
+                rect: orb_rect,
+            }];
+            let icon_rect = [
+                orb_rect[0] + orb_size * 0.18,
+                orb_rect[1] + orb_size * 0.18,
+                orb_size * 0.64,
+                orb_size * 0.64,
+            ];
+            append_suzaku_bird_icon_quads(
+                &mut quads,
+                icon_rect,
+                bird_primary,
+                bird_secondary,
+                bird_beak,
+                bird_eye,
+            );
+            RenderScene {
+                quads,
+                text_quads,
+                atlas_glyphs,
+                text_sections,
+                hit_targets,
+                interactive_targets: std::mem::take(&mut targets),
+                labels: snapshot.candidate_labels.clone(),
+                selected_label: snapshot
+                    .candidate_labels
+                    .get(snapshot.selected_index)
+                    .cloned(),
+                draft_text: snapshot.draft_text.clone(),
+            }
+        }
+
         pub fn build_panel_scene(
             &self,
             snapshot: &Snapshot,
             chrome: &PanelChromeState,
         ) -> RenderScene {
+            if chrome.compact_mode {
+                return self.build_compact_scene(snapshot, chrome, false, false);
+            }
+            let page_bg = [0.93, 0.95, 0.98, 0.98];
+            let surface = [0.86, 0.89, 0.94, 0.98];
+            let surface_alt = [0.82, 0.86, 0.92, 0.98];
+            let accent = [0.43, 0.69, 0.92, 1.0];
+            let surface_muted = [0.78, 0.82, 0.88, 0.98];
+            let accent_soft = [0.73, 0.88, 0.98, 1.0];
+            let accent_text = [0.12, 0.23, 0.36, 1.0];
+            let text_primary = [0.22, 0.28, 0.38, 1.0];
+            let text_secondary = [0.39, 0.47, 0.58, 1.0];
+            let text_muted = [0.53, 0.60, 0.70, 1.0];
+            let border_dark = [0.70, 0.77, 0.86, 0.98];
             let responsive_scale = self.responsive_scale();
             let input_value_px = match chrome.text_scale {
                 DisplayTextScale::Small => 2.0,
@@ -1261,11 +1428,15 @@ pub mod gpu {
             let mut hit_targets = Vec::with_capacity(snapshot.candidate_labels.len());
             let mut interactive_targets = Vec::new();
             quads.push(CandidateQuad {
+                rect: [0.0, 0.0, self.scene_width, self.scene_height],
+                color: page_bg,
+            });
+            quads.push(CandidateQuad {
                 rect: [panel_x, input_box_y, panel_width, metrics.input_box_h],
                 color: if chrome.input_focused {
-                    [0.11, 0.16, 0.24, 0.99]
+                    [0.90, 0.93, 0.98, 1.0]
                 } else {
-                    [0.10, 0.14, 0.22, 0.95]
+                    surface
                 },
             });
             interactive_targets.push(InteractiveTarget {
@@ -1285,7 +1456,7 @@ pub mod gpu {
                     letter_spacing: tracking,
                     line_gap: base_line_gap,
                     max_lines: 1,
-                    color: [0.66, 0.76, 0.90, 1.0],
+                    color: text_secondary,
                     align: TextAlign::Left,
                     role: TextRole::InputLabel,
                 }
@@ -1306,9 +1477,9 @@ pub mod gpu {
                     line_gap: base_line_gap,
                     max_lines: 3,
                     color: if chrome.seed_text.is_empty() {
-                        [0.58, 0.66, 0.78, 1.0]
+                        text_muted
                     } else {
-                        [0.92, 0.96, 1.0, 1.0]
+                        text_primary
                     },
                     align: TextAlign::Left,
                     role: TextRole::InputValue,
@@ -1339,7 +1510,7 @@ pub mod gpu {
                         2.0 * responsive_scale,
                         22.0 * responsive_scale,
                     ],
-                    color: [0.72, 0.88, 1.0, 1.0],
+                    color: accent,
                 });
             }
 
@@ -1349,12 +1520,44 @@ pub mod gpu {
                 20.0 * responsive_scale,
                 20.0 * responsive_scale,
             ];
+            let compact_button_rect = [
+                panel_x + panel_width - 58.0 * responsive_scale,
+                input_box_y + 8.0 * responsive_scale,
+                18.0 * responsive_scale,
+                20.0 * responsive_scale,
+            ];
+            quads.push(CandidateQuad {
+                rect: compact_button_rect,
+                color: surface_alt,
+            });
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::ToggleCompactMode,
+                rect: compact_button_rect,
+            });
+            let compact_icon = TextBlock {
+                text: "o".to_string(),
+                origin: [
+                    compact_button_rect[0] + 4.0 * responsive_scale,
+                    compact_button_rect[1] + 5.0 * responsive_scale,
+                ],
+                max_width: compact_button_rect[2] - 8.0 * responsive_scale,
+                pixel_size: 2.0 * responsive_scale,
+                letter_spacing: tracking,
+                line_gap: base_line_gap,
+                max_lines: 1,
+                color: text_secondary,
+                align: TextAlign::Center,
+                role: TextRole::ToolButton,
+            }
+            .layout();
+            text_quads.extend(compact_icon.quads.iter().copied());
+            atlas_glyphs.extend(compact_icon.atlas_glyphs.iter().cloned());
             quads.push(CandidateQuad {
                 rect: settings_button_rect,
                 color: if chrome.settings_open {
-                    [0.40, 0.77, 0.96, 1.0]
+                    accent
                 } else {
-                    [0.18, 0.23, 0.31, 0.98]
+                    surface_alt
                 },
             });
             interactive_targets.push(InteractiveTarget {
@@ -1365,21 +1568,21 @@ pub mod gpu {
                 &mut quads,
                 settings_button_rect,
                 if chrome.settings_open {
-                    [0.01, 0.10, 0.16, 1.0]
+                    [0.96, 0.98, 1.0, 1.0]
                 } else {
-                    [0.90, 0.95, 1.0, 1.0]
+                    text_secondary
                 },
                 if chrome.settings_open {
-                    [0.40, 0.77, 0.96, 1.0]
+                    accent
                 } else {
-                    [0.18, 0.23, 0.31, 0.98]
+                    surface_alt
                 },
             );
 
             let tools_header_rect = [panel_x, tools_y, panel_width, metrics.tools_header_h];
             quads.push(CandidateQuad {
                 rect: tools_header_rect,
-                color: [0.12, 0.16, 0.24, 0.96],
+                color: surface_alt,
             });
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::InputModesToggle,
@@ -1401,7 +1604,7 @@ pub mod gpu {
                     letter_spacing: tracking,
                     line_gap: base_line_gap,
                     max_lines: 1,
-                    color: [0.78, 0.86, 0.96, 1.0],
+                    color: text_secondary,
                     align: TextAlign::Left,
                     role: TextRole::ToolLabel,
                 }
@@ -1417,6 +1620,16 @@ pub mod gpu {
             });
 
             if chrome.input_modes_expanded {
+                let tools_panel_rect = [
+                    panel_x,
+                    tools_y + metrics.tools_header_h + 4.0 * responsive_scale,
+                    panel_width,
+                    metrics.tools_content_h,
+                ];
+                quads.push(CandidateQuad {
+                    rect: tools_panel_rect,
+                    color: surface,
+                });
                 let button_y = tools_y + metrics.tools_header_h + 6.0 * responsive_scale;
                 let button_w =
                     (panel_width - 16.0 * responsive_scale - metrics.tool_gap * 2.0) / 3.0;
@@ -1434,9 +1647,9 @@ pub mod gpu {
                     quads.push(CandidateQuad {
                         rect,
                         color: if selected {
-                            [0.40, 0.77, 0.96, 1.0]
+                            accent_soft
                         } else {
-                            [0.16, 0.20, 0.28, 0.96]
+                            [0.93, 0.95, 0.98, 1.0]
                         },
                     });
                     interactive_targets.push(InteractiveTarget {
@@ -1454,11 +1667,7 @@ pub mod gpu {
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
-                        color: if selected {
-                            [0.01, 0.10, 0.16, 1.0]
-                        } else {
-                            [0.90, 0.95, 1.0, 1.0]
-                        },
+                        color: if selected { accent_text } else { text_primary },
                         align: TextAlign::Center,
                         role: TextRole::ToolButton,
                     }
@@ -1570,13 +1779,13 @@ pub mod gpu {
                                 rect,
                                 color: match key {
                                     VirtualKeyboardKey::Shift if chrome.keyboard_shifted => {
-                                        [0.40, 0.77, 0.96, 1.0]
+                                        accent_soft
                                     }
                                     VirtualKeyboardKey::ToggleNumeric
                                     | VirtualKeyboardKey::ToggleAlphabetic
                                     | VirtualKeyboardKey::Backspace
-                                    | VirtualKeyboardKey::Shift => [0.22, 0.24, 0.32, 0.98],
-                                    _ => [0.14, 0.18, 0.26, 0.96],
+                                    | VirtualKeyboardKey::Shift => surface_muted,
+                                    _ => [0.95, 0.97, 0.99, 1.0],
                                 },
                             });
                             interactive_targets.push(InteractiveTarget {
@@ -1612,7 +1821,7 @@ pub mod gpu {
                                 letter_spacing: tracking,
                                 line_gap: base_line_gap,
                                 max_lines: 1,
-                                color: [0.90, 0.95, 1.0, 1.0],
+                                color: text_primary,
                                 align: TextAlign::Center,
                                 role: TextRole::KeyboardKey,
                             }
@@ -1720,11 +1929,11 @@ pub mod gpu {
                         quads.push(CandidateQuad {
                             rect,
                             color: match key {
-                                VirtualKeyboardKey::Space => [0.18, 0.24, 0.34, 0.98],
+                                VirtualKeyboardKey::Space => [0.92, 0.95, 0.99, 1.0],
                                 VirtualKeyboardKey::ToggleNumeric
                                 | VirtualKeyboardKey::ToggleAlphabetic
-                                | VirtualKeyboardKey::Backspace => [0.24, 0.19, 0.24, 0.98],
-                                _ => [0.15, 0.18, 0.26, 0.98],
+                                | VirtualKeyboardKey::Backspace => surface_muted,
+                                _ => [0.95, 0.97, 0.99, 1.0],
                             },
                         });
                         interactive_targets.push(InteractiveTarget {
@@ -1746,7 +1955,7 @@ pub mod gpu {
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
                             max_lines: if label.chars().count() > 6 { 2 } else { 1 },
-                            color: [0.94, 0.97, 1.0, 1.0],
+                            color: text_primary,
                             align: TextAlign::Center,
                             role: TextRole::KeyboardKey,
                         }
@@ -1765,7 +1974,7 @@ pub mod gpu {
                     let voice_rect = [panel_x, voice_y, panel_width, 108.0];
                     quads.push(CandidateQuad {
                         rect: voice_rect,
-                        color: [0.10, 0.14, 0.22, 0.96],
+                        color: [0.94, 0.96, 0.99, 1.0],
                     });
 
                     let transcript = if chrome.voice_transcript.is_empty() {
@@ -1793,14 +2002,14 @@ pub mod gpu {
                             line_gap: base_line_gap,
                             max_lines: 1,
                             color: if chrome.voice_state == VoiceCaptureState::Listening {
-                                [0.49, 0.84, 0.98, 1.0]
+                                accent
                             } else if matches!(
                                 chrome.voice_permission,
                                 VoicePermissionState::Denied | VoicePermissionState::Error
                             ) {
-                                [0.98, 0.62, 0.62, 1.0]
+                                [0.86, 0.38, 0.38, 1.0]
                             } else {
-                                [0.76, 0.84, 0.94, 1.0]
+                                text_secondary
                             },
                             align: TextAlign::Left,
                             role: TextRole::VoiceLabel,
@@ -1815,9 +2024,9 @@ pub mod gpu {
                             line_gap: base_line_gap,
                             max_lines: 2,
                             color: if chrome.voice_transcript.is_empty() {
-                                [0.58, 0.66, 0.78, 1.0]
+                                text_muted
                             } else {
-                                [0.93, 0.97, 1.0, 1.0]
+                                text_primary
                             },
                             align: TextAlign::Left,
                             role: TextRole::VoiceTranscript,
@@ -1872,9 +2081,9 @@ pub mod gpu {
                         quads.push(CandidateQuad {
                             rect,
                             color: if emphasized {
-                                [0.40, 0.77, 0.96, 1.0]
+                                accent_soft
                             } else {
-                                [0.18, 0.22, 0.30, 0.98]
+                                [0.90, 0.94, 0.98, 1.0]
                             },
                         });
                         interactive_targets.push(InteractiveTarget { kind, rect });
@@ -1887,9 +2096,9 @@ pub mod gpu {
                             line_gap: base_line_gap,
                             max_lines: 1,
                             color: if emphasized {
-                                [0.01, 0.10, 0.16, 1.0]
+                                accent_text
                             } else {
-                                [0.92, 0.96, 1.0, 1.0]
+                                text_primary
                             },
                             align: TextAlign::Center,
                             role: TextRole::VoiceButton,
@@ -1908,7 +2117,7 @@ pub mod gpu {
                     let canvas_rect = [panel_x, handwriting_y + 22.0, panel_width, 108.0];
                     quads.push(CandidateQuad {
                         rect: canvas_rect,
-                        color: [0.10, 0.14, 0.22, 0.96],
+                        color: [0.95, 0.97, 1.0, 1.0],
                     });
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::HandwritingCanvas,
@@ -1919,7 +2128,7 @@ pub mod gpu {
                         for point in sample_stroke_points(stroke) {
                             quads.push(CandidateQuad {
                                 rect: [point[0] - 2.5, point[1] - 2.5, 5.0, 5.0],
-                                color: [0.52, 0.88, 0.98, 0.98],
+                                color: accent,
                             });
                         }
                     }
@@ -1933,7 +2142,7 @@ pub mod gpu {
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
                             max_lines: 1,
-                            color: [0.78, 0.86, 0.96, 1.0],
+                            color: text_secondary,
                             align: TextAlign::Left,
                             role: TextRole::HandwritingLabel,
                         }
@@ -1946,7 +2155,7 @@ pub mod gpu {
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
                             max_lines: 2,
-                            color: [0.75, 0.82, 0.92, 1.0],
+                            color: text_secondary,
                             align: TextAlign::Left,
                             role: TextRole::HandwritingLabel,
                         }
@@ -1964,7 +2173,7 @@ pub mod gpu {
                     let clear_rect = [panel_x, handwriting_y + 140.0, 74.0, 24.0];
                     quads.push(CandidateQuad {
                         rect: clear_rect,
-                        color: [0.18, 0.22, 0.30, 0.98],
+                        color: [0.90, 0.94, 0.98, 1.0],
                     });
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::ClearHandwriting,
@@ -1979,7 +2188,7 @@ pub mod gpu {
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
                             max_lines: 1,
-                            color: [0.92, 0.96, 1.0, 1.0],
+                            color: text_primary,
                             align: TextAlign::Center,
                             role: TextRole::HandwritingButton,
                         }
@@ -1995,9 +2204,9 @@ pub mod gpu {
                         quads.push(CandidateQuad {
                             rect,
                             color: if index == 0 {
-                                [0.40, 0.77, 0.96, 1.0]
+                                accent_soft
                             } else {
-                                [0.16, 0.20, 0.28, 0.96]
+                                [0.92, 0.95, 0.99, 1.0]
                             },
                         });
                         interactive_targets.push(InteractiveTarget {
@@ -2013,9 +2222,9 @@ pub mod gpu {
                             line_gap: base_line_gap,
                             max_lines: 1,
                             color: if index == 0 {
-                                [0.01, 0.10, 0.16, 1.0]
+                                accent_text
                             } else {
-                                [0.92, 0.96, 1.0, 1.0]
+                                text_primary
                             },
                             align: TextAlign::Center,
                             role: TextRole::HandwritingCandidate,
@@ -2042,7 +2251,7 @@ pub mod gpu {
                 ];
                 quads.push(CandidateQuad {
                     rect: settings_rect,
-                    color: [0.09, 0.13, 0.20, 0.97],
+                    color: surface,
                 });
                 let mut settings_layouts = Vec::new();
                 let mut option_layouts = Vec::new();
@@ -2224,7 +2433,7 @@ pub mod gpu {
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
-                        color: [0.70, 0.80, 0.92, 1.0],
+                        color: text_secondary,
                         align: TextAlign::Left,
                         role: TextRole::SettingLabel,
                     }
@@ -2240,9 +2449,9 @@ pub mod gpu {
                         quads.push(CandidateQuad {
                             rect,
                             color: if *selected {
-                                [0.40, 0.77, 0.96, 1.0]
+                                accent_soft
                             } else {
-                                [0.16, 0.20, 0.28, 0.96]
+                                [0.92, 0.95, 0.99, 1.0]
                             },
                         });
                         interactive_targets.push(InteractiveTarget { kind: *kind, rect });
@@ -2254,11 +2463,7 @@ pub mod gpu {
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
                             max_lines: 1,
-                            color: if *selected {
-                                [0.01, 0.10, 0.16, 1.0]
-                            } else {
-                                [0.90, 0.95, 1.0, 1.0]
-                            },
+                            color: if *selected { accent_text } else { text_primary },
                             align: TextAlign::Center,
                             role: TextRole::SettingOption,
                         }
@@ -2282,6 +2487,16 @@ pub mod gpu {
 
             let chip_section_y = suggestions_y;
             if !chrome.next_token_candidates.is_empty() {
+                let chip_section_rect = [
+                    panel_x,
+                    chip_section_y - 4.0 * responsive_scale,
+                    panel_width,
+                    metrics.chip_section_h,
+                ];
+                quads.push(CandidateQuad {
+                    rect: chip_section_rect,
+                    color: surface,
+                });
                 let next_label_layouts = vec![
                     TextBlock {
                         text: if chrome.composed_tokens.is_empty() {
@@ -2295,7 +2510,7 @@ pub mod gpu {
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
-                        color: [0.78, 0.86, 0.96, 1.0],
+                        color: text_secondary,
                         align: TextAlign::Left,
                         role: TextRole::NextTokenLabel,
                     }
@@ -2319,7 +2534,7 @@ pub mod gpu {
                     ];
                     quads.push(CandidateQuad {
                         rect: back_rect,
-                        color: [0.22, 0.19, 0.24, 0.98],
+                        color: surface_muted,
                     });
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::RewindNextToken,
@@ -2336,7 +2551,7 @@ pub mod gpu {
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
-                        color: [0.92, 0.96, 1.0, 1.0],
+                        color: text_primary,
                         align: TextAlign::Center,
                         role: TextRole::NextTokenChip,
                     }
@@ -2372,9 +2587,9 @@ pub mod gpu {
                     quads.push(CandidateQuad {
                         rect,
                         color: if index == 0 {
-                            [0.40, 0.77, 0.96, 1.0]
+                            accent_soft
                         } else {
-                            [0.15, 0.19, 0.28, 0.96]
+                            [0.94, 0.96, 0.99, 1.0]
                         },
                     });
                     interactive_targets.push(InteractiveTarget {
@@ -2393,9 +2608,9 @@ pub mod gpu {
                         line_gap: base_line_gap,
                         max_lines: 1,
                         color: if index == 0 {
-                            [0.01, 0.10, 0.16, 1.0]
+                            accent_text
                         } else {
-                            [0.92, 0.96, 1.0, 1.0]
+                            text_primary
                         },
                         align: TextAlign::Center,
                         role: TextRole::NextTokenChip,
@@ -2422,6 +2637,17 @@ pub mod gpu {
             } else {
                 panel_width
             };
+            if !visible_sentence_candidates.is_empty() {
+                let sentence_rows = visible_sentence_candidates
+                    .len()
+                    .div_ceil(candidate_columns);
+                let sentence_section_h = sentence_rows as f32 * metrics.item_height
+                    + (sentence_rows as f32 - 1.0).max(0.0) * metrics.item_gap;
+                quads.push(CandidateQuad {
+                    rect: [panel_x, sentence_y, panel_width, sentence_section_h],
+                    color: surface,
+                });
+            }
             for (index, label) in visible_sentence_candidates.iter().enumerate() {
                 let column = index % candidate_columns;
                 let row = index / candidate_columns;
@@ -2432,11 +2658,11 @@ pub mod gpu {
                 let quad = CandidateQuad {
                     rect: [x, y, candidate_card_w, metrics.item_height],
                     color: if selected {
-                        [0.39, 0.78, 0.96, 1.0]
+                        accent_soft
                     } else if snapshot.degraded {
-                        [0.22, 0.24, 0.30, 0.95]
+                        border_dark
                     } else {
-                        [0.16, 0.18, 0.22, 0.94]
+                        [0.95, 0.97, 0.99, 1.0]
                     },
                 };
                 quads.push(quad);
@@ -2461,11 +2687,7 @@ pub mod gpu {
                         } else {
                             2
                         },
-                        color: if selected {
-                            [0.01, 0.10, 0.16, 1.0]
-                        } else {
-                            [0.94, 0.97, 1.0, 1.0]
-                        },
+                        color: if selected { accent_text } else { text_primary },
                         align: TextAlign::Left,
                         role: TextRole::CandidatePrimary,
                     }
@@ -2483,9 +2705,9 @@ pub mod gpu {
                         line_gap: base_line_gap,
                         max_lines: 2,
                         color: if selected {
-                            [0.02, 0.18, 0.26, 1.0]
+                            [0.20, 0.36, 0.50, 1.0]
                         } else {
-                            [0.70, 0.78, 0.86, 1.0]
+                            text_secondary
                         },
                         align: TextAlign::Left,
                         role: TextRole::CandidateMeta,
@@ -2519,6 +2741,13 @@ pub mod gpu {
         }
 
         pub fn build_settings_scene(&self, chrome: &PanelChromeState) -> RenderScene {
+            let page_bg = [0.93, 0.95, 0.98, 0.98];
+            let surface = [0.87, 0.90, 0.95, 1.0];
+            let surface_alt = [0.92, 0.95, 0.99, 1.0];
+            let accent_soft = [0.73, 0.88, 0.98, 1.0];
+            let accent_text = [0.12, 0.23, 0.36, 1.0];
+            let text_primary = [0.22, 0.28, 0.38, 1.0];
+            let text_secondary = [0.39, 0.47, 0.58, 1.0];
             let tracking = match chrome.text_spacing {
                 TextSpacing::Tight => -0.3,
                 TextSpacing::Normal => 0.0,
@@ -2543,25 +2772,24 @@ pub mod gpu {
             let mut interactive_targets = Vec::new();
 
             quads.push(CandidateQuad {
+                rect: [0.0, 0.0, self.scene_width, self.scene_height],
+                color: page_bg,
+            });
+            quads.push(CandidateQuad {
                 rect: [panel_x, panel_y, panel_width, panel_height],
-                color: [0.08, 0.12, 0.19, 0.98],
+                color: surface,
             });
 
             let close_rect = [panel_x + panel_width - 32.0, panel_y + 8.0, 18.0, 18.0];
             quads.push(CandidateQuad {
                 rect: close_rect,
-                color: [0.18, 0.23, 0.31, 0.98],
+                color: surface_alt,
             });
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::SettingsToggle,
                 rect: close_rect,
             });
-            append_gear_icon_quads(
-                &mut quads,
-                close_rect,
-                [0.90, 0.95, 1.0, 1.0],
-                [0.18, 0.23, 0.31, 0.98],
-            );
+            append_gear_icon_quads(&mut quads, close_rect, text_secondary, surface_alt);
 
             let title_layout = TextBlock {
                 text: "Panel settings".to_string(),
@@ -2571,7 +2799,7 @@ pub mod gpu {
                 letter_spacing: tracking,
                 line_gap: base_line_gap,
                 max_lines: 1,
-                color: [0.92, 0.96, 1.0, 1.0],
+                color: text_primary,
                 align: TextAlign::Left,
                 role: TextRole::HeaderTitle,
             }
@@ -2760,7 +2988,7 @@ pub mod gpu {
                     letter_spacing: tracking,
                     line_gap: base_line_gap,
                     max_lines: 1,
-                    color: [0.70, 0.80, 0.92, 1.0],
+                    color: text_secondary,
                     align: TextAlign::Left,
                     role: TextRole::SettingLabel,
                 }
@@ -2775,11 +3003,7 @@ pub mod gpu {
                     let rect = [chip_x, row_y, chip_w, 20.0];
                     quads.push(CandidateQuad {
                         rect,
-                        color: if *selected {
-                            [0.40, 0.77, 0.96, 1.0]
-                        } else {
-                            [0.16, 0.20, 0.28, 0.96]
-                        },
+                        color: if *selected { accent_soft } else { surface_alt },
                     });
                     interactive_targets.push(InteractiveTarget { kind: *kind, rect });
                     let option_layout = TextBlock {
@@ -2790,11 +3014,7 @@ pub mod gpu {
                         letter_spacing: tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
-                        color: if *selected {
-                            [0.01, 0.10, 0.16, 1.0]
-                        } else {
-                            [0.90, 0.95, 1.0, 1.0]
-                        },
+                        color: if *selected { accent_text } else { text_primary },
                         align: TextAlign::Center,
                         role: TextRole::SettingOption,
                     }
