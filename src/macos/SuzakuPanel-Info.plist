@@ -6,6 +6,20 @@
     <string>dev.suzaku.panel</string>
     <key>CFBundleName</key>
     <string>Suzaku Panel</string>
+    <key>CFBundleDisplayName</key>
+    <string>Suzaku Panel</string>
+    <key>CFBundleExecutable</key>
+    <string>Suzaku Panel</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Suzaku Panel uses the microphone to capture voice seeds for IME composition.</string>
     <key>NSSpeechRecognitionUsageDescription</key>

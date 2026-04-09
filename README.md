@@ -63,7 +63,14 @@ The current host is optimized for testing on macOS first, while keeping the rend
 - The panel uses macOS activation policy `Regular`, so it behaves like a normal desktop app.
 - On macOS the window uses a more native tool-panel style titlebar setup for quick local testing.
 - You can quit with `Cmd+Q`.
-- You can use the shorthand aliases `cargo panel-macos` and `cargo test-gpu`.
+- You can use the shorthand aliases `cargo panel-macos`, `cargo panel-app-macos`, and `cargo test-gpu`.
+
+For microphone and speech-recognition permission testing on macOS, prefer the app bundle build:
+
+- Build bundle: `cargo panel-app-macos`
+- Build and open bundle: `cargo open-panel-app-macos`
+- Output: `target/debug/Suzaku Panel.app`
+- Launch with Finder or `open "target/debug/Suzaku Panel.app"`
 
 ## Platform Roadmap
 

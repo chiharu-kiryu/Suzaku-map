@@ -893,6 +893,7 @@ pub mod gpu {
         pub voice_backend_label: String,
         pub voice_supports_live_capture: bool,
         pub voice_transcript: String,
+        pub voice_visual_phase: u8,
         pub voice_auto_insert: bool,
         pub llm_enabled: bool,
         pub llm_model: LlmModelPreset,
@@ -928,6 +929,7 @@ pub mod gpu {
                 voice_backend_label: "Unknown Voice Host".to_string(),
                 voice_supports_live_capture: false,
                 voice_transcript: String::new(),
+                voice_visual_phase: 0,
                 voice_auto_insert: true,
                 llm_enabled: false,
                 llm_model: LlmModelPreset::Llama32_3b,
@@ -2045,6 +2047,25 @@ pub mod gpu {
                                 [0.90, 0.94, 0.98, 1.0]
                             },
                         });
+                    }
+                    if chrome.voice_state == VoiceCaptureState::Listening {
+                        let base_x = panel_x + panel_width - 122.0;
+                        let base_y = voice_y + 30.0;
+                        let phase = chrome.voice_visual_phase as f32;
+                        for index in 0..4 {
+                            let pulse = ((phase + index as f32 * 3.0) % 12.0) / 12.0;
+                            let mirrored = if pulse > 0.5 { 1.0 - pulse } else { pulse };
+                            let bar_h = 8.0 + mirrored * 18.0;
+                            quads.push(CandidateQuad {
+                                rect: [
+                                    base_x + index as f32 * 12.0,
+                                    base_y + (22.0 - bar_h),
+                                    7.0,
+                                    bar_h,
+                                ],
+                                color: [0.36, 0.72, 0.43, 0.95],
+                            });
+                        }
                     }
                     let voice_layouts = vec![
                         TextBlock {

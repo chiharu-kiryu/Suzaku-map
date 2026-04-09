@@ -232,6 +232,14 @@ impl ApplicationHandler for PanelApp {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(panel) = self.panel.as_mut() {
             panel.poll_voice_bridge();
+            if panel.chrome.active_input_mode == InputMode::Dictation
+                && panel.chrome.voice_state == VoiceCaptureState::Listening
+            {
+                panel.chrome.voice_visual_phase =
+                    panel.chrome.voice_visual_phase.wrapping_add(1) % 24;
+            } else {
+                panel.chrome.voice_visual_phase = 0;
+            }
             panel.window.request_redraw();
             if let Some(settings) = self.settings.as_mut() {
                 settings.chrome = panel.chrome.clone();
@@ -429,6 +437,7 @@ impl PanelState {
             voice_backend_label: "Unknown Voice Host".to_string(),
             voice_supports_live_capture: false,
             voice_transcript: String::new(),
+            voice_visual_phase: 0,
             voice_auto_insert: true,
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
