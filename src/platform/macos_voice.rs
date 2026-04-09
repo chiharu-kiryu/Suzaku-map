@@ -61,8 +61,8 @@ impl MacOsSpeechBridge {
 
 fn native_voice_enabled() -> bool {
     std::env::var("SUZAKU_MACOS_VOICE_NATIVE")
-        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
-        .unwrap_or(false)
+        .map(|value| !matches!(value.trim(), "0" | "false" | "FALSE" | "no" | "NO"))
+        .unwrap_or(true)
 }
 
 unsafe extern "C" {

@@ -30,7 +30,10 @@ impl PanelState {
     pub(super) fn enter_voice_mode(&mut self) {
         self.chrome.blur_input();
         self.chrome.active_input_mode = InputMode::Dictation;
+        self.refresh_voice_permission_state();
+    }
 
+    pub(super) fn refresh_voice_permission_state(&mut self) {
         if let Some(bridge) = self.voice.bridge.as_ref() {
             self.chrome.voice_permission = bridge.permission_state();
             self.chrome.voice_backend_label = bridge.source_label().to_string();

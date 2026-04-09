@@ -6,6 +6,7 @@ use suzaku_map::ime::gpu::{
     VoicePermissionState,
 };
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
+use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -248,7 +249,9 @@ impl PanelState {
                 InteractionKind::ToggleVoiceCapture => {
                     if matches!(
                         self.chrome.voice_permission,
-                        VoicePermissionState::Denied | VoicePermissionState::Error
+                        VoicePermissionState::Pending
+                            | VoicePermissionState::Denied
+                            | VoicePermissionState::Error
                     ) {
                         return;
                     }
@@ -257,6 +260,12 @@ impl PanelState {
                     } else {
                         self.start_voice_capture();
                     }
+                }
+                InteractionKind::OpenVoiceSettings => {
+                    let _ = open_voice_permission_settings();
+                }
+                InteractionKind::RefreshVoicePermissions => {
+                    self.refresh_voice_permission_state();
                 }
                 InteractionKind::CycleVoiceSample => self.advance_voice_sample(),
                 InteractionKind::InsertVoiceTranscript => {

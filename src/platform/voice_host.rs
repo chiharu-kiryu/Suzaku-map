@@ -1,4 +1,5 @@
 use crate::ime::gpu::{VoiceCaptureState, VoicePermissionState};
+use std::process::Command;
 
 use crate::platform::fallback_voice::FallbackSpeechBridge;
 #[cfg(target_os = "linux")]
@@ -19,7 +20,9 @@ pub fn voice_transcript_placeholder(
     }
 
     match permission {
-        VoicePermissionState::Pending => "Grant microphone and speech access to continue.".to_string(),
+        VoicePermissionState::Pending => {
+            "Enable Speech Recognition and Microphone access in System Settings first.".to_string()
+        }
         VoicePermissionState::Denied => {
             "Microphone or speech access was denied.".to_string()
         }
@@ -50,19 +53,49 @@ pub fn voice_status_text(
     }
 
     match voice_permission {
-        VoicePermissionState::Pending => format!("Voice permission pending · {backend_label}"),
+        VoicePermissionState::Pending => {
+            format!("Voice permission required in System Settings · {backend_label}")
+        }
         VoicePermissionState::Denied => format!("Voice permission denied · {backend_label}"),
         VoicePermissionState::Error => format!("Voice recognition error · {backend_label}"),
         VoicePermissionState::Unavailable => format!("Voice fallback mode · {backend_label}"),
         VoicePermissionState::Ready => {
             if has_transcript {
-                format!("Transcript ready · tap Use Seed · {backend_label}")
+                format!("Transcript captured · tap Use Seed · {backend_label}")
             } else {
                 format!("Voice ready · {backend_label}")
             }
         }
         VoicePermissionState::Unknown => format!("Voice setup · {backend_label}"),
     }
+}
+
+pub fn open_voice_permission_settings() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return Command::new("cmd")
+            .args(["/C", "start", "ms-settings:privacy-microphone"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return false;
+    }
+
+    #[allow(unreachable_code)]
+    false
 }
 
 #[derive(Debug)]

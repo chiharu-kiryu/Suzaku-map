@@ -22,6 +22,14 @@ pub(super) fn handle_panel_window_event(
         }
         WindowEvent::Resized(size) => state.resize(size.width, size.height),
         WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
+        WindowEvent::Focused(true) => {
+            if state.kind == PanelWindowKind::Main
+                && state.chrome.active_input_mode == InputMode::Dictation
+            {
+                state.refresh_voice_permission_state();
+            }
+            state.window.request_redraw();
+        }
         WindowEvent::CursorMoved { position, .. } => {
             state.cursor_position = Some((position.x as f32, position.y as f32));
             if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {

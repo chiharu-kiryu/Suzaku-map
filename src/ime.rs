@@ -1033,6 +1033,8 @@ pub mod gpu {
         SelectNextToken(usize),
         RewindNextToken,
         ToggleVoiceCapture,
+        OpenVoiceSettings,
+        RefreshVoicePermissions,
         CycleVoiceSample,
         InsertVoiceTranscript,
         ClearVoiceTranscript,
@@ -2023,11 +2025,33 @@ pub mod gpu {
                         !chrome.voice_transcript.is_empty(),
                         &chrome.voice_backend_label,
                     );
+                    let live_hint = if chrome.voice_state == VoiceCaptureState::Listening {
+                        if chrome.voice_transcript.is_empty() {
+                            "Listening now..."
+                        } else {
+                            "Heard just now"
+                        }
+                    } else if !chrome.voice_transcript.is_empty() {
+                        "Ready to insert"
+                    } else {
+                        ""
+                    };
+                    if !live_hint.is_empty() {
+                        quads.push(CandidateQuad {
+                            rect: [panel_x + panel_width - 132.0, voice_y + 8.0, 118.0, 18.0],
+                            color: if chrome.voice_state == VoiceCaptureState::Listening {
+                                [0.80, 0.93, 0.84, 1.0]
+                            } else {
+                                [0.90, 0.94, 0.98, 1.0]
+                            },
+                        });
+                    }
                     let voice_layouts = vec![
                         TextBlock {
                             text: status_text,
                             origin: [panel_x + 14.0, voice_y + 10.0],
-                            max_width: panel_width - 28.0,
+                            max_width: panel_width
+                                - if live_hint.is_empty() { 28.0 } else { 168.0 },
                             pixel_size: 2.0,
                             letter_spacing: tracking,
                             line_gap: base_line_gap,
@@ -2043,6 +2067,23 @@ pub mod gpu {
                                 text_secondary
                             },
                             align: TextAlign::Left,
+                            role: TextRole::VoiceLabel,
+                        }
+                        .layout(),
+                        TextBlock {
+                            text: live_hint.to_string(),
+                            origin: [panel_x + panel_width - 126.0, voice_y + 12.0],
+                            max_width: 106.0,
+                            pixel_size: 2.0,
+                            letter_spacing: tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: if chrome.voice_state == VoiceCaptureState::Listening {
+                                [0.20, 0.44, 0.24, 1.0]
+                            } else {
+                                text_primary
+                            },
+                            align: TextAlign::Center,
                             role: TextRole::VoiceLabel,
                         }
                         .layout(),
@@ -2109,6 +2150,25 @@ pub mod gpu {
                             InteractionKind::CycleVoiceSample,
                             "Next Sample",
                             118.0,
+                            false,
+                            true,
+                        ));
+                    }
+                    if matches!(
+                        chrome.voice_permission,
+                        VoicePermissionState::Pending | VoicePermissionState::Denied
+                    ) {
+                        voice_actions.push((
+                            InteractionKind::OpenVoiceSettings,
+                            "Open Settings",
+                            128.0,
+                            false,
+                            true,
+                        ));
+                        voice_actions.push((
+                            InteractionKind::RefreshVoicePermissions,
+                            "Refresh",
+                            88.0,
                             false,
                             true,
                         ));
