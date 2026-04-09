@@ -249,9 +249,7 @@ impl PanelState {
                 InteractionKind::ToggleVoiceCapture => {
                     if matches!(
                         self.chrome.voice_permission,
-                        VoicePermissionState::Pending
-                            | VoicePermissionState::Denied
-                            | VoicePermissionState::Error
+                        VoicePermissionState::Denied | VoicePermissionState::Error
                     ) {
                         return;
                     }

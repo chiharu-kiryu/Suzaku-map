@@ -10,6 +10,8 @@
     <string>Suzaku Panel</string>
     <key>CFBundleExecutable</key>
     <string>Suzaku Panel</string>
+    <key>CFBundleIconFile</key>
+    <string>SuzakuPanel</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

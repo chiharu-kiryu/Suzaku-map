@@ -48,6 +48,19 @@ static void suzaku_voice_log(NSString *message) {
 
 @implementation SuzakuSpeechBridge
 
+- (BOOL)isRunningBundledApp {
+    @try {
+        NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+        NSString *packageType = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundlePackageType"];
+        return bundlePath != nil
+            && [bundlePath.pathExtension.lowercaseString isEqualToString:@"app"]
+            && [packageType isEqualToString:@"APPL"];
+    } @catch (NSException *exception) {
+        (void)exception;
+        return NO;
+    }
+}
+
 + (instancetype)shared {
     static SuzakuSpeechBridge *bridge = nil;
     static dispatch_once_t onceToken;
@@ -60,6 +73,8 @@ static void suzaku_voice_log(NSString *message) {
 - (instancetype)init {
     self = [super init];
     if (self) {
+        NSString *bundlePath = [[NSBundle mainBundle] bundlePath] ?: @"(no bundle path)";
+        NSString *executablePath = [[NSBundle mainBundle] executablePath] ?: @"(no executable path)";
         _recognizer = [[SFSpeechRecognizer alloc] init];
         _audioEngine = [[AVAudioEngine alloc] init];
         _latestTranscript = @"";
@@ -67,6 +82,8 @@ static void suzaku_voice_log(NSString *message) {
         _micGranted = NO;
         _micResolved = NO;
         _state = _recognizer != nil ? SuzakuSpeechStatePermissionPending : SuzakuSpeechStateUnavailable;
+        suzaku_voice_log([NSString stringWithFormat:@"bundle path=%@", bundlePath]);
+        suzaku_voice_log([NSString stringWithFormat:@"executable path=%@", executablePath]);
         suzaku_voice_log([NSString stringWithFormat:@"init recognizer=%@ state=%ld",
                           _recognizer != nil ? @"yes" : @"no",
                           (long)_state]);
@@ -79,6 +96,17 @@ static void suzaku_voice_log(NSString *message) {
         suzaku_voice_log(@"requestPermissionsIfNeeded begin");
         self.speechAuth = [SFSpeechRecognizer authorizationStatus];
         suzaku_voice_log([NSString stringWithFormat:@"speech auth status=%ld", (long)self.speechAuth]);
+        BOOL bundled = [self isRunningBundledApp];
+        suzaku_voice_log([NSString stringWithFormat:@"bundle host=%@", bundled ? @"yes" : @"no"]);
+        if (bundled && self.speechAuth == SFSpeechRecognizerAuthorizationStatusNotDetermined) {
+            [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
+                @synchronized (self) {
+                    self.speechAuth = status;
+                    suzaku_voice_log([NSString stringWithFormat:@"speech auth callback status=%ld", (long)status]);
+                    [self refreshState];
+                }
+            }];
+        }
 
         AVAuthorizationStatus micStatus =
             [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];

@@ -69,6 +69,8 @@ For microphone and speech-recognition permission testing on macOS, prefer the ap
 
 - Build bundle: `cargo panel-app-macos`
 - Build and open bundle: `cargo open-panel-app-macos`
+- Install to `~/Applications`: `cargo install-panel-app-macos`
+- Install and open from `~/Applications`: `cargo install-open-panel-app-macos`
 - Output: `target/debug/Suzaku Panel.app`
 - Launch with Finder or `open "target/debug/Suzaku Panel.app"`
 

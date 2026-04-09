@@ -699,28 +699,30 @@ fn append_suzaku_bird_icon_quads(
 ) {
     let [x, y, w, h] = rect;
     let unit = w.min(h);
-    let body = [x + unit * 0.22, y + unit * 0.38, unit * 0.30, unit * 0.24];
-    let neck = [x + unit * 0.44, y + unit * 0.24, unit * 0.12, unit * 0.18];
-    let head = [x + unit * 0.50, y + unit * 0.20, unit * 0.14, unit * 0.14];
-    let wing_top = [x + unit * 0.28, y + unit * 0.24, unit * 0.18, unit * 0.14];
-    let wing_mid = [x + unit * 0.20, y + unit * 0.32, unit * 0.28, unit * 0.12];
-    let tail = [x + unit * 0.14, y + unit * 0.50, unit * 0.14, unit * 0.10];
-    let tail_tip = [x + unit * 0.10, y + unit * 0.56, unit * 0.12, unit * 0.08];
-    let beak_rect = [x + unit * 0.63, y + unit * 0.24, unit * 0.12, unit * 0.07];
-    let eye_rect = [x + unit * 0.56, y + unit * 0.24, unit * 0.03, unit * 0.03];
+    let body = [x + unit * 0.28, y + unit * 0.36, unit * 0.28, unit * 0.22];
+    let neck = [x + unit * 0.50, y + unit * 0.24, unit * 0.10, unit * 0.16];
+    let head = [x + unit * 0.57, y + unit * 0.20, unit * 0.14, unit * 0.14];
+    let crest = [x + unit * 0.49, y + unit * 0.18, unit * 0.10, unit * 0.08];
+    let wing_upper = [x + unit * 0.22, y + unit * 0.28, unit * 0.24, unit * 0.12];
+    let wing_main = [x + unit * 0.18, y + unit * 0.36, unit * 0.34, unit * 0.14];
+    let tail_base = [x + unit * 0.44, y + unit * 0.56, unit * 0.22, unit * 0.09];
+    let tail_flare = [x + unit * 0.54, y + unit * 0.64, unit * 0.22, unit * 0.08];
+    let tail_tip = [x + unit * 0.64, y + unit * 0.72, unit * 0.14, unit * 0.06];
+    let beak_rect = [x + unit * 0.70, y + unit * 0.28, unit * 0.12, unit * 0.06];
+    let eye_rect = [x + unit * 0.63, y + unit * 0.28, unit * 0.03, unit * 0.03];
 
-    for bird_rect in [body, neck, head, wing_top, wing_mid, tail, tail_tip] {
+    for bird_rect in [body, neck, head, crest, wing_upper, wing_main, tail_base, tail_flare, tail_tip] {
         quads.push(gpu::CandidateQuad {
             rect: bird_rect,
             color: primary,
         });
     }
     quads.push(gpu::CandidateQuad {
-        rect: [x + unit * 0.28, y + unit * 0.56, unit * 0.22, unit * 0.08],
+        rect: [x + unit * 0.28, y + unit * 0.52, unit * 0.20, unit * 0.08],
         color: secondary,
     });
     quads.push(gpu::CandidateQuad {
-        rect: [x + unit * 0.36, y + unit * 0.64, unit * 0.14, unit * 0.04],
+        rect: [x + unit * 0.36, y + unit * 0.60, unit * 0.22, unit * 0.06],
         color: secondary,
     });
     quads.push(gpu::CandidateQuad {

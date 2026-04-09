@@ -27,3 +27,8 @@ cc = "1.1.31"
 name = "panel"
 path = "src/bin/panel.rs"
 required-features = ["gpu"]
+
+[[bin]]
+name = "macos_bundle"
+path = "src/bin/macos_bundle.rs"
+required-features = ["gpu"]

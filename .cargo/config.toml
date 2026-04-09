@@ -1,5 +1,7 @@
 [alias]
 panel-macos = "run --features gpu --bin panel"
-panel-app-macos = "!sh scripts/build-macos-app.sh"
-open-panel-app-macos = "!sh scripts/open-macos-app.sh"
+panel-app-macos = "run --features gpu --bin macos_bundle -- build"
+open-panel-app-macos = "run --features gpu --bin macos_bundle -- open"
+install-panel-app-macos = "run --features gpu --bin macos_bundle -- install"
+install-open-panel-app-macos = "run --features gpu --bin macos_bundle -- install-open"
 test-gpu = "test --features gpu"
