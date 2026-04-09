@@ -188,15 +188,11 @@ impl PanelState {
                     self.chrome.input_modes_expanded = !self.chrome.input_modes_expanded;
                 }
                 InteractionKind::InputModeButton(mode) => {
-                    self.chrome.blur_input();
-                    self.chrome.active_input_mode = mode;
                     if mode == InputMode::Dictation {
-                        if let Some(bridge) = self.voice.bridge.as_ref() {
-                            bridge.request_permissions();
-                            self.chrome.voice_permission = bridge.permission_state();
-                        } else {
-                            self.chrome.voice_permission = VoicePermissionState::Unavailable;
-                        }
+                        self.enter_voice_mode();
+                    } else {
+                        self.chrome.blur_input();
+                        self.chrome.active_input_mode = mode;
                     }
                 }
                 InteractionKind::SettingsToggle => {
@@ -233,6 +229,10 @@ impl PanelState {
                     self.reconfigure_llama_plugin();
                     self.persist_display_settings();
                 }
+                InteractionKind::SetVoiceAutoInsert(enabled) => {
+                    self.chrome.voice_auto_insert = enabled;
+                    self.persist_display_settings();
+                }
                 InteractionKind::SetLlmModel(model) => {
                     self.chrome.llm_model = model;
                     self.reconfigure_llama_plugin();
@@ -246,6 +246,12 @@ impl PanelState {
                 InteractionKind::SelectNextToken(index) => self.select_next_token(index),
                 InteractionKind::RewindNextToken => self.rewind_next_token(),
                 InteractionKind::ToggleVoiceCapture => {
+                    if matches!(
+                        self.chrome.voice_permission,
+                        VoicePermissionState::Denied | VoicePermissionState::Error
+                    ) {
+                        return;
+                    }
                     if self.chrome.voice_state == VoiceCaptureState::Listening {
                         self.stop_voice_capture();
                     } else {
@@ -253,12 +259,26 @@ impl PanelState {
                     }
                 }
                 InteractionKind::CycleVoiceSample => self.advance_voice_sample(),
-                InteractionKind::InsertVoiceTranscript => self.insert_voice_transcript(),
+                InteractionKind::InsertVoiceTranscript => {
+                    if !self.chrome.voice_transcript.is_empty()
+                        && self.chrome.voice_state != VoiceCaptureState::Listening
+                    {
+                        self.insert_voice_transcript();
+                    }
+                }
                 InteractionKind::ClearVoiceTranscript => {
+                    if self.chrome.voice_transcript.is_empty() {
+                        return;
+                    }
                     self.chrome.voice_transcript.clear();
                     self.chrome.voice_state = VoiceCaptureState::Idle;
                 }
                 InteractionKind::HandwritingCanvas => {}
+                InteractionKind::UndoHandwritingStroke => {
+                    if !self.chrome.handwriting_strokes.is_empty() {
+                        self.undo_handwriting_stroke();
+                    }
+                }
                 InteractionKind::ClearHandwriting => self.clear_handwriting(),
                 InteractionKind::UseHandwritingCandidate(index) => {
                     self.insert_handwriting_candidate(index);

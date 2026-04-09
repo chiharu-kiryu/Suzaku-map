@@ -73,6 +73,99 @@ pub fn derive_next_token_candidates(
 }
 
 pub fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
+    if let Some(grouped) = recognize_grouped_handwriting_candidates(strokes) {
+        return grouped;
+    }
+    recognize_handwriting_candidates_base(strokes)
+}
+
+fn recognize_grouped_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Option<Vec<String>> {
+    if strokes.len() < 2 {
+        return None;
+    }
+
+    let mut groups: Vec<Vec<Vec<[f32; 2]>>> = Vec::new();
+    for stroke in strokes {
+        let min_x = stroke.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min);
+        let max_x = stroke
+            .iter()
+            .map(|p| p[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let min_y = stroke.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min);
+        let max_y = stroke
+            .iter()
+            .map(|p| p[1])
+            .fold(f32::NEG_INFINITY, f32::max);
+        let stroke_width = (max_x - min_x).max(1.0);
+        let stroke_height = (max_y - min_y).max(1.0);
+        if let Some(last_group) = groups.last_mut() {
+            let last_group_min_x = last_group
+                .iter()
+                .flat_map(|existing| existing.iter().map(|p| p[0]))
+                .fold(f32::INFINITY, f32::min);
+            let last_group_max_x = last_group
+                .iter()
+                .flat_map(|existing| existing.iter().map(|p| p[0]))
+                .fold(f32::NEG_INFINITY, f32::max);
+            let last_group_min_y = last_group
+                .iter()
+                .flat_map(|existing| existing.iter().map(|p| p[1]))
+                .fold(f32::INFINITY, f32::min);
+            let last_group_max_y = last_group
+                .iter()
+                .flat_map(|existing| existing.iter().map(|p| p[1]))
+                .fold(f32::NEG_INFINITY, f32::max);
+            let horizontal_gap = if min_x > last_group_max_x {
+                min_x - last_group_max_x
+            } else if last_group_min_x > max_x {
+                last_group_min_x - max_x
+            } else {
+                0.0
+            };
+            let vertical_gap = if min_y > last_group_max_y {
+                min_y - last_group_max_y
+            } else if last_group_min_y > max_y {
+                last_group_min_y - max_y
+            } else {
+                0.0
+            };
+            let same_group =
+                horizontal_gap <= stroke_width.max(18.0) && vertical_gap <= stroke_height.max(20.0);
+            if same_group {
+                last_group.push(stroke.clone());
+                continue;
+            }
+        }
+        groups.push(vec![stroke.clone()]);
+    }
+
+    if groups.len() < 2 || groups.len() > 3 {
+        return None;
+    }
+
+    let mut seeds = Vec::new();
+    for group in &groups {
+        let first = recognize_handwriting_candidates_single(group);
+        if first.is_empty() {
+            return None;
+        }
+        seeds.push(first);
+    }
+
+    let combined = seeds.join(" ");
+    let compact = seeds.join("");
+    let joined = seeds.join("-");
+    Some(vec![combined, compact, joined])
+}
+
+fn recognize_handwriting_candidates_single(strokes: &[Vec<[f32; 2]>]) -> String {
+    recognize_handwriting_candidates_base(strokes)
+        .into_iter()
+        .next()
+        .unwrap_or_default()
+}
+
+fn recognize_handwriting_candidates_base(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
     let points: Vec<[f32; 2]> = strokes
         .iter()
         .flat_map(|stroke| stroke.iter().copied())
@@ -234,5 +327,15 @@ mod tests {
         let summary = summarize_handwriting_strokes(&[vec![[0.0, 0.0], [10.0, 0.0], [10.0, 3.0]]]);
 
         assert!(summary.contains("wide") || summary.contains("balanced"));
+    }
+
+    #[test]
+    fn handwriting_recognizer_groups_separated_multi_part_input() {
+        let candidates = recognize_handwriting_candidates(&[
+            vec![[10.0, 10.0], [10.0, 34.0]],
+            vec![[48.0, 10.0], [76.0, 10.0]],
+        ]);
+
+        assert!(candidates.iter().any(|candidate| candidate.contains(' ')));
     }
 }

@@ -19,21 +19,21 @@ pub fn voice_transcript_placeholder(
     }
 
     match permission {
-        VoicePermissionState::Pending => "Waiting for microphone and speech permission".to_string(),
+        VoicePermissionState::Pending => "Grant microphone and speech access to continue.".to_string(),
         VoicePermissionState::Denied => {
-            "Microphone or speech permission denied on this host".to_string()
+            "Microphone or speech access was denied.".to_string()
         }
         VoicePermissionState::Error => {
-            "Speech recognition hit an error. Stop and try again.".to_string()
+            "Speech recognition hit an error. Try Listen again.".to_string()
         }
         VoicePermissionState::Unavailable => {
-            "Speech framework unavailable. Using local fallback samples.".to_string()
+            "Live voice capture is unavailable. Use sample voice text instead.".to_string()
         }
         _ => {
             if supports_live_capture {
-                format!("Tap Listen to capture a voice seed with {backend_label}.")
+                format!("Tap Listen, speak, then Use Seed with {backend_label}.")
             } else {
-                format!("{backend_label} is connected, but live capture is not available yet.")
+                format!("{backend_label} is connected, but live capture is not ready yet.")
             }
         }
     }
@@ -56,7 +56,7 @@ pub fn voice_status_text(
         VoicePermissionState::Unavailable => format!("Voice fallback mode · {backend_label}"),
         VoicePermissionState::Ready => {
             if has_transcript {
-                format!("Transcript ready · {backend_label}")
+                format!("Transcript ready · tap Use Seed · {backend_label}")
             } else {
                 format!("Voice ready · {backend_label}")
             }
@@ -254,5 +254,17 @@ mod tests {
 
         assert!(text.contains("Voice ready"));
         assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_text_highlights_use_seed_when_transcript_exists() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Ready,
+            true,
+            "Apple Speech",
+        );
+
+        assert!(text.contains("Use Seed"));
     }
 }

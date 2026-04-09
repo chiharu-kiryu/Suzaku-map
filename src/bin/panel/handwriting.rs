@@ -3,6 +3,22 @@ use suzaku_map::ime::gpu::{InputMode, InteractionKind};
 use suzaku_map::panel_support::{recognize_handwriting_candidates, summarize_handwriting_strokes};
 
 impl PanelState {
+    fn refresh_handwriting_candidates(&mut self) {
+        self.last_handwriting_summary = Some(summarize_handwriting_strokes(
+            &self.chrome.handwriting_strokes,
+        ));
+        self.chrome.handwriting_candidates =
+            recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
+        self.reconfigure_llama_plugin();
+        self.chrome.handwriting_hint = if self.chrome.handwriting_strokes.is_empty() {
+            "Draw a seed word with mouse or touch.".to_string()
+        } else if self.chrome.handwriting_candidates.is_empty() {
+            "Try a clearer trace, undo a stroke, or tap Clear.".to_string()
+        } else {
+            "Tap a recognized seed, or undo the last stroke.".to_string()
+        };
+    }
+
     fn handwriting_canvas_rect(&self) -> Option<[f32; 4]> {
         self.current_scene()
             .interactive_targets
@@ -63,17 +79,16 @@ impl PanelState {
             return;
         }
         self.handwriting_dragging = false;
-        self.last_handwriting_summary = Some(summarize_handwriting_strokes(
-            &self.chrome.handwriting_strokes,
-        ));
-        self.chrome.handwriting_candidates =
-            recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
-        self.reconfigure_llama_plugin();
-        self.chrome.handwriting_hint = if self.chrome.handwriting_candidates.is_empty() {
-            "Try a clearer trace, then tap a recognized seed.".to_string()
-        } else {
-            "Tap a recognized seed to insert it.".to_string()
-        };
+        self.refresh_handwriting_candidates();
+    }
+
+    pub(super) fn undo_handwriting_stroke(&mut self) {
+        self.handwriting_dragging = false;
+        if self.chrome.handwriting_strokes.pop().is_none() {
+            self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
+            return;
+        }
+        self.refresh_handwriting_candidates();
     }
 
     pub(super) fn clear_handwriting(&mut self) {

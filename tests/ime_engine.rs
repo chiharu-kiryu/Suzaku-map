@@ -507,6 +507,7 @@ fn render_scene_can_collapse_input_method_buttons() {
             voice_backend_label: "Fallback Samples".into(),
             voice_supports_live_capture: false,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -560,6 +561,7 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             voice_backend_label: "Fallback Samples".into(),
             voice_supports_live_capture: false,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -627,6 +629,7 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             voice_backend_label: "Apple Speech".into(),
             voice_supports_live_capture: true,
             voice_transcript: "hello xr panel".into(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -686,6 +689,7 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             voice_backend_label: "Fallback Samples".into(),
             voice_supports_live_capture: false,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -738,6 +742,7 @@ fn render_scene_exposes_display_settings_when_open() {
             voice_backend_label: "Apple Speech".into(),
             voice_supports_live_capture: true,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -782,6 +787,12 @@ fn render_scene_exposes_display_settings_when_open() {
             .interactive_targets
             .iter()
             .any(|target| target.kind == InteractionKind::SetTextSmoothing(TextSmoothing::Smooth))
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetVoiceAutoInsert(true))
     );
     assert!(
         scene
@@ -888,6 +899,7 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             voice_backend_label: "Apple Speech".into(),
             voice_supports_live_capture: true,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -993,6 +1005,7 @@ fn render_scene_shows_voice_permission_denied_message() {
             voice_backend_label: "Apple Speech".into(),
             voice_supports_live_capture: true,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -1055,6 +1068,7 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
             voice_backend_label: "Fallback Samples".into(),
             voice_supports_live_capture: false,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
             llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
@@ -1072,6 +1086,12 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
             .interactive_targets
             .iter()
             .any(|target| target.kind == InteractionKind::HandwritingCanvas)
+    );
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::UndoHandwritingStroke)
     );
     assert!(
         scene
@@ -1258,6 +1278,7 @@ fn panel_chrome_state_clamps_caret_before_backspace_after_text_normalization() {
         voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
         voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
         voice_transcript: String::new(),
+        voice_auto_insert: true,
         llm_enabled: true,
         llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
         llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,

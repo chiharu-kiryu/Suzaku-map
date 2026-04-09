@@ -6,6 +6,8 @@ use winit::event::{ElementState, MouseButton, TouchPhase, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
+const TOUCH_TAP_SLOP_PX: f32 = 14.0;
+
 pub(super) fn handle_panel_window_event(
     state: &mut PanelState,
     event_loop: &ActiveEventLoop,
@@ -37,10 +39,36 @@ pub(super) fn handle_panel_window_event(
             if state.kind == PanelWindowKind::Main {
                 match touch.phase {
                     TouchPhase::Started => {
-                        let _ = state.try_begin_handwriting_stroke();
+                        state.touch_start_position = state.cursor_position;
+                        state.touch_tap_pending = !state.try_begin_handwriting_stroke();
                     }
-                    TouchPhase::Moved => state.extend_handwriting_stroke(),
-                    TouchPhase::Ended | TouchPhase::Cancelled => state.finish_handwriting_stroke(),
+                    TouchPhase::Moved => {
+                        if state.handwriting_dragging {
+                            state.extend_handwriting_stroke();
+                        } else if let (Some((start_x, start_y)), Some((x, y))) =
+                            (state.touch_start_position, state.cursor_position)
+                        {
+                            if (x - start_x).abs() > TOUCH_TAP_SLOP_PX
+                                || (y - start_y).abs() > TOUCH_TAP_SLOP_PX
+                            {
+                                state.touch_tap_pending = false;
+                            }
+                        }
+                    }
+                    TouchPhase::Ended => {
+                        if state.handwriting_dragging {
+                            state.finish_handwriting_stroke();
+                        } else if state.touch_tap_pending {
+                            state.select_at_cursor();
+                        }
+                        state.touch_tap_pending = false;
+                        state.touch_start_position = None;
+                    }
+                    TouchPhase::Cancelled => {
+                        state.finish_handwriting_stroke();
+                        state.touch_tap_pending = false;
+                        state.touch_start_position = None;
+                    }
                 }
             }
             state.window.request_redraw();
@@ -107,7 +135,7 @@ pub(super) fn handle_panel_window_event(
                             if !(state.chrome.input_focused
                                 && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
                             {
-                                state.chrome.active_input_mode = InputMode::Dictation;
+                                state.enter_voice_mode();
                             }
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
@@ -152,6 +180,13 @@ pub(super) fn handle_panel_window_event(
                         PhysicalKey::Code(KeyCode::KeyR) => {
                             if !state.chrome.input_focused {
                                 state.reset_signal();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyZ) => {
+                            if state.chrome.active_input_mode == InputMode::Handwriting
+                                && !state.chrome.input_focused
+                            {
+                                state.undo_handwriting_stroke();
                             }
                         }
                         PhysicalKey::Code(KeyCode::Backspace) => {

@@ -114,6 +114,7 @@ fn panel_window_attributes() -> WindowAttributes {
     let attrs = WindowAttributes::default()
         .with_title("Suzaku XR Candidate Panel")
         .with_inner_size(LogicalSize::new(420.0, 520.0))
+        .with_min_inner_size(LogicalSize::new(620.0, 560.0))
         .with_resizable(true);
     decorate_main_window_attributes(attrs)
 }
@@ -263,6 +264,10 @@ struct PanelState {
     compact_drag_moved: bool,
     compact_drag_start_cursor: Option<(f32, f32)>,
     compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
+    touch_tap_pending: bool,
+    touch_start_position: Option<(f32, f32)>,
+    voice_stability_ticks: u8,
+    last_polled_voice_transcript: String,
     last_handwriting_summary: Option<String>,
     composition_base_seed: String,
     selected_next_tokens: Vec<String>,
@@ -424,6 +429,7 @@ impl PanelState {
             voice_backend_label: "Unknown Voice Host".to_string(),
             voice_supports_live_capture: false,
             voice_transcript: String::new(),
+            voice_auto_insert: true,
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
@@ -532,6 +538,10 @@ impl PanelState {
             compact_drag_moved: false,
             compact_drag_start_cursor: None,
             compact_drag_start_window_pos: None,
+            touch_tap_pending: false,
+            touch_start_position: None,
+            voice_stability_ticks: 0,
+            last_polled_voice_transcript: String::new(),
             last_handwriting_summary: None,
             composition_base_seed,
             selected_next_tokens: Vec::new(),
@@ -577,6 +587,8 @@ impl PanelState {
         self.compact_drag_moved = false;
         self.compact_drag_start_cursor = None;
         self.compact_drag_start_window_pos = None;
+        self.touch_tap_pending = false;
+        self.touch_start_position = None;
     }
 
     fn begin_compact_drag(&mut self) {
@@ -816,5 +828,35 @@ mod tests {
             )
             .exists()
         );
+    }
+
+    #[test]
+    fn voice_transcript_normalization_collapses_whitespace() {
+        assert_eq!(
+            PanelState::normalize_voice_transcript("  hello   xr \n panel  "),
+            "hello xr panel"
+        );
+    }
+
+    #[test]
+    fn voice_auto_insert_requires_stable_ready_transcript() {
+        assert!(!PanelState::should_auto_insert_voice_transcript(
+            "hello",
+            2,
+            VoiceCaptureState::Listening,
+            VoicePermissionState::Ready,
+        ));
+        assert!(PanelState::should_auto_insert_voice_transcript(
+            "hello xr",
+            3,
+            VoiceCaptureState::Listening,
+            VoicePermissionState::Ready,
+        ));
+        assert!(!PanelState::should_auto_insert_voice_transcript(
+            "hello xr",
+            3,
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Ready,
+        ));
     }
 }

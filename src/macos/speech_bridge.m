@@ -50,35 +50,40 @@ typedef NS_ENUM(NSInteger, SuzakuSpeechState) {
 }
 
 - (void)requestPermissionsIfNeeded {
-    if (self.speechAuth == SFSpeechRecognizerAuthorizationStatusNotDetermined) {
-        [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
-            @synchronized (self) {
-                self.speechAuth = status;
-                [self refreshState];
-            }
-        }];
-    }
-
-    if (@available(macOS 14.0, *)) {
-        AVAudioApplicationRecordPermission permission = AVAudioApplication.sharedInstance.recordPermission;
-        if (permission == AVAudioApplicationRecordPermissionGranted) {
-            self.micGranted = YES;
-            self.micResolved = YES;
-        } else if (permission == AVAudioApplicationRecordPermissionDenied) {
-            self.micGranted = NO;
-            self.micResolved = YES;
-        } else {
-            [AVAudioApplication requestRecordPermissionWithCompletionHandler:^(BOOL granted) {
+    @try {
+        if (self.speechAuth == SFSpeechRecognizerAuthorizationStatusNotDetermined) {
+            [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
                 @synchronized (self) {
-                    self.micGranted = granted;
-                    self.micResolved = YES;
+                    self.speechAuth = status;
                     [self refreshState];
                 }
             }];
         }
-    } else {
-        self.micGranted = YES;
-        self.micResolved = YES;
+
+        if (@available(macOS 14.0, *)) {
+            AVAudioApplicationRecordPermission permission = AVAudioApplication.sharedInstance.recordPermission;
+            if (permission == AVAudioApplicationRecordPermissionGranted) {
+                self.micGranted = YES;
+                self.micResolved = YES;
+            } else if (permission == AVAudioApplicationRecordPermissionDenied) {
+                self.micGranted = NO;
+                self.micResolved = YES;
+            } else {
+                [AVAudioApplication requestRecordPermissionWithCompletionHandler:^(BOOL granted) {
+                    @synchronized (self) {
+                        self.micGranted = granted;
+                        self.micResolved = YES;
+                        [self refreshState];
+                    }
+                }];
+            }
+        } else {
+            self.micGranted = YES;
+            self.micResolved = YES;
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+        self.state = SuzakuSpeechStateError;
     }
 }
 
@@ -104,85 +109,112 @@ typedef NS_ENUM(NSInteger, SuzakuSpeechState) {
 
 - (BOOL)startListening {
     @synchronized (self) {
-        [self requestPermissionsIfNeeded];
-        [self refreshState];
-        if (self.state != SuzakuSpeechStateReady) {
-            return NO;
-        }
-
-        [self stopListening];
-        self.latestTranscript = @"";
-        self.request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
-        self.request.shouldReportPartialResults = YES;
-        if (@available(macOS 13.0, *)) {
-            self.request.addsPunctuation = YES;
-        }
-        if (@available(macOS 10.15, *)) {
-            self.request.requiresOnDeviceRecognition = NO;
-        }
-
-        AVAudioInputNode *inputNode = self.audioEngine.inputNode;
-        AVAudioFormat *format = [inputNode outputFormatForBus:0];
-        [inputNode removeTapOnBus:0];
-        __weak typeof(self) weakSelf = self;
-        [inputNode installTapOnBus:0
-                        bufferSize:1024
-                            format:format
-                             block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
-            (void)when;
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf.request != nil) {
-                [strongSelf.request appendAudioPCMBuffer:buffer];
+        @try {
+            [self requestPermissionsIfNeeded];
+            [self refreshState];
+            if (self.state != SuzakuSpeechStateReady || self.recognizer == nil) {
+                return NO;
             }
-        }];
 
-        NSError *error = nil;
-        [self.audioEngine prepare];
-        if (![self.audioEngine startAndReturnError:&error]) {
-            self.state = SuzakuSpeechStateError;
+            [self stopListening];
+            self.latestTranscript = @"";
+            self.request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
+            self.request.shouldReportPartialResults = YES;
+            if (@available(macOS 13.0, *)) {
+                self.request.addsPunctuation = YES;
+            }
+            if (@available(macOS 10.15, *)) {
+                self.request.requiresOnDeviceRecognition = NO;
+            }
+
+            AVAudioInputNode *inputNode = self.audioEngine.inputNode;
+            if (inputNode == nil) {
+                self.state = SuzakuSpeechStateError;
+                self.request = nil;
+                return NO;
+            }
+
+            AVAudioFormat *format = [inputNode outputFormatForBus:0];
+            if (format == nil) {
+                self.state = SuzakuSpeechStateError;
+                self.request = nil;
+                return NO;
+            }
+
             [inputNode removeTapOnBus:0];
-            self.request = nil;
-            return NO;
-        }
-
-        self.task = [self.recognizer recognitionTaskWithRequest:self.request
-                                                  resultHandler:^(SFSpeechRecognitionResult *result, NSError *error) {
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf == nil) {
-                return;
-            }
-            @synchronized (strongSelf) {
-                if (result != nil) {
-                    strongSelf.latestTranscript = result.bestTranscription.formattedString ?: @"";
+            __weak typeof(self) weakSelf = self;
+            [inputNode installTapOnBus:0
+                            bufferSize:1024
+                                format:format
+                                 block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
+                (void)when;
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (strongSelf.request != nil) {
+                    [strongSelf.request appendAudioPCMBuffer:buffer];
                 }
-                if (error != nil) {
-                    strongSelf.state = SuzakuSpeechStateError;
-                    [strongSelf stopListening];
+            }];
+
+            NSError *error = nil;
+            [self.audioEngine prepare];
+            if (![self.audioEngine startAndReturnError:&error]) {
+                self.state = SuzakuSpeechStateError;
+                [inputNode removeTapOnBus:0];
+                self.request = nil;
+                return NO;
+            }
+
+            self.task = [self.recognizer recognitionTaskWithRequest:self.request
+                                                      resultHandler:^(SFSpeechRecognitionResult *result, NSError *error) {
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (strongSelf == nil) {
                     return;
                 }
-                if (result != nil && result.isFinal) {
-                    [strongSelf stopListening];
-                    [strongSelf refreshState];
+                @synchronized (strongSelf) {
+                    if (result != nil) {
+                        strongSelf.latestTranscript = result.bestTranscription.formattedString ?: @"";
+                    }
+                    if (error != nil) {
+                        strongSelf.state = SuzakuSpeechStateError;
+                        [strongSelf stopListening];
+                        return;
+                    }
+                    if (result != nil && result.isFinal) {
+                        [strongSelf stopListening];
+                        [strongSelf refreshState];
+                    }
                 }
-            }
-        }];
+            }];
 
-        self.state = SuzakuSpeechStateListening;
-        return YES;
+            self.state = SuzakuSpeechStateListening;
+            return YES;
+        } @catch (NSException *exception) {
+            (void)exception;
+            self.state = SuzakuSpeechStateError;
+            self.request = nil;
+            self.task = nil;
+            return NO;
+        }
     }
 }
 
 - (void)stopListening {
     @synchronized (self) {
-        [self.audioEngine.inputNode removeTapOnBus:0];
-        if (self.audioEngine.isRunning) {
-            [self.audioEngine stop];
+        @try {
+            [self.audioEngine.inputNode removeTapOnBus:0];
+            if (self.audioEngine.isRunning) {
+                [self.audioEngine stop];
+            }
+            [self.request endAudio];
+            [self.task cancel];
+            self.request = nil;
+            self.task = nil;
+            [self refreshState];
+        } @catch (NSException *exception) {
+            (void)exception;
+            self.request = nil;
+            self.task = nil;
+            self.state = SuzakuSpeechStateError;
         }
-        [self.request endAudio];
-        [self.task cancel];
-        self.request = nil;
-        self.task = nil;
-        [self refreshState];
     }
 }
 

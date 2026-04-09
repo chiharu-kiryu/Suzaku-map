@@ -16,6 +16,7 @@ pub(crate) struct PersistedDisplaySettings {
     pub(crate) font_face: FontFaceChoice,
     pub(crate) text_spacing: TextSpacing,
     pub(crate) text_smoothing: TextSmoothing,
+    pub(crate) voice_auto_insert: bool,
     pub(crate) llm_enabled: bool,
     pub(crate) llm_model: LlmModelPreset,
     pub(crate) llm_temperature: LlmTemperaturePreset,
@@ -57,6 +58,7 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             font_face: chrome.font_face,
             text_spacing: chrome.text_spacing,
             text_smoothing: chrome.text_smoothing,
+            voice_auto_insert: chrome.voice_auto_insert,
             llm_enabled: chrome.llm_enabled,
             llm_model: chrome.llm_model,
             llm_temperature: chrome.llm_temperature,
@@ -74,6 +76,7 @@ pub(crate) fn apply_display_settings(
     chrome.font_face = settings.font_face;
     chrome.text_spacing = settings.text_spacing;
     chrome.text_smoothing = settings.text_smoothing;
+    chrome.voice_auto_insert = settings.voice_auto_insert;
     chrome.llm_enabled = settings.llm_enabled;
     chrome.llm_model = settings.llm_model;
     chrome.llm_temperature = settings.llm_temperature;
@@ -81,13 +84,18 @@ pub(crate) fn apply_display_settings(
 
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
     let contents = format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
         encode_font_face(settings.font_face),
         encode_text_spacing(settings.text_spacing),
         encode_text_smoothing(settings.text_smoothing),
+        if settings.voice_auto_insert {
+            "true"
+        } else {
+            "false"
+        },
         if settings.llm_enabled {
             "true"
         } else {
@@ -110,6 +118,7 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         font_face: FontFaceChoice::Auto,
         text_spacing: TextSpacing::Normal,
         text_smoothing: TextSmoothing::Smooth,
+        voice_auto_insert: true,
         llm_enabled: false,
         llm_model: LlmModelPreset::Llama32_3b,
         llm_temperature: LlmTemperaturePreset::Balanced,
@@ -150,6 +159,7 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
                     settings.text_smoothing = parsed;
                 }
             }
+            "voice_auto_insert" => settings.voice_auto_insert = value.trim() == "true",
             "llm_enabled" => settings.llm_enabled = value.trim() == "true",
             "llm_model" => {
                 if let Some(parsed) = decode_llm_model(value.trim()) {
@@ -316,19 +326,25 @@ mod tests {
             font_face: FontFaceChoice::Geneva,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Sharp,
+            voice_auto_insert: false,
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Expressive,
         };
 
         let encoded = format!(
-            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
+            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
             encode_text_scale(settings.text_scale),
             encode_candidate_density(settings.candidate_density),
             encode_preview_style(settings.preview_style),
             encode_font_face(settings.font_face),
             encode_text_spacing(settings.text_spacing),
             encode_text_smoothing(settings.text_smoothing),
+            if settings.voice_auto_insert {
+                "true"
+            } else {
+                "false"
+            },
             if settings.llm_enabled {
                 "true"
             } else {
@@ -345,6 +361,7 @@ mod tests {
             font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Smooth,
+            voice_auto_insert: true,
             llm_enabled: true,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
@@ -367,6 +384,7 @@ mod tests {
                 "text_smoothing" => {
                     decoded.text_smoothing = decode_text_smoothing(value).expect("smooth")
                 }
+                "voice_auto_insert" => decoded.voice_auto_insert = value == "true",
                 "llm_enabled" => decoded.llm_enabled = value == "true",
                 "llm_model" => decoded.llm_model = decode_llm_model(value).expect("llm model"),
                 "llm_temperature" => {

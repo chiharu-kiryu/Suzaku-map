@@ -5,6 +5,9 @@ pub struct MacOsSpeechBridge;
 
 impl MacOsSpeechBridge {
     pub fn new() -> Option<Self> {
+        if !native_voice_enabled() {
+            return None;
+        }
         if unsafe { suzaku_speech_is_supported() } {
             Some(Self)
         } else {
@@ -54,6 +57,12 @@ impl MacOsSpeechBridge {
     pub fn supports_live_capture(&self) -> bool {
         true
     }
+}
+
+fn native_voice_enabled() -> bool {
+    std::env::var("SUZAKU_MACOS_VOICE_NATIVE")
+        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
 }
 
 unsafe extern "C" {
