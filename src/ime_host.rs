@@ -27,6 +27,8 @@ pub struct HostImeBridgeSnapshot {
     pub draft_text: String,
     pub committed_text: String,
     pub candidate_count: usize,
+    pub candidate_labels: Vec<String>,
+    pub primary_candidate: Option<String>,
     pub selected_index: usize,
 }
 
@@ -128,6 +130,8 @@ pub fn host_bridge_snapshot() -> HostImeBridgeSnapshot {
             draft_text: update.draft_text,
             committed_text: update.committed_text,
             candidate_count: update.candidates.len(),
+            primary_candidate: update.candidates.first().cloned(),
+            candidate_labels: update.candidates,
             selected_index: update.selected_index,
         }
     })
@@ -248,6 +252,34 @@ pub extern "C" fn suzaku_host_ime_commit_selected(force: bool) -> bool {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_candidate_count() -> usize {
+    host_bridge_snapshot().candidate_count
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_selected_index() -> usize {
+    host_bridge_snapshot().selected_index
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_candidate_label_utf8(index: usize) -> *mut std::os::raw::c_char {
+    let snapshot = host_bridge_snapshot();
+    match snapshot.candidate_labels.get(index) {
+        Some(label) if !label.is_empty() => into_raw_c_string(label.clone()),
+        _ => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_primary_candidate_utf8() -> *mut std::os::raw::c_char {
+    let snapshot = host_bridge_snapshot();
+    match snapshot.primary_candidate {
+        Some(candidate) if !candidate.is_empty() => into_raw_c_string(candidate),
+        _ => std::ptr::null_mut(),
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_display_text_utf8() -> *mut std::os::raw::c_char {
     let value = with_shared_host_ime_session(|session| bridge_display_text(session));
     if value.is_empty() {
@@ -319,6 +351,7 @@ mod tests {
         assert!(!snapshot.active);
         assert!(snapshot.marked_text.is_empty());
         assert_eq!(snapshot.candidate_count, 0);
+        assert!(snapshot.candidate_labels.is_empty());
     }
 
     #[test]

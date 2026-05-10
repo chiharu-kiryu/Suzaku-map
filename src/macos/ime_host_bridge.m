@@ -17,6 +17,10 @@ void suzaku_host_ime_select_candidate(unsigned long index);
 bool suzaku_host_ime_commit_selected(bool force);
 char *suzaku_host_ime_display_text_utf8(void);
 char *suzaku_host_ime_take_last_committed_text_utf8(void);
+unsigned long suzaku_host_ime_candidate_count(void);
+unsigned long suzaku_host_ime_selected_index(void);
+char *suzaku_host_ime_candidate_label_utf8(unsigned long index);
+char *suzaku_host_ime_primary_candidate_utf8(void);
 void suzaku_host_ime_free_utf8(char *rawText);
 
 static NSUInteger suzakuControllerInitCount = 0;
@@ -26,6 +30,10 @@ static NSUInteger suzakuControllerInputCount = 0;
 static NSUInteger suzakuControllerCommitCount = 0;
 static BOOL suzakuControllerActive = NO;
 static NSString *suzakuControllerLastMarkedText = nil;
+static NSUInteger suzakuCandidateCompanionRefreshCount = 0;
+static BOOL suzakuCandidateCompanionVisible = NO;
+static NSUInteger suzakuCandidateCompanionSelectedIndex = 0;
+static NSString *suzakuCandidateCompanionPrimaryCandidate = nil;
 
 static NSString *suzakuBridgeTakeNSString(char *(*provider)(void)) {
     char *raw = provider();
@@ -80,6 +88,14 @@ static void suzakuCommitTextToClient(id client) {
     }
 }
 
+static void suzakuRefreshCandidateCompanion(void) {
+    suzakuCandidateCompanionRefreshCount += 1;
+    suzakuCandidateCompanionSelectedIndex = (NSUInteger)suzaku_host_ime_selected_index();
+    suzakuCandidateCompanionVisible = suzaku_host_ime_candidate_count() > 0;
+    suzakuCandidateCompanionPrimaryCandidate =
+        suzakuBridgeTakeNSString(suzaku_host_ime_primary_candidate_utf8);
+}
+
 @implementation SuzakuInputController
 - (instancetype)initWithServer:(IMKServer *)server delegate:(id)delegate client:(id)inputClient {
     self = [super initWithServer:server delegate:delegate client:inputClient];
@@ -93,6 +109,7 @@ static void suzakuCommitTextToClient(id client) {
     suzakuControllerActive = YES;
     suzakuControllerActivateCount += 1;
     suzaku_host_ime_activate();
+    suzakuRefreshCandidateCompanion();
     [super activateServer:sender];
 }
 
@@ -100,6 +117,7 @@ static void suzakuCommitTextToClient(id client) {
     suzakuControllerActive = NO;
     suzakuControllerDeactivateCount += 1;
     suzaku_host_ime_deactivate();
+    suzakuCandidateCompanionVisible = NO;
     [super deactivateServer:sender];
 }
 
@@ -116,6 +134,7 @@ static void suzakuCommitTextToClient(id client) {
     BOOL accepted = suzaku_host_ime_replace_marked_text_utf8(utf8);
     if (accepted) {
         suzakuApplyMarkedTextToClient(sender);
+        suzakuRefreshCandidateCompanion();
     }
     return accepted;
 }
@@ -124,23 +143,27 @@ static void suzakuCommitTextToClient(id client) {
     if (selector == @selector(moveUp:)) {
         suzaku_host_ime_move_selection(-1);
         suzakuApplyMarkedTextToClient(sender);
+        suzakuRefreshCandidateCompanion();
         return;
     }
     if (selector == @selector(moveDown:)) {
         suzaku_host_ime_move_selection(1);
         suzakuApplyMarkedTextToClient(sender);
+        suzakuRefreshCandidateCompanion();
         return;
     }
     if (selector == @selector(cancelOperation:)) {
         suzaku_host_ime_clear_marked_text();
         suzakuControllerLastMarkedText = nil;
         suzakuApplyMarkedTextToClient(sender);
+        suzakuRefreshCandidateCompanion();
         return;
     }
     if (selector == @selector(insertNewline:)) {
         if (suzaku_host_ime_commit_selected(true)) {
             suzakuControllerLastMarkedText = nil;
             suzakuCommitTextToClient(sender);
+            suzakuRefreshCandidateCompanion();
             return;
         }
     }
@@ -153,6 +176,7 @@ static void suzakuCommitTextToClient(id client) {
     if (suzaku_host_ime_commit_selected(true)) {
         suzakuCommitTextToClient(sender);
     }
+    suzakuRefreshCandidateCompanion();
     [super commitComposition:sender];
 }
 @end
@@ -270,6 +294,10 @@ void suzaku_input_methodkit_reset_controller_debug_state(void) {
         suzakuControllerCommitCount = 0;
         suzakuControllerActive = NO;
         suzakuControllerLastMarkedText = nil;
+        suzakuCandidateCompanionRefreshCount = 0;
+        suzakuCandidateCompanionVisible = NO;
+        suzakuCandidateCompanionSelectedIndex = 0;
+        suzakuCandidateCompanionPrimaryCandidate = nil;
     }
 #endif
 }
@@ -329,6 +357,48 @@ char *suzaku_input_methodkit_controller_last_marked_text(void) {
             return NULL;
         }
         const char *utf8 = [suzakuControllerLastMarkedText UTF8String];
+        if (utf8 == NULL) {
+            return NULL;
+        }
+        return strdup(utf8);
+#else
+        return NULL;
+#endif
+    }
+}
+
+unsigned long suzaku_input_methodkit_candidate_companion_refresh_count(void) {
+#if __has_include(<InputMethodKit/InputMethodKit.h>)
+    return (unsigned long)suzakuCandidateCompanionRefreshCount;
+#else
+    return 0;
+#endif
+}
+
+bool suzaku_input_methodkit_candidate_companion_visible(void) {
+#if __has_include(<InputMethodKit/InputMethodKit.h>)
+    return suzakuCandidateCompanionVisible;
+#else
+    return false;
+#endif
+}
+
+unsigned long suzaku_input_methodkit_candidate_companion_selected_index(void) {
+#if __has_include(<InputMethodKit/InputMethodKit.h>)
+    return (unsigned long)suzakuCandidateCompanionSelectedIndex;
+#else
+    return 0;
+#endif
+}
+
+char *suzaku_input_methodkit_candidate_companion_primary_candidate(void) {
+    @autoreleasepool {
+#if __has_include(<InputMethodKit/InputMethodKit.h>)
+        if (suzakuCandidateCompanionPrimaryCandidate == nil
+            || suzakuCandidateCompanionPrimaryCandidate.length == 0) {
+            return NULL;
+        }
+        const char *utf8 = [suzakuCandidateCompanionPrimaryCandidate UTF8String];
         if (utf8 == NULL) {
             return NULL;
         }

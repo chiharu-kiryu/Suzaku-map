@@ -43,6 +43,18 @@ fn main() {
             .unwrap_or("(none)")
     );
     println!(
+        "candidate companion ready={} visible={} refreshes={} selected={} primary={}",
+        bootstrap.candidate_companion.ready,
+        bootstrap.candidate_companion.visible,
+        bootstrap.candidate_companion.refresh_count,
+        bootstrap.candidate_companion.selected_index,
+        bootstrap
+            .candidate_companion
+            .primary_candidate
+            .as_deref()
+            .unwrap_or("(none)")
+    );
+    println!(
         "session active={} candidates={} committed=\"{}\"",
         update.active,
         update.candidates.len(),

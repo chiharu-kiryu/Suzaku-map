@@ -56,10 +56,12 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
                 marked_text_roundtrip: bootstrap.host_session.active
                     || bootstrap.controller_lifecycle_ready,
                 commit_roundtrip: bootstrap.host_session.active || bootstrap.server_bootstrap_ready,
-                native_candidate_window: false,
+                native_candidate_window: bootstrap.candidate_companion.ready,
                 notes: if bootstrap.server_bootstrap_ready {
-                    "InputMethodKit bootstrap is live; Rust host session is wired for marked text and commit."
-                        .to_string()
+                    format!(
+                        "InputMethodKit bootstrap is live; Rust host session is wired for marked text and commit, and candidate companion visibility is {}.",
+                        bootstrap.candidate_companion.visible
+                    )
                 } else {
                     "InputMethodKit bridge is present, but the bundle is not yet running as a registered system input method."
                         .to_string()

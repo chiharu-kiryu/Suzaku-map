@@ -10,6 +10,7 @@ pub struct MacOsImeBootstrap {
     pub controller_lifecycle_ready: bool,
     pub server_bootstrap_ready: bool,
     pub controller_debug_state: MacOsImeControllerDebugState,
+    pub candidate_companion: MacOsImeCandidateCompanionState,
     pub host_session: MacOsImeHostSessionDebugState,
     pub recommended_connection_name: String,
 }
@@ -35,10 +36,19 @@ pub struct MacOsImeHostSessionDebugState {
     pub selected_index: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MacOsImeCandidateCompanionState {
+    pub ready: bool,
+    pub visible: bool,
+    pub refresh_count: usize,
+    pub selected_index: usize,
+    pub primary_candidate: Option<String>,
+}
+
 impl MacOsImeBootstrap {
     pub fn describe(&self) -> String {
         format!(
-            "IMK available: {} | bundled: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | controller active: {} | controller init/activate/input/commit: {}/{}/{}/{} | last marked: {} | host session active: {} | host marked: {} | host candidates: {} | host committed: {} | recommended connection: {}",
+            "IMK available: {} | bundled: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | controller active: {} | controller init/activate/input/commit: {}/{}/{}/{} | last marked: {} | candidate companion ready: {} | visible: {} | companion refreshes: {} | companion selected: {} | companion primary: {} | host session active: {} | host marked: {} | host candidates: {} | host committed: {} | recommended connection: {}",
             self.input_methodkit_available,
             self.bundled_runtime,
             self.main_bundle_identifier.as_deref().unwrap_or("(none)"),
@@ -53,6 +63,14 @@ impl MacOsImeBootstrap {
             self.controller_debug_state.commit_count,
             self.controller_debug_state
                 .last_marked_text
+                .as_deref()
+                .unwrap_or("(none)"),
+            self.candidate_companion.ready,
+            self.candidate_companion.visible,
+            self.candidate_companion.refresh_count,
+            self.candidate_companion.selected_index,
+            self.candidate_companion
+                .primary_candidate
                 .as_deref()
                 .unwrap_or("(none)"),
             self.host_session.active,
@@ -88,6 +106,7 @@ pub fn bootstrap_status() -> MacOsImeBootstrap {
             controller_lifecycle_ready: controller_lifecycle_ready(),
             server_bootstrap_ready: bootstrap_server(),
             controller_debug_state: controller_debug_state(),
+            candidate_companion: candidate_companion_state(),
             host_session: host_session_debug_state(),
             recommended_connection_name: recommended_connection_name(),
         };
@@ -110,6 +129,13 @@ pub fn bootstrap_status() -> MacOsImeBootstrap {
             input_count: 0,
             commit_count: 0,
             last_marked_text: None,
+        },
+        candidate_companion: MacOsImeCandidateCompanionState {
+            ready: false,
+            visible: false,
+            refresh_count: 0,
+            selected_index: 0,
+            primary_candidate: None,
         },
         host_session: MacOsImeHostSessionDebugState {
             active: false,
@@ -211,6 +237,31 @@ fn controller_debug_state() -> MacOsImeControllerDebugState {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn candidate_companion_state() -> MacOsImeCandidateCompanionState {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_candidate_companion_refresh_count() -> std::os::raw::c_ulong;
+        fn suzaku_input_methodkit_candidate_companion_visible() -> bool;
+        fn suzaku_input_methodkit_candidate_companion_selected_index() -> std::os::raw::c_ulong;
+        fn suzaku_input_methodkit_candidate_companion_primary_candidate()
+        -> *mut std::os::raw::c_char;
+    }
+
+    MacOsImeCandidateCompanionState {
+        ready: controller_lifecycle_ready(),
+        visible: unsafe { suzaku_input_methodkit_candidate_companion_visible() },
+        refresh_count: unsafe {
+            suzaku_input_methodkit_candidate_companion_refresh_count() as usize
+        },
+        selected_index: unsafe {
+            suzaku_input_methodkit_candidate_companion_selected_index() as usize
+        },
+        primary_candidate: read_optional_native_string(
+            suzaku_input_methodkit_candidate_companion_primary_candidate,
+        ),
+    }
+}
+
 fn host_session_debug_state() -> MacOsImeHostSessionDebugState {
     let snapshot = host_bridge_snapshot();
     MacOsImeHostSessionDebugState {
@@ -268,5 +319,6 @@ mod tests {
         assert_eq!(bootstrap.controller_debug_state.input_count, 0);
         assert_eq!(bootstrap.controller_debug_state.commit_count, 0);
         assert_eq!(bootstrap.host_session.candidate_count, 0);
+        assert!(bootstrap.candidate_companion.ready || !bootstrap.input_methodkit_available);
     }
 }
