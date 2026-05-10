@@ -236,7 +236,10 @@ pub(crate) fn encode_font_face(value: FontFaceChoice) -> &'static str {
     match value {
         FontFaceChoice::Auto => "auto",
         FontFaceChoice::Monaco => "monaco",
+        FontFaceChoice::Menlo => "menlo",
         FontFaceChoice::Geneva => "geneva",
+        FontFaceChoice::Helvetica => "helvetica",
+        FontFaceChoice::PingFang => "pingfang",
         FontFaceChoice::ArialUnicode => "arial_unicode",
     }
 }
@@ -245,7 +248,10 @@ pub(crate) fn decode_font_face(value: &str) -> Option<FontFaceChoice> {
     match value {
         "auto" => Some(FontFaceChoice::Auto),
         "monaco" => Some(FontFaceChoice::Monaco),
+        "menlo" => Some(FontFaceChoice::Menlo),
         "geneva" => Some(FontFaceChoice::Geneva),
+        "helvetica" => Some(FontFaceChoice::Helvetica),
+        "pingfang" => Some(FontFaceChoice::PingFang),
         "arial_unicode" => Some(FontFaceChoice::ArialUnicode),
         _ => None,
     }
@@ -323,7 +329,7 @@ mod tests {
             text_scale: DisplayTextScale::Large,
             candidate_density: CandidateDensity::Compact,
             preview_style: PreviewStyle::Full,
-            font_face: FontFaceChoice::Geneva,
+            font_face: FontFaceChoice::PingFang,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Sharp,
             voice_auto_insert: false,

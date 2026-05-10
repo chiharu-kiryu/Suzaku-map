@@ -8,6 +8,9 @@ impl MacOsSpeechBridge {
         if !native_voice_enabled() {
             return None;
         }
+        if !unsafe { suzaku_speech_is_bundled_host() } {
+            return None;
+        }
         if unsafe { suzaku_speech_is_supported() } {
             Some(Self)
         } else {
@@ -66,6 +69,7 @@ fn native_voice_enabled() -> bool {
 }
 
 unsafe extern "C" {
+    fn suzaku_speech_is_bundled_host() -> bool;
     fn suzaku_speech_is_supported() -> bool;
     fn suzaku_speech_state() -> i32;
     fn suzaku_speech_request_permissions();

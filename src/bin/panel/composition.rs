@@ -2,7 +2,9 @@ use super::PanelState;
 use crate::render::create_font_atlas;
 use suzaku_map::ime::SignalState;
 use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
-use suzaku_map::panel_support::derive_next_token_candidates;
+use suzaku_map::panel_support::{
+    derive_next_token_candidates, derive_sentence_candidates_with_indices,
+};
 
 impl PanelState {
     pub(super) fn reset_signal(&mut self) {
@@ -46,6 +48,19 @@ impl PanelState {
         self.refresh_seed();
     }
 
+    pub(super) fn reset_after_commit(&mut self) {
+        let committed_snapshot = self.engine.snapshot();
+        self.selected_next_tokens.clear();
+        self.composition_base_seed.clear();
+        self.chrome.composed_tokens.clear();
+        self.chrome.next_token_candidates.clear();
+        self.chrome.sentence_candidates.clear();
+        self.chrome.sentence_candidate_source_indices.clear();
+        self.chrome.set_seed_text(committed_snapshot.seed_text);
+        self.chrome.move_caret_to_end();
+        self.chrome.focus_input();
+    }
+
     pub(super) fn sync_manual_seed_base(&mut self) {
         self.selected_next_tokens.clear();
         self.composition_base_seed = self
@@ -73,11 +88,24 @@ impl PanelState {
         self.chrome.composed_tokens = self.selected_next_tokens.clone();
         self.chrome.next_token_candidates =
             derive_next_token_candidates(&normalized_seed, &snapshot.candidate_labels, 6);
-        self.chrome.sentence_candidates = if normalized_seed.split_whitespace().count() >= 2 {
-            snapshot.candidate_labels.iter().take(4).cloned().collect()
+        if normalized_seed.split_whitespace().count() >= 2 {
+            let sentence_candidates = derive_sentence_candidates_with_indices(
+                &normalized_seed,
+                &snapshot.candidate_labels,
+                4,
+            );
+            self.chrome.sentence_candidate_source_indices = sentence_candidates
+                .iter()
+                .map(|(index, _)| *index)
+                .collect();
+            self.chrome.sentence_candidates = sentence_candidates
+                .into_iter()
+                .map(|(_, sentence)| sentence)
+                .collect();
         } else {
-            Vec::new()
-        };
+            self.chrome.sentence_candidate_source_indices.clear();
+            self.chrome.sentence_candidates.clear();
+        }
     }
 
     pub(super) fn select_next_token(&mut self, index: usize) {

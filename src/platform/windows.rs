@@ -21,10 +21,15 @@ pub fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'s
         FontFaceChoice::Auto => vec![
             ("C:\\Windows\\Fonts\\consola.ttf", "Consolas"),
             ("C:\\Windows\\Fonts\\segoeui.ttf", "Segoe UI"),
+            ("C:\\Windows\\Fonts\\arial.ttf", "Arial"),
+            ("C:\\Windows\\Fonts\\msyh.ttc", "Microsoft YaHei"),
             ("C:\\Windows\\Fonts\\arialuni.ttf", "Arial Unicode"),
         ],
         FontFaceChoice::Monaco => vec![("C:\\Windows\\Fonts\\consola.ttf", "Consolas")],
+        FontFaceChoice::Menlo => vec![("C:\\Windows\\Fonts\\consola.ttf", "Consolas")],
         FontFaceChoice::Geneva => vec![("C:\\Windows\\Fonts\\segoeui.ttf", "Segoe UI")],
+        FontFaceChoice::Helvetica => vec![("C:\\Windows\\Fonts\\arial.ttf", "Arial")],
+        FontFaceChoice::PingFang => vec![("C:\\Windows\\Fonts\\msyh.ttc", "Microsoft YaHei")],
         FontFaceChoice::ArialUnicode => {
             vec![("C:\\Windows\\Fonts\\arialuni.ttf", "Arial Unicode")]
         }

@@ -342,6 +342,10 @@ bool suzaku_speech_is_supported(void) {
     return [SuzakuSpeechBridge shared].recognizer != nil;
 }
 
+bool suzaku_speech_is_bundled_host(void) {
+    return [[SuzakuSpeechBridge shared] isRunningBundledApp];
+}
+
 int suzaku_speech_state(void) {
     return (int)[SuzakuSpeechBridge shared].state;
 }

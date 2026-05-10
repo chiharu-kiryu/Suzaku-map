@@ -23,9 +23,7 @@ pub fn voice_transcript_placeholder(
         VoicePermissionState::Pending => {
             "Enable Speech Recognition and Microphone access in System Settings first.".to_string()
         }
-        VoicePermissionState::Denied => {
-            "Microphone or speech access was denied.".to_string()
-        }
+        VoicePermissionState::Denied => "Microphone or speech access was denied.".to_string(),
         VoicePermissionState::Error => {
             "Speech recognition hit an error. Try Listen again.".to_string()
         }
@@ -74,7 +72,9 @@ pub fn open_voice_permission_settings() -> bool {
     #[cfg(target_os = "macos")]
     {
         return Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
+            .arg(
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition",
+            )
             .status()
             .map(|status| status.success())
             .unwrap_or(false);

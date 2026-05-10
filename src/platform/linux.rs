@@ -64,6 +64,10 @@ pub fn ubuntu_preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static s
                 "DejaVu Sans",
             ),
             (
+                "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                "Liberation Sans",
+            ),
+            (
                 "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
                 "Noto Sans CJK",
             ),
@@ -72,9 +76,21 @@ pub fn ubuntu_preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static s
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             "DejaVu Sans Mono",
         )],
+        FontFaceChoice::Menlo => vec![(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "DejaVu Sans Mono",
+        )],
         FontFaceChoice::Geneva => vec![(
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "DejaVu Sans",
+        )],
+        FontFaceChoice::Helvetica => vec![(
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "Liberation Sans",
+        )],
+        FontFaceChoice::PingFang => vec![(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "Noto Sans CJK",
         )],
         FontFaceChoice::ArialUnicode => vec![(
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",

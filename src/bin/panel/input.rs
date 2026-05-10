@@ -37,6 +37,7 @@ pub(super) fn handle_panel_window_event(
             } else if state.kind == PanelWindowKind::Main {
                 state.extend_handwriting_stroke();
             }
+            state.update_hovered_interaction();
             state.window.request_redraw();
         }
         WindowEvent::ModifiersChanged(modifiers) => {
@@ -44,9 +45,11 @@ pub(super) fn handle_panel_window_event(
         }
         WindowEvent::Touch(touch) => {
             state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
+            state.update_hovered_interaction();
             if state.kind == PanelWindowKind::Main {
                 match touch.phase {
                     TouchPhase::Started => {
+                        state.update_pressed_interaction();
                         state.touch_start_position = state.cursor_position;
                         state.touch_tap_pending = !state.try_begin_handwriting_stroke();
                     }
@@ -69,11 +72,13 @@ pub(super) fn handle_panel_window_event(
                         } else if state.touch_tap_pending {
                             state.select_at_cursor();
                         }
+                        state.clear_pressed_interaction();
                         state.touch_tap_pending = false;
                         state.touch_start_position = None;
                     }
                     TouchPhase::Cancelled => {
                         state.finish_handwriting_stroke();
+                        state.clear_pressed_interaction();
                         state.touch_tap_pending = false;
                         state.touch_start_position = None;
                     }
@@ -86,6 +91,7 @@ pub(super) fn handle_panel_window_event(
             button: MouseButton::Left,
             ..
         } => {
+            state.update_pressed_interaction();
             if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
                 state.begin_compact_drag();
             } else if !(state.kind == PanelWindowKind::Main && state.try_begin_handwriting_stroke())
@@ -106,6 +112,8 @@ pub(super) fn handle_panel_window_event(
             } else if state.kind == PanelWindowKind::Main {
                 state.finish_handwriting_stroke();
             }
+            state.clear_pressed_interaction();
+            state.update_hovered_interaction();
             state.window.request_redraw();
         }
         WindowEvent::KeyboardInput { event, .. } => {
@@ -211,9 +219,12 @@ pub(super) fn handle_panel_window_event(
                                 let _ = state.engine.commit(CommitOptions { force: true });
                             }
                         }
-                        PhysicalKey::Code(KeyCode::Enter) => {
+                        PhysicalKey::Code(KeyCode::Enter)
+                        | PhysicalKey::Code(KeyCode::NumpadEnter) => {
                             if state.chrome.input_focused {
                                 state.chrome.blur_input();
+                            } else if state.commit_primary_sentence_candidate() {
+                                // The main sentence action should feel like a direct submit.
                             } else {
                                 let _ = state.engine.commit(CommitOptions { force: true });
                             }

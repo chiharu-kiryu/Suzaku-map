@@ -232,6 +232,12 @@ impl ApplicationHandler for PanelApp {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(panel) = self.panel.as_mut() {
             panel.poll_voice_bridge();
+            if panel.commit_feedback_ticks > 0 {
+                panel.commit_feedback_ticks -= 1;
+                if panel.commit_feedback_ticks == 0 {
+                    panel.last_commit_feedback = None;
+                }
+            }
             if panel.chrome.active_input_mode == InputMode::Dictation
                 && panel.chrome.voice_state == VoiceCaptureState::Listening
             {
@@ -272,11 +278,15 @@ struct PanelState {
     compact_drag_moved: bool,
     compact_drag_start_cursor: Option<(f32, f32)>,
     compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
+    hovered_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
+    pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
     touch_tap_pending: bool,
     touch_start_position: Option<(f32, f32)>,
     voice_stability_ticks: u8,
     last_polled_voice_transcript: String,
     last_handwriting_summary: Option<String>,
+    last_commit_feedback: Option<String>,
+    commit_feedback_ticks: u8,
     composition_base_seed: String,
     selected_next_tokens: Vec<String>,
     expanded_window_size: Option<LogicalSize<f64>>,
@@ -436,6 +446,8 @@ impl PanelState {
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Unknown Voice Host".to_string(),
             voice_supports_live_capture: false,
+            hovered_interaction: None,
+            pressed_interaction: None,
             voice_transcript: String::new(),
             voice_visual_phase: 0,
             voice_auto_insert: true,
@@ -445,6 +457,7 @@ impl PanelState {
             composed_tokens: Vec::new(),
             next_token_candidates: Vec::new(),
             sentence_candidates: Vec::new(),
+            sentence_candidate_source_indices: Vec::new(),
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
@@ -547,11 +560,15 @@ impl PanelState {
             compact_drag_moved: false,
             compact_drag_start_cursor: None,
             compact_drag_start_window_pos: None,
+            hovered_interaction: None,
+            pressed_interaction: None,
             touch_tap_pending: false,
             touch_start_position: None,
             voice_stability_ticks: 0,
             last_polled_voice_transcript: String::new(),
             last_handwriting_summary: None,
+            last_commit_feedback: None,
+            commit_feedback_ticks: 0,
             composition_base_seed,
             selected_next_tokens: Vec::new(),
             expanded_window_size: None,

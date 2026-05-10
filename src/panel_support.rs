@@ -72,6 +72,189 @@ pub fn derive_next_token_candidates(
     next
 }
 
+pub fn derive_sentence_candidates_with_indices(
+    seed_text: &str,
+    raw_candidates: &[String],
+    limit: usize,
+) -> Vec<(usize, String)> {
+    let normalized_seed = seed_text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut derived = Vec::new();
+
+    for (index, candidate) in raw_candidates.iter().enumerate() {
+        let cleaned = clean_sentence_candidate(&normalized_seed, candidate);
+        if cleaned.is_empty() || derived.iter().any(|(_, existing)| existing == &cleaned) {
+            continue;
+        }
+        derived.push((index, cleaned));
+    }
+
+    derived.sort_by(|(left_index, left), (right_index, right)| {
+        sentence_candidate_rank(&normalized_seed, left, *left_index).cmp(&sentence_candidate_rank(
+            &normalized_seed,
+            right,
+            *right_index,
+        ))
+    });
+    derived.truncate(limit);
+    derived
+}
+
+pub fn derive_sentence_candidates(
+    seed_text: &str,
+    raw_candidates: &[String],
+    limit: usize,
+) -> Vec<String> {
+    derive_sentence_candidates_with_indices(seed_text, raw_candidates, limit)
+        .into_iter()
+        .map(|(_, sentence)| sentence)
+        .collect()
+}
+
+pub fn sentence_candidate_style_label(sentence: &str, primary: bool) -> &'static str {
+    if primary {
+        return "Best";
+    }
+
+    let normalized = sentence.to_ascii_lowercase();
+    let token_count = normalized.split_whitespace().count();
+    if token_count <= 5 {
+        "Short"
+    } else if normalized.contains("next suggestion") {
+        "Guided"
+    } else if normalized.contains("complete sentence") || normalized.contains("full sentence") {
+        "Expanded"
+    } else if normalized.contains(" is ready.") {
+        "Natural"
+    } else if normalized.contains("please") || normalized.contains("could") {
+        "Polite"
+    } else if token_count >= 11 {
+        "Detailed"
+    } else {
+        "Alternate"
+    }
+}
+
+fn sentence_candidate_rank(
+    seed_text: &str,
+    sentence: &str,
+    source_index: usize,
+) -> (usize, usize, usize, usize, usize, usize) {
+    let normalized_seed = seed_text.to_ascii_lowercase();
+    let normalized_sentence = sentence.to_ascii_lowercase();
+    let token_count = normalized_sentence.split_whitespace().count();
+    let ideal_length_delta = token_count.abs_diff(8);
+    let template_rank = if normalized_sentence.contains(" is ready.") {
+        0
+    } else if normalized_sentence.contains("next suggestion") {
+        1
+    } else if normalized_sentence.contains("complete sentence") {
+        2
+    } else if normalized_sentence.contains("full sentence") {
+        3
+    } else {
+        0
+    };
+    let repeat_penalty = usize::from(has_adjacent_repeated_word(&normalized_sentence));
+    let seed_repetition_penalty = usize::from(
+        normalized_sentence
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|window| window[0] == window[1])
+            || normalized_sentence.contains(&format!("{normalized_seed} {normalized_seed}")),
+    );
+    let punctuation_penalty =
+        usize::from(!matches!(sentence.chars().last(), Some('.' | '!' | '?')));
+
+    (
+        template_rank,
+        repeat_penalty,
+        seed_repetition_penalty,
+        ideal_length_delta,
+        punctuation_penalty,
+        source_index,
+    )
+}
+
+fn has_adjacent_repeated_word(sentence: &str) -> bool {
+    let mut previous = None;
+    for token in sentence
+        .split_whitespace()
+        .map(|token| token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\''))
+        .filter(|token| !token.is_empty())
+    {
+        if previous == Some(token) {
+            return true;
+        }
+        previous = Some(token);
+    }
+    false
+}
+
+fn clean_sentence_candidate(seed_text: &str, candidate: &str) -> String {
+    let seed = seed_text.trim();
+    let candidate = candidate.trim();
+    if candidate.is_empty() {
+        return String::new();
+    }
+
+    let normalized_seed = seed.to_ascii_lowercase();
+    let normalized_candidate = candidate.to_ascii_lowercase();
+    let normalized_template_candidate =
+        normalized_candidate.trim_end_matches(|ch: char| matches!(ch, '.' | '!' | '?'));
+
+    let reduced_seed = trim_repeated_suffix(seed, &normalized_candidate);
+    let templated = if normalized_template_candidate.ends_with("is ready as the next full sentence")
+    {
+        Some(format!("{seed} is ready."))
+    } else if normalized_template_candidate.ends_with("can continue by tapping the next suggestion")
+    {
+        Some(format!(
+            "{reduced_seed} can continue with the next suggestion."
+        ))
+    } else if normalized_template_candidate.ends_with("now expands into a complete candidate") {
+        Some(format!("{seed} now expands into a complete sentence."))
+    } else {
+        None
+    };
+
+    let sentence = templated.unwrap_or_else(|| candidate.to_string());
+    finalize_sentence(&sentence, &normalized_seed)
+}
+
+fn trim_repeated_suffix<'a>(seed: &'a str, normalized_candidate: &str) -> &'a str {
+    if normalized_candidate.contains(" can continue by tapping the next suggestion")
+        && seed.to_ascii_lowercase().ends_with(" can")
+    {
+        return seed
+            .strip_suffix(" can")
+            .or_else(|| seed.strip_suffix(" Can"))
+            .unwrap_or(seed);
+    }
+    seed
+}
+
+fn finalize_sentence(sentence: &str, normalized_seed: &str) -> String {
+    let mut text = sentence.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        return text;
+    }
+    if !normalized_seed.is_empty() && text.to_ascii_lowercase() == normalized_seed {
+        text.push('.');
+    } else if !matches!(text.chars().last(), Some('.' | '!' | '?')) {
+        text.push('.');
+    }
+
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut capitalized = String::new();
+    capitalized.extend(first.to_uppercase());
+    capitalized.push_str(chars.as_str());
+    capitalized
+}
+
 pub fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
     if let Some(grouped) = recognize_grouped_handwriting_candidates(strokes) {
         return grouped;
@@ -273,8 +456,9 @@ pub fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_next_token_candidates, recognize_handwriting_candidates,
-        summarize_handwriting_strokes,
+        derive_next_token_candidates, derive_sentence_candidates,
+        derive_sentence_candidates_with_indices, recognize_handwriting_candidates,
+        sentence_candidate_style_label, summarize_handwriting_strokes,
     };
 
     #[test]
@@ -293,6 +477,64 @@ mod tests {
             tokens.starts_with(&["is".to_string(), "continue".to_string(), "now".to_string(),])
         );
         assert!(!tokens.iter().any(|token| token == "can"));
+    }
+
+    #[test]
+    fn sentence_derivation_cleans_generic_engine_templates() {
+        let sentences = derive_sentence_candidates(
+            "apple can",
+            &[
+                "apple can is ready as the next full sentence".into(),
+                "apple can continue by tapping the next suggestion".into(),
+                "apple can now expands into a complete candidate".into(),
+            ],
+            4,
+        );
+
+        assert_eq!(sentences[0], "Apple can is ready.");
+        assert_eq!(sentences[1], "Apple can continue with the next suggestion.");
+        assert_eq!(
+            sentences[2],
+            "Apple can now expands into a complete sentence."
+        );
+    }
+
+    #[test]
+    fn sentence_derivation_prefers_more_natural_commit_candidate() {
+        let sentences = derive_sentence_candidates_with_indices(
+            "now can as",
+            &[
+                "now can as can continue by tapping the next suggestion".into(),
+                "Now can as is ready as the next full sentence.".into(),
+                "now can as now expands into a complete candidate".into(),
+            ],
+            4,
+        );
+
+        assert_eq!(
+            sentences.first().map(|(_, sentence)| sentence.as_str()),
+            Some("Now can as is ready.")
+        );
+    }
+
+    #[test]
+    fn sentence_style_labels_distinguish_primary_and_alternates() {
+        assert_eq!(
+            sentence_candidate_style_label("Now can as is ready.", true),
+            "Best"
+        );
+        assert_eq!(
+            sentence_candidate_style_label("Now can continue with the next suggestion.", false),
+            "Guided"
+        );
+        assert_eq!(
+            sentence_candidate_style_label(
+                "This is a more detailed alternate phrasing for review in the final candidate area.",
+                false
+            ),
+            "Detailed"
+        );
+        assert_eq!(sentence_candidate_style_label("Okay then.", false), "Short");
     }
 
     #[test]
