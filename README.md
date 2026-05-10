@@ -74,6 +74,14 @@ For microphone and speech-recognition permission testing on macOS, prefer the ap
 - Output: `target/debug/Suzaku Panel.app`
 - Launch with Finder or `open "target/debug/Suzaku Panel.app"`
 
+For the first-pass system IME bundle shape on macOS:
+
+- Build input method bundle: `cargo ime-app-macos`
+- Build and open input method bundle: `cargo open-ime-app-macos`
+- Install to `~/Library/Input Methods`: `cargo install-ime-app-macos`
+- Install and open from `~/Library/Input Methods`: `cargo install-open-ime-app-macos`
+- Output: `target/debug/Suzaku Input Method.app`
+
 ## System IME Host Direction
 
 The project now has an explicit first-pass system IME host skeleton, separate from the GPU panel:
@@ -112,10 +120,12 @@ Right now only macOS has a live `marked text -> commit` roundtrip. Windows and L
 The panel split is now explicit too:
 
 - [src/platform/panel_companion_dispatch.rs](./src/platform/panel_companion_dispatch.rs)
+- [src/platform/companion_style.rs](./src/platform/companion_style.rs)
 - macOS / Windows: the GPU panel is treated as a `DebugCompanion`
 - Ubuntu / Arch / SteamOS: the GPU panel remains the primary interactive surface until a native system IME host exists
 
 That means the project can keep evolving the panel as a rich debug and extended companion, while the real marked-text and commit lifecycle moves into platform IME hosts.
+The macOS native candidate companion can now reuse a shared detached companion style without depending on the GPU panel runtime itself, and it follows the persisted `theme_preset` explicitly instead of reading panel runtime state.
 
 The current macOS IME host path is still a skeleton, not a registered system input method bundle yet. It now tells us:
 
@@ -125,6 +135,12 @@ The current macOS IME host path is still a skeleton, not a registered system inp
 - which `InputMethodConnectionName` the bundle currently exposes
 - which controller class name the native bridge publishes
 - whether a first-pass `IMKServer` bootstrap can be created
+
+The project now also ships a first-pass dedicated input method bundle plist:
+
+- [src/macos/SuzakuInputMethod-Info.plist](./src/macos/SuzakuInputMethod-Info.plist)
+
+That bundle is intentionally separate from the GPU panel app bundle, so system IME identity, install path, and lifecycle can evolve without dragging the panel runtime along with it.
 
 That gives us a stable base for the next step: replacing the standalone bootstrap with a true `IMKInputController`-backed input method bundle.
 

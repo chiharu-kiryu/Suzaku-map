@@ -18,6 +18,7 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/text_output_bridge.m");
         println!("cargo:rerun-if-changed=src/macos/ime_host_bridge.m");
         println!("cargo:rerun-if-changed=src/macos/SuzakuPanel-Info.plist");
+        println!("cargo:rerun-if-changed=src/macos/SuzakuInputMethod-Info.plist");
         println!(
             "cargo:rustc-link-arg-bin=panel=-Wl,-sectcreate,__TEXT,__info_plist,src/macos/SuzakuPanel-Info.plist"
         );

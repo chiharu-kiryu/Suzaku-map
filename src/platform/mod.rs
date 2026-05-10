@@ -61,6 +61,7 @@ pub fn support_for(platform: TargetPlatform) -> PlatformSupport {
     }
 }
 
+pub mod companion_style;
 pub mod fallback_voice;
 pub mod gpu_host;
 pub mod ime_host_dispatch;

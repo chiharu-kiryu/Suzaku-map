@@ -27,6 +27,22 @@ unsigned long suzaku_host_ime_selected_index(void);
 char *suzaku_host_ime_candidate_label_utf8(unsigned long index);
 char *suzaku_host_ime_primary_candidate_utf8(void);
 void suzaku_host_ime_free_utf8(char *rawText);
+char *suzaku_host_companion_window_title_utf8(void);
+char *suzaku_host_companion_header_title_utf8(void);
+bool suzaku_host_companion_show_header(void);
+unsigned short suzaku_host_companion_min_width(void);
+unsigned short suzaku_host_companion_max_width(void);
+unsigned short suzaku_host_companion_row_height(void);
+unsigned char suzaku_host_companion_max_text_lines(void);
+unsigned short suzaku_host_companion_horizontal_padding(void);
+unsigned short suzaku_host_companion_vertical_padding(void);
+unsigned int suzaku_host_companion_panel_background_rgba8(void);
+unsigned int suzaku_host_companion_title_text_rgba8(void);
+unsigned int suzaku_host_companion_row_normal_text_rgba8(void);
+unsigned int suzaku_host_companion_row_hover_text_rgba8(void);
+unsigned int suzaku_host_companion_row_selected_text_rgba8(void);
+unsigned int suzaku_host_companion_accent_rgba8(void);
+unsigned int suzaku_host_companion_border_rgba8(void);
 
 static NSUInteger suzakuControllerInitCount = 0;
 static NSUInteger suzakuControllerActivateCount = 0;
@@ -42,6 +58,7 @@ static NSUInteger suzakuCandidateCompanionHoveredIndex = NSNotFound;
 static NSString *suzakuCandidateCompanionPrimaryCandidate = nil;
 static NSPanel *suzakuCandidateCompanionPanel = nil;
 static NSMutableArray<NSButton *> *suzakuCandidateCompanionButtons = nil;
+static NSTextField *suzakuCandidateCompanionHeader = nil;
 static __weak id suzakuActiveClient = nil;
 static __weak SuzakuInputController *suzakuActiveController = nil;
 
@@ -97,6 +114,31 @@ static NSString *suzakuBridgeTakeCandidateLabel(NSUInteger index) {
     NSString *value = [[NSString alloc] initWithUTF8String:raw];
     suzaku_host_ime_free_utf8(raw);
     return value;
+}
+
+static NSColor *suzakuColorFromPackedRGBA(unsigned int packedColor) {
+    CGFloat red = ((packedColor >> 24) & 0xFF) / 255.0;
+    CGFloat green = ((packedColor >> 16) & 0xFF) / 255.0;
+    CGFloat blue = ((packedColor >> 8) & 0xFF) / 255.0;
+    CGFloat alpha = (packedColor & 0xFF) / 255.0;
+    return [NSColor colorWithCalibratedRed:red green:green blue:blue alpha:alpha];
+}
+
+static NSAttributedString *suzakuCandidateAttributedTitle(
+    NSString *text,
+    NSColor *color,
+    NSFont *font
+) {
+    NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+    [paragraph setLineBreakMode:NSLineBreakByTruncatingTail];
+    [paragraph setLineSpacing:1.0];
+    [paragraph setAlignment:NSTextAlignmentLeft];
+    NSDictionary *attributes = @{
+        NSForegroundColorAttributeName : color,
+        NSFontAttributeName : font,
+        NSParagraphStyleAttributeName : paragraph,
+    };
+    return [[NSAttributedString alloc] initWithString:text attributes:attributes];
 }
 
 static void suzakuPositionCandidateCompanionNearClient(id client) {
@@ -167,33 +209,43 @@ static void suzakuEnsureCandidateCompanionPanel(void) {
     [suzakuCandidateCompanionPanel setReleasedWhenClosed:NO];
     [suzakuCandidateCompanionPanel setLevel:NSStatusWindowLevel];
     [suzakuCandidateCompanionPanel setOpaque:NO];
-    [suzakuCandidateCompanionPanel setBackgroundColor:[NSColor colorWithCalibratedWhite:0.12 alpha:0.94]];
+    NSString *windowTitle = suzakuBridgeTakeNSString(suzaku_host_companion_window_title_utf8);
+    [suzakuCandidateCompanionPanel setBackgroundColor:suzakuColorFromPackedRGBA(
+                                              suzaku_host_companion_panel_background_rgba8())];
     [suzakuCandidateCompanionPanel setTitleVisibility:NSWindowTitleHidden];
     [suzakuCandidateCompanionPanel setTitlebarAppearsTransparent:YES];
     [suzakuCandidateCompanionPanel setMovableByWindowBackground:YES];
+    [suzakuCandidateCompanionPanel
+        setTitle:windowTitle != nil ? windowTitle : @"Suzaku Candidates"];
 
     NSView *contentView = [suzakuCandidateCompanionPanel contentView];
     suzakuCandidateCompanionButtons = [NSMutableArray array];
 
-    NSTextField *header = [[NSTextField alloc] initWithFrame:NSMakeRect(18.0, 184.0, 284.0, 20.0)];
-    [header setStringValue:@"Suzaku Candidates"];
+    NSTextField *header = [[NSTextField alloc] initWithFrame:NSMakeRect(12.0, 184.0, 296.0, 18.0)];
+    NSString *headerTitle = suzakuBridgeTakeNSString(suzaku_host_companion_header_title_utf8);
+    [header setStringValue:headerTitle != nil ? headerTitle : @"Suzaku Candidates"];
     [header setBezeled:NO];
     [header setDrawsBackground:NO];
     [header setEditable:NO];
     [header setSelectable:NO];
-    [header setTextColor:[NSColor colorWithCalibratedWhite:0.92 alpha:1.0]];
-    [header setFont:[NSFont boldSystemFontOfSize:13.0]];
+    [header setTextColor:suzakuColorFromPackedRGBA(suzaku_host_companion_title_text_rgba8())];
+    [header setFont:[NSFont systemFontOfSize:11.0 weight:NSFontWeightSemibold]];
     [contentView addSubview:header];
+    suzakuCandidateCompanionHeader = header;
 
     for (NSUInteger index = 0; index < 6; index += 1) {
         SuzakuCandidateButton *button =
-            [[SuzakuCandidateButton alloc] initWithFrame:NSMakeRect(18.0, 148.0 - (CGFloat)index * 24.0, 284.0, 20.0)];
+            [[SuzakuCandidateButton alloc] initWithFrame:NSMakeRect(12.0, 148.0 - (CGFloat)index * 22.0, 296.0, 20.0)];
         [button setBordered:NO];
         [button setButtonType:NSButtonTypeMomentaryChange];
         [button setBezelStyle:NSBezelStyleRegularSquare];
         [button setAlignment:NSTextAlignmentLeft];
         [button setHidden:YES];
         [button setFont:[NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium]];
+        [[button cell] setWraps:YES];
+        [[button cell] setScrollable:NO];
+        [[button cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+        [button setImagePosition:NSNoImage];
         [button setSuzakuCandidateIndex:index];
         [button setTarget:nil];
         [button setAction:NULL];
@@ -237,13 +289,65 @@ static void suzakuUpdateCandidateCompanionPanel(void) {
         return;
     }
 
-    CGFloat visibleRows =
-        (CGFloat)MIN(candidateCount, (NSUInteger)[suzakuCandidateCompanionButtons count]);
-    CGFloat panelHeight = 64.0 + visibleRows * 24.0;
+    BOOL showHeader = suzaku_host_companion_show_header();
+    CGFloat horizontalPadding = (CGFloat)suzaku_host_companion_horizontal_padding();
+    CGFloat verticalPadding = (CGFloat)suzaku_host_companion_vertical_padding();
+    CGFloat rowHeight = (CGFloat)suzaku_host_companion_row_height();
+    NSUInteger maxTextLines = MAX((NSUInteger)suzaku_host_companion_max_text_lines(), (NSUInteger)1);
+    CGFloat minWidth = (CGFloat)suzaku_host_companion_min_width();
+    CGFloat maxWidth = (CGFloat)suzaku_host_companion_max_width();
+    NSDictionary *measureAttributes = @{
+        NSFontAttributeName : [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium]
+    };
+    CGFloat measuredWidth = minWidth;
+    NSUInteger measuredCount = MIN(candidateCount, (NSUInteger)[suzakuCandidateCompanionButtons count]);
+    for (NSUInteger index = 0; index < measuredCount; index += 1) {
+        NSString *text = suzakuBridgeTakeCandidateLabel(index);
+        if (text == nil) {
+            continue;
+        }
+        NSString *prefixed = [NSString stringWithFormat:@"› %@", text];
+        CGFloat candidateWidth =
+            ceil([prefixed sizeWithAttributes:measureAttributes].width) + horizontalPadding * 2.0;
+        measuredWidth = MAX(measuredWidth, candidateWidth);
+    }
+    CGFloat panelWidth = MIN(MAX(measuredWidth, minWidth), maxWidth);
+    CGFloat maxTextWidth = panelWidth - horizontalPadding * 2.0;
+    CGFloat textLineHeight = 15.0;
+    CGFloat headerHeight = showHeader ? 16.0 : 0.0;
+    CGFloat headerGap = showHeader ? 6.0 : 0.0;
+    NSMutableArray<NSNumber *> *rowHeights = [NSMutableArray arrayWithCapacity:measuredCount];
+    CGFloat rowsTotalHeight = 0.0;
+    for (NSUInteger index = 0; index < measuredCount; index += 1) {
+        NSString *text = suzakuBridgeTakeCandidateLabel(index);
+        if (text == nil) {
+            text = @"";
+        }
+        NSString *prefixed = [NSString stringWithFormat:@"› %@", text];
+        NSRect boundingRect = [prefixed boundingRectWithSize:NSMakeSize(maxTextWidth, textLineHeight * maxTextLines)
+                                                     options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine
+                                                  attributes:measureAttributes];
+        CGFloat measuredHeight =
+            MAX(rowHeight, MIN(ceil(boundingRect.size.height) + 6.0, rowHeight * maxTextLines));
+        [rowHeights addObject:@(measuredHeight)];
+        rowsTotalHeight += measuredHeight;
+    }
+    CGFloat panelHeight = verticalPadding * 2.0 + headerHeight + headerGap + rowsTotalHeight;
     NSRect frame = [suzakuCandidateCompanionPanel frame];
+    frame.size.width = panelWidth;
     frame.size.height = panelHeight;
     [suzakuCandidateCompanionPanel setFrame:frame display:NO];
 
+    if (suzakuCandidateCompanionHeader != nil) {
+        [suzakuCandidateCompanionHeader setHidden:!showHeader];
+        [suzakuCandidateCompanionHeader setFrame:NSMakeRect(
+                                              horizontalPadding,
+                                              panelHeight - verticalPadding - headerHeight,
+                                              panelWidth - horizontalPadding * 2.0,
+                                              headerHeight)];
+    }
+
+    CGFloat currentRowTop = panelHeight - verticalPadding - headerHeight - headerGap;
     for (NSUInteger index = 0; index < [suzakuCandidateCompanionButtons count]; index += 1) {
         NSButton *button = suzakuCandidateCompanionButtons[index];
         if (index >= candidateCount) {
@@ -256,27 +360,52 @@ static void suzakuUpdateCandidateCompanionPanel(void) {
             text = @"";
         }
 
+        CGFloat currentRowHeight = index < rowHeights.count ? rowHeights[index].doubleValue : rowHeight;
         [button setHidden:NO];
-        [button setFrameOrigin:NSMakePoint(18.0, panelHeight - 48.0 - (CGFloat)index * 24.0)];
+        [button setFrame:NSMakeRect(
+                             horizontalPadding,
+                             currentRowTop - currentRowHeight + 2.0,
+                             panelWidth - horizontalPadding * 2.0,
+                             currentRowHeight)];
         [button setTag:(NSInteger)index];
         if ([button isKindOfClass:[SuzakuCandidateButton class]]) {
             [(SuzakuCandidateButton *)button setSuzakuCandidateIndex:index];
         }
         [button setTarget:suzakuActiveController];
         [button setAction:@selector(suzakuChooseCandidateFromButton:)];
+        [button setToolTip:text];
         if (index == suzakuCandidateCompanionSelectedIndex) {
-            [button setTitle:[NSString stringWithFormat:@"› %@", text]];
-            [button setContentTintColor:[NSColor colorWithCalibratedRed:0.57 green:0.80 blue:1.00 alpha:1.0]];
-            [button setFont:[NSFont boldSystemFontOfSize:13.0]];
+            NSColor *selectedColor = suzakuColorFromPackedRGBA(
+                suzaku_host_companion_row_selected_text_rgba8());
+            NSFont *selectedFont = [NSFont boldSystemFontOfSize:13.0];
+            [button setAttributedTitle:suzakuCandidateAttributedTitle(
+                                            [NSString stringWithFormat:@"› %@", text],
+                                            selectedColor,
+                                            selectedFont)];
+            [button setContentTintColor:selectedColor];
+            [button setFont:selectedFont];
         } else if (index == suzakuCandidateCompanionHoveredIndex) {
-            [button setTitle:[NSString stringWithFormat:@"› %@", text]];
-            [button setContentTintColor:[NSColor colorWithCalibratedRed:0.74 green:0.88 blue:1.00 alpha:1.0]];
-            [button setFont:[NSFont systemFontOfSize:13.0 weight:NSFontWeightSemibold]];
+            NSColor *hoverColor = suzakuColorFromPackedRGBA(
+                suzaku_host_companion_row_hover_text_rgba8());
+            NSFont *hoverFont = [NSFont systemFontOfSize:13.0 weight:NSFontWeightSemibold];
+            [button setAttributedTitle:suzakuCandidateAttributedTitle(
+                                            [NSString stringWithFormat:@"› %@", text],
+                                            hoverColor,
+                                            hoverFont)];
+            [button setContentTintColor:hoverColor];
+            [button setFont:hoverFont];
         } else {
-            [button setTitle:[NSString stringWithFormat:@"  %@", text]];
-            [button setContentTintColor:[NSColor colorWithCalibratedWhite:0.84 alpha:1.0]];
-            [button setFont:[NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium]];
+            NSColor *normalColor = suzakuColorFromPackedRGBA(
+                suzaku_host_companion_row_normal_text_rgba8());
+            NSFont *normalFont = [NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium];
+            [button setAttributedTitle:suzakuCandidateAttributedTitle(
+                                            [NSString stringWithFormat:@"  %@", text],
+                                            normalColor,
+                                            normalFont)];
+            [button setContentTintColor:normalColor];
+            [button setFont:normalFont];
         }
+        currentRowTop -= currentRowHeight;
     }
 
     suzakuCandidateCompanionVisible = YES;
