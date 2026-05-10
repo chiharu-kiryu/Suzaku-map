@@ -216,7 +216,9 @@ pub(super) fn handle_panel_window_event(
                             {
                                 state.handle_text_input(" ");
                             } else {
-                                let _ = state.engine.commit(CommitOptions { force: true });
+                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
+                                    force: true,
+                                });
                             }
                         }
                         PhysicalKey::Code(KeyCode::Enter)
@@ -226,7 +228,9 @@ pub(super) fn handle_panel_window_event(
                             } else if state.commit_primary_sentence_candidate() {
                                 // The main sentence action should feel like a direct submit.
                             } else {
-                                let _ = state.engine.commit(CommitOptions { force: true });
+                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
+                                    force: true,
+                                });
                             }
                         }
                         _ => {}

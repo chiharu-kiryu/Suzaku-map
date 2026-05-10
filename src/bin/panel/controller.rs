@@ -6,12 +6,47 @@ use suzaku_map::ime::gpu::{
     VirtualKeyboardKey, VoiceCaptureState, VoicePermissionState,
 };
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
+use suzaku_map::platform::text_output_host::commit_text_to_active_target;
 use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 impl PanelState {
+    pub(super) fn commit_selected_candidate_to_host(
+        &mut self,
+        options: suzaku_map::ime::CommitOptions,
+    ) -> bool {
+        let Some(candidate) = self
+            .engine
+            .candidates()
+            .get(self.engine.snapshot().selected_index)
+            .cloned()
+        else {
+            return false;
+        };
+
+        self.chrome.blur_input();
+        let result = self.engine.commit(options);
+        if !result.ok {
+            return false;
+        }
+
+        let output = commit_text_to_active_target(&candidate.text);
+        self.last_commit_feedback = Some(if output.delivered_successfully() {
+            format!("Sent to active app: {}", candidate.text)
+        } else {
+            format!("Committed locally · {}", output.message)
+        });
+        self.commit_feedback_ticks = if output.delivered_successfully() {
+            24
+        } else {
+            40
+        };
+        self.reset_after_commit();
+        true
+    }
+
     pub(super) fn commit_primary_sentence_candidate(&mut self) -> bool {
         let Some(index) = self
             .chrome
@@ -31,11 +66,23 @@ impl PanelState {
         };
         self.chrome.blur_input();
         self.engine.select_candidate(index);
-        let _ = self
+        let result = self
             .engine
             .commit(suzaku_map::ime::CommitOptions { force: true });
-        self.last_commit_feedback = Some(format!("Committed: {}", candidate.text));
-        self.commit_feedback_ticks = 24;
+        if !result.ok {
+            return false;
+        }
+        let output = commit_text_to_active_target(&candidate.text);
+        self.last_commit_feedback = Some(if output.delivered_successfully() {
+            format!("Sent to active app: {}", candidate.text)
+        } else {
+            format!("Committed locally · {}", output.message)
+        });
+        self.commit_feedback_ticks = if output.delivered_successfully() {
+            24
+        } else {
+            40
+        };
         self.reset_after_commit();
         true
     }
