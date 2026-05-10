@@ -12,6 +12,8 @@
     <string>Suzaku Panel</string>
     <key>CFBundleIconFile</key>
     <string>SuzakuPanel</string>
+    <key>InputMethodConnectionName</key>
+    <string>dev.suzaku.inputmethod</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

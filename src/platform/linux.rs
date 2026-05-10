@@ -17,6 +17,7 @@ pub fn ubuntu_support_profile() -> PlatformSupport {
         capabilities: PlatformCapabilities {
             window_host: true,
             gpu_panel: true,
+            system_ime_host: false,
             voice_input: true,
             handwriting_input: true,
             permission_bridge: false,
@@ -31,6 +32,7 @@ pub fn arch_support_profile() -> PlatformSupport {
         capabilities: PlatformCapabilities {
             window_host: true,
             gpu_panel: true,
+            system_ime_host: false,
             voice_input: true,
             handwriting_input: true,
             permission_bridge: false,
@@ -45,6 +47,7 @@ pub fn steamos_support_profile() -> PlatformSupport {
         capabilities: PlatformCapabilities {
             window_host: true,
             gpu_panel: true,
+            system_ime_host: false,
             voice_input: true,
             handwriting_input: true,
             permission_bridge: false,

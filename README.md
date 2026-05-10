@@ -74,6 +74,52 @@ For microphone and speech-recognition permission testing on macOS, prefer the ap
 - Output: `target/debug/Suzaku Panel.app`
 - Launch with Finder or `open "target/debug/Suzaku Panel.app"`
 
+## System IME Host Direction
+
+The project now has an explicit first-pass system IME host skeleton, separate from the GPU panel:
+
+- Host session model: [src/ime_host.rs](./src/ime_host.rs)
+- Cross-platform host dispatch: [src/platform/ime_host_dispatch.rs](./src/platform/ime_host_dispatch.rs)
+- macOS IME bootstrap: [src/platform/macos_ime.rs](./src/platform/macos_ime.rs)
+- macOS native bridge probe: [src/macos/ime_host_bridge.m](./src/macos/ime_host_bridge.m)
+- bootstrap binary: `cargo run --bin macos_ime_host`
+
+The intent is to move toward a real platform IME architecture in two layers:
+
+1. `HostImeSession`
+   - owns marked text, candidates, selection, and commit flow
+   - can be shared by platform hosts without depending on the GPU panel
+2. platform bridge
+   - on macOS, this is the future `InputMethodKit` host direction
+   - on Windows and Linux, parallel host adapters can be added later
+
+The shared dispatch layer now makes that split explicit:
+
+- macOS -> `InputMethodKit`
+- Windows -> `Text Services Framework`
+- Linux -> `IBus / Fcitx`
+
+That means the core `HostImeSession` can stay platform-neutral while each desktop family exposes its own lifecycle, marked-text, candidate-window, and commit bridge at the platform edge.
+
+The platform bootstrap modules now line up with that dispatch:
+
+- macOS: [src/platform/macos_ime.rs](./src/platform/macos_ime.rs)
+- Windows: [src/platform/windows_ime.rs](./src/platform/windows_ime.rs)
+- Linux: [src/platform/linux_ime.rs](./src/platform/linux_ime.rs)
+
+Right now only macOS has a live `marked text -> commit` roundtrip. Windows and Linux now expose stable host-shell metadata and recommended registration identifiers so their native adapters can grow without changing the shared host-session contract.
+
+The current macOS IME host path is still a skeleton, not a registered system input method bundle yet. It now tells us:
+
+- whether `InputMethodKit` is present
+- whether we are running from a proper app bundle
+- which bundle identifier the process currently exposes
+- which `InputMethodConnectionName` the bundle currently exposes
+- which controller class name the native bridge publishes
+- whether a first-pass `IMKServer` bootstrap can be created
+
+That gives us a stable base for the next step: replacing the standalone bootstrap with a true `IMKInputController`-backed input method bundle.
+
 ## Platform Roadmap
 
 The current rollout priority is explicit and now reflected in code:

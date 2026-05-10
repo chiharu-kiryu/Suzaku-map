@@ -32,3 +32,7 @@ required-features = ["gpu"]
 name = "macos_bundle"
 path = "src/bin/macos_bundle.rs"
 required-features = ["gpu"]
+
+[[bin]]
+name = "macos_ime_host"
+path = "src/bin/macos_ime_host.rs"

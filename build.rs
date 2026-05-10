@@ -4,16 +4,19 @@ fn main() {
         cc::Build::new()
             .file("src/macos/speech_bridge.m")
             .file("src/macos/text_output_bridge.m")
+            .file("src/macos/ime_host_bridge.m")
             .flag("-fobjc-arc")
             .compile("suzaku_speech_bridge");
 
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=framework=AppKit");
         println!("cargo:rustc-link-lib=framework=ApplicationServices");
+        println!("cargo:rustc-link-lib=framework=InputMethodKit");
         println!("cargo:rustc-link-lib=framework=Speech");
         println!("cargo:rustc-link-lib=framework=AVFoundation");
         println!("cargo:rerun-if-changed=src/macos/speech_bridge.m");
         println!("cargo:rerun-if-changed=src/macos/text_output_bridge.m");
+        println!("cargo:rerun-if-changed=src/macos/ime_host_bridge.m");
         println!("cargo:rerun-if-changed=src/macos/SuzakuPanel-Info.plist");
         println!(
             "cargo:rustc-link-arg-bin=panel=-Wl,-sectcreate,__TEXT,__info_plist,src/macos/SuzakuPanel-Info.plist"

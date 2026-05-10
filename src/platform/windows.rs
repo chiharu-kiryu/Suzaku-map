@@ -9,6 +9,7 @@ pub fn support_profile() -> PlatformSupport {
         capabilities: PlatformCapabilities {
             window_host: true,
             gpu_panel: true,
+            system_ime_host: true,
             voice_input: true,
             handwriting_input: true,
             permission_bridge: true,

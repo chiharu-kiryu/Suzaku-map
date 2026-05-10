@@ -17,6 +17,7 @@ pub enum SupportTier {
 pub struct PlatformCapabilities {
     pub window_host: bool,
     pub gpu_panel: bool,
+    pub system_ime_host: bool,
     pub voice_input: bool,
     pub handwriting_input: bool,
     pub permission_bridge: bool,
@@ -62,9 +63,12 @@ pub fn support_for(platform: TargetPlatform) -> PlatformSupport {
 
 pub mod fallback_voice;
 pub mod gpu_host;
+pub mod ime_host_dispatch;
 pub mod linux;
+pub mod linux_ime;
 pub mod linux_voice;
 pub mod macos;
+pub mod macos_ime;
 #[cfg(target_os = "macos")]
 pub mod macos_voice;
 pub mod settings_host;
@@ -72,6 +76,7 @@ pub mod text_output_host;
 pub mod ubuntu_voice;
 pub mod voice_host;
 pub mod windows;
+pub mod windows_ime;
 pub mod windows_voice;
 
 pub const PLATFORM_SUPPORT_ROADMAP: [PlatformSupport; 5] = [
@@ -90,6 +95,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
             capabilities: PlatformCapabilities {
                 window_host: true,
                 gpu_panel: true,
+                system_ime_host: true,
                 voice_input: true,
                 handwriting_input: true,
                 permission_bridge: true,
@@ -101,6 +107,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
             capabilities: PlatformCapabilities {
                 window_host: true,
                 gpu_panel: true,
+                system_ime_host: true,
                 voice_input: true,
                 handwriting_input: true,
                 permission_bridge: true,
@@ -112,6 +119,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
             capabilities: PlatformCapabilities {
                 window_host: true,
                 gpu_panel: true,
+                system_ime_host: false,
                 voice_input: false,
                 handwriting_input: true,
                 permission_bridge: false,
@@ -123,6 +131,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
             capabilities: PlatformCapabilities {
                 window_host: true,
                 gpu_panel: true,
+                system_ime_host: false,
                 voice_input: false,
                 handwriting_input: true,
                 permission_bridge: false,
@@ -134,6 +143,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
             capabilities: PlatformCapabilities {
                 window_host: true,
                 gpu_panel: true,
+                system_ime_host: false,
                 voice_input: false,
                 handwriting_input: true,
                 permission_bridge: false,
