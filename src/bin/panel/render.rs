@@ -167,6 +167,10 @@ fn push_text_quad_vertices(
     height: f32,
 ) {
     let [x, y, w, h] = glyph.rect;
+    let x = x.round();
+    let y = y.round();
+    let w = w.round().max(1.0);
+    let h = h.round().max(1.0);
     let color = glyph.color;
     let x1 = px_to_ndc_x(x, width);
     let x2 = px_to_ndc_x(x + w, width);
@@ -406,11 +410,7 @@ fn create_font_atlas_resources(
         } else {
             wgpu::FilterMode::Nearest
         },
-        min_filter: if smoothing == TextSmoothing::Smooth {
-            wgpu::FilterMode::Linear
-        } else {
-            wgpu::FilterMode::Nearest
-        },
+        min_filter: wgpu::FilterMode::Nearest,
         mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     });

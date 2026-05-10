@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use suzaku_map::ime::gpu::{
     CandidateDensity, DisplayTextScale, FontFaceChoice, LlmModelPreset, LlmTemperaturePreset,
-    PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing,
+    PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing, ThemePreset,
 };
 use suzaku_map::platform::settings_host::display_settings_path;
 use suzaku_map::platform::voice_host::HostSpeechRecognizer;
@@ -16,6 +16,7 @@ pub(crate) struct PersistedDisplaySettings {
     pub(crate) font_face: FontFaceChoice,
     pub(crate) text_spacing: TextSpacing,
     pub(crate) text_smoothing: TextSmoothing,
+    pub(crate) theme_preset: ThemePreset,
     pub(crate) voice_auto_insert: bool,
     pub(crate) llm_enabled: bool,
     pub(crate) llm_model: LlmModelPreset,
@@ -58,6 +59,7 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             font_face: chrome.font_face,
             text_spacing: chrome.text_spacing,
             text_smoothing: chrome.text_smoothing,
+            theme_preset: chrome.theme_preset,
             voice_auto_insert: chrome.voice_auto_insert,
             llm_enabled: chrome.llm_enabled,
             llm_model: chrome.llm_model,
@@ -76,21 +78,24 @@ pub(crate) fn apply_display_settings(
     chrome.font_face = settings.font_face;
     chrome.text_spacing = settings.text_spacing;
     chrome.text_smoothing = settings.text_smoothing;
+    chrome.theme_preset = settings.theme_preset;
     chrome.voice_auto_insert = settings.voice_auto_insert;
     chrome.llm_enabled = settings.llm_enabled;
     chrome.llm_model = settings.llm_model;
     chrome.llm_temperature = settings.llm_temperature;
+    normalize_display_readability(chrome);
 }
 
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
     let contents = format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
         encode_font_face(settings.font_face),
         encode_text_spacing(settings.text_spacing),
         encode_text_smoothing(settings.text_smoothing),
+        encode_theme_preset(settings.theme_preset),
         if settings.voice_auto_insert {
             "true"
         } else {
@@ -115,9 +120,10 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         text_scale: DisplayTextScale::Medium,
         candidate_density: CandidateDensity::Cozy,
         preview_style: PreviewStyle::Compact,
-        font_face: FontFaceChoice::Auto,
+        font_face: FontFaceChoice::Monaco,
         text_spacing: TextSpacing::Normal,
-        text_smoothing: TextSmoothing::Smooth,
+        text_smoothing: TextSmoothing::Sharp,
+        theme_preset: ThemePreset::Daylight,
         voice_auto_insert: true,
         llm_enabled: false,
         llm_model: LlmModelPreset::Llama32_3b,
@@ -159,6 +165,11 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
                     settings.text_smoothing = parsed;
                 }
             }
+            "theme_preset" => {
+                if let Some(parsed) = decode_theme_preset(value.trim()) {
+                    settings.theme_preset = parsed;
+                }
+            }
             "voice_auto_insert" => settings.voice_auto_insert = value.trim() == "true",
             "llm_enabled" => settings.llm_enabled = value.trim() == "true",
             "llm_model" => {
@@ -176,6 +187,15 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
     }
 
     Some(settings)
+}
+
+fn normalize_display_readability(chrome: &mut PanelChromeState) {
+    if chrome.font_face == FontFaceChoice::Auto {
+        chrome.font_face = FontFaceChoice::Monaco;
+    }
+    if chrome.text_smoothing == TextSmoothing::Smooth {
+        chrome.text_smoothing = TextSmoothing::Sharp;
+    }
 }
 
 fn ensure_settings_parent(path: &PathBuf) -> std::io::Result<()> {
@@ -281,6 +301,21 @@ pub(crate) fn encode_text_smoothing(value: TextSmoothing) -> &'static str {
     }
 }
 
+pub(crate) fn encode_theme_preset(value: ThemePreset) -> &'static str {
+    match value {
+        ThemePreset::Daylight => "daylight",
+        ThemePreset::DeviceDark => "device_dark",
+    }
+}
+
+pub(crate) fn decode_theme_preset(value: &str) -> Option<ThemePreset> {
+    match value {
+        "daylight" => Some(ThemePreset::Daylight),
+        "device_dark" => Some(ThemePreset::DeviceDark),
+        _ => None,
+    }
+}
+
 pub(crate) fn decode_text_smoothing(value: &str) -> Option<TextSmoothing> {
     match value {
         "sharp" => Some(TextSmoothing::Sharp),
@@ -332,6 +367,7 @@ mod tests {
             font_face: FontFaceChoice::PingFang,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Sharp,
+            theme_preset: ThemePreset::DeviceDark,
             voice_auto_insert: false,
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
@@ -339,13 +375,14 @@ mod tests {
         };
 
         let encoded = format!(
-            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
+            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
             encode_text_scale(settings.text_scale),
             encode_candidate_density(settings.candidate_density),
             encode_preview_style(settings.preview_style),
             encode_font_face(settings.font_face),
             encode_text_spacing(settings.text_spacing),
             encode_text_smoothing(settings.text_smoothing),
+            encode_theme_preset(settings.theme_preset),
             if settings.voice_auto_insert {
                 "true"
             } else {
@@ -366,7 +403,8 @@ mod tests {
             preview_style: PreviewStyle::Compact,
             font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
-            text_smoothing: TextSmoothing::Smooth,
+            text_smoothing: TextSmoothing::Sharp,
+            theme_preset: ThemePreset::Daylight,
             voice_auto_insert: true,
             llm_enabled: true,
             llm_model: LlmModelPreset::Llama32_3b,
@@ -390,6 +428,7 @@ mod tests {
                 "text_smoothing" => {
                     decoded.text_smoothing = decode_text_smoothing(value).expect("smooth")
                 }
+                "theme_preset" => decoded.theme_preset = decode_theme_preset(value).expect("theme"),
                 "voice_auto_insert" => decoded.voice_auto_insert = value == "true",
                 "llm_enabled" => decoded.llm_enabled = value == "true",
                 "llm_model" => decoded.llm_model = decode_llm_model(value).expect("llm model"),

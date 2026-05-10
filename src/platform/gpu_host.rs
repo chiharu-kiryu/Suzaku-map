@@ -90,8 +90,8 @@ pub fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'s
     {
         return match font_face {
             FontFaceChoice::Auto => vec![
-                ("/System/Library/Fonts/Supplemental/Menlo.ttc", "Menlo"),
                 ("/System/Library/Fonts/Monaco.ttf", "Monaco"),
+                ("/System/Library/Fonts/Supplemental/Menlo.ttc", "Menlo"),
                 ("/System/Library/Fonts/Helvetica.ttc", "Helvetica"),
                 ("/System/Library/Fonts/PingFang.ttc", "PingFang"),
                 ("/System/Library/Fonts/Geneva.ttf", "Geneva"),

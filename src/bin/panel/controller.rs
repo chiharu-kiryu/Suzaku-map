@@ -98,8 +98,11 @@ impl PanelState {
             return;
         }
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
-            self.expanded_window_size =
-                Some(winit::dpi::LogicalSize::new(width as f64, height as f64));
+            self.expanded_window_size = Some(
+                self.window
+                    .inner_size()
+                    .to_logical::<f64>(self.window.scale_factor()),
+            );
             self.note_expanded_window_position();
         }
         self.size.width = width;
@@ -152,20 +155,31 @@ impl PanelState {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let background = if snapshot.degraded {
-            wgpu::Color {
-                r: 0.73,
-                g: 0.79,
-                b: 0.88,
+        let background = match (self.chrome.theme_preset, snapshot.degraded) {
+            (suzaku_map::ime::gpu::ThemePreset::Daylight, true) => wgpu::Color {
+                r: 0.68,
+                g: 0.75,
+                b: 0.85,
                 a: 1.0,
-            }
-        } else {
-            wgpu::Color {
-                r: 0.79,
-                g: 0.84,
-                b: 0.92,
+            },
+            (suzaku_map::ime::gpu::ThemePreset::Daylight, false) => wgpu::Color {
+                r: 0.74,
+                g: 0.80,
+                b: 0.89,
                 a: 1.0,
-            }
+            },
+            (suzaku_map::ime::gpu::ThemePreset::DeviceDark, true) => wgpu::Color {
+                r: 0.12,
+                g: 0.15,
+                b: 0.20,
+                a: 1.0,
+            },
+            (suzaku_map::ime::gpu::ThemePreset::DeviceDark, false) => wgpu::Color {
+                r: 0.15,
+                g: 0.18,
+                b: 0.24,
+                a: 1.0,
+            },
         };
 
         let mut encoder = self
@@ -261,6 +275,10 @@ impl PanelState {
                 InteractionKind::SetTextSmoothing(smoothing) => {
                     self.chrome.text_smoothing = smoothing;
                     self.rebuild_font_atlas();
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetThemePreset(theme) => {
+                    self.chrome.theme_preset = theme;
                     self.persist_display_settings();
                 }
                 InteractionKind::SetLlmEnabled(enabled) => {
@@ -461,12 +479,34 @@ impl PanelState {
         let bounds = layout.bounds;
         scene.quads.push(CandidateQuad {
             rect: [
+                bounds[0] - 8.0,
+                bounds[1] - 2.0,
+                bounds[2] + 16.0,
+                bounds[3] + 14.0,
+            ],
+            color: [0.32, 0.42, 0.58, 0.14],
+        });
+        scene.quads.push(CandidateQuad {
+            rect: [
                 bounds[0] - 12.0,
                 bounds[1] - 8.0,
                 bounds[2] + 24.0,
                 bounds[3] + 16.0,
             ],
-            color: [0.79, 0.92, 1.0, 0.96],
+            color: [0.84, 0.94, 1.0, 0.96],
+        });
+        scene.quads.push(CandidateQuad {
+            rect: [bounds[0] - 12.0, bounds[1] - 8.0, bounds[2] + 24.0, 2.0],
+            color: [1.0, 1.0, 1.0, 0.18],
+        });
+        scene.quads.push(CandidateQuad {
+            rect: [
+                bounds[0] - 12.0,
+                bounds[1] + bounds[3] + 6.0,
+                bounds[2] + 24.0,
+                2.0,
+            ],
+            color: [0.28, 0.56, 0.82, 0.22],
         });
         scene.text_quads.extend(layout.quads.iter().copied());
         scene
@@ -516,6 +556,9 @@ impl PanelState {
             }
             InteractionKind::SetTextSmoothing(smoothing) => {
                 Some(format!("Text smoothing: {}", smoothing_label(smoothing)))
+            }
+            InteractionKind::SetThemePreset(theme) => {
+                Some(format!("Theme: {}", theme_preset_label(theme)))
             }
             InteractionKind::SetVoiceAutoInsert(enabled) => Some(if enabled {
                 "Voice auto insert: on".to_string()
@@ -627,6 +670,13 @@ fn smoothing_label(value: suzaku_map::ime::gpu::TextSmoothing) -> &'static str {
     match value {
         suzaku_map::ime::gpu::TextSmoothing::Sharp => "Sharp",
         suzaku_map::ime::gpu::TextSmoothing::Smooth => "Smooth",
+    }
+}
+
+fn theme_preset_label(value: suzaku_map::ime::gpu::ThemePreset) -> &'static str {
+    match value {
+        suzaku_map::ime::gpu::ThemePreset::Daylight => "Daylight",
+        suzaku_map::ime::gpu::ThemePreset::DeviceDark => "Device Dark",
     }
 }
 

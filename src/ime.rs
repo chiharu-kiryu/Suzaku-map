@@ -1182,6 +1182,12 @@ pub mod gpu {
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum ThemePreset {
+        Daylight,
+        DeviceDark,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum LlmModelPreset {
         Llama32_3b,
     }
@@ -1226,6 +1232,7 @@ pub mod gpu {
         pub font_face: FontFaceChoice,
         pub text_spacing: TextSpacing,
         pub text_smoothing: TextSmoothing,
+        pub theme_preset: ThemePreset,
         pub voice_state: VoiceCaptureState,
         pub voice_permission: VoicePermissionState,
         pub voice_backend_label: String,
@@ -1262,9 +1269,10 @@ pub mod gpu {
                 text_scale: DisplayTextScale::Medium,
                 candidate_density: CandidateDensity::Cozy,
                 preview_style: PreviewStyle::Compact,
-                font_face: FontFaceChoice::Auto,
+                font_face: FontFaceChoice::Monaco,
                 text_spacing: TextSpacing::Normal,
-                text_smoothing: TextSmoothing::Smooth,
+                text_smoothing: TextSmoothing::Sharp,
+                theme_preset: ThemePreset::Daylight,
                 voice_state: VoiceCaptureState::Idle,
                 voice_permission: VoicePermissionState::Unknown,
                 voice_backend_label: "Unknown Voice Host".to_string(),
@@ -1372,6 +1380,7 @@ pub mod gpu {
         SetFontFace(FontFaceChoice),
         SetTextSpacing(TextSpacing),
         SetTextSmoothing(TextSmoothing),
+        SetThemePreset(ThemePreset),
         SetLlmEnabled(bool),
         SetVoiceAutoInsert(bool),
         SetLlmModel(LlmModelPreset),
@@ -1475,11 +1484,81 @@ pub mod gpu {
         pub scene_height: f32,
     }
 
+    #[derive(Clone, Copy, Debug)]
+    struct PanelTheme {
+        page_bg: [f32; 4],
+        shell: [f32; 4],
+        shell_border: [f32; 4],
+        surface: [f32; 4],
+        surface_alt: [f32; 4],
+        surface_muted: [f32; 4],
+        keyboard_surface: [f32; 4],
+        keyboard_special_surface: [f32; 4],
+        keyboard_text: [f32; 4],
+        keyboard_secondary_text: [f32; 4],
+        accent: [f32; 4],
+        accent_soft: [f32; 4],
+        accent_text: [f32; 4],
+        text_primary: [f32; 4],
+        text_secondary: [f32; 4],
+        text_muted: [f32; 4],
+        border_dark: [f32; 4],
+        soft_shadow: [f32; 4],
+    }
+
+    impl PanelTheme {
+        fn for_preset(preset: ThemePreset) -> Self {
+            match preset {
+                ThemePreset::Daylight => Self {
+                    page_bg: [0.72, 0.78, 0.87, 1.0],
+                    shell: [0.83, 0.88, 0.95, 1.0],
+                    shell_border: [0.49, 0.58, 0.71, 1.0],
+                    surface: [0.89, 0.93, 0.98, 1.0],
+                    surface_alt: [0.81, 0.87, 0.95, 1.0],
+                    surface_muted: [0.73, 0.79, 0.88, 1.0],
+                    keyboard_surface: [0.90, 0.94, 0.99, 1.0],
+                    keyboard_special_surface: [0.74, 0.80, 0.89, 1.0],
+                    keyboard_text: [0.06, 0.09, 0.14, 1.0],
+                    keyboard_secondary_text: [0.08, 0.12, 0.18, 1.0],
+                    accent: [0.13, 0.44, 0.82, 1.0],
+                    accent_soft: [0.63, 0.81, 1.0, 1.0],
+                    accent_text: [0.04, 0.13, 0.26, 1.0],
+                    text_primary: [0.06, 0.10, 0.16, 1.0],
+                    text_secondary: [0.10, 0.15, 0.22, 1.0],
+                    text_muted: [0.18, 0.25, 0.34, 1.0],
+                    border_dark: [0.45, 0.55, 0.68, 1.0],
+                    soft_shadow: [0.22, 0.30, 0.43, 0.16],
+                },
+                ThemePreset::DeviceDark => Self {
+                    page_bg: [0.15, 0.18, 0.24, 1.0],
+                    shell: [0.19, 0.23, 0.31, 1.0],
+                    shell_border: [0.33, 0.40, 0.52, 1.0],
+                    surface: [0.23, 0.27, 0.36, 1.0],
+                    surface_alt: [0.26, 0.31, 0.41, 1.0],
+                    surface_muted: [0.29, 0.34, 0.44, 1.0],
+                    keyboard_surface: [0.18, 0.22, 0.30, 1.0],
+                    keyboard_special_surface: [0.28, 0.33, 0.43, 1.0],
+                    keyboard_text: [0.96, 0.98, 1.0, 1.0],
+                    keyboard_secondary_text: [0.88, 0.93, 0.99, 1.0],
+                    accent: [0.40, 0.68, 1.0, 1.0],
+                    accent_soft: [0.22, 0.41, 0.63, 1.0],
+                    accent_text: [0.93, 0.97, 1.0, 1.0],
+                    text_primary: [0.92, 0.95, 1.0, 1.0],
+                    text_secondary: [0.74, 0.81, 0.90, 1.0],
+                    text_muted: [0.56, 0.65, 0.77, 1.0],
+                    border_dark: [0.37, 0.46, 0.59, 1.0],
+                    soft_shadow: [0.03, 0.05, 0.09, 0.34],
+                },
+            }
+        }
+    }
+
     #[derive(Debug, Clone, Copy)]
     struct PanelSceneMetrics {
         panel_width: f32,
         panel_x: f32,
         panel_y: f32,
+        panel_height: f32,
         section_gap: f32,
         input_box_h: f32,
         tools_header_h: f32,
@@ -1491,6 +1570,7 @@ pub mod gpu {
         hero_item_height: f32,
         item_gap: f32,
         chip_section_h: f32,
+        sentence_section_gap: f32,
         candidate_columns: usize,
         stacked_token_header: bool,
     }
@@ -1503,29 +1583,29 @@ pub mod gpu {
             chrome: &PanelChromeState,
             sentence_count: usize,
         ) -> Self {
-            let scene_margin = (10.0 * responsive_scale).max(8.0);
+            let scene_margin = (7.0 * responsive_scale).max(6.0);
             let max_panel_width = (scene_width - scene_margin * 2.0).max(320.0);
             let min_panel_width = 380.0_f32.min(max_panel_width);
-            let desired_panel_width = scene_width * 0.90;
+            let desired_panel_width = scene_width * 0.94;
             let panel_width = desired_panel_width
                 .min(max_panel_width)
                 .max(min_panel_width);
-            let input_box_h = 68.0 * responsive_scale;
-            let tools_header_h = 22.0 * responsive_scale;
-            let tool_button_h = 28.0 * responsive_scale;
-            let tool_gap = 6.0 * responsive_scale;
-            let section_gap = 10.0 * responsive_scale;
+            let input_box_h = 58.0 * responsive_scale;
+            let tools_header_h = 20.0 * responsive_scale;
+            let tool_button_h = 36.0 * responsive_scale;
+            let tool_gap = 7.0 * responsive_scale;
+            let section_gap = 8.0 * responsive_scale;
             let extended_input_panel_h = if chrome.input_modes_expanded {
                 match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 146.0 * responsive_scale,
+                    InputMode::VirtualKeyboard => 142.0 * responsive_scale,
                     InputMode::Dictation => {
                         if max_panel_width < 620.0 {
-                            136.0 * responsive_scale
+                            132.0 * responsive_scale
                         } else {
-                            124.0 * responsive_scale
+                            120.0 * responsive_scale
                         }
                     }
-                    InputMode::Handwriting => 170.0 * responsive_scale,
+                    InputMode::Handwriting => 164.0 * responsive_scale,
                 }
             } else {
                 0.0
@@ -1537,23 +1617,28 @@ pub mod gpu {
             };
             let settings_panel_h = if chrome.settings_open { 286.0 } else { 0.0 };
             let item_height = match (chrome.candidate_density, chrome.preview_style) {
-                (CandidateDensity::Compact, PreviewStyle::Compact) => 70.0,
-                (CandidateDensity::Compact, PreviewStyle::Full) => 90.0,
-                (CandidateDensity::Cozy, PreviewStyle::Compact) => 80.0,
-                (CandidateDensity::Cozy, PreviewStyle::Full) => 102.0,
+                (CandidateDensity::Compact, PreviewStyle::Compact) => 62.0,
+                (CandidateDensity::Compact, PreviewStyle::Full) => 82.0,
+                (CandidateDensity::Cozy, PreviewStyle::Compact) => 72.0,
+                (CandidateDensity::Cozy, PreviewStyle::Full) => 92.0,
             } * responsive_scale;
-            let hero_item_height = item_height + 18.0 * responsive_scale;
+            let hero_item_height = item_height + 12.0 * responsive_scale;
             let item_gap = if chrome.candidate_density == CandidateDensity::Compact {
-                6.0
+                5.0
             } else {
-                8.0
+                6.0
             } * responsive_scale;
             let stacked_token_header =
                 max_panel_width < 560.0 && !chrome.next_token_candidates.is_empty();
             let chip_section_h = if chrome.next_token_candidates.is_empty() {
                 0.0
             } else {
-                (if stacked_token_header { 84.0 } else { 60.0 }) * responsive_scale
+                (if stacked_token_header { 74.0 } else { 52.0 }) * responsive_scale
+            };
+            let sentence_section_gap = if chip_section_h > 0.0 && sentence_count > 0 {
+                6.0 * responsive_scale
+            } else {
+                0.0
             };
             let candidate_columns = if panel_width >= 760.0 && sentence_count > 2 {
                 2
@@ -1584,14 +1669,17 @@ pub mod gpu {
                 + settings_panel_h
                 + section_gap
                 + chip_section_h
+                + sentence_section_gap
                 + sentence_height;
             let panel_x = ((scene_width - panel_width) / 2.0).max(scene_margin);
-            let panel_y = ((scene_height - panel_height) / 2.0).max(10.0 * responsive_scale);
+            let centered_panel_y = (scene_height - panel_height) / 2.0;
+            let panel_y = centered_panel_y.max(14.0 * responsive_scale);
 
             Self {
                 panel_width,
                 panel_x,
                 panel_y,
+                panel_height,
                 section_gap,
                 input_box_h,
                 tools_header_h,
@@ -1603,6 +1691,7 @@ pub mod gpu {
                 hero_item_height,
                 item_gap,
                 chip_section_h,
+                sentence_section_gap,
                 candidate_columns,
                 stacked_token_header,
             }
@@ -1638,22 +1727,50 @@ pub mod gpu {
         pub fn build_compact_scene(
             &self,
             snapshot: &Snapshot,
-            _chrome: &PanelChromeState,
+            chrome: &PanelChromeState,
             hovered: bool,
             pressed: bool,
         ) -> RenderScene {
-            let page_bg = [0.93, 0.95, 0.98, 0.98];
-            let shell = if pressed {
-                [0.98, 0.86, 0.87, 1.0]
+            let theme = PanelTheme::for_preset(chrome.theme_preset);
+            let page_bg = theme.page_bg;
+            let halo = if pressed {
+                [0.42, 0.70, 0.97, 0.24]
             } else if hovered {
-                [0.99, 0.90, 0.90, 1.0]
+                [0.48, 0.75, 1.0, 0.20]
             } else {
-                [0.99, 0.93, 0.93, 1.0]
+                [0.40, 0.66, 0.95, 0.12]
+            };
+            let shell = if pressed {
+                [0.71, 0.83, 0.96, 1.0]
+            } else if hovered {
+                [0.78, 0.88, 0.98, 1.0]
+            } else {
+                [0.73, 0.84, 0.97, 1.0]
             };
             let shell_inner = if pressed {
-                [1.0, 0.94, 0.94, 1.0]
+                [0.87, 0.93, 0.99, 1.0]
             } else {
-                [1.0, 0.97, 0.97, 1.0]
+                [0.91, 0.96, 1.0, 1.0]
+            };
+            let shell_core = if pressed {
+                [0.96, 0.98, 1.0, 1.0]
+            } else {
+                [0.98, 0.99, 1.0, 1.0]
+            };
+            let shell_shadow = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.19, 0.28, 0.41, 0.24],
+                ThemePreset::DeviceDark => [0.01, 0.03, 0.07, 0.42],
+            };
+            let glass_ring = if pressed {
+                [0.90, 0.95, 1.0, 0.22]
+            } else if hovered {
+                [0.93, 0.97, 1.0, 0.24]
+            } else {
+                [0.88, 0.94, 1.0, 0.18]
+            };
+            let contact_shadow = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.15, 0.23, 0.35, 0.16],
+                ThemePreset::DeviceDark => [0.01, 0.02, 0.05, 0.28],
             };
             let bird_primary = if pressed {
                 [0.77, 0.16, 0.16, 1.0]
@@ -1674,19 +1791,37 @@ pub mod gpu {
                 rect: [0.0, 0.0, self.scene_width, self.scene_height],
                 color: page_bg,
             });
-            let orb_size = self.scene_width.min(self.scene_height) - 20.0;
-            let orb_size = orb_size.clamp(48.0, 92.0);
+            let orb_size = self.scene_width.min(self.scene_height) - 16.0;
+            let orb_size = orb_size.clamp(56.0, 92.0);
             let orb_rect = [
                 (self.scene_width - orb_size) / 2.0,
                 (self.scene_height - orb_size) / 2.0,
                 orb_size,
                 orb_size,
             ];
+            let halo_rect = [
+                orb_rect[0] - orb_size * 0.10,
+                orb_rect[1] - orb_size * 0.10,
+                orb_size * 1.20,
+                orb_size * 1.20,
+            ];
+            let contact_rect = [
+                orb_rect[0] + orb_size * 0.18,
+                orb_rect[1] + orb_size * 0.90,
+                orb_size * 0.64,
+                orb_size * 0.09,
+            ];
+            let ring_rect = [
+                orb_rect[0] + orb_size * 0.08,
+                orb_rect[1] + orb_size * 0.08,
+                orb_size * 0.84,
+                orb_size * 0.84,
+            ];
             let inner_rect = [
-                orb_rect[0] + orb_size * 0.10,
-                orb_rect[1] + orb_size * 0.10,
-                orb_size * 0.80,
-                orb_size * 0.80,
+                orb_rect[0] + orb_size * 0.11,
+                orb_rect[1] + orb_size * 0.11,
+                orb_size * 0.78,
+                orb_size * 0.78,
             ];
             let core_rect = [
                 orb_rect[0] + orb_size * 0.24,
@@ -1694,27 +1829,67 @@ pub mod gpu {
                 orb_size * 0.52,
                 orb_size * 0.52,
             ];
-            quads.push(CandidateQuad {
-                rect: orb_rect,
-                color: shell,
-            });
-            quads.push(CandidateQuad {
-                rect: inner_rect,
-                color: shell_inner,
-            });
-            quads.push(CandidateQuad {
-                rect: core_rect,
-                color: [1.0, 1.0, 1.0, 1.0],
-            });
+            append_rounded_rect_quads(&mut quads, halo_rect, halo, halo_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                contact_rect,
+                contact_shadow,
+                contact_rect[3] * 0.5,
+            );
+            append_soft_card_quads(
+                &mut quads,
+                orb_rect,
+                shell,
+                [0.41, 0.55, 0.73, 1.0],
+                shell_shadow,
+                theme.shell,
+                orb_rect[2] * 0.5,
+            );
+            append_rounded_rect_quads(&mut quads, ring_rect, glass_ring, ring_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    orb_rect[0] + orb_size * 0.04,
+                    orb_rect[1] + orb_size * 0.04,
+                    orb_size * 0.92,
+                    orb_size * 0.18,
+                ],
+                [1.0, 1.0, 1.0, 0.10],
+                orb_rect[2] * 0.26,
+            );
+            append_rounded_rect_quads(&mut quads, inner_rect, shell_inner, inner_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    inner_rect[0] + orb_size * 0.03,
+                    inner_rect[1] + orb_size * 0.03,
+                    inner_rect[2] - orb_size * 0.06,
+                    inner_rect[3] * 0.28,
+                ],
+                [1.0, 1.0, 1.0, 0.12],
+                inner_rect[2] * 0.18,
+            );
+            append_rounded_rect_quads(&mut quads, core_rect, shell_core, core_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    orb_rect[0] + orb_size * 0.22,
+                    orb_rect[1] + orb_size * 0.80,
+                    orb_size * 0.56,
+                    orb_size * 0.06,
+                ],
+                [0.33, 0.63, 0.96, 0.85],
+                orb_size * 0.03,
+            );
             let mut targets = vec![InteractiveTarget {
                 kind: InteractionKind::ToggleCompactMode,
                 rect: orb_rect,
             }];
             let icon_rect = [
-                orb_rect[0] + orb_size * 0.18,
-                orb_rect[1] + orb_size * 0.18,
-                orb_size * 0.64,
-                orb_size * 0.64,
+                orb_rect[0] + orb_size * 0.15,
+                orb_rect[1] + orb_size * 0.15,
+                orb_size * 0.70,
+                orb_size * 0.70,
             ];
             append_suzaku_bird_icon_quads(
                 &mut quads,
@@ -1724,6 +1899,30 @@ pub mod gpu {
                 bird_beak,
                 bird_eye,
             );
+            if !snapshot.candidate_labels.is_empty() {
+                append_rounded_rect_quads(
+                    &mut quads,
+                    [
+                        orb_rect[0] + orb_size * 0.74,
+                        orb_rect[1] + orb_size * 0.18,
+                        orb_size * 0.12,
+                        orb_size * 0.12,
+                    ],
+                    [0.96, 0.33, 0.30, 1.0],
+                    orb_size * 0.06,
+                );
+                append_rounded_rect_quads(
+                    &mut quads,
+                    [
+                        orb_rect[0] + orb_size * 0.78,
+                        orb_rect[1] + orb_size * 0.22,
+                        orb_size * 0.04,
+                        orb_size * 0.04,
+                    ],
+                    [1.0, 0.95, 0.95, 0.95],
+                    orb_size * 0.02,
+                );
+            }
             RenderScene {
                 quads,
                 text_quads,
@@ -1748,43 +1947,112 @@ pub mod gpu {
             if chrome.compact_mode {
                 return self.build_compact_scene(snapshot, chrome, false, false);
             }
-            let page_bg = [0.79, 0.84, 0.92, 1.0];
-            let shell = [0.86, 0.90, 0.96, 1.0];
-            let shell_border = [0.65, 0.72, 0.83, 1.0];
-            let surface = [0.94, 0.96, 0.99, 1.0];
-            let surface_alt = [0.89, 0.92, 0.97, 1.0];
-            let accent = [0.16, 0.48, 0.86, 1.0];
-            let surface_muted = [0.79, 0.84, 0.91, 1.0];
-            let accent_soft = [0.72, 0.87, 1.0, 1.0];
-            let accent_text = [0.05, 0.16, 0.30, 1.0];
-            let text_primary = [0.08, 0.13, 0.21, 1.0];
-            let text_secondary = [0.23, 0.31, 0.42, 1.0];
-            let text_muted = [0.42, 0.50, 0.61, 1.0];
-            let border_dark = [0.58, 0.66, 0.78, 1.0];
-            let soft_shadow = [0.36, 0.45, 0.59, 0.18];
+            let theme = PanelTheme::for_preset(chrome.theme_preset);
+            let page_bg = theme.page_bg;
+            let shell = theme.shell;
+            let shell_border = theme.shell_border;
+            let surface = theme.surface;
+            let surface_alt = theme.surface_alt;
+            let accent = theme.accent;
+            let surface_muted = theme.surface_muted;
+            let accent_soft = theme.accent_soft;
+            let accent_text = theme.accent_text;
+            let text_primary = theme.text_primary;
+            let text_secondary = theme.text_secondary;
+            let text_muted = theme.text_muted;
+            let keyboard_surface = theme.keyboard_surface;
+            let keyboard_special_surface = theme.keyboard_special_surface;
+            let keyboard_text = theme.keyboard_text;
+            let keyboard_secondary_text = theme.keyboard_secondary_text;
+            let border_dark = theme.border_dark;
+            let soft_shadow = theme.soft_shadow;
+            let surface_bright = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.93, 0.96, 0.99, 1.0],
+                ThemePreset::DeviceDark => [0.28, 0.33, 0.43, 1.0],
+            };
+            let input_surface = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.92, 0.96, 0.99, 1.0],
+                ThemePreset::DeviceDark => [0.25, 0.30, 0.39, 1.0],
+            };
+            let input_focus_surface = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.95, 0.98, 1.0, 1.0],
+                ThemePreset::DeviceDark => [0.29, 0.35, 0.45, 1.0],
+            };
+            let badge_text = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.96, 0.99, 1.0, 1.0],
+                ThemePreset::DeviceDark => [0.97, 0.99, 1.0, 1.0],
+            };
+            let selected_meta_text = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.14, 0.28, 0.40, 1.0],
+                ThemePreset::DeviceDark => [0.90, 0.96, 1.0, 1.0],
+            };
+            let voice_success_text = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.20, 0.44, 0.24, 1.0],
+                ThemePreset::DeviceDark => [0.84, 0.96, 0.86, 1.0],
+            };
+            let voice_error_text = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.86, 0.38, 0.38, 1.0],
+                ThemePreset::DeviceDark => [1.0, 0.74, 0.74, 1.0],
+            };
+            let voice_hint_fill = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.92, 0.96, 1.0, 1.0],
+                ThemePreset::DeviceDark => [0.27, 0.35, 0.48, 1.0],
+            };
+            let voice_hint_border = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.53, 0.68, 0.86, 1.0],
+                ThemePreset::DeviceDark => [0.54, 0.72, 0.96, 1.0],
+            };
+            let voice_listening_fill = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.84, 0.95, 0.87, 1.0],
+                ThemePreset::DeviceDark => [0.23, 0.39, 0.28, 1.0],
+            };
+            let voice_listening_border = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.32, 0.62, 0.38, 1.0],
+                ThemePreset::DeviceDark => [0.47, 0.80, 0.54, 1.0],
+            };
+            let voice_visual_bar = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.36, 0.72, 0.43, 0.95],
+                ThemePreset::DeviceDark => [0.58, 0.90, 0.64, 0.95],
+            };
+            let hover_surface = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.93, 0.96, 1.0, 1.0],
+                ThemePreset::DeviceDark => [0.28, 0.35, 0.46, 1.0],
+            };
+            let press_surface = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.67, 0.82, 0.97, 1.0],
+                ThemePreset::DeviceDark => [0.32, 0.48, 0.68, 1.0],
+            };
+            let hover_border = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.46, 0.62, 0.82, 1.0],
+                ThemePreset::DeviceDark => [0.56, 0.76, 1.0, 1.0],
+            };
+            let badge_fill = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.24, 0.56, 0.86, 1.0],
+                ThemePreset::DeviceDark => [0.32, 0.60, 0.98, 1.0],
+            };
             let responsive_scale = self.responsive_scale();
             let input_value_px = match chrome.text_scale {
-                DisplayTextScale::Small => 2.0,
-                DisplayTextScale::Medium => 3.0,
-                DisplayTextScale::Large => 4.0,
+                DisplayTextScale::Small => 2.2,
+                DisplayTextScale::Medium => 3.25,
+                DisplayTextScale::Large => 4.1,
             } * responsive_scale;
             let label_px = match chrome.text_scale {
-                DisplayTextScale::Small => 2.0,
-                DisplayTextScale::Medium => 2.0,
+                DisplayTextScale::Small => 2.1,
+                DisplayTextScale::Medium => 2.35,
                 DisplayTextScale::Large => 3.0,
             } * responsive_scale;
             let tracking = match chrome.text_spacing {
-                TextSpacing::Tight => -0.55,
-                TextSpacing::Normal => -0.18,
-                TextSpacing::Relaxed => 0.28,
+                TextSpacing::Tight => -0.42,
+                TextSpacing::Normal => -0.34,
+                TextSpacing::Relaxed => 0.06,
             } * responsive_scale;
             let base_line_gap = match chrome.text_spacing {
                 TextSpacing::Tight => 4.0,
-                TextSpacing::Normal => 6.0,
-                TextSpacing::Relaxed => 9.0,
+                TextSpacing::Normal => 5.0,
+                TextSpacing::Relaxed => 7.0,
             } * responsive_scale;
-            let ui_tracking = tracking * 0.55;
-            let heading_tracking = tracking * 0.40;
+            let ui_tracking = tracking * 0.38;
+            let heading_tracking = tracking * 0.28;
             let visible_sentence_candidates: Vec<(usize, String)> = chrome
                 .sentence_candidates
                 .iter()
@@ -1820,9 +2088,9 @@ pub mod gpu {
             let tracking = tracking * if narrow_layout_scale < 1.0 { 0.75 } else { 1.0 };
             let base_line_gap =
                 (base_line_gap * if narrow_layout_scale < 1.0 { 0.88 } else { 1.0 }).max(3.0);
-            let title_px = (label_px * 1.18).max(2.0 * responsive_scale);
-            let helper_px = (label_px * 0.92).max(1.7 * responsive_scale);
-            let chip_px = (label_px * 0.98).max(1.8 * responsive_scale);
+            let title_px = (label_px * 1.22).max(2.25 * responsive_scale);
+            let helper_px = (label_px * 0.98).max(1.95 * responsive_scale);
+            let chip_px = (label_px * 1.06).max(2.0 * responsive_scale);
             let hero_px = input_value_px * 1.12;
             let panel_width = metrics.panel_width;
             let panel_x = metrics.panel_x;
@@ -1868,8 +2136,7 @@ pub mod gpu {
                 color: page_bg,
             });
             let panel_shell_y = panel_y - 14.0 * responsive_scale;
-            let panel_shell_h =
-                suggestions_y + metrics.chip_section_h - panel_shell_y + 12.0 * responsive_scale;
+            let panel_shell_h = metrics.panel_height + 26.0 * responsive_scale;
             append_soft_card_quads(
                 &mut quads,
                 [
@@ -1897,9 +2164,9 @@ pub mod gpu {
                 &mut quads,
                 [panel_x, input_box_y, panel_width, metrics.input_box_h],
                 if chrome.input_focused {
-                    [0.97, 0.98, 1.0, 1.0]
+                    input_focus_surface
                 } else {
-                    surface
+                    input_surface
                 },
                 if chrome.input_focused {
                     accent_soft
@@ -1923,6 +2190,28 @@ pub mod gpu {
                     8.0 * responsive_scale,
                 );
             }
+            if chrome.input_focused {
+                append_rounded_rect_quads(
+                    &mut quads,
+                    [
+                        panel_x - 1.0 * responsive_scale,
+                        input_box_y - 1.0 * responsive_scale,
+                        panel_width + 2.0 * responsive_scale,
+                        metrics.input_box_h + 2.0 * responsive_scale,
+                    ],
+                    [0.56, 0.80, 1.0, 0.12],
+                    11.0 * responsive_scale,
+                );
+                quads.push(CandidateQuad {
+                    rect: [
+                        panel_x + 12.0 * responsive_scale,
+                        input_box_y + metrics.input_box_h - 5.0 * responsive_scale,
+                        panel_width - 24.0 * responsive_scale,
+                        2.0 * responsive_scale,
+                    ],
+                    color: [0.38, 0.69, 0.96, 0.30],
+                });
+            }
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::SeedInput,
                 rect: [panel_x, input_box_y, panel_width, metrics.input_box_h],
@@ -1933,7 +2222,7 @@ pub mod gpu {
                     text: "Seed input".to_string(),
                     origin: [
                         panel_x + 16.0 * responsive_scale,
-                        input_box_y + 8.0 * responsive_scale,
+                        input_box_y + 10.0 * responsive_scale,
                     ],
                     max_width: panel_width - 36.0 * responsive_scale,
                     pixel_size: title_px,
@@ -1953,7 +2242,7 @@ pub mod gpu {
                     },
                     origin: [
                         panel_x + 16.0 * responsive_scale,
-                        input_box_y + 24.0 * responsive_scale,
+                        input_box_y + 28.0 * responsive_scale,
                     ],
                     max_width: panel_width - 54.0 * responsive_scale,
                     pixel_size: input_value_px,
@@ -1990,7 +2279,7 @@ pub mod gpu {
                 quads.push(CandidateQuad {
                     rect: [
                         caret_x,
-                        input_box_y + 22.0 * responsive_scale,
+                        input_box_y + 25.0 * responsive_scale,
                         2.0 * responsive_scale,
                         22.0 * responsive_scale,
                     ],
@@ -2017,9 +2306,9 @@ pub mod gpu {
                 border_dark,
                 soft_shadow,
                 if chrome.input_focused {
-                    [0.97, 0.98, 1.0, 1.0]
+                    input_focus_surface
                 } else {
-                    surface
+                    input_surface
                 },
                 6.0 * responsive_scale,
             );
@@ -2061,9 +2350,9 @@ pub mod gpu {
                 },
                 soft_shadow,
                 if chrome.input_focused {
-                    [0.97, 0.98, 1.0, 1.0]
+                    input_focus_surface
                 } else {
-                    surface
+                    input_surface
                 },
                 6.0 * responsive_scale,
             );
@@ -2090,12 +2379,31 @@ pub mod gpu {
             append_soft_card_quads(
                 &mut quads,
                 tools_header_rect,
-                surface_alt,
-                border_dark,
+                if chrome.input_modes_expanded {
+                    surface_bright
+                } else {
+                    surface_alt
+                },
+                if chrome.input_modes_expanded {
+                    [0.46, 0.62, 0.82, 1.0]
+                } else {
+                    border_dark
+                },
                 soft_shadow,
                 shell,
                 8.0 * responsive_scale,
             );
+            if chrome.input_modes_expanded {
+                quads.push(CandidateQuad {
+                    rect: [
+                        panel_x + 10.0 * responsive_scale,
+                        tools_y + metrics.tools_header_h - 4.0 * responsive_scale,
+                        panel_width - 20.0 * responsive_scale,
+                        2.0 * responsive_scale,
+                    ],
+                    color: [0.42, 0.70, 0.97, 0.28],
+                });
+            }
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::InputModesToggle,
                 rect: tools_header_rect,
@@ -2105,7 +2413,7 @@ pub mod gpu {
                     text: "Tools".to_string(),
                     origin: [
                         panel_x + 16.0 * responsive_scale,
-                        tools_y + 7.0 * responsive_scale,
+                        tools_y + 4.0 * responsive_scale,
                     ],
                     max_width: panel_width - 32.0 * responsive_scale,
                     pixel_size: title_px,
@@ -2141,7 +2449,7 @@ pub mod gpu {
             if chrome.input_modes_expanded {
                 let tools_panel_rect = [
                     panel_x,
-                    tools_y + metrics.tools_header_h + 4.0 * responsive_scale,
+                    tools_y + metrics.tools_header_h + 5.0 * responsive_scale,
                     panel_width,
                     metrics.tools_content_h,
                 ];
@@ -2154,9 +2462,18 @@ pub mod gpu {
                     shell,
                     10.0 * responsive_scale,
                 );
-                let button_y = tools_y + metrics.tools_header_h + 6.0 * responsive_scale;
+                quads.push(CandidateQuad {
+                    rect: [
+                        tools_panel_rect[0] + 12.0 * responsive_scale,
+                        tools_panel_rect[1] + 8.0 * responsive_scale,
+                        tools_panel_rect[2] - 24.0 * responsive_scale,
+                        2.0 * responsive_scale,
+                    ],
+                    color: [1.0, 1.0, 1.0, 0.14],
+                });
+                let button_y = tools_y + metrics.tools_header_h + 10.0 * responsive_scale;
                 let button_w =
-                    (panel_width - 16.0 * responsive_scale - metrics.tool_gap * 2.0) / 3.0;
+                    (panel_width - 20.0 * responsive_scale - metrics.tool_gap * 2.0) / 3.0;
                 let buttons = [
                     (InputMode::VirtualKeyboard, "Keyboard"),
                     (InputMode::Dictation, "Voice"),
@@ -2165,7 +2482,9 @@ pub mod gpu {
 
                 let mut tool_layouts = Vec::new();
                 for (index, (mode, label)) in buttons.iter().enumerate() {
-                    let x = panel_x + index as f32 * (button_w + metrics.tool_gap);
+                    let x = panel_x
+                        + 2.0 * responsive_scale
+                        + index as f32 * (button_w + metrics.tool_gap);
                     let selected = *mode == chrome.active_input_mode;
                     let kind = InteractionKind::InputModeButton(*mode);
                     let (hovered, pressed) = interaction_state(kind);
@@ -2179,9 +2498,9 @@ pub mod gpu {
                         } else if selected {
                             accent_soft
                         } else if hovered {
-                            [0.91, 0.95, 1.0, 1.0]
+                            surface_bright
                         } else {
-                            [0.97, 0.98, 1.0, 1.0]
+                            surface
                         },
                         if pressed {
                             [0.08, 0.35, 0.68, 1.0]
@@ -2205,7 +2524,7 @@ pub mod gpu {
                                 visual_rect[2] - 8.0 * responsive_scale,
                                 visual_rect[3] - 8.0 * responsive_scale,
                             ],
-                            [1.0, 1.0, 1.0, 0.08],
+                            [1.0, 1.0, 1.0, 0.05],
                             7.0 * responsive_scale,
                         );
                         append_rounded_rect_quads(
@@ -2222,25 +2541,31 @@ pub mod gpu {
                     }
                     interactive_targets.push(InteractiveTarget { kind, rect });
                     let icon_color = if selected { accent_text } else { text_primary };
+                    let icon_rect = [
+                        visual_rect[0] + visual_rect[2] * 0.5 - 7.0 * responsive_scale,
+                        visual_rect[1] + 4.0 * responsive_scale,
+                        14.0 * responsive_scale,
+                        14.0 * responsive_scale,
+                    ];
                     match mode {
                         InputMode::VirtualKeyboard => {
-                            append_keyboard_icon_quads(&mut quads, visual_rect, icon_color)
+                            append_keyboard_icon_quads(&mut quads, icon_rect, icon_color)
                         }
                         InputMode::Dictation => {
-                            append_mic_icon_quads(&mut quads, visual_rect, icon_color)
+                            append_mic_icon_quads(&mut quads, icon_rect, icon_color)
                         }
                         InputMode::Handwriting => {
-                            append_pen_icon_quads(&mut quads, visual_rect, icon_color)
+                            append_pen_icon_quads(&mut quads, icon_rect, icon_color)
                         }
                     }
                     let layout = TextBlock {
                         text: (*label).to_string(),
                         origin: [
                             visual_rect[0] + 10.0 * responsive_scale,
-                            visual_rect[1] + visual_rect[3] - 13.0 * responsive_scale,
+                            visual_rect[1] + 19.0 * responsive_scale,
                         ],
                         max_width: visual_rect[2] - 20.0 * responsive_scale,
-                        pixel_size: helper_px,
+                        pixel_size: (helper_px * 0.82).max(1.6 * responsive_scale),
                         letter_spacing: ui_tracking,
                         line_gap: base_line_gap,
                         max_lines: 1,
@@ -2263,8 +2588,8 @@ pub mod gpu {
                 });
 
                 if chrome.active_input_mode == InputMode::VirtualKeyboard {
-                    let keyboard_y = button_y + metrics.tool_button_h + 8.0 * responsive_scale;
-                    let key_gap = 6.0 * responsive_scale;
+                    let keyboard_y = button_y + metrics.tool_button_h + 12.0 * responsive_scale;
+                    let key_gap = 7.0 * responsive_scale;
                     let row_h = 28.0 * responsive_scale;
                     let mut keyboard_layouts = Vec::new();
                     let key_rows = if chrome.keyboard_numeric {
@@ -2366,8 +2691,8 @@ pub mod gpu {
                                     VirtualKeyboardKey::ToggleNumeric
                                     | VirtualKeyboardKey::ToggleAlphabetic
                                     | VirtualKeyboardKey::Backspace
-                                    | VirtualKeyboardKey::Shift => surface_muted,
-                                    _ => [0.98, 0.99, 1.0, 1.0],
+                                    | VirtualKeyboardKey::Shift => keyboard_special_surface,
+                                    _ => keyboard_surface,
                                 },
                                 if matches!(key, VirtualKeyboardKey::Shift)
                                     && chrome.keyboard_shifted
@@ -2406,14 +2731,24 @@ pub mod gpu {
                                         | VirtualKeyboardKey::ToggleNumeric
                                         | VirtualKeyboardKey::ToggleAlphabetic
                                 ) {
-                                    1.5 * responsive_scale
+                                    (chip_px * 0.9).max(1.75 * responsive_scale)
                                 } else {
-                                    chip_px
+                                    (chip_px * 1.1).max(2.2 * responsive_scale)
                                 },
                                 letter_spacing: ui_tracking,
                                 line_gap: base_line_gap,
                                 max_lines: 1,
-                                color: text_primary,
+                                color: if matches!(
+                                    key,
+                                    VirtualKeyboardKey::Backspace
+                                        | VirtualKeyboardKey::ToggleNumeric
+                                        | VirtualKeyboardKey::ToggleAlphabetic
+                                        | VirtualKeyboardKey::Shift
+                                ) {
+                                    keyboard_secondary_text
+                                } else {
+                                    keyboard_text
+                                },
                                 align: TextAlign::Center,
                                 role: TextRole::KeyboardKey,
                             }
@@ -2422,7 +2757,11 @@ pub mod gpu {
                             atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                             keyboard_layouts.push(layout);
                             if matches!(key, VirtualKeyboardKey::Backspace) {
-                                append_backspace_icon_quads(&mut quads, rect, text_primary);
+                                append_backspace_icon_quads(
+                                    &mut quads,
+                                    rect,
+                                    keyboard_secondary_text,
+                                );
                             }
                         }
                     }
@@ -2525,11 +2864,11 @@ pub mod gpu {
                             &mut quads,
                             rect,
                             match key {
-                                VirtualKeyboardKey::Space => [0.96, 0.98, 1.0, 1.0],
+                                VirtualKeyboardKey::Space => keyboard_surface,
                                 VirtualKeyboardKey::ToggleNumeric
                                 | VirtualKeyboardKey::ToggleAlphabetic
-                                | VirtualKeyboardKey::Backspace => surface_muted,
-                                _ => [0.98, 0.99, 1.0, 1.0],
+                                | VirtualKeyboardKey::Backspace => keyboard_special_surface,
+                                _ => keyboard_surface,
                             },
                             border_dark,
                             soft_shadow,
@@ -2548,14 +2887,23 @@ pub mod gpu {
                             ],
                             max_width: rect[2] - 20.0 * responsive_scale,
                             pixel_size: if label.chars().count() > 6 {
-                                1.5 * responsive_scale
+                                1.8 * responsive_scale
                             } else {
-                                2.0 * responsive_scale
+                                2.2 * responsive_scale
                             },
                             letter_spacing: ui_tracking,
                             line_gap: base_line_gap,
                             max_lines: if label.chars().count() > 6 { 2 } else { 1 },
-                            color: text_primary,
+                            color: if matches!(
+                                key,
+                                VirtualKeyboardKey::ToggleNumeric
+                                    | VirtualKeyboardKey::ToggleAlphabetic
+                                    | VirtualKeyboardKey::Backspace
+                            ) {
+                                keyboard_secondary_text
+                            } else {
+                                keyboard_text
+                            },
                             align: TextAlign::Center,
                             role: TextRole::KeyboardKey,
                         }
@@ -2564,7 +2912,7 @@ pub mod gpu {
                         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         keyboard_layouts.push(layout);
                         if matches!(key, VirtualKeyboardKey::Backspace) {
-                            append_backspace_icon_quads(&mut quads, rect, text_primary);
+                            append_backspace_icon_quads(&mut quads, rect, keyboard_secondary_text);
                         }
                     }
 
@@ -2573,7 +2921,7 @@ pub mod gpu {
                         layouts: keyboard_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Dictation {
-                    let voice_y = button_y + metrics.tool_button_h + 8.0 * responsive_scale;
+                    let voice_y = button_y + metrics.tool_button_h + 12.0 * responsive_scale;
                     let voice_rect = [
                         panel_x,
                         voice_y,
@@ -2617,14 +2965,24 @@ pub mod gpu {
                         ""
                     };
                     if !live_hint.is_empty() {
-                        quads.push(CandidateQuad {
-                            rect: [panel_x + panel_width - 132.0, voice_y + 8.0, 118.0, 18.0],
-                            color: if chrome.voice_state == VoiceCaptureState::Listening {
-                                [0.80, 0.93, 0.84, 1.0]
+                        let hint_rect = [panel_x + panel_width - 132.0, voice_y + 8.0, 118.0, 18.0];
+                        append_soft_card_quads(
+                            &mut quads,
+                            hint_rect,
+                            if chrome.voice_state == VoiceCaptureState::Listening {
+                                voice_listening_fill
                             } else {
-                                [0.90, 0.94, 0.98, 1.0]
+                                voice_hint_fill
                             },
-                        });
+                            if chrome.voice_state == VoiceCaptureState::Listening {
+                                voice_listening_border
+                            } else {
+                                voice_hint_border
+                            },
+                            [0.30, 0.40, 0.55, 0.10],
+                            [0.97, 0.98, 1.0, 1.0],
+                            7.0 * responsive_scale,
+                        );
                     }
                     if chrome.voice_state == VoiceCaptureState::Listening {
                         let base_x = panel_x + panel_width - 122.0;
@@ -2641,7 +2999,7 @@ pub mod gpu {
                                     7.0,
                                     bar_h,
                                 ],
-                                color: [0.36, 0.72, 0.43, 0.95],
+                                color: voice_visual_bar,
                             });
                         }
                     }
@@ -2661,7 +3019,7 @@ pub mod gpu {
                                 chrome.voice_permission,
                                 VoicePermissionState::Denied | VoicePermissionState::Error
                             ) {
-                                [0.86, 0.38, 0.38, 1.0]
+                                voice_error_text
                             } else {
                                 text_secondary
                             },
@@ -2678,7 +3036,7 @@ pub mod gpu {
                             line_gap: base_line_gap,
                             max_lines: 1,
                             color: if chrome.voice_state == VoiceCaptureState::Listening {
-                                [0.20, 0.44, 0.24, 1.0]
+                                voice_success_text
                             } else {
                                 text_primary
                             },
@@ -2803,7 +3161,7 @@ pub mod gpu {
                         let rect = [
                             action_cursor_x,
                             voice_y + 96.0 + action_row as f32 * 30.0,
-                            width.min(panel_width),
+                            width.min(panel_width - 6.0 * responsive_scale),
                             26.0,
                         ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
@@ -2890,7 +3248,7 @@ pub mod gpu {
                         layouts: voice_action_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Handwriting {
-                    let handwriting_y = button_y + metrics.tool_button_h + 8.0 * responsive_scale;
+                    let handwriting_y = button_y + metrics.tool_button_h + 12.0 * responsive_scale;
                     let canvas_rect = [panel_x, handwriting_y + 22.0, panel_width, 108.0];
                     append_soft_card_quads(
                         &mut quads,
@@ -3068,7 +3426,7 @@ pub mod gpu {
                         text_quads.extend(layout.quads.iter().copied());
                         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         handwriting_action_layouts.push(layout);
-                        chip_x += chip_w + 8.0;
+                        chip_x += chip_w + 10.0;
                     }
                     text_sections.push(TextSection {
                         role: TextRole::HandwritingButton,
@@ -3109,6 +3467,22 @@ pub mod gpu {
                                 InteractionKind::SetTextScale(DisplayTextScale::Large),
                                 "L",
                                 chrome.text_scale == DisplayTextScale::Large,
+                            ),
+                        ]
+                        .to_vec(),
+                    ),
+                    (
+                        "Theme",
+                        [
+                            (
+                                InteractionKind::SetThemePreset(ThemePreset::Daylight),
+                                "Daylight",
+                                chrome.theme_preset == ThemePreset::Daylight,
+                            ),
+                            (
+                                InteractionKind::SetThemePreset(ThemePreset::DeviceDark),
+                                "Device Dark",
+                                chrome.theme_preset == ThemePreset::DeviceDark,
                             ),
                         ]
                         .to_vec(),
@@ -3323,11 +3697,7 @@ pub mod gpu {
                         append_soft_card_quads(
                             &mut quads,
                             rect,
-                            if *selected {
-                                accent_soft
-                            } else {
-                                [0.97, 0.98, 1.0, 1.0]
-                            },
+                            if *selected { accent_soft } else { surface },
                             if *selected { accent } else { border_dark },
                             soft_shadow,
                             surface,
@@ -3370,7 +3740,7 @@ pub mod gpu {
             if !chrome.next_token_candidates.is_empty() {
                 let chip_section_rect = [
                     panel_x,
-                    chip_section_y - 4.0 * responsive_scale,
+                    chip_section_y - 3.0 * responsive_scale,
                     panel_width,
                     metrics.chip_section_h,
                 ];
@@ -3390,7 +3760,10 @@ pub mod gpu {
                         } else {
                             format!("Next tokens  |  {}", chrome.composed_tokens.join(" "))
                         },
-                        origin: [panel_x + 2.0 * responsive_scale, chip_section_y],
+                        origin: [
+                            panel_x + 6.0 * responsive_scale,
+                            chip_section_y + 2.0 * responsive_scale,
+                        ],
                         max_width: panel_width - 96.0 * responsive_scale,
                         pixel_size: title_px,
                         letter_spacing: heading_tracking,
@@ -3414,8 +3787,8 @@ pub mod gpu {
                 if !chrome.composed_tokens.is_empty() {
                     let back_rect = if metrics.stacked_token_header {
                         [
-                            panel_x,
-                            chip_section_y + 20.0 * responsive_scale,
+                            panel_x + 2.0 * responsive_scale,
+                            chip_section_y + 22.0 * responsive_scale,
                             78.0 * responsive_scale,
                             22.0 * responsive_scale,
                         ]
@@ -3435,7 +3808,7 @@ pub mod gpu {
                         if pressed {
                             [0.67, 0.82, 0.97, 1.0]
                         } else if hovered {
-                            [0.93, 0.96, 1.0, 1.0]
+                            surface_bright
                         } else {
                             surface_muted
                         },
@@ -3479,11 +3852,11 @@ pub mod gpu {
                 }
 
                 let chip_y = if metrics.stacked_token_header {
-                    chip_section_y + 52.0 * responsive_scale
+                    chip_section_y + 50.0 * responsive_scale
                 } else {
-                    chip_section_y + 24.0 * responsive_scale
+                    chip_section_y + 28.0 * responsive_scale
                 };
-                let mut chip_x = panel_x;
+                let mut chip_x = panel_x + 2.0 * responsive_scale;
                 let mut row = 0;
                 let mut chip_layouts = Vec::new();
                 for (index, token) in chrome.next_token_candidates.iter().take(6).enumerate() {
@@ -3513,9 +3886,9 @@ pub mod gpu {
                         } else if index == 0 {
                             accent_soft
                         } else if hovered {
-                            [0.93, 0.96, 1.0, 1.0]
+                            surface_bright
                         } else {
-                            [0.97, 0.98, 1.0, 1.0]
+                            surface
                         },
                         if pressed {
                             [0.08, 0.35, 0.68, 1.0]
@@ -3554,7 +3927,7 @@ pub mod gpu {
                     text_quads.extend(layout.quads.iter().copied());
                     atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                     chip_layouts.push(layout);
-                    chip_x += chip_w + 8.0 * responsive_scale;
+                    chip_x += chip_w + 10.0 * responsive_scale;
                 }
                 if !chip_layouts.is_empty() {
                     text_sections.push(TextSection {
@@ -3564,9 +3937,9 @@ pub mod gpu {
                 }
             }
 
-            let sentence_y = suggestions_y + metrics.chip_section_h;
+            let sentence_y = suggestions_y + metrics.chip_section_h + metrics.sentence_section_gap;
             let candidate_columns = metrics.candidate_columns;
-            let candidate_gap_x = 12.0 * responsive_scale;
+            let candidate_gap_x = 14.0 * responsive_scale;
             let candidate_card_w = if candidate_columns == 2 {
                 (panel_width - candidate_gap_x) / 2.0
             } else {
@@ -3631,24 +4004,24 @@ pub mod gpu {
                     &mut quads,
                     visual_rect,
                     if pressed {
-                        [0.66, 0.82, 0.97, 1.0]
+                        press_surface
                     } else if selected {
                         accent_soft
                     } else if is_hero {
-                        [0.95, 0.98, 1.0, 1.0]
+                        surface_bright
                     } else if hovered {
-                        [0.94, 0.97, 1.0, 1.0]
+                        hover_surface
                     } else if snapshot.degraded {
                         surface_muted
                     } else {
-                        [0.98, 0.99, 1.0, 1.0]
+                        surface
                     },
                     if pressed {
                         [0.08, 0.35, 0.68, 1.0]
                     } else if selected || is_hero {
                         accent
                     } else if hovered {
-                        [0.46, 0.62, 0.82, 1.0]
+                        hover_border
                     } else {
                         border_dark
                     },
@@ -3682,7 +4055,7 @@ pub mod gpu {
                     ];
                     quads.push(CandidateQuad {
                         rect: badge_rect,
-                        color: [0.24, 0.56, 0.86, 1.0],
+                        color: badge_fill,
                     });
                     let badge_layout = TextBlock {
                         text: style_label.to_string(),
@@ -3695,7 +4068,7 @@ pub mod gpu {
                         letter_spacing: ui_tracking * 0.7,
                         line_gap: base_line_gap,
                         max_lines: 1,
-                        color: [0.96, 0.99, 1.0, 1.0],
+                        color: badge_text,
                         align: TextAlign::Center,
                         role: TextRole::CandidateMeta,
                     }
@@ -3763,7 +4136,7 @@ pub mod gpu {
                         line_gap: base_line_gap,
                         max_lines: 2,
                         color: if selected {
-                            [0.20, 0.36, 0.50, 1.0]
+                            selected_meta_text
                         } else {
                             text_secondary
                         },
@@ -3799,16 +4172,17 @@ pub mod gpu {
         }
 
         pub fn build_settings_scene(&self, chrome: &PanelChromeState) -> RenderScene {
-            let page_bg = [0.79, 0.84, 0.92, 1.0];
-            let shell = [0.86, 0.90, 0.96, 1.0];
-            let shell_border = [0.65, 0.72, 0.83, 1.0];
-            let surface_alt = [0.89, 0.93, 0.98, 1.0];
-            let accent_soft = [0.72, 0.87, 1.0, 1.0];
-            let accent = [0.16, 0.48, 0.86, 1.0];
-            let accent_text = [0.05, 0.16, 0.30, 1.0];
-            let text_primary = [0.08, 0.13, 0.21, 1.0];
-            let text_secondary = [0.23, 0.31, 0.42, 1.0];
-            let soft_shadow = [0.36, 0.45, 0.59, 0.18];
+            let theme = PanelTheme::for_preset(chrome.theme_preset);
+            let page_bg = theme.page_bg;
+            let shell = theme.shell;
+            let shell_border = theme.shell_border;
+            let surface_alt = theme.surface_alt;
+            let accent_soft = theme.accent_soft;
+            let accent = theme.accent;
+            let accent_text = theme.accent_text;
+            let text_primary = theme.text_primary;
+            let text_secondary = theme.text_secondary;
+            let soft_shadow = theme.soft_shadow;
             let tracking = match chrome.text_spacing {
                 TextSpacing::Tight => -0.45,
                 TextSpacing::Normal => -0.15,
@@ -3950,6 +4324,22 @@ pub mod gpu {
                             InteractionKind::SetTextScale(DisplayTextScale::Large),
                             "L",
                             chrome.text_scale == DisplayTextScale::Large,
+                        ),
+                    ]
+                    .to_vec(),
+                ),
+                (
+                    "Theme",
+                    [
+                        (
+                            InteractionKind::SetThemePreset(ThemePreset::Daylight),
+                            "Daylight",
+                            chrome.theme_preset == ThemePreset::Daylight,
+                        ),
+                        (
+                            InteractionKind::SetThemePreset(ThemePreset::DeviceDark),
+                            "Device Dark",
+                            chrome.theme_preset == ThemePreset::DeviceDark,
                         ),
                     ]
                     .to_vec(),

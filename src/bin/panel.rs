@@ -113,8 +113,8 @@ fn build_event_loop() -> Result<EventLoop<()>, winit::error::EventLoopError> {
 fn panel_window_attributes() -> WindowAttributes {
     let attrs = WindowAttributes::default()
         .with_title("Suzaku XR Candidate Panel")
-        .with_inner_size(LogicalSize::new(420.0, 520.0))
-        .with_min_inner_size(LogicalSize::new(620.0, 560.0))
+        .with_inner_size(LogicalSize::new(760.0, 380.0))
+        .with_min_inner_size(LogicalSize::new(620.0, 360.0))
         .with_resizable(true);
     decorate_main_window_attributes(attrs)
 }
@@ -439,9 +439,10 @@ impl PanelState {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Compact,
-            font_face: FontFaceChoice::Auto,
+            font_face: FontFaceChoice::Monaco,
             text_spacing: TextSpacing::Normal,
-            text_smoothing: TextSmoothing::Smooth,
+            text_smoothing: TextSmoothing::Sharp,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Unknown Voice Host".to_string(),
@@ -589,15 +590,16 @@ impl PanelState {
             return;
         }
         if compact {
-            self.expanded_window_size = Some(LogicalSize::new(
-                self.size.width as f64,
-                self.size.height as f64,
-            ));
+            self.expanded_window_size = Some(
+                self.window
+                    .inner_size()
+                    .to_logical::<f64>(self.window.scale_factor()),
+            );
             self.expanded_window_pos = self.window.outer_position().ok();
             self.chrome.settings_open = false;
             self.window.set_decorations(false);
             self.window.set_resizable(false);
-            let _ = self.window.request_inner_size(LogicalSize::new(96.0, 96.0));
+            let _ = self.window.request_inner_size(LogicalSize::new(92.0, 92.0));
         } else {
             let restored = self
                 .expanded_window_size

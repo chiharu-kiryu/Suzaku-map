@@ -502,6 +502,7 @@ fn render_scene_can_collapse_input_method_buttons() {
             font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
             text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
             text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
             voice_backend_label: "Fallback Samples".into(),
@@ -560,6 +561,7 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
             text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
             text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
             voice_backend_label: "Fallback Samples".into(),
@@ -631,6 +633,7 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
             text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
             text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Listening,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
             voice_backend_label: "Apple Speech".into(),
@@ -695,6 +698,7 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             font_face: suzaku_map::ime::gpu::FontFaceChoice::Auto,
             text_spacing: suzaku_map::ime::gpu::TextSpacing::Normal,
             text_smoothing: suzaku_map::ime::gpu::TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Unknown,
             voice_backend_label: "Fallback Samples".into(),
@@ -728,7 +732,8 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
 fn render_scene_exposes_display_settings_when_open() {
     use suzaku_map::ime::gpu::{
         CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
-        PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing, WgpuCandidateRenderer,
+        PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing, ThemePreset,
+        WgpuCandidateRenderer,
     };
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
@@ -752,6 +757,7 @@ fn render_scene_exposes_display_settings_when_open() {
             font_face: FontFaceChoice::Geneva,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
             voice_backend_label: "Apple Speech".into(),
@@ -783,6 +789,12 @@ fn render_scene_exposes_display_settings_when_open() {
     assert!(scene.interactive_targets.iter().any(
         |target| target.kind == InteractionKind::SetCandidateDensity(CandidateDensity::Compact)
     ));
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::SetThemePreset(ThemePreset::DeviceDark))
+    );
     assert!(
         scene
             .interactive_targets
@@ -925,6 +937,7 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Relaxed,
             text_smoothing: TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
             voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
             voice_backend_label: "Apple Speech".into(),
@@ -1124,6 +1137,7 @@ fn render_scene_shows_voice_permission_denied_message() {
             font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Denied,
             voice_backend_label: "Apple Speech".into(),
@@ -1191,6 +1205,7 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
             font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Fallback Samples".into(),
