@@ -71,6 +71,7 @@ pub mod macos;
 pub mod macos_ime;
 #[cfg(target_os = "macos")]
 pub mod macos_voice;
+pub mod panel_companion_dispatch;
 pub mod settings_host;
 pub mod text_output_host;
 pub mod ubuntu_voice;

@@ -42,13 +42,14 @@ pub struct MacOsImeCandidateCompanionState {
     pub visible: bool,
     pub refresh_count: usize,
     pub selected_index: usize,
+    pub hovered_index: Option<usize>,
     pub primary_candidate: Option<String>,
 }
 
 impl MacOsImeBootstrap {
     pub fn describe(&self) -> String {
         format!(
-            "IMK available: {} | bundled: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | controller active: {} | controller init/activate/input/commit: {}/{}/{}/{} | last marked: {} | candidate companion ready: {} | visible: {} | companion refreshes: {} | companion selected: {} | companion primary: {} | host session active: {} | host marked: {} | host candidates: {} | host committed: {} | recommended connection: {}",
+            "IMK available: {} | bundled: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | controller active: {} | controller init/activate/input/commit: {}/{}/{}/{} | last marked: {} | candidate companion ready: {} | visible: {} | companion refreshes: {} | companion selected: {} | companion hovered: {} | companion primary: {} | host session active: {} | host marked: {} | host candidates: {} | host committed: {} | recommended connection: {}",
             self.input_methodkit_available,
             self.bundled_runtime,
             self.main_bundle_identifier.as_deref().unwrap_or("(none)"),
@@ -69,6 +70,10 @@ impl MacOsImeBootstrap {
             self.candidate_companion.visible,
             self.candidate_companion.refresh_count,
             self.candidate_companion.selected_index,
+            self.candidate_companion
+                .hovered_index
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "(none)".to_string()),
             self.candidate_companion
                 .primary_candidate
                 .as_deref()
@@ -135,6 +140,7 @@ pub fn bootstrap_status() -> MacOsImeBootstrap {
             visible: false,
             refresh_count: 0,
             selected_index: 0,
+            hovered_index: None,
             primary_candidate: None,
         },
         host_session: MacOsImeHostSessionDebugState {
@@ -243,12 +249,16 @@ fn candidate_companion_state() -> MacOsImeCandidateCompanionState {
         fn suzaku_input_methodkit_candidate_companion_refresh_count() -> std::os::raw::c_ulong;
         fn suzaku_input_methodkit_candidate_companion_visible() -> bool;
         fn suzaku_input_methodkit_candidate_companion_selected_index() -> std::os::raw::c_ulong;
+        fn suzaku_input_methodkit_candidate_companion_hovered_index() -> std::os::raw::c_ulong;
         fn suzaku_input_methodkit_candidate_companion_primary_candidate()
         -> *mut std::os::raw::c_char;
     }
 
+    let hovered_index =
+        unsafe { suzaku_input_methodkit_candidate_companion_hovered_index() as usize };
+
     MacOsImeCandidateCompanionState {
-        ready: controller_lifecycle_ready(),
+        ready: candidate_companion_window_ready(),
         visible: unsafe { suzaku_input_methodkit_candidate_companion_visible() },
         refresh_count: unsafe {
             suzaku_input_methodkit_candidate_companion_refresh_count() as usize
@@ -256,10 +266,24 @@ fn candidate_companion_state() -> MacOsImeCandidateCompanionState {
         selected_index: unsafe {
             suzaku_input_methodkit_candidate_companion_selected_index() as usize
         },
+        hovered_index: if hovered_index == usize::MAX {
+            None
+        } else {
+            Some(hovered_index)
+        },
         primary_candidate: read_optional_native_string(
             suzaku_input_methodkit_candidate_companion_primary_candidate,
         ),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn candidate_companion_window_ready() -> bool {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_candidate_companion_window_ready() -> bool;
+    }
+
+    unsafe { suzaku_input_methodkit_candidate_companion_window_ready() }
 }
 
 fn host_session_debug_state() -> MacOsImeHostSessionDebugState {

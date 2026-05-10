@@ -4,15 +4,18 @@ fn main() {
     use suzaku_map::ime_host::HostImeSession;
     use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
     use suzaku_map::platform::macos_ime::bootstrap_status;
+    use suzaku_map::platform::panel_companion_dispatch::current_panel_companion_dispatch;
 
     let bootstrap = bootstrap_status();
     let dispatch = current_ime_host_dispatch();
+    let panel_dispatch = current_panel_companion_dispatch();
     let mut session = HostImeSession::new(EngineConfig::default());
     let update = session.activate();
 
     println!("Suzaku macOS IME host skeleton");
     println!("{}", bootstrap.describe());
     println!("{}", dispatch.describe());
+    println!("{}", panel_dispatch.describe());
     println!(
         "bundle connection={}",
         bootstrap
@@ -61,7 +64,7 @@ fn main() {
         update.committed_text
     );
     println!(
-        "next step: replace this bootstrap with an InputMethodKit controller bundle and wire HostImeSession into IMKInputController."
+        "next step: keep the GPU panel in debug-companion role and continue replacing this bootstrap with a registered InputMethodKit host."
     );
 }
 

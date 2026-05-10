@@ -109,6 +109,14 @@ The platform bootstrap modules now line up with that dispatch:
 
 Right now only macOS has a live `marked text -> commit` roundtrip. Windows and Linux now expose stable host-shell metadata and recommended registration identifiers so their native adapters can grow without changing the shared host-session contract.
 
+The panel split is now explicit too:
+
+- [src/platform/panel_companion_dispatch.rs](./src/platform/panel_companion_dispatch.rs)
+- macOS / Windows: the GPU panel is treated as a `DebugCompanion`
+- Ubuntu / Arch / SteamOS: the GPU panel remains the primary interactive surface until a native system IME host exists
+
+That means the project can keep evolving the panel as a rich debug and extended companion, while the real marked-text and commit lifecycle moves into platform IME hosts.
+
 The current macOS IME host path is still a skeleton, not a registered system input method bundle yet. It now tells us:
 
 - whether `InputMethodKit` is present

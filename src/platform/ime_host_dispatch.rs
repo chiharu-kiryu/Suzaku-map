@@ -59,11 +59,11 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
                 native_candidate_window: bootstrap.candidate_companion.ready,
                 notes: if bootstrap.server_bootstrap_ready {
                     format!(
-                        "InputMethodKit bootstrap is live; Rust host session is wired for marked text and commit, and candidate companion visibility is {}.",
+                        "InputMethodKit bootstrap is live; Rust host session is wired for marked text and commit, candidate companion visibility is {}, and the GPU panel should stay in debug-companion role.",
                         bootstrap.candidate_companion.visible
                     )
                 } else {
-                    "InputMethodKit bridge is present, but the bundle is not yet running as a registered system input method."
+                    "InputMethodKit bridge is present, but the bundle is not yet running as a registered system input method; the GPU panel should remain a debug companion."
                         .to_string()
                 },
             }
@@ -79,11 +79,11 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
                 commit_roundtrip: bootstrap.commit_roundtrip_ready,
                 native_candidate_window: bootstrap.native_candidate_window_ready,
                 notes: if bootstrap.host_registration_ready {
-                    "Windows TSF host bootstrap is registered and ready for marked-text and commit wiring."
+                    "Windows TSF host bootstrap is registered and ready for marked-text and commit wiring; keep the GPU panel in debug-companion role."
                         .to_string()
                 } else {
                     format!(
-                        "Windows will route through Text Services Framework; current profile id is {} and the host shell is not registered yet.",
+                        "Windows will route through Text Services Framework; current profile id is {} and the host shell is not registered yet, so the GPU panel remains a debug companion.",
                         bootstrap.recommended_profile_id
                     )
                 },

@@ -31,6 +31,7 @@ use suzaku_map::platform::gpu_host::{
     configure_event_loop_builder, decorate_main_window_attributes,
     decorate_settings_window_attributes,
 };
+use suzaku_map::platform::panel_companion_dispatch::current_panel_companion_dispatch;
 use suzaku_map::platform::{host_platform, support_for};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -111,8 +112,9 @@ fn build_event_loop() -> Result<EventLoop<()>, winit::error::EventLoopError> {
 }
 
 fn panel_window_attributes() -> WindowAttributes {
+    let panel_dispatch = current_panel_companion_dispatch();
     let attrs = WindowAttributes::default()
-        .with_title("Suzaku XR Candidate Panel")
+        .with_title(panel_dispatch.default_panel_title())
         .with_inner_size(LogicalSize::new(760.0, 380.0))
         .with_min_inner_size(LogicalSize::new(620.0, 360.0))
         .with_resizable(true);

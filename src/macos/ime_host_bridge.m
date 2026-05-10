@@ -1,10 +1,15 @@
 #import <Foundation/Foundation.h>
+#import <limits.h>
 
 #if __has_include(<InputMethodKit/InputMethodKit.h>)
 #import <InputMethodKit/InputMethodKit.h>
 #endif
 
 #if __has_include(<InputMethodKit/InputMethodKit.h>)
+@interface SuzakuCandidateButton : NSButton
+@property(nonatomic, assign) NSUInteger suzakuCandidateIndex;
+@end
+
 @interface SuzakuInputController : IMKInputController
 @end
 
@@ -33,7 +38,46 @@ static NSString *suzakuControllerLastMarkedText = nil;
 static NSUInteger suzakuCandidateCompanionRefreshCount = 0;
 static BOOL suzakuCandidateCompanionVisible = NO;
 static NSUInteger suzakuCandidateCompanionSelectedIndex = 0;
+static NSUInteger suzakuCandidateCompanionHoveredIndex = NSNotFound;
 static NSString *suzakuCandidateCompanionPrimaryCandidate = nil;
+static NSPanel *suzakuCandidateCompanionPanel = nil;
+static NSMutableArray<NSButton *> *suzakuCandidateCompanionButtons = nil;
+static __weak id suzakuActiveClient = nil;
+static __weak SuzakuInputController *suzakuActiveController = nil;
+
+static void suzakuRefreshCandidateCompanion(void);
+
+@implementation SuzakuCandidateButton {
+    NSTrackingArea *_suzakuTrackingArea;
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    if (_suzakuTrackingArea != nil) {
+        [self removeTrackingArea:_suzakuTrackingArea];
+    }
+    _suzakuTrackingArea = [[NSTrackingArea alloc]
+        initWithRect:self.bounds
+             options:NSTrackingActiveAlways | NSTrackingMouseEnteredAndExited | NSTrackingInVisibleRect
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:_suzakuTrackingArea];
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    (void)event;
+    suzakuCandidateCompanionHoveredIndex = self.suzakuCandidateIndex;
+    suzakuRefreshCandidateCompanion();
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    (void)event;
+    if (suzakuCandidateCompanionHoveredIndex == self.suzakuCandidateIndex) {
+        suzakuCandidateCompanionHoveredIndex = NSNotFound;
+        suzakuRefreshCandidateCompanion();
+    }
+}
+@end
 
 static NSString *suzakuBridgeTakeNSString(char *(*provider)(void)) {
     char *raw = provider();
@@ -43,6 +87,201 @@ static NSString *suzakuBridgeTakeNSString(char *(*provider)(void)) {
     NSString *value = [[NSString alloc] initWithUTF8String:raw];
     suzaku_host_ime_free_utf8(raw);
     return value;
+}
+
+static NSString *suzakuBridgeTakeCandidateLabel(NSUInteger index) {
+    char *raw = suzaku_host_ime_candidate_label_utf8((unsigned long)index);
+    if (raw == NULL) {
+        return nil;
+    }
+    NSString *value = [[NSString alloc] initWithUTF8String:raw];
+    suzaku_host_ime_free_utf8(raw);
+    return value;
+}
+
+static void suzakuPositionCandidateCompanionNearClient(id client) {
+    if (suzakuCandidateCompanionPanel == nil) {
+        return;
+    }
+
+    NSRect anchorRect = NSZeroRect;
+    @try {
+        NSRange targetRange = NSMakeRange(0, 0);
+        if (client != nil && [client respondsToSelector:@selector(selectedRange)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            NSValue *selectedRangeValue = [client performSelector:@selector(selectedRange)];
+#pragma clang diagnostic pop
+            if ([selectedRangeValue isKindOfClass:[NSValue class]]) {
+                [selectedRangeValue getValue:&targetRange];
+            }
+        }
+        if (client != nil
+            && [client respondsToSelector:@selector(firstRectForCharacterRange:actualRange:)]) {
+            NSRange actualRange = NSMakeRange(NSNotFound, 0);
+            anchorRect = [client firstRectForCharacterRange:targetRange
+                                                actualRange:&actualRange];
+        }
+    } @catch (NSException *exception) {
+        (void)exception;
+    }
+
+    NSRect frame = [suzakuCandidateCompanionPanel frame];
+    NSScreen *screen = [NSScreen mainScreen];
+    NSRect visibleFrame = screen != nil ? [screen visibleFrame] : NSMakeRect(0, 0, 1280, 800);
+
+    CGFloat x = visibleFrame.origin.x + 48.0;
+    CGFloat y = visibleFrame.origin.y + visibleFrame.size.height - frame.size.height - 96.0;
+
+    if (!NSEqualRects(anchorRect, NSZeroRect) && !NSIsEmptyRect(anchorRect)) {
+        x = anchorRect.origin.x;
+        y = anchorRect.origin.y - frame.size.height - 10.0;
+    }
+
+    x = MAX(visibleFrame.origin.x + 12.0,
+            MIN(x, NSMaxX(visibleFrame) - frame.size.width - 12.0));
+    y = MAX(visibleFrame.origin.y + 12.0,
+            MIN(y, NSMaxY(visibleFrame) - frame.size.height - 12.0));
+
+    [suzakuCandidateCompanionPanel setFrameOrigin:NSMakePoint(x, y)];
+}
+
+static void suzakuEnsureCandidateCompanionPanel(void) {
+    if (suzakuCandidateCompanionPanel != nil) {
+        return;
+    }
+
+    if ([NSApplication sharedApplication] == nil) {
+        return;
+    }
+
+    NSRect frame = NSMakeRect(96.0, 96.0, 320.0, 220.0);
+    suzakuCandidateCompanionPanel = [[NSPanel alloc]
+        initWithContentRect:frame
+                  styleMask:NSWindowStyleMaskNonactivatingPanel | NSWindowStyleMaskFullSizeContentView
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    [suzakuCandidateCompanionPanel setFloatingPanel:YES];
+    [suzakuCandidateCompanionPanel setHidesOnDeactivate:NO];
+    [suzakuCandidateCompanionPanel setBecomesKeyOnlyIfNeeded:NO];
+    [suzakuCandidateCompanionPanel setReleasedWhenClosed:NO];
+    [suzakuCandidateCompanionPanel setLevel:NSStatusWindowLevel];
+    [suzakuCandidateCompanionPanel setOpaque:NO];
+    [suzakuCandidateCompanionPanel setBackgroundColor:[NSColor colorWithCalibratedWhite:0.12 alpha:0.94]];
+    [suzakuCandidateCompanionPanel setTitleVisibility:NSWindowTitleHidden];
+    [suzakuCandidateCompanionPanel setTitlebarAppearsTransparent:YES];
+    [suzakuCandidateCompanionPanel setMovableByWindowBackground:YES];
+
+    NSView *contentView = [suzakuCandidateCompanionPanel contentView];
+    suzakuCandidateCompanionButtons = [NSMutableArray array];
+
+    NSTextField *header = [[NSTextField alloc] initWithFrame:NSMakeRect(18.0, 184.0, 284.0, 20.0)];
+    [header setStringValue:@"Suzaku Candidates"];
+    [header setBezeled:NO];
+    [header setDrawsBackground:NO];
+    [header setEditable:NO];
+    [header setSelectable:NO];
+    [header setTextColor:[NSColor colorWithCalibratedWhite:0.92 alpha:1.0]];
+    [header setFont:[NSFont boldSystemFontOfSize:13.0]];
+    [contentView addSubview:header];
+
+    for (NSUInteger index = 0; index < 6; index += 1) {
+        SuzakuCandidateButton *button =
+            [[SuzakuCandidateButton alloc] initWithFrame:NSMakeRect(18.0, 148.0 - (CGFloat)index * 24.0, 284.0, 20.0)];
+        [button setBordered:NO];
+        [button setButtonType:NSButtonTypeMomentaryChange];
+        [button setBezelStyle:NSBezelStyleRegularSquare];
+        [button setAlignment:NSTextAlignmentLeft];
+        [button setHidden:YES];
+        [button setFont:[NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium]];
+        [button setSuzakuCandidateIndex:index];
+        [button setTarget:nil];
+        [button setAction:NULL];
+        [contentView addSubview:button];
+        [suzakuCandidateCompanionButtons addObject:button];
+    }
+}
+
+static void suzakuHideCandidateCompanionPanel(void) {
+    suzakuCandidateCompanionVisible = NO;
+    suzakuCandidateCompanionHoveredIndex = NSNotFound;
+    if (suzakuCandidateCompanionPanel != nil) {
+        [suzakuCandidateCompanionPanel orderOut:nil];
+    }
+}
+
+static void suzakuUpdateCandidateCompanionPanel(void) {
+    @try {
+        suzakuEnsureCandidateCompanionPanel();
+    } @catch (NSException *exception) {
+        (void)exception;
+        suzakuCandidateCompanionVisible = NO;
+        return;
+    }
+
+    if (suzakuCandidateCompanionPanel == nil) {
+        suzakuCandidateCompanionVisible = NO;
+        return;
+    }
+
+    NSUInteger candidateCount = (NSUInteger)suzaku_host_ime_candidate_count();
+    suzakuCandidateCompanionSelectedIndex = (NSUInteger)suzaku_host_ime_selected_index();
+    suzakuCandidateCompanionPrimaryCandidate =
+        suzakuBridgeTakeNSString(suzaku_host_ime_primary_candidate_utf8);
+    if (suzakuCandidateCompanionHoveredIndex >= candidateCount) {
+        suzakuCandidateCompanionHoveredIndex = NSNotFound;
+    }
+
+    if (candidateCount == 0) {
+        suzakuHideCandidateCompanionPanel();
+        return;
+    }
+
+    CGFloat visibleRows =
+        (CGFloat)MIN(candidateCount, (NSUInteger)[suzakuCandidateCompanionButtons count]);
+    CGFloat panelHeight = 64.0 + visibleRows * 24.0;
+    NSRect frame = [suzakuCandidateCompanionPanel frame];
+    frame.size.height = panelHeight;
+    [suzakuCandidateCompanionPanel setFrame:frame display:NO];
+
+    for (NSUInteger index = 0; index < [suzakuCandidateCompanionButtons count]; index += 1) {
+        NSButton *button = suzakuCandidateCompanionButtons[index];
+        if (index >= candidateCount) {
+            [button setHidden:YES];
+            continue;
+        }
+
+        NSString *text = suzakuBridgeTakeCandidateLabel(index);
+        if (text == nil) {
+            text = @"";
+        }
+
+        [button setHidden:NO];
+        [button setFrameOrigin:NSMakePoint(18.0, panelHeight - 48.0 - (CGFloat)index * 24.0)];
+        [button setTag:(NSInteger)index];
+        if ([button isKindOfClass:[SuzakuCandidateButton class]]) {
+            [(SuzakuCandidateButton *)button setSuzakuCandidateIndex:index];
+        }
+        [button setTarget:suzakuActiveController];
+        [button setAction:@selector(suzakuChooseCandidateFromButton:)];
+        if (index == suzakuCandidateCompanionSelectedIndex) {
+            [button setTitle:[NSString stringWithFormat:@"› %@", text]];
+            [button setContentTintColor:[NSColor colorWithCalibratedRed:0.57 green:0.80 blue:1.00 alpha:1.0]];
+            [button setFont:[NSFont boldSystemFontOfSize:13.0]];
+        } else if (index == suzakuCandidateCompanionHoveredIndex) {
+            [button setTitle:[NSString stringWithFormat:@"› %@", text]];
+            [button setContentTintColor:[NSColor colorWithCalibratedRed:0.74 green:0.88 blue:1.00 alpha:1.0]];
+            [button setFont:[NSFont systemFontOfSize:13.0 weight:NSFontWeightSemibold]];
+        } else {
+            [button setTitle:[NSString stringWithFormat:@"  %@", text]];
+            [button setContentTintColor:[NSColor colorWithCalibratedWhite:0.84 alpha:1.0]];
+            [button setFont:[NSFont systemFontOfSize:13.0 weight:NSFontWeightMedium]];
+        }
+    }
+
+    suzakuCandidateCompanionVisible = YES;
+    suzakuPositionCandidateCompanionNearClient(suzakuActiveClient);
+    [suzakuCandidateCompanionPanel orderFrontRegardless];
 }
 
 static void suzakuApplyMarkedTextToClient(id client) {
@@ -94,6 +333,7 @@ static void suzakuRefreshCandidateCompanion(void) {
     suzakuCandidateCompanionVisible = suzaku_host_ime_candidate_count() > 0;
     suzakuCandidateCompanionPrimaryCandidate =
         suzakuBridgeTakeNSString(suzaku_host_ime_primary_candidate_utf8);
+    suzakuUpdateCandidateCompanionPanel();
 }
 
 @implementation SuzakuInputController
@@ -101,6 +341,7 @@ static void suzakuRefreshCandidateCompanion(void) {
     self = [super initWithServer:server delegate:delegate client:inputClient];
     if (self != nil) {
         suzakuControllerInitCount += 1;
+        suzakuActiveController = self;
     }
     return self;
 }
@@ -108,6 +349,8 @@ static void suzakuRefreshCandidateCompanion(void) {
 - (void)activateServer:(id)sender {
     suzakuControllerActive = YES;
     suzakuControllerActivateCount += 1;
+    suzakuActiveController = self;
+    suzakuActiveClient = sender;
     suzaku_host_ime_activate();
     suzakuRefreshCandidateCompanion();
     [super activateServer:sender];
@@ -118,13 +361,16 @@ static void suzakuRefreshCandidateCompanion(void) {
     suzakuControllerDeactivateCount += 1;
     suzaku_host_ime_deactivate();
     suzakuCandidateCompanionVisible = NO;
+    suzakuActiveClient = nil;
+    suzakuHideCandidateCompanionPanel();
     [super deactivateServer:sender];
 }
 
 - (BOOL)inputText:(NSString *)string key:(NSInteger)keyCode modifiers:(NSUInteger)flags client:(id)sender {
     (void)keyCode;
     (void)flags;
-    (void)sender;
+    suzakuActiveController = self;
+    suzakuActiveClient = sender;
     suzakuControllerInputCount += 1;
     suzakuControllerLastMarkedText = [string copy];
     const char *utf8 = [string UTF8String];
@@ -141,18 +387,21 @@ static void suzakuRefreshCandidateCompanion(void) {
 
 - (void)doCommandBySelector:(SEL)selector client:(id)sender {
     if (selector == @selector(moveUp:)) {
+        suzakuActiveClient = sender;
         suzaku_host_ime_move_selection(-1);
         suzakuApplyMarkedTextToClient(sender);
         suzakuRefreshCandidateCompanion();
         return;
     }
     if (selector == @selector(moveDown:)) {
+        suzakuActiveClient = sender;
         suzaku_host_ime_move_selection(1);
         suzakuApplyMarkedTextToClient(sender);
         suzakuRefreshCandidateCompanion();
         return;
     }
     if (selector == @selector(cancelOperation:)) {
+        suzakuActiveClient = sender;
         suzaku_host_ime_clear_marked_text();
         suzakuControllerLastMarkedText = nil;
         suzakuApplyMarkedTextToClient(sender);
@@ -160,6 +409,7 @@ static void suzakuRefreshCandidateCompanion(void) {
         return;
     }
     if (selector == @selector(insertNewline:)) {
+        suzakuActiveClient = sender;
         if (suzaku_host_ime_commit_selected(true)) {
             suzakuControllerLastMarkedText = nil;
             suzakuCommitTextToClient(sender);
@@ -170,9 +420,30 @@ static void suzakuRefreshCandidateCompanion(void) {
     (void)sender;
 }
 
+- (void)suzakuChooseCandidateFromButton:(id)sender {
+    if (![sender isKindOfClass:[NSButton class]]) {
+        return;
+    }
+
+    NSUInteger index = (NSUInteger)[(NSButton *)sender tag];
+    BOOL alreadySelected = index == suzakuCandidateCompanionSelectedIndex;
+    suzakuCandidateCompanionHoveredIndex = index;
+    suzaku_host_ime_select_candidate(index);
+    if (suzakuActiveClient != nil) {
+        suzakuApplyMarkedTextToClient(suzakuActiveClient);
+    }
+    suzakuRefreshCandidateCompanion();
+    if (alreadySelected && suzaku_host_ime_commit_selected(true)) {
+        suzakuControllerLastMarkedText = nil;
+        suzakuCommitTextToClient(suzakuActiveClient);
+        suzakuRefreshCandidateCompanion();
+    }
+}
+
 - (void)commitComposition:(id)sender {
     suzakuControllerCommitCount += 1;
     suzakuControllerLastMarkedText = nil;
+    suzakuActiveClient = sender;
     if (suzaku_host_ime_commit_selected(true)) {
         suzakuCommitTextToClient(sender);
     }
@@ -297,7 +568,9 @@ void suzaku_input_methodkit_reset_controller_debug_state(void) {
         suzakuCandidateCompanionRefreshCount = 0;
         suzakuCandidateCompanionVisible = NO;
         suzakuCandidateCompanionSelectedIndex = 0;
+        suzakuCandidateCompanionHoveredIndex = NSNotFound;
         suzakuCandidateCompanionPrimaryCandidate = nil;
+        suzakuHideCandidateCompanionPanel();
     }
 #endif
 }
@@ -377,7 +650,9 @@ unsigned long suzaku_input_methodkit_candidate_companion_refresh_count(void) {
 
 bool suzaku_input_methodkit_candidate_companion_visible(void) {
 #if __has_include(<InputMethodKit/InputMethodKit.h>)
-    return suzakuCandidateCompanionVisible;
+    return suzakuCandidateCompanionVisible
+        && suzakuCandidateCompanionPanel != nil
+        && [suzakuCandidateCompanionPanel isVisible];
 #else
     return false;
 #endif
@@ -388,6 +663,16 @@ unsigned long suzaku_input_methodkit_candidate_companion_selected_index(void) {
     return (unsigned long)suzakuCandidateCompanionSelectedIndex;
 #else
     return 0;
+#endif
+}
+
+unsigned long suzaku_input_methodkit_candidate_companion_hovered_index(void) {
+#if __has_include(<InputMethodKit/InputMethodKit.h>)
+    return suzakuCandidateCompanionHoveredIndex == NSNotFound
+        ? ULONG_MAX
+        : (unsigned long)suzakuCandidateCompanionHoveredIndex;
+#else
+    return ULONG_MAX;
 #endif
 }
 
@@ -405,6 +690,17 @@ char *suzaku_input_methodkit_candidate_companion_primary_candidate(void) {
         return strdup(utf8);
 #else
         return NULL;
+#endif
+    }
+}
+
+bool suzaku_input_methodkit_candidate_companion_window_ready(void) {
+    @autoreleasepool {
+#if __has_include(<InputMethodKit/InputMethodKit.h>)
+        return NSClassFromString(@"NSPanel") != nil
+            && NSClassFromString(@"NSTextField") != nil;
+#else
+        return false;
 #endif
     }
 }
