@@ -1583,6 +1583,7 @@ pub mod gpu {
             chrome: &PanelChromeState,
             sentence_count: usize,
         ) -> Self {
+            let collapsed_daily_mode = !chrome.input_modes_expanded;
             let scene_margin = (7.0 * responsive_scale).max(6.0);
             let max_panel_width = (scene_width - scene_margin * 2.0).max(320.0);
             let min_panel_width = 380.0_f32.min(max_panel_width);
@@ -1640,17 +1641,27 @@ pub mod gpu {
             } else {
                 0.0
             };
-            let candidate_columns = if panel_width >= 760.0 && sentence_count > 2 {
+            let candidate_columns = if collapsed_daily_mode {
+                sentence_count.clamp(1, 4)
+            } else if panel_width >= 760.0 && sentence_count > 2 {
                 2
             } else {
                 1
             };
-            let sentence_rows = if sentence_count == 0 {
+            let sentence_rows = if collapsed_daily_mode {
+                if sentence_count == 0 { 0 } else { 1 }
+            } else if sentence_count == 0 {
                 0
             } else {
                 (sentence_count - 1).div_ceil(candidate_columns)
             };
-            let sentence_height = if sentence_rows == 0 {
+            let sentence_height = if collapsed_daily_mode {
+                if sentence_count == 0 {
+                    0.0
+                } else {
+                    52.0 * responsive_scale
+                }
+            } else if sentence_rows == 0 {
                 if sentence_count == 0 {
                     0.0
                 } else {
@@ -2051,8 +2062,8 @@ pub mod gpu {
                 TextSpacing::Normal => 5.0,
                 TextSpacing::Relaxed => 7.0,
             } * responsive_scale;
-            let ui_tracking = tracking * 0.38;
-            let heading_tracking = tracking * 0.28;
+            let ui_tracking = tracking * 0.16 - 0.02 * responsive_scale;
+            let heading_tracking = tracking * 0.10 - 0.01 * responsive_scale;
             let visible_sentence_candidates: Vec<(usize, String)> = chrome
                 .sentence_candidates
                 .iter()
@@ -2088,10 +2099,10 @@ pub mod gpu {
             let tracking = tracking * if narrow_layout_scale < 1.0 { 0.75 } else { 1.0 };
             let base_line_gap =
                 (base_line_gap * if narrow_layout_scale < 1.0 { 0.88 } else { 1.0 }).max(3.0);
-            let title_px = (label_px * 1.22).max(2.25 * responsive_scale);
-            let helper_px = (label_px * 0.98).max(1.95 * responsive_scale);
-            let chip_px = (label_px * 1.06).max(2.0 * responsive_scale);
-            let hero_px = input_value_px * 1.12;
+            let title_px = (label_px * 1.24).max(2.35 * responsive_scale);
+            let helper_px = (label_px * 1.02).max(2.0 * responsive_scale);
+            let chip_px = (label_px * 1.08).max(2.05 * responsive_scale);
+            let hero_px = input_value_px * 1.10;
             let panel_width = metrics.panel_width;
             let panel_x = metrics.panel_x;
             let panel_y = metrics.panel_y;
@@ -2222,7 +2233,7 @@ pub mod gpu {
                     text: "Seed input".to_string(),
                     origin: [
                         panel_x + 16.0 * responsive_scale,
-                        input_box_y + 10.0 * responsive_scale,
+                        input_box_y + 11.5 * responsive_scale,
                     ],
                     max_width: panel_width - 58.0 * responsive_scale,
                     pixel_size: title_px,
@@ -2242,7 +2253,7 @@ pub mod gpu {
                     },
                     origin: [
                         panel_x + 16.0 * responsive_scale,
-                        input_box_y + 28.0 * responsive_scale,
+                        input_box_y + 30.0 * responsive_scale,
                     ],
                     max_width: panel_width - 58.0 * responsive_scale,
                     pixel_size: input_value_px,
@@ -2279,9 +2290,9 @@ pub mod gpu {
                 quads.push(CandidateQuad {
                     rect: [
                         caret_x,
-                        input_box_y + 25.0 * responsive_scale,
+                        input_box_y + 28.0 * responsive_scale,
                         2.0 * responsive_scale,
-                        22.0 * responsive_scale,
+                        20.0 * responsive_scale,
                     ],
                     color: accent,
                 });
@@ -2341,7 +2352,7 @@ pub mod gpu {
                 10.0 * responsive_scale,
             );
             let toolbar_button_size = metrics.tool_button_h;
-            let toolbar_y = tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5;
+            let toolbar_y = tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5 + 0.5 * responsive_scale;
             let icon_gap = metrics.tool_gap;
             let icon_x = panel_x + 8.0 * responsive_scale;
             let toolbar_buttons = [
@@ -2412,49 +2423,36 @@ pub mod gpu {
                     _ => {}
                 }
             }
-            let toggle_rect = [
-                panel_x + panel_width - toolbar_button_size - 8.0 * responsive_scale,
-                toolbar_y,
-                toolbar_button_size,
-                toolbar_button_size,
-            ];
-            let (toggle_hovered, toggle_pressed) = interaction_state(InteractionKind::InputModesToggle);
-            let toggle_visual_rect = animated_rect(toggle_rect, toggle_hovered, toggle_pressed);
-            append_soft_card_quads(
-                &mut quads,
-                toggle_visual_rect,
-                if chrome.input_modes_expanded {
-                    accent_soft
-                } else if toggle_hovered {
-                    surface_bright
-                } else {
-                    surface
-                },
-                if chrome.input_modes_expanded {
-                    accent
-                } else if toggle_hovered {
-                    [0.46, 0.62, 0.82, 1.0]
-                } else {
-                    border_dark
-                },
-                animated_shadow(soft_shadow, toggle_hovered, toggle_pressed),
-                surface,
-                7.0 * responsive_scale,
-            );
-            interactive_targets.push(InteractiveTarget {
-                kind: InteractionKind::InputModesToggle,
-                rect: toggle_rect,
-            });
-            append_chevron_icon_quads(
-                &mut quads,
-                toggle_visual_rect,
-                if chrome.input_modes_expanded {
-                    accent_text
-                } else {
-                    text_secondary
-                },
-                chrome.input_modes_expanded,
-            );
+            if chrome.input_modes_expanded {
+                let toggle_rect = [
+                    panel_x + panel_width - toolbar_button_size - 8.0 * responsive_scale,
+                    toolbar_y,
+                    toolbar_button_size,
+                    toolbar_button_size,
+                ];
+                let (toggle_hovered, toggle_pressed) =
+                    interaction_state(InteractionKind::InputModesToggle);
+                let toggle_visual_rect = animated_rect(toggle_rect, toggle_hovered, toggle_pressed);
+                append_soft_card_quads(
+                    &mut quads,
+                    toggle_visual_rect,
+                    accent_soft,
+                    accent,
+                    animated_shadow(soft_shadow, toggle_hovered, toggle_pressed),
+                    surface,
+                    7.0 * responsive_scale,
+                );
+                interactive_targets.push(InteractiveTarget {
+                    kind: InteractionKind::InputModesToggle,
+                    rect: toggle_rect,
+                });
+                append_chevron_icon_quads(
+                    &mut quads,
+                    toggle_visual_rect,
+                    accent_text,
+                    true,
+                );
+            }
 
             let tools_panel_rect = [
                 panel_x,
@@ -2462,7 +2460,8 @@ pub mod gpu {
                 panel_width,
                 metrics.tools_content_h,
             ];
-            if chrome.input_modes_expanded {
+            let show_expanded_tool_panel = chrome.input_modes_expanded;
+            if show_expanded_tool_panel {
                 append_soft_card_quads(
                     &mut quads,
                     tools_panel_rect,
@@ -3656,7 +3655,7 @@ pub mod gpu {
                         },
                         origin: [
                             panel_x + 6.0 * responsive_scale,
-                            chip_section_y + 2.0 * responsive_scale,
+                            chip_section_y + 5.0 * responsive_scale,
                         ],
                         max_width: panel_width - 96.0 * responsive_scale,
                         pixel_size: title_px,
@@ -3682,7 +3681,7 @@ pub mod gpu {
                     let back_rect = if metrics.stacked_token_header {
                         [
                             panel_x + 2.0 * responsive_scale,
-                            chip_section_y + 22.0 * responsive_scale,
+                            chip_section_y + 24.0 * responsive_scale,
                             78.0 * responsive_scale,
                             22.0 * responsive_scale,
                         ]
@@ -3745,10 +3744,10 @@ pub mod gpu {
                     });
                 }
 
-                let chip_y = if metrics.stacked_token_header {
-                    chip_section_y + 50.0 * responsive_scale
+                    let chip_y = if metrics.stacked_token_header {
+                    chip_section_y + 48.0 * responsive_scale
                 } else {
-                    chip_section_y + 28.0 * responsive_scale
+                    chip_section_y + 30.0 * responsive_scale
                 };
                 let mut chip_x = panel_x + 2.0 * responsive_scale;
                 let mut row = 0;
@@ -3832,21 +3831,47 @@ pub mod gpu {
             }
 
             let sentence_y = suggestions_y + metrics.chip_section_h + metrics.sentence_section_gap;
+            let collapsed_daily_mode = !chrome.input_modes_expanded;
             let candidate_columns = metrics.candidate_columns;
-            let candidate_gap_x = 14.0 * responsive_scale;
-            let candidate_card_w = if candidate_columns == 2 {
+            let candidate_gap_x = if collapsed_daily_mode {
+                4.0 * responsive_scale
+            } else {
+                14.0 * responsive_scale
+            };
+            let collapsed_primary_w = if collapsed_daily_mode {
+                (panel_width * 0.34).clamp(140.0 * responsive_scale, 220.0 * responsive_scale)
+            } else if candidate_columns == 2 {
+                0.0
+            } else {
+                0.0
+            };
+            let candidate_card_w = if collapsed_daily_mode {
+                let trailing_count = visible_sentence_candidates.len().saturating_sub(1);
+                if trailing_count == 0 {
+                    panel_width
+                } else {
+                    (panel_width
+                        - collapsed_primary_w
+                        - candidate_gap_x * trailing_count as f32)
+                        / trailing_count as f32
+                }
+            } else if candidate_columns == 2 {
                 (panel_width - candidate_gap_x) / 2.0
             } else {
                 panel_width
             };
             if !visible_sentence_candidates.is_empty() {
                 let alternate_count = visible_sentence_candidates.len().saturating_sub(1);
-                let alternate_rows = if alternate_count == 0 {
+                let alternate_rows = if collapsed_daily_mode {
+                    0
+                } else if alternate_count == 0 {
                     0
                 } else {
                     alternate_count.div_ceil(candidate_columns)
                 };
-                let sentence_section_h = if alternate_rows == 0 {
+                let sentence_section_h = if collapsed_daily_mode {
+                    52.0 * responsive_scale
+                } else if alternate_rows == 0 {
                     metrics.hero_item_height
                 } else {
                     metrics.hero_item_height
@@ -3857,21 +3882,48 @@ pub mod gpu {
                 append_soft_card_quads(
                     &mut quads,
                     [panel_x, sentence_y, panel_width, sentence_section_h],
-                    surface,
+                    if collapsed_daily_mode {
+                        surface_muted
+                    } else {
+                        surface
+                    },
                     border_dark,
                     soft_shadow,
                     shell,
-                    12.0 * responsive_scale,
+                    if collapsed_daily_mode {
+                        10.0 * responsive_scale
+                    } else {
+                        12.0 * responsive_scale
+                    },
                 );
             }
             for (display_index, (source_index, label)) in
                 visible_sentence_candidates.iter().enumerate()
             {
-                let is_hero = display_index == 0;
+                let is_hero = !collapsed_daily_mode && display_index == 0;
                 let style_label =
                     crate::panel_support::sentence_candidate_style_label(label, is_hero);
                 let (x, y, card_width, card_height) = if is_hero {
                     (panel_x, sentence_y, panel_width, metrics.hero_item_height)
+                } else if collapsed_daily_mode {
+                    let trailing_index = display_index.saturating_sub(1);
+                    (
+                        if display_index == 0 {
+                            panel_x
+                        } else {
+                            panel_x
+                                + collapsed_primary_w
+                                + candidate_gap_x
+                                + trailing_index as f32 * (candidate_card_w + candidate_gap_x)
+                        },
+                        sentence_y,
+                        if display_index == 0 {
+                            collapsed_primary_w
+                        } else {
+                            candidate_card_w
+                        },
+                        42.0 * responsive_scale,
+                    )
                 } else {
                     let alternate_index = display_index - 1;
                     let column = alternate_index % candidate_columns;
@@ -3894,17 +3946,22 @@ pub mod gpu {
                     color: [0.0, 0.0, 0.0, 0.0],
                 };
                 let visual_rect = animated_rect(quad.rect, hovered, pressed);
+                let collapsed_primary = collapsed_daily_mode && display_index == 0;
                 append_soft_card_quads(
                     &mut quads,
                     visual_rect,
                     if pressed {
                         press_surface
+                    } else if collapsed_primary {
+                        accent_soft
                     } else if selected {
                         accent_soft
                     } else if is_hero {
                         surface_bright
                     } else if hovered {
                         hover_surface
+                    } else if collapsed_daily_mode {
+                        surface_alt
                     } else if snapshot.degraded {
                         surface_muted
                     } else {
@@ -3912,6 +3969,8 @@ pub mod gpu {
                     },
                     if pressed {
                         [0.08, 0.35, 0.68, 1.0]
+                    } else if collapsed_primary {
+                        accent
                     } else if selected || is_hero {
                         accent
                     } else if hovered {
@@ -3923,10 +3982,35 @@ pub mod gpu {
                     surface,
                     if is_hero {
                         12.0 * responsive_scale
+                    } else if collapsed_daily_mode {
+                        10.0 * responsive_scale
                     } else {
                         10.0 * responsive_scale
                     },
                 );
+                if collapsed_primary {
+                    append_rounded_rect_quads(
+                        &mut quads,
+                        [
+                            visual_rect[0] + 3.0 * responsive_scale,
+                            visual_rect[1] + 3.0 * responsive_scale,
+                            visual_rect[2] - 6.0 * responsive_scale,
+                            visual_rect[3] - 6.0 * responsive_scale,
+                        ],
+                        [1.0, 1.0, 1.0, 0.08],
+                        8.0 * responsive_scale,
+                    );
+                } else if collapsed_daily_mode && display_index > 0 {
+                    quads.push(CandidateQuad {
+                        rect: [
+                            visual_rect[0] - candidate_gap_x * 0.5,
+                            visual_rect[1] + 7.0 * responsive_scale,
+                            1.0,
+                            visual_rect[3] - 14.0 * responsive_scale,
+                        ],
+                        color: [1.0, 1.0, 1.0, 0.10],
+                    });
+                }
                 if is_hero {
                     append_rounded_rect_quads(
                         &mut quads,
@@ -3983,62 +4067,94 @@ pub mod gpu {
                     rect: quad.rect,
                 });
                 let primary_layout = TextBlock {
-                    text: label.clone(),
+                    text: if collapsed_daily_mode {
+                        format!("{}  {}", display_index + 1, label)
+                    } else {
+                        label.clone()
+                    },
                     origin: [
-                        visual_rect[0] + 18.0 * responsive_scale,
-                        visual_rect[1] + 13.0 * responsive_scale,
+                        visual_rect[0] + if collapsed_daily_mode {
+                            12.0 * responsive_scale
+                        } else {
+                            18.0 * responsive_scale
+                        },
+                        visual_rect[1] + if collapsed_daily_mode {
+                            11.0 * responsive_scale
+                        } else {
+                            16.0 * responsive_scale
+                        },
                     ],
-                    max_width: visual_rect[2] - 36.0 * responsive_scale,
+                    max_width: visual_rect[2]
+                        - if collapsed_daily_mode {
+                            20.0 * responsive_scale
+                        } else {
+                            36.0 * responsive_scale
+                        },
                     pixel_size: if is_hero {
                         hero_px
+                    } else if collapsed_daily_mode {
+                        chip_px * 1.02
                     } else {
                         input_value_px * 1.02
                     },
                     letter_spacing: heading_tracking,
                     line_gap: base_line_gap,
-                    max_lines: if is_hero {
+                    max_lines: if collapsed_daily_mode {
+                        1
+                    } else if is_hero {
                         3
                     } else if chrome.preview_style == PreviewStyle::Full {
                         3
                     } else {
                         2
                     },
-                    color: if selected { accent_text } else { text_primary },
+                    color: if collapsed_primary || selected {
+                        accent_text
+                    } else if collapsed_daily_mode {
+                        text_secondary
+                    } else {
+                        text_primary
+                    },
                     align: TextAlign::Left,
                     role: TextRole::CandidatePrimary,
                 }
                 .layout();
-                let meta_y =
-                    (primary_layout.bounds[1] + primary_layout.bounds[3] + 8.0 * responsive_scale)
-                        .max(visual_rect[1] + 48.0 * responsive_scale);
-                let candidate_layouts = vec![
-                    primary_layout,
-                    TextBlock {
-                        text: if selected && is_hero {
-                            "Primary sentence selected".to_string()
-                        } else if selected {
-                            "Alternate sentence selected".to_string()
-                        } else if is_hero {
-                            "Best match · tap to commit".to_string()
-                        } else {
-                            format!("{style_label} phrasing · tap to commit")
-                        },
-                        origin: [visual_rect[0] + 18.0 * responsive_scale, meta_y],
-                        max_width: visual_rect[2] - 36.0 * responsive_scale,
-                        pixel_size: helper_px,
-                        letter_spacing: ui_tracking,
-                        line_gap: base_line_gap,
-                        max_lines: 2,
-                        color: if selected {
-                            selected_meta_text
-                        } else {
-                            text_secondary
-                        },
-                        align: TextAlign::Left,
-                        role: TextRole::CandidateMeta,
-                    }
-                    .layout(),
-                ];
+                let candidate_layouts = if collapsed_daily_mode {
+                    vec![primary_layout]
+                } else {
+                    let meta_y = (primary_layout.bounds[1]
+                        + primary_layout.bounds[3]
+                        + 10.0 * responsive_scale)
+                        .max(visual_rect[1] + 54.0 * responsive_scale);
+                    vec![
+                        primary_layout,
+                        TextBlock {
+                            text: if selected && is_hero {
+                                "Primary sentence selected".to_string()
+                            } else if selected {
+                                "Alternate sentence selected".to_string()
+                            } else if is_hero {
+                                "Best match · tap to commit".to_string()
+                            } else {
+                                format!("{style_label} phrasing · tap to commit")
+                            },
+                            origin: [visual_rect[0] + 18.0 * responsive_scale, meta_y],
+                            max_width: visual_rect[2] - 36.0 * responsive_scale,
+                            pixel_size: helper_px,
+                            letter_spacing: ui_tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 2,
+                            color: if selected {
+                                selected_meta_text
+                            } else {
+                                text_secondary
+                            },
+                            align: TextAlign::Left,
+                            role: TextRole::CandidateMeta,
+                        }
+                        .layout(),
+                    ]
+                };
                 for layout in &candidate_layouts {
                     text_quads.extend(layout.quads.iter().copied());
                     atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
@@ -4070,20 +4186,23 @@ pub mod gpu {
             let page_bg = theme.page_bg;
             let shell = theme.shell;
             let shell_border = theme.shell_border;
+            let surface = theme.surface;
             let surface_alt = theme.surface_alt;
+            let surface_muted = theme.surface_muted;
             let accent_soft = theme.accent_soft;
             let accent = theme.accent;
             let accent_text = theme.accent_text;
             let text_primary = theme.text_primary;
             let text_secondary = theme.text_secondary;
+            let border_dark = theme.border_dark;
             let soft_shadow = theme.soft_shadow;
             let tracking = match chrome.text_spacing {
                 TextSpacing::Tight => -0.45,
                 TextSpacing::Normal => -0.15,
                 TextSpacing::Relaxed => 0.24,
             };
-            let ui_tracking = tracking * 0.18;
-            let heading_tracking = tracking * 0.08;
+            let ui_tracking = tracking * 0.08 - 0.03;
+            let heading_tracking = tracking * 0.04 - 0.02;
             let base_line_gap = match chrome.candidate_density {
                 CandidateDensity::Compact => 4.0,
                 CandidateDensity::Cozy => 6.0,
@@ -4181,7 +4300,7 @@ pub mod gpu {
             append_gear_icon_quads(&mut quads, close_visual_rect, text_secondary, surface_alt);
 
             let title_layout = TextBlock {
-                text: "Panel settings".to_string(),
+                text: "Panel Settings".to_string(),
                 origin: [panel_x + 16.0, panel_y + 12.0],
                 max_width: panel_width - 60.0,
                 pixel_size: title_px,
@@ -4390,7 +4509,7 @@ pub mod gpu {
                     .to_vec(),
                 ),
                 (
-                    "Heat",
+                    "Tone",
                     [
                         (
                             InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Focused),
@@ -4421,8 +4540,44 @@ pub mod gpu {
             let chip_gap_x = 12.0;
             let chip_gap_y = 10.0;
             for (label, options) in sections.iter() {
+                let section_top = row_y - 4.0;
+                let estimated_rows = options
+                    .iter()
+                    .fold((chip_start_x, 1usize), |(cursor_x, rows), (_, chip_label, _)| {
+                        let chip_w = (chip_label.chars().count() as f32 * 10.8).max(58.0) + 22.0;
+                        if cursor_x + chip_w > chip_max_x {
+                            (chip_start_x + chip_w + chip_gap_x, rows + 1)
+                        } else {
+                            (cursor_x + chip_w + chip_gap_x, rows)
+                        }
+                    })
+                    .1;
+                let section_height = 18.0 + estimated_rows as f32 * row_h - (row_h - 26.0);
+                append_soft_card_quads(
+                    &mut quads,
+                    [panel_x + 10.0, section_top, panel_width - 20.0, section_height],
+                    surface,
+                    [border_dark[0], border_dark[1], border_dark[2], 0.42],
+                    [soft_shadow[0], soft_shadow[1], soft_shadow[2], soft_shadow[3] * 0.45],
+                    surface_muted,
+                    10.0,
+                );
+                quads.push(CandidateQuad {
+                    rect: [
+                        panel_x + 22.0,
+                        section_top + section_height - 1.0,
+                        panel_width - 44.0,
+                        1.0,
+                    ],
+                    color: [1.0, 1.0, 1.0, 0.08],
+                });
                 let label_layout = TextBlock {
-                    text: (*label).to_string(),
+                    text: match *label {
+                        "LLM" => "LLM".to_string(),
+                        "Voice Auto" => "Voice Auto".to_string(),
+                        "Device Dark" => "Device Dark".to_string(),
+                        other => other.to_string(),
+                    },
                     origin: [label_col_x, row_y + 7.0],
                     max_width: 100.0,
                     pixel_size: section_px,

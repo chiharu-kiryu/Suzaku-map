@@ -284,8 +284,15 @@ impl PanelState {
                     self.apply_compact_mode(!self.chrome.compact_mode);
                 }
                 InteractionKind::InputModesToggle => {
-                    self.chrome.blur_input();
-                    self.chrome.input_modes_expanded = !self.chrome.input_modes_expanded;
+                    if self.chrome.input_modes_expanded {
+                        self.chrome.input_modes_expanded = false;
+                        if self.chrome.active_input_mode == InputMode::VirtualKeyboard {
+                            self.chrome.focus_input();
+                        }
+                    } else {
+                        self.chrome.blur_input();
+                        self.chrome.input_modes_expanded = true;
+                    }
                 }
                 InteractionKind::InputModeButton(mode) => {
                     if self.chrome.input_modes_expanded && self.chrome.active_input_mode == mode {

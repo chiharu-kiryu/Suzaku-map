@@ -141,18 +141,51 @@ pub(super) fn handle_panel_window_event(
                             state.engine.move_selection(-1);
                         }
                         PhysicalKey::Code(KeyCode::Digit1) => {
-                            state.chrome.active_input_mode = InputMode::VirtualKeyboard;
-                            state.chrome.input_modes_expanded = true;
-                            state.chrome.focus_input();
+                            if !state.chrome.input_modes_expanded
+                                && !state.chrome.sentence_candidate_source_indices.is_empty()
+                            {
+                                let index =
+                                    state.chrome.sentence_candidate_source_indices[0];
+                                let _ = state.commit_sentence_candidate(index);
+                            } else {
+                                state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                                state.chrome.input_modes_expanded = true;
+                                state.chrome.focus_input();
+                            }
                         }
                         PhysicalKey::Code(KeyCode::Digit2) => {
-                            state.chrome.input_modes_expanded = true;
-                            state.enter_voice_mode();
+                            if !state.chrome.input_modes_expanded
+                                && state.chrome.sentence_candidate_source_indices.len() > 1
+                            {
+                                let index =
+                                    state.chrome.sentence_candidate_source_indices[1];
+                                let _ = state.commit_sentence_candidate(index);
+                            } else {
+                                state.chrome.input_modes_expanded = true;
+                                state.enter_voice_mode();
+                            }
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
-                            state.chrome.active_input_mode = InputMode::Handwriting;
-                            state.chrome.input_modes_expanded = true;
-                            state.chrome.blur_input();
+                            if !state.chrome.input_modes_expanded
+                                && state.chrome.sentence_candidate_source_indices.len() > 2
+                            {
+                                let index =
+                                    state.chrome.sentence_candidate_source_indices[2];
+                                let _ = state.commit_sentence_candidate(index);
+                            } else {
+                                state.chrome.active_input_mode = InputMode::Handwriting;
+                                state.chrome.input_modes_expanded = true;
+                                state.chrome.blur_input();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::Digit4) => {
+                            if !state.chrome.input_modes_expanded
+                                && state.chrome.sentence_candidate_source_indices.len() > 3
+                            {
+                                let index =
+                                    state.chrome.sentence_candidate_source_indices[3];
+                                let _ = state.commit_sentence_candidate(index);
+                            }
                         }
                         PhysicalKey::Code(KeyCode::Tab) => {
                             state.chrome.input_modes_expanded = !state.chrome.input_modes_expanded;

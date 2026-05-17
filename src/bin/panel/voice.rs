@@ -151,6 +151,7 @@ impl PanelState {
         }
         self.chrome.insert_text(&transcript);
         self.chrome.active_input_mode = InputMode::VirtualKeyboard;
+        self.chrome.input_modes_expanded = false;
         self.chrome.input_focused = true;
         self.chrome.move_caret_to_end();
         self.chrome.voice_transcript.clear();

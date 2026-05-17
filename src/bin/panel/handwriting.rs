@@ -109,6 +109,7 @@ impl PanelState {
         }
         self.chrome.insert_text(&candidate);
         self.chrome.active_input_mode = InputMode::VirtualKeyboard;
+        self.chrome.input_modes_expanded = false;
         self.chrome.focus_input();
         self.chrome.move_caret_to_end();
         self.sync_manual_seed_base();
