@@ -141,25 +141,18 @@ pub(super) fn handle_panel_window_event(
                             state.engine.move_selection(-1);
                         }
                         PhysicalKey::Code(KeyCode::Digit1) => {
-                            if !(state.chrome.input_focused
-                                && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
-                            {
-                                state.chrome.active_input_mode = InputMode::VirtualKeyboard;
-                            }
+                            state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                            state.chrome.input_modes_expanded = true;
+                            state.chrome.focus_input();
                         }
                         PhysicalKey::Code(KeyCode::Digit2) => {
-                            if !(state.chrome.input_focused
-                                && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
-                            {
-                                state.enter_voice_mode();
-                            }
+                            state.chrome.input_modes_expanded = true;
+                            state.enter_voice_mode();
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
-                            if !(state.chrome.input_focused
-                                && state.chrome.active_input_mode == InputMode::VirtualKeyboard)
-                            {
-                                state.chrome.active_input_mode = InputMode::Handwriting;
-                            }
+                            state.chrome.active_input_mode = InputMode::Handwriting;
+                            state.chrome.input_modes_expanded = true;
+                            state.chrome.blur_input();
                         }
                         PhysicalKey::Code(KeyCode::Tab) => {
                             state.chrome.input_modes_expanded = !state.chrome.input_modes_expanded;

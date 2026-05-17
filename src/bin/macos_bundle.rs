@@ -43,6 +43,18 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("{}", installed.display());
             return Ok(());
         }
+        "enable" => {
+            let installed = install_app(&app_dir, &spec)?;
+            enable_app(&installed, &spec)?;
+            println!("{}", installed.display());
+            return Ok(());
+        }
+        "install-enable" => {
+            let installed = install_app(&app_dir, &spec)?;
+            enable_app(&installed, &spec)?;
+            println!("{}", installed.display());
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -149,6 +161,32 @@ fn open_app(app_dir: &Path) -> Result<(), Box<dyn Error>> {
     if !status.success() {
         return Err("failed to open macOS app bundle".into());
     }
+    Ok(())
+}
+
+fn enable_app(app_dir: &Path, spec: &MacOsBundleSpec) -> Result<(), Box<dyn Error>> {
+    match spec.install_dir_kind {
+        InstallDirKind::Applications => {
+            open_app(app_dir)?;
+        }
+        InstallDirKind::InputMethods => {
+            let parent = app_dir
+                .parent()
+                .ok_or("input method bundle is missing parent directory")?;
+            let reveal_status = Command::new("open").arg(parent).status()?;
+            if !reveal_status.success() {
+                return Err("failed to open ~/Library/Input Methods".into());
+            }
+
+            let settings_status = Command::new("open")
+                .arg("x-apple.systempreferences:com.apple.Keyboard-Settings.extension")
+                .status()?;
+            if !settings_status.success() {
+                return Err("failed to open macOS Keyboard settings".into());
+            }
+        }
+    }
+
     Ok(())
 }
 

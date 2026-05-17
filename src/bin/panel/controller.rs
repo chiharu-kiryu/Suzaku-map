@@ -288,11 +288,25 @@ impl PanelState {
                     self.chrome.input_modes_expanded = !self.chrome.input_modes_expanded;
                 }
                 InteractionKind::InputModeButton(mode) => {
-                    if mode == InputMode::Dictation {
+                    if self.chrome.input_modes_expanded && self.chrome.active_input_mode == mode {
+                        if mode == InputMode::Dictation
+                            && self.chrome.voice_state == VoiceCaptureState::Listening
+                        {
+                            self.stop_voice_capture();
+                        }
+                        self.chrome.input_modes_expanded = false;
+                        self.chrome.focus_input();
+                    } else if mode == InputMode::Dictation {
+                        self.chrome.input_modes_expanded = true;
                         self.enter_voice_mode();
+                    } else if mode == InputMode::VirtualKeyboard {
+                        self.chrome.active_input_mode = mode;
+                        self.chrome.input_modes_expanded = true;
+                        self.chrome.focus_input();
                     } else {
                         self.chrome.blur_input();
                         self.chrome.active_input_mode = mode;
+                        self.chrome.input_modes_expanded = true;
                     }
                 }
                 InteractionKind::SettingsToggle => {

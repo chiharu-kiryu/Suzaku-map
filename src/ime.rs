@@ -1259,7 +1259,7 @@ pub mod gpu {
             Self {
                 seed_text: String::new(),
                 compact_mode: false,
-                input_modes_expanded: true,
+                input_modes_expanded: false,
                 active_input_mode: InputMode::VirtualKeyboard,
                 input_focused: true,
                 caret_index: 0,
@@ -1591,27 +1591,27 @@ pub mod gpu {
                 .min(max_panel_width)
                 .max(min_panel_width);
             let input_box_h = 58.0 * responsive_scale;
-            let tools_header_h = 20.0 * responsive_scale;
-            let tool_button_h = 36.0 * responsive_scale;
-            let tool_gap = 7.0 * responsive_scale;
+            let tools_header_h = 34.0 * responsive_scale;
+            let tool_button_h = 28.0 * responsive_scale;
+            let tool_gap = 6.0 * responsive_scale;
             let section_gap = 8.0 * responsive_scale;
             let extended_input_panel_h = if chrome.input_modes_expanded {
                 match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 142.0 * responsive_scale,
+                    InputMode::VirtualKeyboard => 136.0 * responsive_scale,
                     InputMode::Dictation => {
                         if max_panel_width < 620.0 {
-                            132.0 * responsive_scale
+                            118.0 * responsive_scale
                         } else {
-                            120.0 * responsive_scale
+                            106.0 * responsive_scale
                         }
                     }
-                    InputMode::Handwriting => 164.0 * responsive_scale,
+                    InputMode::Handwriting => 146.0 * responsive_scale,
                 }
             } else {
                 0.0
             };
             let tools_content_h = if chrome.input_modes_expanded {
-                tool_button_h + 6.0 * responsive_scale + extended_input_panel_h
+                extended_input_panel_h
             } else {
                 0.0
             };
@@ -2224,7 +2224,7 @@ pub mod gpu {
                         panel_x + 16.0 * responsive_scale,
                         input_box_y + 10.0 * responsive_scale,
                     ],
-                    max_width: panel_width - 36.0 * responsive_scale,
+                    max_width: panel_width - 58.0 * responsive_scale,
                     pixel_size: title_px,
                     letter_spacing: heading_tracking,
                     line_gap: base_line_gap,
@@ -2244,7 +2244,7 @@ pub mod gpu {
                         panel_x + 16.0 * responsive_scale,
                         input_box_y + 28.0 * responsive_scale,
                     ],
-                    max_width: panel_width - 54.0 * responsive_scale,
+                    max_width: panel_width - 58.0 * responsive_scale,
                     pixel_size: input_value_px,
                     letter_spacing: heading_tracking,
                     line_gap: base_line_gap,
@@ -2287,16 +2287,10 @@ pub mod gpu {
                 });
             }
 
-            let settings_button_rect = [
+            let compact_button_rect = [
                 panel_x + panel_width - 34.0 * responsive_scale,
                 input_box_y + 8.0 * responsive_scale,
                 20.0 * responsive_scale,
-                20.0 * responsive_scale,
-            ];
-            let compact_button_rect = [
-                panel_x + panel_width - 58.0 * responsive_scale,
-                input_box_y + 8.0 * responsive_scale,
-                18.0 * responsive_scale,
                 20.0 * responsive_scale,
             ];
             append_soft_card_quads(
@@ -2335,124 +2329,140 @@ pub mod gpu {
             text_quads.extend(compact_icon.quads.iter().copied());
             atlas_glyphs.extend(compact_icon.atlas_glyphs.iter().cloned());
             append_chevron_icon_quads(&mut quads, compact_button_rect, text_secondary, false);
-            append_soft_card_quads(
-                &mut quads,
-                settings_button_rect,
-                if chrome.settings_open {
-                    accent
-                } else {
-                    surface_alt
-                },
-                if chrome.settings_open {
-                    accent_soft
-                } else {
-                    border_dark
-                },
-                soft_shadow,
-                if chrome.input_focused {
-                    input_focus_surface
-                } else {
-                    input_surface
-                },
-                6.0 * responsive_scale,
-            );
-            interactive_targets.push(InteractiveTarget {
-                kind: InteractionKind::SettingsToggle,
-                rect: settings_button_rect,
-            });
-            append_gear_icon_quads(
-                &mut quads,
-                settings_button_rect,
-                if chrome.settings_open {
-                    [0.96, 0.98, 1.0, 1.0]
-                } else {
-                    text_secondary
-                },
-                if chrome.settings_open {
-                    accent
-                } else {
-                    surface_alt
-                },
-            );
 
             let tools_header_rect = [panel_x, tools_y, panel_width, metrics.tools_header_h];
             append_soft_card_quads(
                 &mut quads,
                 tools_header_rect,
+                surface_alt,
+                border_dark,
+                soft_shadow,
+                shell,
+                10.0 * responsive_scale,
+            );
+            let toolbar_button_size = metrics.tool_button_h;
+            let toolbar_y = tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5;
+            let icon_gap = metrics.tool_gap;
+            let icon_x = panel_x + 10.0 * responsive_scale;
+            let toolbar_buttons = [
+                (
+                    InteractionKind::InputModeButton(InputMode::VirtualKeyboard),
+                    chrome.active_input_mode == InputMode::VirtualKeyboard
+                        && chrome.input_modes_expanded,
+                ),
+                (
+                    InteractionKind::InputModeButton(InputMode::Dictation),
+                    chrome.active_input_mode == InputMode::Dictation && chrome.input_modes_expanded,
+                ),
+                (
+                    InteractionKind::InputModeButton(InputMode::Handwriting),
+                    chrome.active_input_mode == InputMode::Handwriting
+                        && chrome.input_modes_expanded,
+                ),
+                (InteractionKind::SettingsToggle, chrome.settings_open),
+            ];
+            for (index, (kind, selected)) in toolbar_buttons.iter().enumerate() {
+                let rect = [
+                    icon_x + index as f32 * (toolbar_button_size + icon_gap),
+                    toolbar_y,
+                    toolbar_button_size,
+                    toolbar_button_size,
+                ];
+                let (hovered, pressed) = interaction_state(*kind);
+                let visual_rect = animated_rect(rect, hovered, pressed);
+                append_soft_card_quads(
+                    &mut quads,
+                    visual_rect,
+                    if *selected {
+                        accent_soft
+                    } else if hovered {
+                        surface_bright
+                    } else {
+                        surface
+                    },
+                    if *selected {
+                        accent
+                    } else if hovered {
+                        [0.46, 0.62, 0.82, 1.0]
+                    } else {
+                        border_dark
+                    },
+                    animated_shadow(soft_shadow, hovered, pressed),
+                    surface,
+                    8.0 * responsive_scale,
+                );
+                interactive_targets.push(InteractiveTarget { kind: *kind, rect });
+                let icon_color = if *selected { accent_text } else { text_primary };
+                match kind {
+                    InteractionKind::InputModeButton(InputMode::VirtualKeyboard) => {
+                        append_keyboard_icon_quads(&mut quads, visual_rect, icon_color)
+                    }
+                    InteractionKind::InputModeButton(InputMode::Dictation) => {
+                        append_mic_icon_quads(&mut quads, visual_rect, icon_color)
+                    }
+                    InteractionKind::InputModeButton(InputMode::Handwriting) => {
+                        append_pen_icon_quads(&mut quads, visual_rect, icon_color)
+                    }
+                    InteractionKind::SettingsToggle => append_gear_icon_quads(
+                        &mut quads,
+                        visual_rect,
+                        icon_color,
+                        if *selected { accent_soft } else { surface },
+                    ),
+                    _ => {}
+                }
+            }
+            let toggle_rect = [
+                panel_x + panel_width - toolbar_button_size - 10.0 * responsive_scale,
+                toolbar_y,
+                toolbar_button_size,
+                toolbar_button_size,
+            ];
+            let (toggle_hovered, toggle_pressed) = interaction_state(InteractionKind::InputModesToggle);
+            let toggle_visual_rect = animated_rect(toggle_rect, toggle_hovered, toggle_pressed);
+            append_soft_card_quads(
+                &mut quads,
+                toggle_visual_rect,
                 if chrome.input_modes_expanded {
+                    accent_soft
+                } else if toggle_hovered {
                     surface_bright
                 } else {
-                    surface_alt
+                    surface
                 },
                 if chrome.input_modes_expanded {
+                    accent
+                } else if toggle_hovered {
                     [0.46, 0.62, 0.82, 1.0]
                 } else {
                     border_dark
                 },
-                soft_shadow,
-                shell,
+                animated_shadow(soft_shadow, toggle_hovered, toggle_pressed),
+                surface,
                 8.0 * responsive_scale,
             );
-            if chrome.input_modes_expanded {
-                quads.push(CandidateQuad {
-                    rect: [
-                        panel_x + 10.0 * responsive_scale,
-                        tools_y + metrics.tools_header_h - 4.0 * responsive_scale,
-                        panel_width - 20.0 * responsive_scale,
-                        2.0 * responsive_scale,
-                    ],
-                    color: [0.42, 0.70, 0.97, 0.28],
-                });
-            }
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::InputModesToggle,
-                rect: tools_header_rect,
+                rect: toggle_rect,
             });
-            let tool_header_layout = vec![
-                TextBlock {
-                    text: "Tools".to_string(),
-                    origin: [
-                        panel_x + 16.0 * responsive_scale,
-                        tools_y + 4.0 * responsive_scale,
-                    ],
-                    max_width: panel_width - 32.0 * responsive_scale,
-                    pixel_size: title_px,
-                    letter_spacing: heading_tracking,
-                    line_gap: base_line_gap,
-                    max_lines: 1,
-                    color: text_secondary,
-                    align: TextAlign::Left,
-                    role: TextRole::ToolLabel,
-                }
-                .layout(),
-            ];
             append_chevron_icon_quads(
                 &mut quads,
-                [
-                    panel_x + panel_width - 24.0 * responsive_scale,
-                    tools_y + 3.0 * responsive_scale,
-                    14.0 * responsive_scale,
-                    14.0 * responsive_scale,
-                ],
-                text_secondary,
+                toggle_visual_rect,
+                if chrome.input_modes_expanded {
+                    accent_text
+                } else {
+                    text_secondary
+                },
                 chrome.input_modes_expanded,
             );
-            for layout in &tool_header_layout {
-                text_quads.extend(layout.quads.iter().copied());
-                atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
-            }
-            text_sections.push(TextSection {
-                role: TextRole::ToolLabel,
-                layouts: tool_header_layout,
-            });
 
+            let tools_panel_rect = [
+                panel_x,
+                tools_y + metrics.tools_header_h + metrics.tool_gap,
+                panel_width,
+                metrics.tools_content_h,
+            ];
             if chrome.input_modes_expanded {
-                let tools_panel_rect = [
-                    panel_x,
-                    tools_y + metrics.tools_header_h + 5.0 * responsive_scale,
-                    panel_width,
-                    metrics.tools_content_h,
-                ];
                 append_soft_card_quads(
                     &mut quads,
                     tools_panel_rect,
@@ -2471,124 +2481,8 @@ pub mod gpu {
                     ],
                     color: [1.0, 1.0, 1.0, 0.14],
                 });
-                let button_y = tools_y + metrics.tools_header_h + 10.0 * responsive_scale;
-                let button_w =
-                    (panel_width - 20.0 * responsive_scale - metrics.tool_gap * 2.0) / 3.0;
-                let buttons = [
-                    (InputMode::VirtualKeyboard, "Keyboard"),
-                    (InputMode::Dictation, "Voice"),
-                    (InputMode::Handwriting, "Handwrite"),
-                ];
-
-                let mut tool_layouts = Vec::new();
-                for (index, (mode, label)) in buttons.iter().enumerate() {
-                    let x = panel_x
-                        + 2.0 * responsive_scale
-                        + index as f32 * (button_w + metrics.tool_gap);
-                    let selected = *mode == chrome.active_input_mode;
-                    let kind = InteractionKind::InputModeButton(*mode);
-                    let (hovered, pressed) = interaction_state(kind);
-                    let rect = [x, button_y, button_w, metrics.tool_button_h];
-                    let visual_rect = animated_rect(rect, hovered, pressed);
-                    append_soft_card_quads(
-                        &mut quads,
-                        visual_rect,
-                        if pressed {
-                            [0.66, 0.82, 0.97, 1.0]
-                        } else if selected {
-                            accent_soft
-                        } else if hovered {
-                            surface_bright
-                        } else {
-                            surface
-                        },
-                        if pressed {
-                            [0.08, 0.35, 0.68, 1.0]
-                        } else if selected {
-                            accent
-                        } else if hovered {
-                            [0.46, 0.62, 0.82, 1.0]
-                        } else {
-                            border_dark
-                        },
-                        animated_shadow(soft_shadow, hovered, pressed),
-                        surface,
-                        9.0 * responsive_scale,
-                    );
-                    if selected {
-                        append_rounded_rect_quads(
-                            &mut quads,
-                            [
-                                visual_rect[0] + 4.0 * responsive_scale,
-                                visual_rect[1] + 4.0 * responsive_scale,
-                                visual_rect[2] - 8.0 * responsive_scale,
-                                visual_rect[3] - 8.0 * responsive_scale,
-                            ],
-                            [1.0, 1.0, 1.0, 0.05],
-                            7.0 * responsive_scale,
-                        );
-                        append_rounded_rect_quads(
-                            &mut quads,
-                            [
-                                visual_rect[0] + visual_rect[2] * 0.22,
-                                visual_rect[1] + visual_rect[3] - 6.0 * responsive_scale,
-                                visual_rect[2] * 0.56,
-                                3.0 * responsive_scale,
-                            ],
-                            [0.09, 0.39, 0.74, 0.92],
-                            2.0 * responsive_scale,
-                        );
-                    }
-                    interactive_targets.push(InteractiveTarget { kind, rect });
-                    let icon_color = if selected { accent_text } else { text_primary };
-                    let icon_rect = [
-                        visual_rect[0] + visual_rect[2] * 0.5 - 7.0 * responsive_scale,
-                        visual_rect[1] + 4.0 * responsive_scale,
-                        14.0 * responsive_scale,
-                        14.0 * responsive_scale,
-                    ];
-                    match mode {
-                        InputMode::VirtualKeyboard => {
-                            append_keyboard_icon_quads(&mut quads, icon_rect, icon_color)
-                        }
-                        InputMode::Dictation => {
-                            append_mic_icon_quads(&mut quads, icon_rect, icon_color)
-                        }
-                        InputMode::Handwriting => {
-                            append_pen_icon_quads(&mut quads, icon_rect, icon_color)
-                        }
-                    }
-                    let layout = TextBlock {
-                        text: (*label).to_string(),
-                        origin: [
-                            visual_rect[0] + 10.0 * responsive_scale,
-                            visual_rect[1] + 19.0 * responsive_scale,
-                        ],
-                        max_width: visual_rect[2] - 20.0 * responsive_scale,
-                        pixel_size: (helper_px * 0.82).max(1.6 * responsive_scale),
-                        letter_spacing: ui_tracking,
-                        line_gap: base_line_gap,
-                        max_lines: 1,
-                        color: if selected {
-                            accent_text
-                        } else {
-                            text_secondary
-                        },
-                        align: TextAlign::Center,
-                        role: TextRole::ToolButton,
-                    }
-                    .layout();
-                    text_quads.extend(layout.quads.iter().copied());
-                    atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
-                    tool_layouts.push(layout);
-                }
-                text_sections.push(TextSection {
-                    role: TextRole::ToolButton,
-                    layouts: tool_layouts,
-                });
-
                 if chrome.active_input_mode == InputMode::VirtualKeyboard {
-                    let keyboard_y = button_y + metrics.tool_button_h + 12.0 * responsive_scale;
+                    let keyboard_y = tools_panel_rect[1] + 10.0 * responsive_scale;
                     let key_gap = 7.0 * responsive_scale;
                     let row_h = 28.0 * responsive_scale;
                     let mut keyboard_layouts = Vec::new();
@@ -2921,7 +2815,7 @@ pub mod gpu {
                         layouts: keyboard_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Dictation {
-                    let voice_y = button_y + metrics.tool_button_h + 12.0 * responsive_scale;
+                    let voice_y = tools_panel_rect[1] + 10.0 * responsive_scale;
                     let voice_rect = [
                         panel_x,
                         voice_y,
@@ -3248,7 +3142,7 @@ pub mod gpu {
                         layouts: voice_action_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Handwriting {
-                    let handwriting_y = button_y + metrics.tool_button_h + 12.0 * responsive_scale;
+                    let handwriting_y = tools_panel_rect[1] + 10.0 * responsive_scale;
                     let canvas_rect = [panel_x, handwriting_y + 22.0, panel_width, 108.0];
                     append_soft_card_quads(
                         &mut quads,

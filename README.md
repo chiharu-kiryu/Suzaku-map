@@ -80,7 +80,14 @@ For the first-pass system IME bundle shape on macOS:
 - Build and open input method bundle: `cargo open-ime-app-macos`
 - Install to `~/Library/Input Methods`: `cargo install-ime-app-macos`
 - Install and open from `~/Library/Input Methods`: `cargo install-open-ime-app-macos`
+- Install and open enablement surfaces: `cargo install-enable-ime-app-macos`
 - Output: `target/debug/Suzaku Input Method.app`
+
+To help enable the input method in macOS after install, the enablement command will:
+
+1. install the bundle into `~/Library/Input Methods`
+2. open that directory in Finder
+3. open macOS Keyboard settings so the input source can be added manually
 
 ## System IME Host Direction
 
