@@ -1591,21 +1591,21 @@ pub mod gpu {
                 .min(max_panel_width)
                 .max(min_panel_width);
             let input_box_h = 58.0 * responsive_scale;
-            let tools_header_h = 34.0 * responsive_scale;
-            let tool_button_h = 28.0 * responsive_scale;
-            let tool_gap = 6.0 * responsive_scale;
-            let section_gap = 8.0 * responsive_scale;
+            let tools_header_h = 28.0 * responsive_scale;
+            let tool_button_h = 22.0 * responsive_scale;
+            let tool_gap = 5.0 * responsive_scale;
+            let section_gap = 6.0 * responsive_scale;
             let extended_input_panel_h = if chrome.input_modes_expanded {
                 match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 136.0 * responsive_scale,
+                    InputMode::VirtualKeyboard => 120.0 * responsive_scale,
                     InputMode::Dictation => {
                         if max_panel_width < 620.0 {
-                            118.0 * responsive_scale
+                            98.0 * responsive_scale
                         } else {
-                            106.0 * responsive_scale
+                            86.0 * responsive_scale
                         }
                     }
-                    InputMode::Handwriting => 146.0 * responsive_scale,
+                    InputMode::Handwriting => 128.0 * responsive_scale,
                 }
             } else {
                 0.0
@@ -2343,7 +2343,7 @@ pub mod gpu {
             let toolbar_button_size = metrics.tool_button_h;
             let toolbar_y = tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5;
             let icon_gap = metrics.tool_gap;
-            let icon_x = panel_x + 10.0 * responsive_scale;
+            let icon_x = panel_x + 8.0 * responsive_scale;
             let toolbar_buttons = [
                 (
                     InteractionKind::InputModeButton(InputMode::VirtualKeyboard),
@@ -2389,7 +2389,7 @@ pub mod gpu {
                     },
                     animated_shadow(soft_shadow, hovered, pressed),
                     surface,
-                    8.0 * responsive_scale,
+                    7.0 * responsive_scale,
                 );
                 interactive_targets.push(InteractiveTarget { kind: *kind, rect });
                 let icon_color = if *selected { accent_text } else { text_primary };
@@ -2413,7 +2413,7 @@ pub mod gpu {
                 }
             }
             let toggle_rect = [
-                panel_x + panel_width - toolbar_button_size - 10.0 * responsive_scale,
+                panel_x + panel_width - toolbar_button_size - 8.0 * responsive_scale,
                 toolbar_y,
                 toolbar_button_size,
                 toolbar_button_size,
@@ -2439,7 +2439,7 @@ pub mod gpu {
                 },
                 animated_shadow(soft_shadow, toggle_hovered, toggle_pressed),
                 surface,
-                8.0 * responsive_scale,
+                7.0 * responsive_scale,
             );
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::InputModesToggle,
@@ -2458,7 +2458,7 @@ pub mod gpu {
 
             let tools_panel_rect = [
                 panel_x,
-                tools_y + metrics.tools_header_h + metrics.tool_gap,
+                tools_y + metrics.tools_header_h + 4.0 * responsive_scale,
                 panel_width,
                 metrics.tools_content_h,
             ];
@@ -2482,9 +2482,9 @@ pub mod gpu {
                     color: [1.0, 1.0, 1.0, 0.14],
                 });
                 if chrome.active_input_mode == InputMode::VirtualKeyboard {
-                    let keyboard_y = tools_panel_rect[1] + 10.0 * responsive_scale;
-                    let key_gap = 7.0 * responsive_scale;
-                    let row_h = 28.0 * responsive_scale;
+                    let keyboard_y = tools_panel_rect[1] + 8.0 * responsive_scale;
+                    let key_gap = 5.0 * responsive_scale;
+                    let row_h = 24.0 * responsive_scale;
                     let mut keyboard_layouts = Vec::new();
                     let key_rows = if chrome.keyboard_numeric {
                         vec![
@@ -2661,9 +2661,9 @@ pub mod gpu {
                     }
 
                     let action_y = keyboard_y + 3.0 * (row_h + key_gap);
-                    let left_w = 78.0 * responsive_scale;
-                    let mid_key_w = 40.0 * responsive_scale;
-                    let right_w = 118.0 * responsive_scale;
+                    let left_w = 70.0 * responsive_scale;
+                    let mid_key_w = 36.0 * responsive_scale;
+                    let right_w = 104.0 * responsive_scale;
                     let space_w = panel_width - left_w - right_w - key_gap * 3.0 - mid_key_w * 2.0;
                     let action_keys = if chrome.keyboard_numeric {
                         vec![
@@ -2815,12 +2815,12 @@ pub mod gpu {
                         layouts: keyboard_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Dictation {
-                    let voice_y = tools_panel_rect[1] + 10.0 * responsive_scale;
+                    let voice_y = tools_panel_rect[1] + 8.0 * responsive_scale;
                     let voice_rect = [
                         panel_x,
                         voice_y,
                         panel_width,
-                        if panel_width < 620.0 { 162.0 } else { 132.0 },
+                        if panel_width < 620.0 { 118.0 } else { 96.0 },
                     ];
                     append_soft_card_quads(
                         &mut quads,
@@ -2859,7 +2859,7 @@ pub mod gpu {
                         ""
                     };
                     if !live_hint.is_empty() {
-                        let hint_rect = [panel_x + panel_width - 132.0, voice_y + 8.0, 118.0, 18.0];
+                        let hint_rect = [panel_x + panel_width - 122.0, voice_y + 6.0, 110.0, 16.0];
                         append_soft_card_quads(
                             &mut quads,
                             hint_rect,
@@ -2880,7 +2880,7 @@ pub mod gpu {
                     }
                     if chrome.voice_state == VoiceCaptureState::Listening {
                         let base_x = panel_x + panel_width - 122.0;
-                        let base_y = voice_y + 30.0;
+                        let base_y = voice_y + 24.0;
                         let phase = chrome.voice_visual_phase as f32;
                         for index in 0..4 {
                             let pulse = ((phase + index as f32 * 3.0) % 12.0) / 12.0;
@@ -2900,7 +2900,7 @@ pub mod gpu {
                     let voice_layouts = vec![
                         TextBlock {
                             text: status_text,
-                            origin: [panel_x + 14.0, voice_y + 10.0],
+                            origin: [panel_x + 12.0, voice_y + 8.0],
                             max_width: panel_width
                                 - if live_hint.is_empty() { 28.0 } else { 168.0 },
                             pixel_size: title_px,
@@ -2923,8 +2923,8 @@ pub mod gpu {
                         .layout(),
                         TextBlock {
                             text: live_hint.to_string(),
-                            origin: [panel_x + panel_width - 126.0, voice_y + 12.0],
-                            max_width: 106.0,
+                            origin: [panel_x + panel_width - 118.0, voice_y + 8.0],
+                            max_width: 98.0,
                             pixel_size: helper_px,
                             letter_spacing: ui_tracking,
                             line_gap: base_line_gap,
@@ -2940,8 +2940,8 @@ pub mod gpu {
                         .layout(),
                         TextBlock {
                             text: transcript,
-                            origin: [panel_x + 14.0, voice_y + 28.0],
-                            max_width: panel_width - 28.0,
+                            origin: [panel_x + 12.0, voice_y + 22.0],
+                            max_width: panel_width - 24.0,
                             pixel_size: if chrome.voice_transcript.is_empty() {
                                 input_value_px * 0.82
                             } else {
@@ -2954,9 +2954,9 @@ pub mod gpu {
                             },
                             line_gap: base_line_gap,
                             max_lines: if chrome.voice_transcript.is_empty() {
-                                3
-                            } else {
                                 2
+                            } else {
+                                1
                             },
                             color: if chrome.voice_transcript.is_empty() {
                                 text_muted
@@ -2987,7 +2987,7 @@ pub mod gpu {
                             } else {
                                 "Mic"
                             },
-                            92.0,
+                            78.0,
                             chrome.voice_state == VoiceCaptureState::Listening,
                             chrome.voice_permission != VoicePermissionState::Denied
                                 && chrome.voice_permission != VoicePermissionState::Error,
@@ -2995,7 +2995,7 @@ pub mod gpu {
                         (
                             InteractionKind::InsertVoiceTranscript,
                             "Seed",
-                            116.0,
+                            88.0,
                             !chrome.voice_transcript.is_empty()
                                 && chrome.voice_state != VoiceCaptureState::Listening,
                             !chrome.voice_transcript.is_empty()
@@ -3008,7 +3008,7 @@ pub mod gpu {
                         voice_actions.push((
                             InteractionKind::CycleVoiceSample,
                             "Next",
-                            118.0,
+                            84.0,
                             false,
                             true,
                         ));
@@ -3020,14 +3020,14 @@ pub mod gpu {
                         voice_actions.push((
                             InteractionKind::OpenVoiceSettings,
                             "Prefs",
-                            128.0,
+                            86.0,
                             false,
                             true,
                         ));
                         voice_actions.push((
                             InteractionKind::RefreshVoicePermissions,
                             "Sync",
-                            88.0,
+                            72.0,
                             false,
                             true,
                         ));
@@ -3036,7 +3036,7 @@ pub mod gpu {
                         voice_actions.push((
                             InteractionKind::ClearVoiceTranscript,
                             "Clear",
-                            84.0,
+                            72.0,
                             false,
                             true,
                         ));
@@ -3054,12 +3054,12 @@ pub mod gpu {
                         }
                         let rect = [
                             action_cursor_x,
-                            voice_y + 96.0 + action_row as f32 * 30.0,
+                            voice_y + 68.0 + action_row as f32 * 24.0,
                             width.min(panel_width - 6.0 * responsive_scale),
-                            26.0,
+                            20.0,
                         ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
-                        action_cursor_x += width + 10.0;
+                        action_cursor_x += width + 8.0;
                         append_soft_card_quads(
                             &mut quads,
                             visual_rect,
@@ -3142,8 +3142,8 @@ pub mod gpu {
                         layouts: voice_action_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Handwriting {
-                    let handwriting_y = tools_panel_rect[1] + 10.0 * responsive_scale;
-                    let canvas_rect = [panel_x, handwriting_y + 22.0, panel_width, 108.0];
+                    let handwriting_y = tools_panel_rect[1] + 8.0 * responsive_scale;
+                    let canvas_rect = [panel_x, handwriting_y + 18.0, panel_width, 92.0];
                     append_soft_card_quads(
                         &mut quads,
                         canvas_rect,
@@ -3183,7 +3183,7 @@ pub mod gpu {
                         .layout(),
                         TextBlock {
                             text: chrome.handwriting_hint.clone(),
-                            origin: [panel_x + 14.0, handwriting_y + 36.0],
+                            origin: [panel_x + 14.0, handwriting_y + 30.0],
                             max_width: panel_width - 28.0,
                             pixel_size: helper_px,
                             letter_spacing: ui_tracking,
@@ -3204,7 +3204,7 @@ pub mod gpu {
                         layouts: handwriting_layouts,
                     });
 
-                    let undo_rect = [panel_x, handwriting_y + 140.0, 74.0, 24.0];
+                    let undo_rect = [panel_x, handwriting_y + 118.0, 68.0, 22.0];
                     let undo_enabled = !chrome.handwriting_strokes.is_empty();
                     let (undo_hovered, undo_pressed) =
                         interaction_state(InteractionKind::UndoHandwritingStroke);
@@ -3230,7 +3230,7 @@ pub mod gpu {
                         kind: InteractionKind::UndoHandwritingStroke,
                         rect: undo_rect,
                     });
-                    let clear_rect = [panel_x + 82.0, handwriting_y + 140.0, 74.0, 24.0];
+                    let clear_rect = [panel_x + 76.0, handwriting_y + 118.0, 68.0, 22.0];
                     let (clear_hovered, clear_pressed) =
                         interaction_state(InteractionKind::ClearHandwriting);
                     let clear_visual_rect = animated_rect(clear_rect, clear_hovered, clear_pressed);
@@ -3265,14 +3265,14 @@ pub mod gpu {
                     );
                     append_trash_icon_quads(&mut quads, clear_visual_rect, text_primary);
 
-                    let mut chip_x = panel_x + 166.0;
+                    let mut chip_x = panel_x + 154.0;
                     for (index, candidate) in
                         chrome.handwriting_candidates.iter().take(3).enumerate()
                     {
                         let kind = InteractionKind::UseHandwritingCandidate(index);
                         let (hovered, pressed) = interaction_state(kind);
                         let chip_w = (candidate.chars().count() as f32 * 9.5).max(52.0) + 16.0;
-                        let rect = [chip_x, handwriting_y + 140.0, chip_w, 24.0];
+                        let rect = [chip_x, handwriting_y + 118.0, chip_w, 22.0];
                         let visual_rect = animated_rect(rect, hovered, pressed);
                         append_soft_card_quads(
                             &mut quads,
@@ -4082,22 +4082,22 @@ pub mod gpu {
                 TextSpacing::Normal => -0.15,
                 TextSpacing::Relaxed => 0.24,
             };
-            let ui_tracking = tracking * 0.55;
-            let heading_tracking = tracking * 0.4;
+            let ui_tracking = tracking * 0.18;
+            let heading_tracking = tracking * 0.08;
             let base_line_gap = match chrome.candidate_density {
                 CandidateDensity::Compact => 4.0,
                 CandidateDensity::Cozy => 6.0,
             };
-            let title_px = 3.2;
-            let section_px = 2.2;
-            let chip_px = 2.0;
-            let panel_width = self.scene_width.clamp(320.0, 520.0) - 28.0;
-            let panel_x = ((self.scene_width - panel_width) / 2.0).max(12.0);
-            let panel_y = 14.0;
-            let row_h = 24.0;
-            let title_h = 34.0;
+            let title_px = 3.6;
+            let section_px = 2.45;
+            let chip_px = 2.2;
+            let panel_width = self.scene_width.clamp(520.0, 900.0) - 24.0;
+            let panel_x = ((self.scene_width - panel_width) / 2.0).max(8.0);
+            let panel_y = 10.0;
+            let row_h = 36.0;
+            let title_h = 40.0;
             let settings_row_count = 13.0;
-            let panel_height = title_h + 18.0 + settings_row_count * row_h + 18.0;
+            let panel_height = title_h + 12.0 + settings_row_count * row_h + 12.0;
 
             let mut quads = Vec::new();
             let mut text_quads = Vec::new();
@@ -4150,7 +4150,7 @@ pub mod gpu {
                 color: [1.0, 1.0, 1.0, 0.16],
             });
 
-            let close_rect = [panel_x + panel_width - 32.0, panel_y + 8.0, 18.0, 18.0];
+            let close_rect = [panel_x + panel_width - 36.0, panel_y + 8.0, 22.0, 22.0];
             let (close_hovered, close_pressed) = interaction_state(InteractionKind::SettingsToggle);
             let close_visual_rect = animated_rect(close_rect, close_hovered, close_pressed);
             append_soft_card_quads(
@@ -4172,7 +4172,7 @@ pub mod gpu {
                 },
                 animated_shadow(soft_shadow, close_hovered, close_pressed),
                 shell,
-                6.0,
+                8.0,
             );
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::SettingsToggle,
@@ -4182,8 +4182,8 @@ pub mod gpu {
 
             let title_layout = TextBlock {
                 text: "Panel settings".to_string(),
-                origin: [panel_x + 14.0, panel_y + 10.0],
-                max_width: panel_width - 56.0,
+                origin: [panel_x + 16.0, panel_y + 12.0],
+                max_width: panel_width - 60.0,
                 pixel_size: title_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -4415,13 +4415,16 @@ pub mod gpu {
             let mut label_layouts = Vec::new();
             let mut option_layouts = Vec::new();
             let mut row_y = panel_y + title_h + 10.0;
-            let chip_start_x = panel_x + 86.0;
-            let chip_max_x = panel_x + panel_width - 12.0;
+            let label_col_x = panel_x + 18.0;
+            let chip_start_x = panel_x + 132.0;
+            let chip_max_x = panel_x + panel_width - 20.0;
+            let chip_gap_x = 12.0;
+            let chip_gap_y = 10.0;
             for (label, options) in sections.iter() {
                 let label_layout = TextBlock {
                     text: (*label).to_string(),
-                    origin: [panel_x + 14.0, row_y + 2.0],
-                    max_width: 72.0,
+                    origin: [label_col_x, row_y + 7.0],
+                    max_width: 100.0,
                     pixel_size: section_px,
                     letter_spacing: heading_tracking,
                     line_gap: base_line_gap,
@@ -4437,15 +4440,15 @@ pub mod gpu {
 
                 let mut chip_x = chip_start_x;
                 let mut chip_y = row_y;
-                let mut row_bottom = chip_y + 20.0;
+                let mut row_bottom = chip_y + 26.0;
                 for (kind, chip_label, selected) in options {
                     let (hovered, pressed) = interaction_state(*kind);
-                    let chip_w = (chip_label.chars().count() as f32 * 10.0).max(34.0) + 12.0;
+                    let chip_w = (chip_label.chars().count() as f32 * 10.8).max(58.0) + 22.0;
                     if chip_x + chip_w > chip_max_x {
                         chip_x = chip_start_x;
                         chip_y += row_h;
                     }
-                    let rect = [chip_x, chip_y, chip_w, 20.0];
+                    let rect = [chip_x, chip_y, chip_w, 26.0];
                     let visual_rect = animated_rect(rect, hovered, pressed);
                     append_soft_card_quads(
                         &mut quads,
@@ -4470,13 +4473,13 @@ pub mod gpu {
                         },
                         animated_shadow(soft_shadow, hovered, pressed),
                         shell,
-                        7.0,
+                        9.0,
                     );
                     interactive_targets.push(InteractiveTarget { kind: *kind, rect });
                     let option_layout = TextBlock {
                         text: (*chip_label).to_string(),
-                        origin: [visual_rect[0] + 6.0, visual_rect[1] + 5.0],
-                        max_width: visual_rect[2] - 12.0,
+                        origin: [visual_rect[0] + 10.0, visual_rect[1] + 7.0],
+                        max_width: visual_rect[2] - 20.0,
                         pixel_size: chip_px,
                         letter_spacing: ui_tracking,
                         line_gap: base_line_gap,
@@ -4489,10 +4492,10 @@ pub mod gpu {
                     text_quads.extend(option_layout.quads.iter().copied());
                     atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
                     option_layouts.push(option_layout);
-                    row_bottom = chip_y + 20.0;
-                    chip_x += chip_w + 8.0;
+                    row_bottom = chip_y + 26.0;
+                    chip_x += chip_w + chip_gap_x;
                 }
-                row_y = row_bottom + 4.0;
+                row_y = row_bottom + chip_gap_y;
             }
 
             text_sections.push(TextSection {
