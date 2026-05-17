@@ -1598,15 +1598,15 @@ pub mod gpu {
             let section_gap = 6.0 * responsive_scale;
             let extended_input_panel_h = if chrome.input_modes_expanded {
                 match chrome.active_input_mode {
-                    InputMode::VirtualKeyboard => 120.0 * responsive_scale,
+                    InputMode::VirtualKeyboard => 142.0 * responsive_scale,
                     InputMode::Dictation => {
                         if max_panel_width < 620.0 {
-                            98.0 * responsive_scale
+                            142.0 * responsive_scale
                         } else {
-                            86.0 * responsive_scale
+                            122.0 * responsive_scale
                         }
                     }
-                    InputMode::Handwriting => 128.0 * responsive_scale,
+                    InputMode::Handwriting => 170.0 * responsive_scale,
                 }
             } else {
                 0.0
@@ -2480,8 +2480,33 @@ pub mod gpu {
                     ],
                     color: [1.0, 1.0, 1.0, 0.14],
                 });
+                let drawer_rect = [
+                    tools_panel_rect[0] + 10.0 * responsive_scale,
+                    tools_panel_rect[1] + 6.0 * responsive_scale,
+                    tools_panel_rect[2] - 20.0 * responsive_scale,
+                    tools_panel_rect[3] - 10.0 * responsive_scale,
+                ];
+                append_soft_card_quads(
+                    &mut quads,
+                    drawer_rect,
+                    surface_alt,
+                    border_dark,
+                    soft_shadow,
+                    surface,
+                    9.0 * responsive_scale,
+                );
+                let handle_w = 40.0 * responsive_scale;
+                quads.push(CandidateQuad {
+                    rect: [
+                        drawer_rect[0] + (drawer_rect[2] - handle_w) * 0.5,
+                        drawer_rect[1] + 7.0 * responsive_scale,
+                        handle_w,
+                        3.0 * responsive_scale,
+                    ],
+                    color: [1.0, 1.0, 1.0, 0.22],
+                });
                 if chrome.active_input_mode == InputMode::VirtualKeyboard {
-                    let keyboard_y = tools_panel_rect[1] + 8.0 * responsive_scale;
+                    let keyboard_y = drawer_rect[1] + 16.0 * responsive_scale;
                     let key_gap = 5.0 * responsive_scale;
                     let row_h = 24.0 * responsive_scale;
                     let mut keyboard_layouts = Vec::new();
@@ -2568,11 +2593,12 @@ pub mod gpu {
                         } else {
                             0.0
                         };
-                        let row_width = panel_width - inset * 2.0;
+                        let row_width = drawer_rect[2] - inset * 2.0;
                         let key_w = (row_width - key_gap * (key_count - 1.0)) / key_count;
 
                         for (key_index, key) in keys.iter().enumerate() {
-                            let x = panel_x + inset + key_index as f32 * (key_w + key_gap);
+                            let x =
+                                drawer_rect[0] + inset + key_index as f32 * (key_w + key_gap);
                             let rect = [x, row_y, key_w, row_h];
                             append_soft_card_quads(
                                 &mut quads,
@@ -2663,24 +2689,30 @@ pub mod gpu {
                     let left_w = 70.0 * responsive_scale;
                     let mid_key_w = 36.0 * responsive_scale;
                     let right_w = 104.0 * responsive_scale;
-                    let space_w = panel_width - left_w - right_w - key_gap * 3.0 - mid_key_w * 2.0;
+                    let space_w =
+                        drawer_rect[2] - left_w - right_w - key_gap * 3.0 - mid_key_w * 2.0;
                     let action_keys = if chrome.keyboard_numeric {
                         vec![
                             (
                                 VirtualKeyboardKey::ToggleAlphabetic,
                                 "ABC",
-                                [panel_x, action_y, left_w, row_h],
+                                [drawer_rect[0], action_y, left_w, row_h],
                             ),
                             (
                                 VirtualKeyboardKey::Character(','),
                                 ",",
-                                [panel_x + left_w + key_gap, action_y, mid_key_w, row_h],
+                                [
+                                    drawer_rect[0] + left_w + key_gap,
+                                    action_y,
+                                    mid_key_w,
+                                    row_h,
+                                ],
                             ),
                             (
                                 VirtualKeyboardKey::Space,
                                 "Space",
                                 [
-                                    panel_x + left_w + key_gap * 2.0 + mid_key_w,
+                                    drawer_rect[0] + left_w + key_gap * 2.0 + mid_key_w,
                                     action_y,
                                     space_w,
                                     row_h,
@@ -2690,7 +2722,11 @@ pub mod gpu {
                                 VirtualKeyboardKey::Character('.'),
                                 ".",
                                 [
-                                    panel_x + left_w + key_gap * 3.0 + mid_key_w + space_w,
+                                    drawer_rect[0]
+                                        + left_w
+                                        + key_gap * 3.0
+                                        + mid_key_w
+                                        + space_w,
                                     action_y,
                                     mid_key_w,
                                     row_h,
@@ -2700,7 +2736,11 @@ pub mod gpu {
                                 VirtualKeyboardKey::Backspace,
                                 "",
                                 [
-                                    panel_x + left_w + key_gap * 4.0 + mid_key_w * 2.0 + space_w,
+                                    drawer_rect[0]
+                                        + left_w
+                                        + key_gap * 4.0
+                                        + mid_key_w * 2.0
+                                        + space_w,
                                     action_y,
                                     right_w,
                                     row_h,
@@ -2712,18 +2752,23 @@ pub mod gpu {
                             (
                                 VirtualKeyboardKey::ToggleNumeric,
                                 "123",
-                                [panel_x, action_y, left_w, row_h],
+                                [drawer_rect[0], action_y, left_w, row_h],
                             ),
                             (
                                 VirtualKeyboardKey::Character(','),
                                 ",",
-                                [panel_x + left_w + key_gap, action_y, mid_key_w, row_h],
+                                [
+                                    drawer_rect[0] + left_w + key_gap,
+                                    action_y,
+                                    mid_key_w,
+                                    row_h,
+                                ],
                             ),
                             (
                                 VirtualKeyboardKey::Space,
                                 "Space",
                                 [
-                                    panel_x + left_w + key_gap * 2.0 + mid_key_w,
+                                    drawer_rect[0] + left_w + key_gap * 2.0 + mid_key_w,
                                     action_y,
                                     space_w,
                                     row_h,
@@ -2733,7 +2778,11 @@ pub mod gpu {
                                 VirtualKeyboardKey::Character('.'),
                                 ".",
                                 [
-                                    panel_x + left_w + key_gap * 3.0 + mid_key_w + space_w,
+                                    drawer_rect[0]
+                                        + left_w
+                                        + key_gap * 3.0
+                                        + mid_key_w
+                                        + space_w,
                                     action_y,
                                     mid_key_w,
                                     row_h,
@@ -2743,7 +2792,11 @@ pub mod gpu {
                                 VirtualKeyboardKey::Backspace,
                                 "",
                                 [
-                                    panel_x + left_w + key_gap * 4.0 + mid_key_w * 2.0 + space_w,
+                                    drawer_rect[0]
+                                        + left_w
+                                        + key_gap * 4.0
+                                        + mid_key_w * 2.0
+                                        + space_w,
                                     action_y,
                                     right_w,
                                     row_h,
@@ -2814,13 +2867,16 @@ pub mod gpu {
                         layouts: keyboard_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Dictation {
-                    let voice_y = tools_panel_rect[1] + 8.0 * responsive_scale;
+                    let voice_y = drawer_rect[1] + 16.0 * responsive_scale;
                     let voice_rect = [
-                        panel_x,
+                        drawer_rect[0],
                         voice_y,
-                        panel_width,
-                        if panel_width < 620.0 { 118.0 } else { 96.0 },
+                        drawer_rect[2],
+                        drawer_rect[3] - 24.0 * responsive_scale,
                     ];
+                    let voice_content_x = voice_rect[0] + 12.0 * responsive_scale;
+                    let voice_header_y = voice_y + 8.0 * responsive_scale;
+                    let voice_transcript_y = voice_y + 28.0 * responsive_scale;
                     append_soft_card_quads(
                         &mut quads,
                         voice_rect,
@@ -2858,7 +2914,12 @@ pub mod gpu {
                         ""
                     };
                     if !live_hint.is_empty() {
-                        let hint_rect = [panel_x + panel_width - 122.0, voice_y + 6.0, 110.0, 16.0];
+                        let hint_rect = [
+                            drawer_rect[0] + drawer_rect[2] - 122.0,
+                            voice_y + 6.0,
+                            110.0,
+                            16.0,
+                        ];
                         append_soft_card_quads(
                             &mut quads,
                             hint_rect,
@@ -2878,7 +2939,7 @@ pub mod gpu {
                         );
                     }
                     if chrome.voice_state == VoiceCaptureState::Listening {
-                        let base_x = panel_x + panel_width - 122.0;
+                        let base_x = drawer_rect[0] + drawer_rect[2] - 122.0;
                         let base_y = voice_y + 24.0;
                         let phase = chrome.voice_visual_phase as f32;
                         for index in 0..4 {
@@ -2899,8 +2960,8 @@ pub mod gpu {
                     let voice_layouts = vec![
                         TextBlock {
                             text: status_text,
-                            origin: [panel_x + 12.0, voice_y + 8.0],
-                            max_width: panel_width
+                            origin: [voice_content_x, voice_header_y],
+                            max_width: drawer_rect[2]
                                 - if live_hint.is_empty() { 28.0 } else { 168.0 },
                             pixel_size: title_px,
                             letter_spacing: ui_tracking,
@@ -2922,7 +2983,7 @@ pub mod gpu {
                         .layout(),
                         TextBlock {
                             text: live_hint.to_string(),
-                            origin: [panel_x + panel_width - 118.0, voice_y + 8.0],
+                            origin: [drawer_rect[0] + drawer_rect[2] - 118.0, voice_header_y],
                             max_width: 98.0,
                             pixel_size: helper_px,
                             letter_spacing: ui_tracking,
@@ -2939,12 +3000,12 @@ pub mod gpu {
                         .layout(),
                         TextBlock {
                             text: transcript,
-                            origin: [panel_x + 12.0, voice_y + 22.0],
-                            max_width: panel_width - 24.0,
+                            origin: [voice_content_x, voice_transcript_y],
+                            max_width: drawer_rect[2] - 24.0,
                             pixel_size: if chrome.voice_transcript.is_empty() {
-                                input_value_px * 0.82
+                                input_value_px * 0.72
                             } else {
-                                input_value_px
+                                input_value_px * 0.9
                             },
                             letter_spacing: if chrome.voice_transcript.is_empty() {
                                 ui_tracking
@@ -2952,11 +3013,7 @@ pub mod gpu {
                                 heading_tracking
                             },
                             line_gap: base_line_gap,
-                            max_lines: if chrome.voice_transcript.is_empty() {
-                                2
-                            } else {
-                                1
-                            },
+                            max_lines: 2,
                             color: if chrome.voice_transcript.is_empty() {
                                 text_muted
                             } else {
@@ -3040,25 +3097,45 @@ pub mod gpu {
                             true,
                         ));
                     }
+                    let voice_footer_rows = if panel_width < 620.0 { 2 } else { 1 };
+                    let voice_footer_rect = [
+                        drawer_rect[0] + 10.0 * responsive_scale,
+                        voice_rect[1] + voice_rect[3]
+                            - (voice_footer_rows as f32 * 24.0 + 10.0) * responsive_scale,
+                        drawer_rect[2] - 20.0 * responsive_scale,
+                        (voice_footer_rows as f32 * 24.0 + 4.0) * responsive_scale,
+                    ];
+                    append_soft_card_quads(
+                        &mut quads,
+                        voice_footer_rect,
+                        surface,
+                        border_dark,
+                        [0.25, 0.34, 0.48, 0.06],
+                        shell,
+                        8.0 * responsive_scale,
+                    );
                     let mut voice_action_layouts = Vec::new();
-                    let mut action_cursor_x = panel_x;
+                    let mut action_cursor_x = voice_footer_rect[0] + 6.0 * responsive_scale;
                     let mut action_row = 0;
                     for (kind, label, width, emphasized, enabled) in voice_actions {
                         let (hovered, pressed) = interaction_state(kind);
-                        if action_cursor_x > panel_x
-                            && action_cursor_x + width > panel_x + panel_width
+                        if action_cursor_x > voice_footer_rect[0] + 6.0 * responsive_scale
+                            && action_cursor_x + width
+                                > voice_footer_rect[0] + voice_footer_rect[2]
                         {
                             action_row += 1;
-                            action_cursor_x = panel_x;
+                            action_cursor_x = voice_footer_rect[0] + 6.0 * responsive_scale;
                         }
                         let rect = [
                             action_cursor_x,
-                            voice_y + 68.0 + action_row as f32 * 24.0,
-                            width.min(panel_width - 6.0 * responsive_scale),
+                            voice_footer_rect[1]
+                                + 4.0 * responsive_scale
+                                + action_row as f32 * 24.0 * responsive_scale,
+                            width.min(voice_footer_rect[2] - 12.0 * responsive_scale),
                             20.0,
                         ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
-                        action_cursor_x += width + 8.0;
+                        action_cursor_x += width + 8.0 * responsive_scale;
                         append_soft_card_quads(
                             &mut quads,
                             visual_rect,
@@ -3141,8 +3218,15 @@ pub mod gpu {
                         layouts: voice_action_layouts,
                     });
                 } else if chrome.active_input_mode == InputMode::Handwriting {
-                    let handwriting_y = tools_panel_rect[1] + 8.0 * responsive_scale;
-                    let canvas_rect = [panel_x, handwriting_y + 18.0, panel_width, 92.0];
+                    let handwriting_y = drawer_rect[1] + 16.0 * responsive_scale;
+                    let handwriting_title_y = handwriting_y + 4.0 * responsive_scale;
+                    let handwriting_hint_y = handwriting_y + 22.0 * responsive_scale;
+                    let canvas_rect = [
+                        drawer_rect[0],
+                        handwriting_y + 44.0 * responsive_scale,
+                        drawer_rect[2],
+                        72.0 * responsive_scale,
+                    ];
                     append_soft_card_quads(
                         &mut quads,
                         canvas_rect,
@@ -3153,9 +3237,9 @@ pub mod gpu {
                         10.0 * responsive_scale,
                     );
                     interactive_targets.push(InteractiveTarget {
-                        kind: InteractionKind::HandwritingCanvas,
-                        rect: canvas_rect,
-                    });
+                            kind: InteractionKind::HandwritingCanvas,
+                            rect: canvas_rect,
+                        });
 
                     for stroke in &chrome.handwriting_strokes {
                         for point in sample_stroke_points(stroke) {
@@ -3169,8 +3253,8 @@ pub mod gpu {
                     let handwriting_layouts = vec![
                         TextBlock {
                             text: "Trace handwriting".to_string(),
-                            origin: [panel_x + 14.0, handwriting_y + 2.0],
-                            max_width: panel_width - 28.0,
+                            origin: [drawer_rect[0] + 14.0, handwriting_title_y],
+                            max_width: drawer_rect[2] - 28.0,
                             pixel_size: title_px,
                             letter_spacing: heading_tracking,
                             line_gap: base_line_gap,
@@ -3182,12 +3266,12 @@ pub mod gpu {
                         .layout(),
                         TextBlock {
                             text: chrome.handwriting_hint.clone(),
-                            origin: [panel_x + 14.0, handwriting_y + 30.0],
-                            max_width: panel_width - 28.0,
+                            origin: [drawer_rect[0] + 14.0, handwriting_hint_y],
+                            max_width: drawer_rect[2] - 28.0,
                             pixel_size: helper_px,
                             letter_spacing: ui_tracking,
                             line_gap: base_line_gap,
-                            max_lines: 2,
+                            max_lines: 1,
                             color: text_secondary,
                             align: TextAlign::Left,
                             role: TextRole::HandwritingLabel,
@@ -3203,7 +3287,27 @@ pub mod gpu {
                         layouts: handwriting_layouts,
                     });
 
-                    let undo_rect = [panel_x, handwriting_y + 118.0, 68.0, 22.0];
+                    let handwriting_footer_rect = [
+                        drawer_rect[0] + 10.0 * responsive_scale,
+                        drawer_rect[1] + drawer_rect[3] - 34.0 * responsive_scale,
+                        drawer_rect[2] - 20.0 * responsive_scale,
+                        26.0 * responsive_scale,
+                    ];
+                    append_soft_card_quads(
+                        &mut quads,
+                        handwriting_footer_rect,
+                        surface,
+                        border_dark,
+                        [0.25, 0.34, 0.48, 0.06],
+                        shell,
+                        8.0 * responsive_scale,
+                    );
+                    let undo_rect = [
+                        handwriting_footer_rect[0] + 6.0 * responsive_scale,
+                        handwriting_footer_rect[1] + 2.0 * responsive_scale,
+                        68.0,
+                        20.0,
+                    ];
                     let undo_enabled = !chrome.handwriting_strokes.is_empty();
                     let (undo_hovered, undo_pressed) =
                         interaction_state(InteractionKind::UndoHandwritingStroke);
@@ -3229,7 +3333,12 @@ pub mod gpu {
                         kind: InteractionKind::UndoHandwritingStroke,
                         rect: undo_rect,
                     });
-                    let clear_rect = [panel_x + 76.0, handwriting_y + 118.0, 68.0, 22.0];
+                    let clear_rect = [
+                        handwriting_footer_rect[0] + 82.0 * responsive_scale,
+                        handwriting_footer_rect[1] + 2.0 * responsive_scale,
+                        68.0,
+                        20.0,
+                    ];
                     let (clear_hovered, clear_pressed) =
                         interaction_state(InteractionKind::ClearHandwriting);
                     let clear_visual_rect = animated_rect(clear_rect, clear_hovered, clear_pressed);
@@ -3264,14 +3373,19 @@ pub mod gpu {
                     );
                     append_trash_icon_quads(&mut quads, clear_visual_rect, text_primary);
 
-                    let mut chip_x = panel_x + 154.0;
+                    let mut chip_x = handwriting_footer_rect[0] + 158.0 * responsive_scale;
                     for (index, candidate) in
                         chrome.handwriting_candidates.iter().take(3).enumerate()
                     {
                         let kind = InteractionKind::UseHandwritingCandidate(index);
                         let (hovered, pressed) = interaction_state(kind);
                         let chip_w = (candidate.chars().count() as f32 * 9.5).max(52.0) + 16.0;
-                        let rect = [chip_x, handwriting_y + 118.0, chip_w, 22.0];
+                        let rect = [
+                            chip_x,
+                            handwriting_footer_rect[1] + 2.0 * responsive_scale,
+                            chip_w,
+                            20.0,
+                        ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
                         append_soft_card_quads(
                             &mut quads,
