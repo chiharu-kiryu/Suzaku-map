@@ -1,5 +1,6 @@
 R_DEF: Internal format may change without notice
 local
+drawable candidate_chip_flat
 drawable candidate_chip_primary
 drawable candidate_chip_secondary
 drawable candidate_chip_selected

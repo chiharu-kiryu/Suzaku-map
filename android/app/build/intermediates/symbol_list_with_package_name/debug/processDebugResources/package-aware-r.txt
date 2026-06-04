@@ -2907,6 +2907,7 @@ drawable btn_radio_off_mtrl
 drawable btn_radio_off_to_on_mtrl_animation
 drawable btn_radio_on_mtrl
 drawable btn_radio_on_to_off_mtrl_animation
+drawable candidate_chip_flat
 drawable candidate_chip_primary
 drawable candidate_chip_secondary
 drawable candidate_chip_selected

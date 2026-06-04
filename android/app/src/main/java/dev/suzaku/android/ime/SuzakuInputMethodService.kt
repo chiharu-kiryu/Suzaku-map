@@ -13,11 +13,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 
-private enum class DrawerMode {
-    KEYBOARD,
-    VOICE,
-    HANDWRITE,
-}
+private enum class DrawerMode { KEYBOARD, VOICE, HANDWRITE }
 
 class SuzakuInputMethodService : InputMethodService() {
     private lateinit var composePreview: TextView
@@ -72,33 +68,26 @@ class SuzakuInputMethodService : InputMethodService() {
         refreshImeUi()
         return root
     }
-
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         setCandidatesViewShown(false)
         SuzakuNativeBridge.nativeActivateSession()
         refreshImeUi()
     }
-
     override fun onStartInputView(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
         setCandidatesViewShown(false)
         SuzakuNativeBridge.nativeActivateSession()
         refreshImeUi()
     }
-
     override fun onFinishInput() {
         super.onFinishInput()
         SuzakuNativeBridge.nativeDeactivateSession()
     }
-
     override fun onDestroy() {
         super.onDestroy()
-        if (::voiceRecognizer.isInitialized) {
-            voiceRecognizer.destroy()
-        }
+        if (::voiceRecognizer.isInitialized) voiceRecognizer.destroy()
     }
-
     private fun bindViews(root: View) {
         composePreview = root.findViewById(R.id.composePreview)
         hostStatus = root.findViewById(R.id.hostStatus)
@@ -130,7 +119,6 @@ class SuzakuInputMethodService : InputMethodService() {
         candidateStrip.layoutTransition = buildStripTransition()
         handwriteCandidateStrip.layoutTransition = buildStripTransition()
     }
-
     private fun configureToolButtons() {
         styleToolButton(toolKeyboard)
         styleToolButton(toolVoice)
@@ -219,7 +207,6 @@ class SuzakuInputMethodService : InputMethodService() {
         updateVoiceListenButton()
         refreshVoiceLevelAnimation()
     }
-
     private fun configureHandwriteDrawer() {
         styleActionButton(handwriteApplyButton, compact = true)
         styleActionButton(handwriteClearButton, compact = true)
@@ -398,12 +385,24 @@ class SuzakuInputMethodService : InputMethodService() {
 
         for (index in 0 until count.coerceAtMost(6)) {
             val label = SuzakuNativeBridge.nativeCandidateLabel(index)
+            if (index > 0) {
+                strip.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(1), dp(22)).apply {
+                        marginStart = dp(2)
+                        marginEnd = dp(2)
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                    setBackgroundColor(Color.parseColor("#C8D7E7"))
+                    alpha = 0.55f
+                })
+            }
             strip.addView(
                 buildCandidateChip(
                     getString(R.string.candidate_label_format, index + 1, label),
                     index == 0,
                     index == selected,
                     index,
+                    continuous = true,
                 )
             )
         }
@@ -444,13 +443,19 @@ class SuzakuInputMethodService : InputMethodService() {
         }
     }
 
-    private fun buildCandidateChip(text: String, primary: Boolean, selected: Boolean, index: Int): TextView {
+    private fun buildCandidateChip(
+        text: String,
+        primary: Boolean,
+        selected: Boolean,
+        index: Int,
+        continuous: Boolean = false,
+    ): TextView {
         return TextView(this).apply {
-            val horizontal = if (primary) dp(18) else dp(14)
-            val vertical = if (primary) dp(11) else dp(10)
+            val horizontal = if (primary) dp(18) else if (continuous) dp(10) else dp(14)
+            val vertical = if (primary) dp(11) else if (continuous) dp(8) else dp(10)
             setPadding(horizontal, vertical, horizontal, vertical)
             this.text = text
-            textSize = if (primary) 17f else 15f
+            textSize = if (primary) 17f else if (continuous) 14f else 15f
             minWidth = if (primary) dp(104) else dp(0)
             setTextColor(
                 when {
@@ -463,13 +468,14 @@ class SuzakuInputMethodService : InputMethodService() {
                 when {
                     selected && !primary -> R.drawable.candidate_chip_selected
                     selected || primary -> R.drawable.candidate_chip_primary
+                    continuous -> R.drawable.candidate_chip_flat
                     else -> R.drawable.candidate_chip_secondary
                 }
             )
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { marginEnd = dp(8) }
+            ).apply { marginEnd = if (continuous) dp(0) else dp(8) }
             alpha = 0f
             translationY = dp(4).toFloat()
             post { animate().alpha(1f).translationY(0f).setDuration(140L).start() }
@@ -532,12 +538,11 @@ class SuzakuInputMethodService : InputMethodService() {
         )
     }
 
-    private fun buildStripTransition(): LayoutTransition =
-        LayoutTransition().apply {
-            setDuration(LayoutTransition.APPEARING, 120L)
-            setDuration(LayoutTransition.CHANGE_APPEARING, 120L)
-            setDuration(LayoutTransition.DISAPPEARING, 90L)
-        }
+    private fun buildStripTransition(): LayoutTransition = LayoutTransition().apply {
+        setDuration(LayoutTransition.APPEARING, 120L)
+        setDuration(LayoutTransition.CHANGE_APPEARING, 120L)
+        setDuration(LayoutTransition.DISAPPEARING, 90L)
+    }
 
     private fun syncVoiceStatusFromPhase() {
         voiceStatus.text = when (voicePhase) {
