@@ -4,6 +4,8 @@ drawable candidate_chip_flat
 drawable candidate_chip_primary
 drawable candidate_chip_secondary
 drawable candidate_chip_selected
+drawable compact_bubble_bg
+drawable compact_bubble_dot
 drawable gboard_action_button_bg
 drawable gboard_candidate_bar_bg
 drawable gboard_compose_surface
@@ -14,6 +16,9 @@ drawable tool_button_bg
 id bootstrapStatus
 id candidateStrip
 id candidateStripStandalone
+id compactBubbleButton
+id compactBubbleDot
+id compactBubbleShell
 id composePreview
 id drawerContainer
 id handwriteApplyButton
@@ -23,10 +28,12 @@ id handwriteClearButton
 id handwriteDrawer
 id handwriteStatus
 id hostStatus
+id imePanel
 id keyboardDrawer
 id keyboardDrawerTitle
 id keyboardRows
 id panelStatus
+id toolCollapse
 id toolHandwrite
 id toolKeyboard
 id toolSettings
@@ -49,6 +56,7 @@ layout input_view
 string app_name
 string candidate_empty
 string candidate_label_format
+string collapse_input
 string compose_placeholder
 string handwrite_clear
 string handwrite_drawer_title

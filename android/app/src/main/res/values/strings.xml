@@ -6,6 +6,7 @@
     <string name="voice_input">Voice input</string>
     <string name="handwriting_input">Handwriting input</string>
     <string name="settings">Settings</string>
+    <string name="collapse_input">Collapse input</string>
     <string name="compose_placeholder">Type to compose</string>
     <string name="candidate_empty">Keep typing to see suggestions</string>
     <string name="candidate_label_format">%1$d %2$s</string>

@@ -33,28 +33,23 @@ class SuzakuInputMethodService : InputMethodService() {
     private lateinit var toolVoice: ImageButton
     private lateinit var toolHandwrite: ImageButton
     private lateinit var toolSettings: ImageButton
+    private lateinit var toolCollapse: ImageButton
     private lateinit var voiceListenButton: Button
     private lateinit var voiceUseTranscriptButton: Button
     private lateinit var voiceCommitButton: Button
     private lateinit var voiceClearButton: Button
     private lateinit var handwriteApplyButton: Button
     private lateinit var handwriteClearButton: Button
+    private lateinit var imePanel: View
+    private lateinit var compactBubbleShell: View
+    private lateinit var compactBubbleButton: ImageButton
+    private lateinit var compactBubbleDot: View
     private var drawerMode = DrawerMode.KEYBOARD
+    private var imePanelExpanded = false
     private var selectedHandwriteSeed: String? = null
     private var voicePhase = SuzakuVoicePhase.IDLE
-    private val voiceLevelBars = mutableListOf<View>()
-    private var voicePulseFrame = 0
-    private val voicePulseRunnable = object : Runnable {
-        override fun run() {
-            if (!::voiceLevelRow.isInitialized || !voiceLevelRow.isAttachedToWindow || !shouldAnimateVoiceLevels()) {
-                renderVoiceLevels()
-                return
-            }
-            voicePulseFrame = (voicePulseFrame + 1) % 12
-            renderVoiceLevels()
-            voiceLevelRow.postDelayed(this, 140L)
-        }
-    }
+    private lateinit var panelAnimator: SuzakuImePanelAnimator
+    private lateinit var voiceLevelMeter: SuzakuVoiceLevelMeter
     private lateinit var voiceRecognizer: SuzakuVoiceRecognizer
 
     override fun onCreateInputView(): View {
@@ -65,6 +60,7 @@ class SuzakuInputMethodService : InputMethodService() {
         configureToolButtons()
         configureVoiceDrawer()
         configureHandwriteDrawer()
+        collapseIme()
         refreshImeUi()
         return root
     }
@@ -72,12 +68,14 @@ class SuzakuInputMethodService : InputMethodService() {
         super.onStartInput(attribute, restarting)
         setCandidatesViewShown(false)
         SuzakuNativeBridge.nativeActivateSession()
+        collapseIme()
         refreshImeUi()
     }
     override fun onStartInputView(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
         setCandidatesViewShown(false)
         SuzakuNativeBridge.nativeActivateSession()
+        collapseIme()
         refreshImeUi()
     }
     override fun onFinishInput() {
@@ -89,6 +87,10 @@ class SuzakuInputMethodService : InputMethodService() {
         if (::voiceRecognizer.isInitialized) voiceRecognizer.destroy()
     }
     private fun bindViews(root: View) {
+        imePanel = root.findViewById(R.id.imePanel)
+        compactBubbleShell = root.findViewById(R.id.compactBubbleShell)
+        compactBubbleButton = root.findViewById(R.id.compactBubbleButton)
+        compactBubbleDot = root.findViewById(R.id.compactBubbleDot)
         composePreview = root.findViewById(R.id.composePreview)
         hostStatus = root.findViewById(R.id.hostStatus)
         candidateStrip = root.findViewById(R.id.candidateStrip)
@@ -106,16 +108,23 @@ class SuzakuInputMethodService : InputMethodService() {
         toolVoice = root.findViewById(R.id.toolVoice)
         toolHandwrite = root.findViewById(R.id.toolHandwrite)
         toolSettings = root.findViewById(R.id.toolSettings)
+        toolCollapse = root.findViewById(R.id.toolCollapse)
         voiceListenButton = root.findViewById(R.id.voiceListenButton)
         voiceUseTranscriptButton = root.findViewById(R.id.voiceUseTranscriptButton)
         voiceCommitButton = root.findViewById(R.id.voiceCommitButton)
         voiceClearButton = root.findViewById(R.id.voiceClearButton)
         handwriteApplyButton = root.findViewById(R.id.handwriteApplyButton)
         handwriteClearButton = root.findViewById(R.id.handwriteClearButton)
-        voiceLevelBars += root.findViewById<View>(R.id.voiceLevelBar1)
-        voiceLevelBars += root.findViewById<View>(R.id.voiceLevelBar2)
-        voiceLevelBars += root.findViewById<View>(R.id.voiceLevelBar3)
-        voiceLevelBars += root.findViewById<View>(R.id.voiceLevelBar4)
+        voiceLevelMeter = SuzakuVoiceLevelMeter(
+            voiceLevelRow,
+            listOf(
+                root.findViewById(R.id.voiceLevelBar1),
+                root.findViewById(R.id.voiceLevelBar2),
+                root.findViewById(R.id.voiceLevelBar3),
+                root.findViewById(R.id.voiceLevelBar4),
+            ),
+        )
+        panelAnimator = SuzakuImePanelAnimator(imePanel, compactBubbleShell)
         candidateStrip.layoutTransition = buildStripTransition()
         handwriteCandidateStrip.layoutTransition = buildStripTransition()
     }
@@ -124,21 +133,22 @@ class SuzakuInputMethodService : InputMethodService() {
         styleToolButton(toolVoice)
         styleToolButton(toolHandwrite)
         styleToolButton(toolSettings)
+        styleToolButton(toolCollapse)
+        styleToolButton(compactBubbleButton)
         toolKeyboard.setOnClickListener {
-            drawerMode = DrawerMode.KEYBOARD
-            refreshImeUi()
+            expandIme(DrawerMode.KEYBOARD)
         }
         toolVoice.setOnClickListener {
-            drawerMode = DrawerMode.VOICE
-            refreshImeUi()
+            expandIme(DrawerMode.VOICE)
         }
         toolHandwrite.setOnClickListener {
-            drawerMode = DrawerMode.HANDWRITE
-            refreshImeUi()
+            expandIme(DrawerMode.HANDWRITE)
         }
         toolSettings.setOnClickListener {
             hostStatus.text = getString(R.string.tool_settings_pending)
         }
+        toolCollapse.setOnClickListener { collapseIme() }
+        compactBubbleButton.setOnClickListener { expandIme(drawerMode) }
     }
 
     private fun configureVoiceDrawer() {
@@ -164,7 +174,7 @@ class SuzakuInputMethodService : InputMethodService() {
             onPhaseChanged = { phase ->
                 voicePhase = phase
                 syncVoiceStatusFromPhase()
-                refreshVoiceLevelAnimation()
+                refreshVoiceLevelMeter()
             },
         )
 
@@ -175,7 +185,7 @@ class SuzakuInputMethodService : InputMethodService() {
                 voiceRecognizer.start()
             }
             updateVoiceListenButton()
-            refreshVoiceLevelAnimation()
+            refreshVoiceLevelMeter()
         }
         voiceUseTranscriptButton.setOnClickListener {
             val transcript = voiceTranscriptInput.text?.toString()?.trim().orEmpty()
@@ -200,12 +210,12 @@ class SuzakuInputMethodService : InputMethodService() {
             syncVoiceStatusFromPhase()
             currentInputConnection?.finishComposingText()
             updateVoiceListenButton()
-            refreshVoiceLevelAnimation()
+            refreshVoiceLevelMeter()
             refreshImeUi()
         }
         syncVoiceStatusFromPhase()
         updateVoiceListenButton()
-        refreshVoiceLevelAnimation()
+        refreshVoiceLevelMeter()
     }
     private fun configureHandwriteDrawer() {
         styleActionButton(handwriteApplyButton, compact = true)
@@ -329,11 +339,16 @@ class SuzakuInputMethodService : InputMethodService() {
     }
 
     private fun refreshImeUi() {
-        composePreview.text = SuzakuNativeBridge.nativeDisplayText().ifEmpty {
+        val displayText = SuzakuNativeBridge.nativeDisplayText()
+        composePreview.text = displayText.ifEmpty {
             getString(R.string.compose_placeholder)
         }
         hostStatus.text = SuzakuNativeBridge.nativeDescribeImeHost()
         refreshCandidateStrip(candidateStrip)
+        refreshPanelVisibility()
+        compactBubbleDot.visibility = if (
+            SuzakuNativeBridge.nativeCandidateCount() > 0 || displayText.isNotEmpty()
+        ) View.VISIBLE else View.GONE
         refreshDrawerVisibility()
         syncComposingText()
     }
@@ -353,7 +368,7 @@ class SuzakuInputMethodService : InputMethodService() {
         }
         syncVoiceStatusFromPhase()
         updateVoiceListenButton()
-        refreshVoiceLevelAnimation()
+        refreshVoiceLevelMeter()
         handwriteStatus.text = when {
             selectedHandwriteSeed != null -> getString(R.string.handwrite_status_ready, selectedHandwriteSeed)
             handwriteStatus.text == getString(R.string.handwrite_status_writing) -> handwriteStatus.text
@@ -557,43 +572,26 @@ class SuzakuInputMethodService : InputMethodService() {
         }
     }
 
-    private fun refreshVoiceLevelAnimation() {
-        if (!::voiceLevelRow.isInitialized) {
-            return
-        }
-        voiceLevelRow.removeCallbacks(voicePulseRunnable)
-        renderVoiceLevels()
-        if (shouldAnimateVoiceLevels()) {
-            voiceLevelRow.post(voicePulseRunnable)
-        }
+    private fun refreshVoiceLevelMeter() =
+        voiceLevelMeter.refresh(voicePhase, imePanelExpanded && drawerMode == DrawerMode.VOICE)
+
+    private fun refreshPanelVisibility() {
+        panelAnimator.sync(imePanelExpanded)
     }
 
-    private fun shouldAnimateVoiceLevels(): Boolean =
-        drawerMode == DrawerMode.VOICE && voicePhase in setOf(
-            SuzakuVoicePhase.STARTING,
-            SuzakuVoicePhase.LISTENING,
-            SuzakuVoicePhase.HEARING,
-            SuzakuVoicePhase.PROCESSING,
-        )
+    private fun expandIme(mode: DrawerMode) {
+        drawerMode = mode
+        val wasExpanded = imePanelExpanded
+        imePanelExpanded = true
+        if (!wasExpanded) panelAnimator.expand()
+        refreshImeUi()
+    }
 
-    private fun renderVoiceLevels() {
-        if (voiceLevelBars.isEmpty()) {
-            return
-        }
-        val active = shouldAnimateVoiceLevels()
-        voiceLevelBars.forEachIndexed { index, bar ->
-            val phaseBias = when (voicePhase) {
-                SuzakuVoicePhase.HEARING -> 0.95f
-                SuzakuVoicePhase.PROCESSING -> 0.8f
-                SuzakuVoicePhase.STARTING -> 0.65f
-                SuzakuVoicePhase.LISTENING -> 0.72f
-                SuzakuVoicePhase.READY -> 0.55f
-                else -> 0.35f
-            }
-            val wave = if (active) ((voicePulseFrame + index * 2) % 12) / 11f else 0f
-            val emphasis = if (active) 0.45f + wave * 0.55f else 0f
-            bar.alpha = (phaseBias * 0.55f) + emphasis * 0.45f
-            bar.scaleY = 0.85f + emphasis * 0.45f
-        }
+    private fun collapseIme() {
+        val wasExpanded = imePanelExpanded
+        imePanelExpanded = false
+        if (wasExpanded) panelAnimator.collapse()
+        else refreshPanelVisibility()
+        refreshVoiceLevelMeter()
     }
 }

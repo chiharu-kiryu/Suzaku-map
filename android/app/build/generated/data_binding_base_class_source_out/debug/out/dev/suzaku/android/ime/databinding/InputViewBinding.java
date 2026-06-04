@@ -28,6 +28,15 @@ public final class InputViewBinding implements ViewBinding {
   public final LinearLayout candidateStrip;
 
   @NonNull
+  public final ImageButton compactBubbleButton;
+
+  @NonNull
+  public final View compactBubbleDot;
+
+  @NonNull
+  public final FrameLayout compactBubbleShell;
+
+  @NonNull
   public final TextView composePreview;
 
   @NonNull
@@ -55,6 +64,9 @@ public final class InputViewBinding implements ViewBinding {
   public final TextView hostStatus;
 
   @NonNull
+  public final LinearLayout imePanel;
+
+  @NonNull
   public final LinearLayout keyboardDrawer;
 
   @NonNull
@@ -62,6 +74,9 @@ public final class InputViewBinding implements ViewBinding {
 
   @NonNull
   public final LinearLayout keyboardRows;
+
+  @NonNull
+  public final ImageButton toolCollapse;
 
   @NonNull
   public final ImageButton toolHandwrite;
@@ -112,12 +127,15 @@ public final class InputViewBinding implements ViewBinding {
   public final Button voiceUseTranscriptButton;
 
   private InputViewBinding(@NonNull LinearLayout rootView, @NonNull LinearLayout candidateStrip,
-      @NonNull TextView composePreview, @NonNull FrameLayout drawerContainer,
-      @NonNull Button handwriteApplyButton, @NonNull LinearLayout handwriteCandidateStrip,
+      @NonNull ImageButton compactBubbleButton, @NonNull View compactBubbleDot,
+      @NonNull FrameLayout compactBubbleShell, @NonNull TextView composePreview,
+      @NonNull FrameLayout drawerContainer, @NonNull Button handwriteApplyButton,
+      @NonNull LinearLayout handwriteCandidateStrip,
       @NonNull SuzakuHandwriteCanvasView handwriteCanvas, @NonNull Button handwriteClearButton,
       @NonNull LinearLayout handwriteDrawer, @NonNull TextView handwriteStatus,
-      @NonNull TextView hostStatus, @NonNull LinearLayout keyboardDrawer,
-      @NonNull TextView keyboardDrawerTitle, @NonNull LinearLayout keyboardRows,
+      @NonNull TextView hostStatus, @NonNull LinearLayout imePanel,
+      @NonNull LinearLayout keyboardDrawer, @NonNull TextView keyboardDrawerTitle,
+      @NonNull LinearLayout keyboardRows, @NonNull ImageButton toolCollapse,
       @NonNull ImageButton toolHandwrite, @NonNull ImageButton toolKeyboard,
       @NonNull ImageButton toolSettings, @NonNull ImageButton toolVoice,
       @NonNull Button voiceClearButton, @NonNull Button voiceCommitButton,
@@ -128,6 +146,9 @@ public final class InputViewBinding implements ViewBinding {
       @NonNull Button voiceUseTranscriptButton) {
     this.rootView = rootView;
     this.candidateStrip = candidateStrip;
+    this.compactBubbleButton = compactBubbleButton;
+    this.compactBubbleDot = compactBubbleDot;
+    this.compactBubbleShell = compactBubbleShell;
     this.composePreview = composePreview;
     this.drawerContainer = drawerContainer;
     this.handwriteApplyButton = handwriteApplyButton;
@@ -137,9 +158,11 @@ public final class InputViewBinding implements ViewBinding {
     this.handwriteDrawer = handwriteDrawer;
     this.handwriteStatus = handwriteStatus;
     this.hostStatus = hostStatus;
+    this.imePanel = imePanel;
     this.keyboardDrawer = keyboardDrawer;
     this.keyboardDrawerTitle = keyboardDrawerTitle;
     this.keyboardRows = keyboardRows;
+    this.toolCollapse = toolCollapse;
     this.toolHandwrite = toolHandwrite;
     this.toolKeyboard = toolKeyboard;
     this.toolSettings = toolSettings;
@@ -188,6 +211,24 @@ public final class InputViewBinding implements ViewBinding {
       id = R.id.candidateStrip;
       LinearLayout candidateStrip = ViewBindings.findChildViewById(rootView, id);
       if (candidateStrip == null) {
+        break missingId;
+      }
+
+      id = R.id.compactBubbleButton;
+      ImageButton compactBubbleButton = ViewBindings.findChildViewById(rootView, id);
+      if (compactBubbleButton == null) {
+        break missingId;
+      }
+
+      id = R.id.compactBubbleDot;
+      View compactBubbleDot = ViewBindings.findChildViewById(rootView, id);
+      if (compactBubbleDot == null) {
+        break missingId;
+      }
+
+      id = R.id.compactBubbleShell;
+      FrameLayout compactBubbleShell = ViewBindings.findChildViewById(rootView, id);
+      if (compactBubbleShell == null) {
         break missingId;
       }
 
@@ -245,6 +286,12 @@ public final class InputViewBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.imePanel;
+      LinearLayout imePanel = ViewBindings.findChildViewById(rootView, id);
+      if (imePanel == null) {
+        break missingId;
+      }
+
       id = R.id.keyboardDrawer;
       LinearLayout keyboardDrawer = ViewBindings.findChildViewById(rootView, id);
       if (keyboardDrawer == null) {
@@ -260,6 +307,12 @@ public final class InputViewBinding implements ViewBinding {
       id = R.id.keyboardRows;
       LinearLayout keyboardRows = ViewBindings.findChildViewById(rootView, id);
       if (keyboardRows == null) {
+        break missingId;
+      }
+
+      id = R.id.toolCollapse;
+      ImageButton toolCollapse = ViewBindings.findChildViewById(rootView, id);
+      if (toolCollapse == null) {
         break missingId;
       }
 
@@ -359,13 +412,14 @@ public final class InputViewBinding implements ViewBinding {
         break missingId;
       }
 
-      return new InputViewBinding((LinearLayout) rootView, candidateStrip, composePreview,
-          drawerContainer, handwriteApplyButton, handwriteCandidateStrip, handwriteCanvas,
-          handwriteClearButton, handwriteDrawer, handwriteStatus, hostStatus, keyboardDrawer,
-          keyboardDrawerTitle, keyboardRows, toolHandwrite, toolKeyboard, toolSettings, toolVoice,
-          voiceClearButton, voiceCommitButton, voiceDrawer, voiceLevelBar1, voiceLevelBar2,
-          voiceLevelBar3, voiceLevelBar4, voiceLevelRow, voiceListenButton, voiceStatus,
-          voiceTranscriptInput, voiceUseTranscriptButton);
+      return new InputViewBinding((LinearLayout) rootView, candidateStrip, compactBubbleButton,
+          compactBubbleDot, compactBubbleShell, composePreview, drawerContainer,
+          handwriteApplyButton, handwriteCandidateStrip, handwriteCanvas, handwriteClearButton,
+          handwriteDrawer, handwriteStatus, hostStatus, imePanel, keyboardDrawer,
+          keyboardDrawerTitle, keyboardRows, toolCollapse, toolHandwrite, toolKeyboard,
+          toolSettings, toolVoice, voiceClearButton, voiceCommitButton, voiceDrawer, voiceLevelBar1,
+          voiceLevelBar2, voiceLevelBar3, voiceLevelBar4, voiceLevelRow, voiceListenButton,
+          voiceStatus, voiceTranscriptInput, voiceUseTranscriptButton);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

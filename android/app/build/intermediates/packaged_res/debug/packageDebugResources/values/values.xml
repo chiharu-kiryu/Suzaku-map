@@ -3,6 +3,7 @@
     <string name="app_name">Suzaku IME</string>
     <string name="candidate_empty">Keep typing to see suggestions</string>
     <string name="candidate_label_format">%1$d %2$s</string>
+    <string name="collapse_input">Collapse input</string>
     <string name="compose_placeholder">Type to compose</string>
     <string name="handwrite_clear">Clear</string>
     <string name="handwrite_drawer_title">Handwrite input</string>

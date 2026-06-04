@@ -2911,6 +2911,8 @@ drawable candidate_chip_flat
 drawable candidate_chip_primary
 drawable candidate_chip_secondary
 drawable candidate_chip_selected
+drawable compact_bubble_bg
+drawable compact_bubble_dot
 drawable design_fab_background
 drawable design_ic_visibility
 drawable design_ic_visibility_off
@@ -3126,6 +3128,9 @@ id clip_horizontal
 id clip_vertical
 id clockwise
 id collapseActionView
+id compactBubbleButton
+id compactBubbleDot
+id compactBubbleShell
 id composePreview
 id compress
 id confirm_button
@@ -3224,6 +3229,7 @@ id ifRoom
 id ignore
 id ignoreRequest
 id image
+id imePanel
 id indeterminate
 id info
 id invisible
@@ -3455,6 +3461,7 @@ id title
 id titleDividerNoCustom
 id title_template
 id toggle
+id toolCollapse
 id toolHandwrite
 id toolKeyboard
 id toolSettings
@@ -3748,6 +3755,7 @@ string character_counter_content_description
 string character_counter_overflowed_content_description
 string character_counter_pattern
 string clear_text_end_icon_content_description
+string collapse_input
 string compose_placeholder
 string error_a11y_label
 string error_icon_content_description
