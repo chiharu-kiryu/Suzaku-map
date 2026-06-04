@@ -2913,6 +2913,7 @@ drawable candidate_chip_secondary
 drawable candidate_chip_selected
 drawable compact_bubble_bg
 drawable compact_bubble_dot
+drawable compact_bubble_suzaku
 drawable design_fab_background
 drawable design_ic_visibility
 drawable design_ic_visibility_off

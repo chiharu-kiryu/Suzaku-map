@@ -19,8 +19,8 @@
             android:layout_gravity="end"
             android:background="@drawable/compact_bubble_bg"
             android:contentDescription="@string/virtual_keyboard"
-            android:padding="10dp"
-            android:src="@drawable/ic_launcher" />
+            android:padding="9dp"
+            android:src="@drawable/compact_bubble_suzaku" />
 
         <View
             android:id="@+id/compactBubbleDot"

@@ -6,6 +6,7 @@ drawable candidate_chip_secondary
 drawable candidate_chip_selected
 drawable compact_bubble_bg
 drawable compact_bubble_dot
+drawable compact_bubble_suzaku
 drawable gboard_action_button_bg
 drawable gboard_candidate_bar_bg
 drawable gboard_compose_surface

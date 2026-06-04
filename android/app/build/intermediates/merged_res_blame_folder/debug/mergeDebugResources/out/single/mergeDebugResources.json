@@ -36,6 +36,10 @@
         "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/drawable/candidate_chip_flat.xml"
     },
     {
+        "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-debug-4:/drawable_compact_bubble_bg.xml.flat",
+        "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/drawable/compact_bubble_bg.xml"
+    },
+    {
         "merged": "dev.suzaku.android.ime.app-debug-4:/layout_input_view.xml.flat",
         "source": "dev.suzaku.android.ime.app-main-6:/layout/input_view.xml"
     },
@@ -56,6 +60,10 @@
         "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/drawable/gboard_candidate_bar_bg.xml"
     },
     {
+        "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-debug-4:/drawable_compact_bubble_dot.xml.flat",
+        "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/drawable/compact_bubble_dot.xml"
+    },
+    {
         "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-debug-4:/drawable_gboard_action_button_bg.xml.flat",
         "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/drawable/gboard_action_button_bg.xml"
     },
@@ -70,5 +78,9 @@
     {
         "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-debug-4:/drawable_gboard_key_bg.xml.flat",
         "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/drawable/gboard_key_bg.xml"
+    },
+    {
+        "merged": "dev.suzaku.android.ime.app-debug-4:/drawable_compact_bubble_suzaku.xml.flat",
+        "source": "dev.suzaku.android.ime.app-main-6:/drawable/compact_bubble_suzaku.xml"
     }
 ]
