@@ -1,4 +1,5 @@
-use super::{PanelState, point_in_rect};
+use super::PanelState;
+use crate::helpers::point_in_rect;
 use suzaku_map::ime::gpu::{InputMode, InteractionKind};
 use suzaku_map::panel_support::{recognize_handwriting_candidates, summarize_handwriting_strokes};
 

@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-mergeDebugResources-3:/layout/activity_panel.xml",
+        "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/layout/activity_panel.xml"
+    },
+    {
+        "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-mergeDebugResources-3:/layout/candidates_view.xml",
+        "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/layout/candidates_view.xml"
+    },
+    {
+        "merged": "dev.suzaku.android.ime.app-mergeDebugResources-3:/layout/input_view.xml",
+        "source": "dev.suzaku.android.ime.app-main-6:/layout/input_view.xml"
+    },
+    {
+        "merged": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-mergeDebugResources-3:/layout/input_view.xml",
+        "source": "/Users/seis/.gradle/daemon/9.5.1/dev.suzaku.android.ime.app-main-6:/layout/input_view.xml"
+    }
+]

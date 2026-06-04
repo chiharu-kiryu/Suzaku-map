@@ -1,0 +1,241 @@
+impl WgpuCandidateRenderer {
+        pub fn new(scene_width: f32, scene_height: f32) -> Self {
+            Self {
+                scene_width,
+                scene_height,
+            }
+        }
+
+        pub(super) fn responsive_scale(&self) -> f32 {
+            let width_factor = self.scene_width / 900.0;
+            let height_factor = self.scene_height / 780.0;
+            (width_factor * 0.65 + height_factor * 0.35).clamp(0.92, 1.28)
+        }
+
+        pub fn build_scene(&self, snapshot: &Snapshot) -> RenderScene {
+            let chrome = PanelChromeState {
+                seed_text: snapshot.seed_text.clone(),
+                sentence_candidates: snapshot.candidate_labels.iter().take(4).cloned().collect(),
+                sentence_candidate_source_indices: (0..snapshot.candidate_labels.len())
+                    .take(4)
+                    .collect(),
+                ..PanelChromeState::default()
+            };
+            self.build_panel_scene(snapshot, &chrome)
+        }
+
+        pub fn build_compact_scene(
+            &self,
+            snapshot: &Snapshot,
+            chrome: &PanelChromeState,
+            hovered: bool,
+            pressed: bool,
+        ) -> RenderScene {
+            let theme = PanelTheme::for_preset(chrome.theme_preset);
+            let page_bg = theme.page_bg;
+            let halo = if pressed {
+                [0.42, 0.70, 0.97, 0.24]
+            } else if hovered {
+                [0.48, 0.75, 1.0, 0.20]
+            } else {
+                [0.40, 0.66, 0.95, 0.12]
+            };
+            let shell = if pressed {
+                [0.71, 0.83, 0.96, 1.0]
+            } else if hovered {
+                [0.78, 0.88, 0.98, 1.0]
+            } else {
+                [0.73, 0.84, 0.97, 1.0]
+            };
+            let shell_inner = if pressed {
+                [0.87, 0.93, 0.99, 1.0]
+            } else {
+                [0.91, 0.96, 1.0, 1.0]
+            };
+            let shell_core = if pressed {
+                [0.96, 0.98, 1.0, 1.0]
+            } else {
+                [0.98, 0.99, 1.0, 1.0]
+            };
+            let shell_shadow = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.19, 0.28, 0.41, 0.24],
+                ThemePreset::DeviceDark => [0.01, 0.03, 0.07, 0.42],
+            };
+            let glass_ring = if pressed {
+                [0.90, 0.95, 1.0, 0.22]
+            } else if hovered {
+                [0.93, 0.97, 1.0, 0.24]
+            } else {
+                [0.88, 0.94, 1.0, 0.18]
+            };
+            let contact_shadow = match chrome.theme_preset {
+                ThemePreset::Daylight => [0.15, 0.23, 0.35, 0.16],
+                ThemePreset::DeviceDark => [0.01, 0.02, 0.05, 0.28],
+            };
+            let bird_primary = if pressed {
+                [0.77, 0.16, 0.16, 1.0]
+            } else if hovered {
+                [0.84, 0.19, 0.19, 1.0]
+            } else {
+                [0.85, 0.23, 0.23, 1.0]
+            };
+            let bird_secondary = [0.95, 0.47, 0.40, 1.0];
+            let bird_beak = [0.96, 0.67, 0.30, 1.0];
+            let bird_eye = [0.44, 0.09, 0.09, 1.0];
+            let mut quads = Vec::new();
+            let text_quads = Vec::new();
+            let atlas_glyphs = Vec::new();
+            let text_sections = Vec::new();
+            let hit_targets = Vec::new();
+            quads.push(CandidateQuad {
+                rect: [0.0, 0.0, self.scene_width, self.scene_height],
+                color: page_bg,
+            });
+            let orb_size = self.scene_width.min(self.scene_height) - 16.0;
+            let orb_size = orb_size.clamp(56.0, 92.0);
+            let orb_rect = [
+                (self.scene_width - orb_size) / 2.0,
+                (self.scene_height - orb_size) / 2.0,
+                orb_size,
+                orb_size,
+            ];
+            let halo_rect = [
+                orb_rect[0] - orb_size * 0.10,
+                orb_rect[1] - orb_size * 0.10,
+                orb_size * 1.20,
+                orb_size * 1.20,
+            ];
+            let contact_rect = [
+                orb_rect[0] + orb_size * 0.18,
+                orb_rect[1] + orb_size * 0.90,
+                orb_size * 0.64,
+                orb_size * 0.09,
+            ];
+            let ring_rect = [
+                orb_rect[0] + orb_size * 0.08,
+                orb_rect[1] + orb_size * 0.08,
+                orb_size * 0.84,
+                orb_size * 0.84,
+            ];
+            let inner_rect = [
+                orb_rect[0] + orb_size * 0.11,
+                orb_rect[1] + orb_size * 0.11,
+                orb_size * 0.78,
+                orb_size * 0.78,
+            ];
+            let core_rect = [
+                orb_rect[0] + orb_size * 0.24,
+                orb_rect[1] + orb_size * 0.24,
+                orb_size * 0.52,
+                orb_size * 0.52,
+            ];
+            append_rounded_rect_quads(&mut quads, halo_rect, halo, halo_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                contact_rect,
+                contact_shadow,
+                contact_rect[3] * 0.5,
+            );
+            append_soft_card_quads(
+                &mut quads,
+                orb_rect,
+                shell,
+                [0.41, 0.55, 0.73, 1.0],
+                shell_shadow,
+                theme.shell,
+                orb_rect[2] * 0.5,
+            );
+            append_rounded_rect_quads(&mut quads, ring_rect, glass_ring, ring_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    orb_rect[0] + orb_size * 0.04,
+                    orb_rect[1] + orb_size * 0.04,
+                    orb_size * 0.92,
+                    orb_size * 0.18,
+                ],
+                [1.0, 1.0, 1.0, 0.10],
+                orb_rect[2] * 0.26,
+            );
+            append_rounded_rect_quads(&mut quads, inner_rect, shell_inner, inner_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    inner_rect[0] + orb_size * 0.03,
+                    inner_rect[1] + orb_size * 0.03,
+                    inner_rect[2] - orb_size * 0.06,
+                    inner_rect[3] * 0.28,
+                ],
+                [1.0, 1.0, 1.0, 0.12],
+                inner_rect[2] * 0.18,
+            );
+            append_rounded_rect_quads(&mut quads, core_rect, shell_core, core_rect[2] * 0.5);
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    orb_rect[0] + orb_size * 0.22,
+                    orb_rect[1] + orb_size * 0.80,
+                    orb_size * 0.56,
+                    orb_size * 0.06,
+                ],
+                [0.33, 0.63, 0.96, 0.85],
+                orb_size * 0.03,
+            );
+            let mut targets = vec![InteractiveTarget {
+                kind: InteractionKind::ToggleCompactMode,
+                rect: orb_rect,
+            }];
+            let icon_rect = [
+                orb_rect[0] + orb_size * 0.15,
+                orb_rect[1] + orb_size * 0.15,
+                orb_size * 0.70,
+                orb_size * 0.70,
+            ];
+            append_suzaku_bird_icon_quads(
+                &mut quads,
+                icon_rect,
+                bird_primary,
+                bird_secondary,
+                bird_beak,
+                bird_eye,
+            );
+            if !snapshot.candidate_labels.is_empty() {
+                append_rounded_rect_quads(
+                    &mut quads,
+                    [
+                        orb_rect[0] + orb_size * 0.74,
+                        orb_rect[1] + orb_size * 0.18,
+                        orb_size * 0.12,
+                        orb_size * 0.12,
+                    ],
+                    [0.96, 0.33, 0.30, 1.0],
+                    orb_size * 0.06,
+                );
+                append_rounded_rect_quads(
+                    &mut quads,
+                    [
+                        orb_rect[0] + orb_size * 0.78,
+                        orb_rect[1] + orb_size * 0.22,
+                        orb_size * 0.04,
+                        orb_size * 0.04,
+                    ],
+                    [1.0, 0.95, 0.95, 0.95],
+                    orb_size * 0.02,
+                );
+            }
+            RenderScene {
+                quads,
+                text_quads,
+                atlas_glyphs,
+                text_sections,
+                hit_targets,
+                interactive_targets: std::mem::take(&mut targets),
+                labels: snapshot.candidate_labels.clone(),
+                selected_label: snapshot
+                    .candidate_labels
+                    .get(snapshot.selected_index)
+                    .cloned(),
+                draft_text: snapshot.draft_text.clone(),
+            }
+        }
+}

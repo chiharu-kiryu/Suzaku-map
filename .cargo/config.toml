@@ -11,3 +11,5 @@ install-open-ime-app-macos = "run --features gpu --bin macos_bundle -- ime insta
 enable-ime-app-macos = "run --features gpu --bin macos_bundle -- ime enable"
 install-enable-ime-app-macos = "run --features gpu --bin macos_bundle -- ime install-enable"
 test-gpu = "test --features gpu"
+android-ime-host = "run --features gpu --bin android_ime_host"
+android-doctor = "run --features gpu --bin android_doctor"

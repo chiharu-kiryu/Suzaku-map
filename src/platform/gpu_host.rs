@@ -11,14 +11,14 @@ use winit::platform::windows::WindowAttributesExtWindows;
 use winit::window::Theme;
 use winit::window::WindowAttributes;
 
-pub fn configure_event_loop_builder(builder: &mut EventLoopBuilder<()>) {
+pub fn configure_event_loop_builder(_builder: &mut EventLoopBuilder<()>) {
     #[cfg(target_os = "macos")]
     {
         use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
 
-        builder.with_activation_policy(ActivationPolicy::Regular);
-        builder.with_default_menu(true);
-        builder.with_activate_ignoring_other_apps(true);
+        _builder.with_activation_policy(ActivationPolicy::Regular);
+        _builder.with_default_menu(true);
+        _builder.with_activate_ignoring_other_apps(true);
     }
 }
 
@@ -85,10 +85,10 @@ pub fn is_quit_shortcut(modifiers: ModifiersState) -> bool {
     }
 }
 
-pub fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'static str)> {
+pub fn preferred_font_paths(_font_face: FontFaceChoice) -> Vec<(&'static str, &'static str)> {
     #[cfg(target_os = "macos")]
     {
-        return match font_face {
+        return match _font_face {
             FontFaceChoice::Auto => vec![
                 ("/System/Library/Fonts/Monaco.ttf", "Monaco"),
                 ("/System/Library/Fonts/Supplemental/Menlo.ttc", "Menlo"),
@@ -116,12 +116,12 @@ pub fn preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static str, &'s
 
     #[cfg(target_os = "windows")]
     {
-        return windows::preferred_font_paths(font_face);
+        return windows::preferred_font_paths(_font_face);
     }
 
     #[cfg(target_os = "linux")]
     {
-        return linux::ubuntu_preferred_font_paths(font_face);
+        return linux::ubuntu_preferred_font_paths(_font_face);
     }
 
     #[allow(unreachable_code)]

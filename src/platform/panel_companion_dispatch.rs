@@ -87,6 +87,14 @@ mod tests {
     }
 
     #[test]
+    fn android_uses_debug_companion_role() {
+        assert_eq!(
+            dispatch_for(TargetPlatform::Android).role,
+            PanelCompanionRole::DebugCompanion
+        );
+    }
+
+    #[test]
     fn linux_targets_keep_primary_panel_role_for_now() {
         for platform in [
             TargetPlatform::Ubuntu,

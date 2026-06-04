@@ -146,6 +146,69 @@ pub fn reset_host_bridge_session() {
         .expect("shared host ime last commit lock poisoned") = None;
 }
 
+pub fn host_bridge_activate() -> bool {
+    with_shared_host_ime_session(|session| {
+        session.activate();
+        true
+    })
+}
+
+pub fn host_bridge_deactivate() {
+    with_shared_host_ime_session(|session| {
+        session.deactivate();
+    });
+}
+
+pub fn host_bridge_replace_marked_text(text: &str, source: InputSource) -> bool {
+    with_shared_host_ime_session(|session| {
+        session.replace_marked_text(text, source);
+        true
+    })
+}
+
+pub fn host_bridge_clear_marked_text() {
+    with_shared_host_ime_session(|session| {
+        session.clear_marked_text();
+    });
+}
+
+pub fn host_bridge_move_selection(delta: isize) {
+    with_shared_host_ime_session(|session| {
+        session.move_selection(delta);
+    });
+}
+
+pub fn host_bridge_select_candidate(index: usize) {
+    with_shared_host_ime_session(|session| {
+        session.select_candidate(index);
+    });
+}
+
+pub fn host_bridge_commit_selected(force: bool) -> bool {
+    with_shared_host_ime_session(|session| {
+        let previous = session.snapshot().committed_text;
+        let (result, _update) = session.commit_selected(CommitOptions { force });
+        if result.ok {
+            let committed_chunk = result
+                .text
+                .as_deref()
+                .map(|text| extract_new_commit_chunk(&previous, text))
+                .unwrap_or_default();
+            *shared_last_commit()
+                .lock()
+                .expect("shared host ime last commit lock poisoned") = Some(committed_chunk);
+        }
+        result.ok
+    })
+}
+
+pub fn host_bridge_take_last_committed_text() -> Option<String> {
+    shared_last_commit()
+        .lock()
+        .expect("shared host ime last commit lock poisoned")
+        .take()
+}
+
 fn read_optional_utf8(raw: *const std::os::raw::c_char) -> Option<String> {
     if raw.is_null() {
         return None;
@@ -184,17 +247,12 @@ fn into_raw_c_string(value: String) -> *mut std::os::raw::c_char {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_activate() -> bool {
-    with_shared_host_ime_session(|session| {
-        session.activate();
-        true
-    })
+    host_bridge_activate()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_deactivate() {
-    with_shared_host_ime_session(|session| {
-        session.deactivate();
-    });
+    host_bridge_deactivate();
 }
 
 #[unsafe(no_mangle)]
@@ -205,50 +263,27 @@ pub extern "C" fn suzaku_host_ime_replace_marked_text_utf8(
         return false;
     };
 
-    with_shared_host_ime_session(|session| {
-        session.replace_marked_text(&text, InputSource::HardwareKeyboard);
-    });
-    true
+    host_bridge_replace_marked_text(&text, InputSource::HardwareKeyboard)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_clear_marked_text() {
-    with_shared_host_ime_session(|session| {
-        session.clear_marked_text();
-    });
+    host_bridge_clear_marked_text();
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_move_selection(delta: isize) {
-    with_shared_host_ime_session(|session| {
-        session.move_selection(delta);
-    });
+    host_bridge_move_selection(delta);
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_select_candidate(index: usize) {
-    with_shared_host_ime_session(|session| {
-        session.select_candidate(index);
-    });
+    host_bridge_select_candidate(index);
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_commit_selected(force: bool) -> bool {
-    with_shared_host_ime_session(|session| {
-        let previous = session.snapshot().committed_text;
-        let (result, _update) = session.commit_selected(CommitOptions { force });
-        if result.ok {
-            let committed_chunk = result
-                .text
-                .as_deref()
-                .map(|text| extract_new_commit_chunk(&previous, text))
-                .unwrap_or_default();
-            *shared_last_commit()
-                .lock()
-                .expect("shared host ime last commit lock poisoned") = Some(committed_chunk);
-        }
-        result.ok
-    })
+    host_bridge_commit_selected(force)
 }
 
 #[unsafe(no_mangle)]
@@ -291,10 +326,7 @@ pub extern "C" fn suzaku_host_ime_display_text_utf8() -> *mut std::os::raw::c_ch
 
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_take_last_committed_text_utf8() -> *mut std::os::raw::c_char {
-    let mut guard = shared_last_commit()
-        .lock()
-        .expect("shared host ime last commit lock poisoned");
-    match guard.take() {
+    match host_bridge_take_last_committed_text() {
         Some(text) if !text.is_empty() => into_raw_c_string(text),
         _ => std::ptr::null_mut(),
     }

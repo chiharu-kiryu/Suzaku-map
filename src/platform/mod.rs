@@ -2,6 +2,7 @@
 pub enum TargetPlatform {
     MacOs,
     Windows,
+    Android,
     Ubuntu,
     ArchLinux,
     SteamOs,
@@ -55,12 +56,16 @@ pub fn support_for(platform: TargetPlatform) -> PlatformSupport {
     match platform {
         TargetPlatform::MacOs => macos::support_profile(),
         TargetPlatform::Windows => windows::support_profile(),
+        TargetPlatform::Android => android::support_profile(),
         TargetPlatform::Ubuntu => linux::ubuntu_support_profile(),
         TargetPlatform::ArchLinux => linux::arch_support_profile(),
         TargetPlatform::SteamOs => linux::steamos_support_profile(),
     }
 }
 
+pub mod android;
+pub mod android_ime;
+pub mod android_jni_bridge;
 pub mod companion_style;
 pub mod fallback_voice;
 pub mod gpu_host;
@@ -81,9 +86,10 @@ pub mod windows;
 pub mod windows_ime;
 pub mod windows_voice;
 
-pub const PLATFORM_SUPPORT_ROADMAP: [PlatformSupport; 5] = [
+pub const PLATFORM_SUPPORT_ROADMAP: [PlatformSupport; 6] = [
     support_for_const(TargetPlatform::MacOs),
     support_for_const(TargetPlatform::Windows),
+    support_for_const(TargetPlatform::Android),
     support_for_const(TargetPlatform::Ubuntu),
     support_for_const(TargetPlatform::ArchLinux),
     support_for_const(TargetPlatform::SteamOs),
@@ -106,6 +112,18 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
         TargetPlatform::Windows => PlatformSupport {
             platform: TargetPlatform::Windows,
             tier: SupportTier::Primary,
+            capabilities: PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: true,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: true,
+            },
+        },
+        TargetPlatform::Android => PlatformSupport {
+            platform: TargetPlatform::Android,
+            tier: SupportTier::Secondary,
             capabilities: PlatformCapabilities {
                 window_host: true,
                 gpu_panel: true,
@@ -174,6 +192,7 @@ mod tests {
     #[test]
     fn linux_targets_remain_in_secondary_rollout() {
         for target in [
+            TargetPlatform::Android,
             TargetPlatform::Ubuntu,
             TargetPlatform::ArchLinux,
             TargetPlatform::SteamOs,

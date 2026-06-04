@@ -1,12 +1,13 @@
 use super::{
-    SupportTier, TargetPlatform, host_platform, linux, linux_ime, macos, macos_ime, support_for,
-    windows, windows_ime,
+    SupportTier, TargetPlatform, android, android_ime, host_platform, linux, linux_ime, macos,
+    macos_ime, support_for, windows, windows_ime,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImeHostBackendKind {
     MacOsInputMethodKit,
     WindowsTextServicesFramework,
+    AndroidInputMethodService,
     LinuxIbusFcitx,
 }
 
@@ -89,6 +90,27 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
                 },
             }
         }
+        TargetPlatform::Android => {
+            let bootstrap = android_ime::bootstrap_status();
+            ImeHostDispatch {
+                platform,
+                tier: support.tier,
+                backend: ImeHostBackendKind::AndroidInputMethodService,
+                system_ime_host: android::support_profile().capabilities.system_ime_host,
+                marked_text_roundtrip: bootstrap.marked_text_roundtrip_ready,
+                commit_roundtrip: bootstrap.commit_roundtrip_ready,
+                native_candidate_window: bootstrap.native_candidate_window_ready,
+                notes: if bootstrap.host_registration_ready {
+                    "Android InputMethodService host bootstrap is registered and ready for candidate-strip and commit wiring."
+                        .to_string()
+                } else {
+                    format!(
+                        "Android will route through InputMethodService; current service id is {} and the GPU panel should move toward a Gboard-like debug companion.",
+                        bootstrap.recommended_service_name
+                    )
+                },
+            }
+        }
         TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs => {
             let bootstrap = linux_ime::bootstrap_status(platform);
             ImeHostDispatch {
@@ -142,6 +164,16 @@ mod tests {
         assert_eq!(
             dispatch.backend,
             ImeHostBackendKind::WindowsTextServicesFramework
+        );
+        assert!(dispatch.system_ime_host);
+    }
+
+    #[test]
+    fn android_dispatch_reserves_ims_backend() {
+        let dispatch = dispatch_for(TargetPlatform::Android);
+        assert_eq!(
+            dispatch.backend,
+            ImeHostBackendKind::AndroidInputMethodService
         );
         assert!(dispatch.system_ime_host);
     }

@@ -1,5 +1,4 @@
 use crate::ime::gpu::{VoiceCaptureState, VoicePermissionState};
-use std::process::Command;
 
 use crate::platform::fallback_voice::FallbackSpeechBridge;
 #[cfg(target_os = "linux")]
@@ -71,6 +70,8 @@ pub fn voice_status_text(
 pub fn open_voice_permission_settings() -> bool {
     #[cfg(target_os = "macos")]
     {
+        use std::process::Command;
+
         return Command::new("open")
             .arg(
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition",
@@ -82,6 +83,8 @@ pub fn open_voice_permission_settings() -> bool {
 
     #[cfg(target_os = "windows")]
     {
+        use std::process::Command;
+
         return Command::new("cmd")
             .args(["/C", "start", "ms-settings:privacy-microphone"])
             .status()

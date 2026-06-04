@@ -120,6 +120,7 @@ The platform bootstrap modules now line up with that dispatch:
 
 - macOS: [src/platform/macos_ime.rs](./src/platform/macos_ime.rs)
 - Windows: [src/platform/windows_ime.rs](./src/platform/windows_ime.rs)
+- Android: [src/platform/android_ime.rs](./src/platform/android_ime.rs)
 - Linux: [src/platform/linux_ime.rs](./src/platform/linux_ime.rs)
 
 Right now only macOS has a live `marked text -> commit` roundtrip. Windows and Linux now expose stable host-shell metadata and recommended registration identifiers so their native adapters can grow without changing the shared host-session contract.
@@ -157,9 +158,10 @@ The current rollout priority is explicit and now reflected in code:
 
 1. macOS
 2. Windows
-3. Ubuntu
-4. Arch Linux
-5. SteamOS
+3. Android
+4. Ubuntu
+5. Arch Linux
+6. SteamOS
 
 The shared support roadmap lives in [src/platform/mod.rs](./src/platform/mod.rs), with host-specific stubs in:
 
@@ -175,6 +177,32 @@ The intent is to keep the IME engine and renderer portable, while moving platfor
 - future IME host integration points
 
 Today, macOS is the most complete target. Windows is the next primary host target. Ubuntu, Arch Linux, and SteamOS remain planned secondary hosts after the desktop path is stable on macOS and Windows.
+
+## Android IME Skeleton
+
+The repository now includes a first Android project shell at [android/README.md](./android/README.md).
+
+It currently provides:
+
+- Gradle Android app scaffolding under [android/app](./android/app)
+- an `InputMethodService` entry point at [android/app/src/main/java/dev/suzaku/android/ime/SuzakuInputMethodService.kt](./android/app/src/main/java/dev/suzaku/android/ime/SuzakuInputMethodService.kt)
+- a launcher activity for debug/bootstrap status at [android/app/src/main/java/dev/suzaku/android/ime/SuzakuPanelActivity.kt](./android/app/src/main/java/dev/suzaku/android/ime/SuzakuPanelActivity.kt)
+- a Rust-side Android host bootstrap command: `cargo android-ime-host`
+- a local environment check command: `cargo android-doctor`
+- a debug APK installer helper: `bash scripts/android-install-debug.sh`
+- an IME enable helper: `bash scripts/android-enable-ime.sh`
+
+The Rust side is now prepared to emit a `cdylib` for Android and expose JNI-friendly host descriptions through [src/platform/android_jni_bridge.rs](./src/platform/android_jni_bridge.rs).
+
+Current machine status:
+
+- Rust Android targets are installed
+- `adb` is available
+- Android SDK command-line tools are installed under `/opt/homebrew/share/android-commandlinetools`
+- `platform-tools`, `platforms;android-35`, and `build-tools;35.0.0` are installed
+- `android/local.properties` points the Android project at that SDK root
+- Homebrew `openjdk` is installed
+- Homebrew `gradle` is installed, though it may still need host-specific follow-up on macOS 26 native services
 
 ## Ubuntu Host Status
 
