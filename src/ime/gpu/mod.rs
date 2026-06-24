@@ -1,3 +1,5 @@
+//! GPU-facing scene builders for the debug companion panel.
+
 use super::{
     Snapshot, append_backspace_icon_quads, append_chevron_icon_quads, append_gear_icon_quads,
     append_keyboard_icon_quads, append_mic_icon_quads, append_next_icon_quads,
@@ -7,9 +9,9 @@ use super::{
 };
 
 mod glyphs;
-mod panel_scene_impl;
-mod scene_basics_impl;
-mod settings_scene_impl;
+mod panel_scene;
+mod scene_basics;
+mod settings_scene;
 mod text_helpers;
 mod theme_metrics;
 mod types;

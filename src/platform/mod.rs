@@ -1,3 +1,5 @@
+//! Platform capability matrix and host/companion adapters.
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetPlatform {
     MacOs,

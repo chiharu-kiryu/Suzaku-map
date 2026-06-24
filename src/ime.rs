@@ -1,3 +1,5 @@
+//! Shared IME engine and GPU debug-companion entry points.
+
 mod core_engine;
 mod core_helpers;
 mod core_icons_a;

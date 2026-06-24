@@ -1,3 +1,5 @@
+//! Suzaku Map hosts the shared IME engine, system-host adapters, and debug companions.
+
 pub mod ime;
 pub mod ime_host;
 pub mod languages;
