@@ -135,17 +135,17 @@ class SuzakuInputMethodService : InputMethodService() {
         styleToolButton(toolSettings)
         styleToolButton(toolCollapse)
         styleToolButton(compactBubbleButton)
-        toolKeyboard.setOnClickListener {
-            expandIme(DrawerMode.KEYBOARD)
-        }
-        toolVoice.setOnClickListener {
-            expandIme(DrawerMode.VOICE)
-        }
-        toolHandwrite.setOnClickListener {
-            expandIme(DrawerMode.HANDWRITE)
-        }
+        toolKeyboard.setOnClickListener { expandIme(DrawerMode.KEYBOARD) }
+        toolVoice.setOnClickListener { expandIme(DrawerMode.VOICE) }
+        toolHandwrite.setOnClickListener { expandIme(DrawerMode.HANDWRITE) }
         toolSettings.setOnClickListener {
-            hostStatus.text = getString(R.string.tool_settings_pending)
+            hostStatus.text = buildString {
+                append(SuzakuNativeBridge.nativeRegistrationHint())
+                append(" · ")
+                append(SuzakuNativeBridge.nativeRegistrationTarget())
+                append(" · ready=")
+                append(SuzakuNativeBridge.nativeRegistrationReady())
+            }
         }
         toolCollapse.setOnClickListener { collapseIme() }
         compactBubbleButton.setOnClickListener { expandIme(drawerMode) }
@@ -309,7 +309,7 @@ class SuzakuInputMethodService : InputMethodService() {
                     currentInputConnection?.commitText(" ", 1)
                 }
             }
-            "Shift", "123" -> hostStatus.text = getString(R.string.host_status_ready)
+            "Shift", "123" -> hostStatus.text = SuzakuNativeBridge.nativeDescribeImeHost()
             else -> appendCharacter(key)
         }
         refreshImeUi()
@@ -340,9 +340,7 @@ class SuzakuInputMethodService : InputMethodService() {
 
     private fun refreshImeUi() {
         val displayText = SuzakuNativeBridge.nativeDisplayText()
-        composePreview.text = displayText.ifEmpty {
-            getString(R.string.compose_placeholder)
-        }
+        composePreview.text = displayText.ifEmpty { getString(R.string.compose_placeholder) }
         hostStatus.text = SuzakuNativeBridge.nativeDescribeImeHost()
         refreshCandidateStrip(candidateStrip)
         refreshPanelVisibility()

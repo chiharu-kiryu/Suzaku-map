@@ -6,8 +6,12 @@ object SuzakuNativeBridge {
     }
 
     external fun nativeDescribeImeHost(): String
+    external fun nativeDescribeImeDispatch(): String
     external fun nativeDescribePanelCompanion(): String
     external fun nativeDescribeBootstrap(): String
+    external fun nativeRegistrationHint(): String
+    external fun nativeRegistrationTarget(): String
+    external fun nativeRegistrationReady(): Boolean
 
     external fun nativeActivateSession(): Boolean
     external fun nativeDeactivateSession()

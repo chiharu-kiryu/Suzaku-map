@@ -8,6 +8,59 @@ bool suzaku_input_methodkit_available(void) {
     }
 }
 
+char *suzaku_input_methodkit_adapter_summary(void) {
+    @autoreleasepool {
+        NSString *summary =
+            suzakuBridgeTakePlatformNSString(suzaku_host_platform_adapter_summary_utf8);
+        if (summary == nil || summary.length == 0) {
+            return NULL;
+        }
+        const char *utf8 = [summary UTF8String];
+        if (utf8 == NULL) {
+            return NULL;
+        }
+        return strdup(utf8);
+    }
+}
+
+char *suzaku_input_methodkit_registration_target(void) {
+    @autoreleasepool {
+        NSString *target =
+            suzakuBridgeTakePlatformNSString(suzaku_host_platform_registration_target_utf8);
+        if (target == nil || target.length == 0) {
+            return NULL;
+        }
+        const char *utf8 = [target UTF8String];
+        if (utf8 == NULL) {
+            return NULL;
+        }
+        return strdup(utf8);
+    }
+}
+
+char *suzaku_input_methodkit_registration_hint(void) {
+    @autoreleasepool {
+        NSString *hint =
+            suzakuBridgeTakePlatformNSString(suzaku_host_platform_registration_hint_utf8);
+        if (hint == nil || hint.length == 0) {
+            return NULL;
+        }
+        const char *utf8 = [hint UTF8String];
+        if (utf8 == NULL) {
+            return NULL;
+        }
+        return strdup(utf8);
+    }
+}
+
+bool suzaku_input_methodkit_registration_ready(void) {
+    return suzaku_host_platform_registration_ready();
+}
+
+bool suzaku_input_methodkit_on_demand_companion(void) {
+    return suzaku_host_platform_on_demand_companion();
+}
+
 bool suzaku_input_methodkit_bundled_runtime(void) {
     @autoreleasepool {
         NSString *bundlePath = [[NSBundle mainBundle] bundlePath];

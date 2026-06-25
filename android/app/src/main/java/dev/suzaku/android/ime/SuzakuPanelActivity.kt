@@ -10,11 +10,23 @@ class SuzakuPanelActivity : AppCompatActivity() {
         setContentView(R.layout.activity_panel)
 
         findViewById<TextView>(R.id.bootstrapStatus).text =
-            runCatching { SuzakuNativeBridge.nativeDescribeBootstrap() }
-                .getOrElse { "Android bootstrap unavailable" }
+            runCatching {
+                buildString {
+                    append(SuzakuNativeBridge.nativeDescribeImeHost())
+                    append("\n\n")
+                    append(SuzakuNativeBridge.nativeDescribeBootstrap())
+                }
+            }.getOrElse { "Android bootstrap unavailable" }
 
         findViewById<TextView>(R.id.panelStatus).text =
-            runCatching { SuzakuNativeBridge.nativeDescribePanelCompanion() }
-                .getOrElse { "Panel companion unavailable" }
+            runCatching {
+                buildString {
+                    append(SuzakuNativeBridge.nativeRegistrationHint())
+                    append("\n")
+                    append(SuzakuNativeBridge.nativeDescribeImeDispatch())
+                    append("\n")
+                    append(SuzakuNativeBridge.nativeDescribePanelCompanion())
+                }
+            }.getOrElse { "Panel companion unavailable" }
     }
 }

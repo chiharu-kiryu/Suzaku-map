@@ -1,13 +1,11 @@
 #[cfg(target_os = "android")]
-use super::{TargetPlatform, android_ime, ime_host_dispatch, panel_companion_dispatch};
+use super::{
+    TargetPlatform, android_ime, ime_host_adapter, ime_host_dispatch, panel_companion_dispatch,
+};
 #[cfg(target_os = "android")]
 use crate::ime::InputSource;
 #[cfg(target_os = "android")]
-use crate::ime_host::{
-    host_bridge_activate, host_bridge_clear_marked_text, host_bridge_commit_selected,
-    host_bridge_deactivate, host_bridge_move_selection, host_bridge_replace_marked_text,
-    host_bridge_select_candidate, host_bridge_snapshot, host_bridge_take_last_committed_text,
-};
+use crate::platform::ime_host_adapter::{ImeHostSessionBridge, shared_session_bridge};
 use std::ffi::{CString, c_char};
 
 #[cfg(target_os = "android")]
@@ -49,6 +47,18 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeDesc
 ) -> jstring {
     into_java_string(
         &mut env,
+        ime_host_adapter::adapter_profile_for(TargetPlatform::Android).describe(),
+    )
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeDescribeImeDispatch(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    into_java_string(
+        &mut env,
         ime_host_dispatch::dispatch_for(TargetPlatform::Android).describe(),
     )
 }
@@ -76,11 +86,44 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeDesc
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeRegistrationHint(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    into_java_string(
+        &mut env,
+        ime_host_adapter::adapter_profile_for(TargetPlatform::Android).registration_hint,
+    )
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeRegistrationTarget(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    into_java_string(
+        &mut env,
+        ime_host_adapter::adapter_profile_for(TargetPlatform::Android).registration_target,
+    )
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeRegistrationReady(
+    _env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jboolean {
+    as_jboolean(ime_host_adapter::adapter_profile_for(TargetPlatform::Android).registration_ready)
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeActivateSession(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jboolean {
-    as_jboolean(host_bridge_activate())
+    as_jboolean(shared_session_bridge().activate_session())
 }
 
 #[cfg(target_os = "android")]
@@ -89,7 +132,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeDeac
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) {
-    host_bridge_deactivate();
+    shared_session_bridge().deactivate_session();
 }
 
 #[cfg(target_os = "android")]
@@ -100,10 +143,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeRepl
     value: JString<'_>,
 ) -> jboolean {
     let text = from_java_string(&mut env, value).unwrap_or_default();
-    as_jboolean(host_bridge_replace_marked_text(
-        &text,
-        InputSource::OnScreenPanel,
-    ))
+    as_jboolean(shared_session_bridge().replace_marked_text(&text, InputSource::OnScreenPanel))
 }
 
 #[cfg(target_os = "android")]
@@ -112,7 +152,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeClea
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) {
-    host_bridge_clear_marked_text();
+    shared_session_bridge().clear_marked_text();
 }
 
 #[cfg(target_os = "android")]
@@ -122,7 +162,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeMove
     _class: JClass<'_>,
     delta: jint,
 ) {
-    host_bridge_move_selection(delta as isize);
+    shared_session_bridge().move_selection(delta as isize);
 }
 
 #[cfg(target_os = "android")]
@@ -133,7 +173,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeSele
     index: jint,
 ) {
     if index >= 0 {
-        host_bridge_select_candidate(index as usize);
+        shared_session_bridge().select_candidate(index as usize);
     }
 }
 
@@ -144,7 +184,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeComm
     _class: JClass<'_>,
     force: jboolean,
 ) -> jboolean {
-    as_jboolean(host_bridge_commit_selected(force != JNI_FALSE))
+    as_jboolean(shared_session_bridge().commit_selected(force != JNI_FALSE))
 }
 
 #[cfg(target_os = "android")]
@@ -153,7 +193,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeCand
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jint {
-    host_bridge_snapshot().candidate_count as jint
+    shared_session_bridge().snapshot().candidate_count as jint
 }
 
 #[cfg(target_os = "android")]
@@ -162,7 +202,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeSele
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jint {
-    host_bridge_snapshot().selected_index as jint
+    shared_session_bridge().snapshot().selected_index as jint
 }
 
 #[cfg(target_os = "android")]
@@ -173,7 +213,8 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeCand
     index: jint,
 ) -> jstring {
     let label = if index >= 0 {
-        host_bridge_snapshot()
+        shared_session_bridge()
+            .snapshot()
             .candidate_labels
             .get(index as usize)
             .cloned()
@@ -190,7 +231,7 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeDisp
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
-    let snapshot = host_bridge_snapshot();
+    let snapshot = shared_session_bridge().snapshot();
     let text = if !snapshot.draft_text.is_empty() {
         snapshot.draft_text
     } else {
@@ -207,7 +248,9 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeTake
 ) -> jstring {
     into_java_string(
         &mut env,
-        host_bridge_take_last_committed_text().unwrap_or_default(),
+        shared_session_bridge()
+            .take_last_committed_text()
+            .unwrap_or_default(),
     )
 }
 

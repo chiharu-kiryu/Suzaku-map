@@ -40,6 +40,11 @@ name = "macos_ime_host"
 path = "src/bin/macos_ime_host.rs"
 
 [[bin]]
+name = "ime_host"
+path = "src/bin/ime_host.rs"
+required-features = ["gpu"]
+
+[[bin]]
 name = "android_ime_host"
 path = "src/bin/android_ime_host.rs"
 required-features = ["gpu"]

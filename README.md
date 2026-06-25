@@ -44,10 +44,16 @@ Core contract:
 
 - [/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs)
 
+Adapter and lifecycle contract:
+
+- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs)
+
 Dispatch and capability map:
 
 - [/Users/Shared/chroot/dev/Suzaku-map/src/platform/mod.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/mod.rs)
+- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs)
 - [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_dispatch.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_dispatch.rs)
+- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs)
 - [/Users/Shared/chroot/dev/Suzaku-map/src/platform/panel_companion_dispatch.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/panel_companion_dispatch.rs)
 
 Current platform direction:
@@ -79,6 +85,8 @@ Companion style lives in:
 - [/Users/Shared/chroot/dev/Suzaku-map/src/lib.rs](/Users/Shared/chroot/dev/Suzaku-map/src/lib.rs)
 - [/Users/Shared/chroot/dev/Suzaku-map/src/ime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime.rs)
 - [/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs)
+- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs)
+- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs)
 - [/Users/Shared/chroot/dev/Suzaku-map/src/panel_support.rs](/Users/Shared/chroot/dev/Suzaku-map/src/panel_support.rs)
 
 ### Desktop Panel
@@ -118,6 +126,7 @@ The original system notes are still part of the repository and now serve as back
 ```bash
 cargo check --features gpu
 cargo test --features gpu
+cargo ime-host
 ```
 
 ### Desktop GPU companion
@@ -164,6 +173,7 @@ cargo android-doctor
 Rust-side host bootstrap:
 
 ```bash
+cargo ime-host
 cargo android-ime-host
 ```
 

@@ -1,9 +1,28 @@
 use crate::ime_host::host_bridge_snapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MacOsImeBridgeState {
+    pub input_methodkit_available: bool,
+    pub bundled_runtime: bool,
+    pub main_bundle_identifier: Option<String>,
+    pub bundle_connection_name: Option<String>,
+    pub controller_class_name: Option<String>,
+    pub controller_lifecycle_ready: bool,
+    pub server_bootstrap_ready: bool,
+    pub controller_debug_state: MacOsImeControllerDebugState,
+    pub candidate_companion: MacOsImeCandidateCompanionState,
+    pub host_session: MacOsImeHostSessionDebugState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MacOsImeBootstrap {
     pub input_methodkit_available: bool,
     pub bundled_runtime: bool,
+    pub adapter_summary: Option<String>,
+    pub registration_target: Option<String>,
+    pub registration_hint: Option<String>,
+    pub registration_ready: bool,
+    pub on_demand_companion: bool,
     pub main_bundle_identifier: Option<String>,
     pub bundle_connection_name: Option<String>,
     pub controller_class_name: Option<String>,
@@ -49,9 +68,14 @@ pub struct MacOsImeCandidateCompanionState {
 impl MacOsImeBootstrap {
     pub fn describe(&self) -> String {
         format!(
-            "IMK available: {} | bundled: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | controller active: {} | controller init/activate/input/commit: {}/{}/{}/{} | last marked: {} | candidate companion ready: {} | visible: {} | companion refreshes: {} | companion selected: {} | companion hovered: {} | companion primary: {} | host session active: {} | host marked: {} | host candidates: {} | host committed: {} | recommended connection: {}",
+            "IMK available: {} | bundled: {} | adapter: {} | registration target: {} | registration hint: {} | registration ready: {} | on-demand companion: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | controller active: {} | controller init/activate/input/commit: {}/{}/{}/{} | last marked: {} | candidate companion ready: {} | visible: {} | companion refreshes: {} | companion selected: {} | companion hovered: {} | companion primary: {} | host session active: {} | host marked: {} | host candidates: {} | host committed: {} | recommended connection: {}",
             self.input_methodkit_available,
             self.bundled_runtime,
+            self.adapter_summary.as_deref().unwrap_or("(none)"),
+            self.registration_target.as_deref().unwrap_or("(none)"),
+            self.registration_hint.as_deref().unwrap_or("(none)"),
+            self.registration_ready,
+            self.on_demand_companion,
             self.main_bundle_identifier.as_deref().unwrap_or("(none)"),
             self.bundle_connection_name.as_deref().unwrap_or("(none)"),
             self.controller_class_name.as_deref().unwrap_or("(none)"),
@@ -100,9 +124,55 @@ pub fn recommended_connection_name() -> String {
 }
 
 pub fn bootstrap_status() -> MacOsImeBootstrap {
+    let bridge = bridge_state();
+
     #[cfg(target_os = "macos")]
     {
         return MacOsImeBootstrap {
+            input_methodkit_available: bridge.input_methodkit_available,
+            bundled_runtime: bridge.bundled_runtime,
+            adapter_summary: adapter_summary(),
+            registration_target: registration_target(),
+            registration_hint: registration_hint(),
+            registration_ready: registration_ready(),
+            on_demand_companion: on_demand_companion(),
+            main_bundle_identifier: bridge.main_bundle_identifier,
+            bundle_connection_name: bridge.bundle_connection_name,
+            controller_class_name: bridge.controller_class_name,
+            controller_lifecycle_ready: bridge.controller_lifecycle_ready,
+            server_bootstrap_ready: bridge.server_bootstrap_ready,
+            controller_debug_state: bridge.controller_debug_state,
+            candidate_companion: bridge.candidate_companion,
+            host_session: bridge.host_session,
+            recommended_connection_name: recommended_connection_name(),
+        };
+    }
+
+    #[allow(unreachable_code)]
+    MacOsImeBootstrap {
+        input_methodkit_available: bridge.input_methodkit_available,
+        bundled_runtime: bridge.bundled_runtime,
+        adapter_summary: None,
+        registration_target: None,
+        registration_hint: None,
+        registration_ready: false,
+        on_demand_companion: true,
+        main_bundle_identifier: bridge.main_bundle_identifier,
+        bundle_connection_name: bridge.bundle_connection_name,
+        controller_class_name: bridge.controller_class_name,
+        controller_lifecycle_ready: bridge.controller_lifecycle_ready,
+        server_bootstrap_ready: bridge.server_bootstrap_ready,
+        controller_debug_state: bridge.controller_debug_state,
+        candidate_companion: bridge.candidate_companion,
+        host_session: bridge.host_session,
+        recommended_connection_name: recommended_connection_name(),
+    }
+}
+
+pub(crate) fn bridge_state() -> MacOsImeBridgeState {
+    #[cfg(target_os = "macos")]
+    {
+        return MacOsImeBridgeState {
             input_methodkit_available: input_methodkit_available(),
             bundled_runtime: bundled_runtime(),
             main_bundle_identifier: main_bundle_identifier(),
@@ -113,12 +183,11 @@ pub fn bootstrap_status() -> MacOsImeBootstrap {
             controller_debug_state: controller_debug_state(),
             candidate_companion: candidate_companion_state(),
             host_session: host_session_debug_state(),
-            recommended_connection_name: recommended_connection_name(),
         };
     }
 
     #[allow(unreachable_code)]
-    MacOsImeBootstrap {
+    MacOsImeBridgeState {
         input_methodkit_available: false,
         bundled_runtime: false,
         main_bundle_identifier: None,
@@ -151,8 +220,52 @@ pub fn bootstrap_status() -> MacOsImeBootstrap {
             candidate_count: 0,
             selected_index: 0,
         },
-        recommended_connection_name: recommended_connection_name(),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn adapter_summary() -> Option<String> {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_adapter_summary() -> *mut std::os::raw::c_char;
+    }
+
+    read_optional_native_string(suzaku_input_methodkit_adapter_summary)
+}
+
+#[cfg(target_os = "macos")]
+fn registration_target() -> Option<String> {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_registration_target() -> *mut std::os::raw::c_char;
+    }
+
+    read_optional_native_string(suzaku_input_methodkit_registration_target)
+}
+
+#[cfg(target_os = "macos")]
+fn registration_hint() -> Option<String> {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_registration_hint() -> *mut std::os::raw::c_char;
+    }
+
+    read_optional_native_string(suzaku_input_methodkit_registration_hint)
+}
+
+#[cfg(target_os = "macos")]
+fn registration_ready() -> bool {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_registration_ready() -> bool;
+    }
+
+    unsafe { suzaku_input_methodkit_registration_ready() }
+}
+
+#[cfg(target_os = "macos")]
+fn on_demand_companion() -> bool {
+    unsafe extern "C" {
+        fn suzaku_input_methodkit_on_demand_companion() -> bool;
+    }
+
+    unsafe { suzaku_input_methodkit_on_demand_companion() }
 }
 
 #[cfg(target_os = "macos")]

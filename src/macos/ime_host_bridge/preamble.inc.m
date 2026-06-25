@@ -19,6 +19,12 @@ unsigned long suzaku_host_ime_selected_index(void);
 char *suzaku_host_ime_candidate_label_utf8(unsigned long index);
 char *suzaku_host_ime_primary_candidate_utf8(void);
 void suzaku_host_ime_free_utf8(char *rawText);
+char *suzaku_host_platform_adapter_summary_utf8(void);
+char *suzaku_host_platform_registration_target_utf8(void);
+char *suzaku_host_platform_registration_hint_utf8(void);
+bool suzaku_host_platform_registration_ready(void);
+bool suzaku_host_platform_on_demand_companion(void);
+void suzaku_host_platform_free_utf8(char *rawText);
 char *suzaku_host_companion_window_title_utf8(void);
 char *suzaku_host_companion_header_title_utf8(void);
 bool suzaku_host_companion_show_header(void);
@@ -105,6 +111,16 @@ static NSString *suzakuBridgeTakeCandidateLabel(NSUInteger index) {
     }
     NSString *value = [[NSString alloc] initWithUTF8String:raw];
     suzaku_host_ime_free_utf8(raw);
+    return value;
+}
+
+static NSString *suzakuBridgeTakePlatformNSString(char *(*provider)(void)) {
+    char *raw = provider();
+    if (raw == NULL) {
+        return nil;
+    }
+    NSString *value = [[NSString alloc] initWithUTF8String:raw];
+    suzaku_host_platform_free_utf8(raw);
     return value;
 }
 

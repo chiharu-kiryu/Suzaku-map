@@ -19,6 +19,9 @@ fn main() {
             println!("cargo:rerun-if-changed=src/macos/speech_bridge.m");
             println!("cargo:rerun-if-changed=src/macos/text_output_bridge.m");
             println!("cargo:rerun-if-changed=src/macos/ime_host_bridge.m");
+            println!("cargo:rerun-if-changed=src/macos/ime_host_bridge/preamble.inc.m");
+            println!("cargo:rerun-if-changed=src/macos/ime_host_bridge/controller.inc.m");
+            println!("cargo:rerun-if-changed=src/macos/ime_host_bridge/bootstrap.inc.m");
             println!("cargo:rerun-if-changed=src/macos/SuzakuPanel-Info.plist");
             println!("cargo:rerun-if-changed=src/macos/SuzakuInputMethod-Info.plist");
             println!(
