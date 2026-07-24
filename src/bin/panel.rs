@@ -133,7 +133,7 @@ fn settings_window_attributes() -> WindowAttributes {
     let attrs = WindowAttributes::default()
         .with_title("Suzaku Panel Settings")
         .with_inner_size(LogicalSize::new(520.0, 340.0))
-        .with_resizable(false);
+        .with_resizable(true);
     decorate_settings_window_attributes(attrs)
 }
 

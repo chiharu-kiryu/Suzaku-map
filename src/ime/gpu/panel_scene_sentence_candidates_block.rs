@@ -2,12 +2,28 @@
 let sentence_y = suggestions_y + metrics.chip_section_h + metrics.sentence_section_gap;
 let candidate_columns = metrics.candidate_columns;
 let candidate_gap_x = if collapsed_daily_mode {
-    6.0 * responsive_scale
+    5.0 * responsive_scale
 } else {
-    14.0 * responsive_scale
+    8.0 * responsive_scale
 };
 let collapsed_primary_w = if collapsed_daily_mode {
-    (panel_width * 0.42).clamp(180.0 * responsive_scale, 280.0 * responsive_scale)
+    let trailing_count = visible_sentence_candidates.len().saturating_sub(1);
+    if trailing_count == 0 {
+        panel_width
+    } else {
+    let min_trailing_w = 56.0 * responsive_scale;
+    let trailing_total_gap = candidate_gap_x * trailing_count as f32;
+    let min_primary = 170.0 * responsive_scale;
+    let available_for_primary = if trailing_count == 0 {
+        panel_width
+    } else {
+        (panel_width
+            - (trailing_count as f32 * min_trailing_w)
+            - trailing_total_gap)
+            .max(min_primary)
+    };
+    (panel_width * 0.68).clamp(min_primary, available_for_primary)
+    }
 } else if candidate_columns == 2 {
     0.0
 } else {
@@ -18,13 +34,18 @@ let candidate_card_w = if collapsed_daily_mode {
     if trailing_count == 0 {
         panel_width
     } else {
-        (panel_width - collapsed_primary_w - candidate_gap_x * trailing_count as f32)
-            / trailing_count as f32
+        let remaining = panel_width - collapsed_primary_w - candidate_gap_x * trailing_count as f32;
+        (remaining / trailing_count as f32).max(48.0 * responsive_scale)
     }
 } else if candidate_columns == 2 {
     (panel_width - candidate_gap_x) / 2.0
 } else {
     panel_width
+};
+let hero_card_height = if collapsed_daily_mode {
+    34.0 * responsive_scale
+} else {
+    metrics.hero_item_height
 };
 if !visible_sentence_candidates.is_empty() {
     let alternate_count = visible_sentence_candidates.len().saturating_sub(1);
@@ -36,18 +57,19 @@ if !visible_sentence_candidates.is_empty() {
         alternate_count.div_ceil(candidate_columns)
     };
     let sentence_section_h = if collapsed_daily_mode {
-        46.0 * responsive_scale
+        42.0 * responsive_scale
     } else if alternate_rows == 0 {
-        metrics.hero_item_height
+        hero_card_height
     } else {
-        metrics.hero_item_height
+        hero_card_height
             + metrics.item_gap
             + alternate_rows as f32 * metrics.item_height
             + (alternate_rows as f32 - 1.0).max(0.0) * metrics.item_gap
     };
+    let sentence_section_top = sentence_y;
     append_soft_card_quads(
         &mut quads,
-        [panel_x, sentence_y, panel_width, sentence_section_h],
+        [panel_x, sentence_section_top, panel_width, sentence_section_h],
         if collapsed_daily_mode {
             surface_muted
         } else {
@@ -67,7 +89,7 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
     let is_hero = !collapsed_daily_mode && display_index == 0;
     let style_label = crate::panel_support::sentence_candidate_style_label(label, is_hero);
     let (x, y, card_width, card_height) = if is_hero {
-        (panel_x, sentence_y, panel_width, metrics.hero_item_height)
+        (panel_x, sentence_y, panel_width, hero_card_height)
     } else if collapsed_daily_mode {
         let trailing_index = display_index.saturating_sub(1);
         (
@@ -85,7 +107,7 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
             } else {
                 candidate_card_w
             },
-            36.0 * responsive_scale,
+            34.0 * responsive_scale,
         )
     } else {
         let alternate_index = display_index - 1;
@@ -94,7 +116,7 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
         (
             panel_x + column as f32 * (candidate_card_w + candidate_gap_x),
             sentence_y
-                + metrics.hero_item_height
+                + hero_card_height
                 + metrics.item_gap
                 + row as f32 * (metrics.item_height + metrics.item_gap),
             candidate_card_w,
@@ -264,7 +286,7 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
         max_lines: if collapsed_daily_mode {
             1
         } else if is_hero || chrome.preview_style == PreviewStyle::Full {
-            3
+            2
         } else {
             2
         },
@@ -281,8 +303,8 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
         vec![primary_layout]
     } else {
         let meta_y =
-            (primary_layout.bounds[1] + primary_layout.bounds[3] + 10.0 * responsive_scale)
-                .max(visual_rect[1] + 54.0 * responsive_scale);
+            (primary_layout.bounds[1] + primary_layout.bounds[3] + 8.0 * responsive_scale)
+                .max(visual_rect[1] + 48.0 * responsive_scale);
         vec![
             primary_layout,
             TextBlock {

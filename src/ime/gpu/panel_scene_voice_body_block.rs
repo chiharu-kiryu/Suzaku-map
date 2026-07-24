@@ -1,33 +1,23 @@
 {
-                    let voice_y = drawer_rect[1] + 16.0 * responsive_scale;
+                    let voice_scale = (drawer_rect[3] / (248.0 * responsive_scale)).clamp(0.82, 1.0);
+                    let voice_y = drawer_rect[1] + 16.0 * responsive_scale * voice_scale;
                     let voice_rect = [
                         drawer_rect[0],
                         voice_y,
                         drawer_rect[2],
-                        drawer_rect[3] - 24.0 * responsive_scale,
+                        (drawer_rect[3] - 24.0 * responsive_scale).max(156.0 * responsive_scale * voice_scale),
                     ];
-                    let voice_footer_rows = if panel_width < 760.0 { 2 } else { 1 };
-                    let voice_footer_height =
-                        (voice_footer_rows as f32 * 26.0 + 10.0) * responsive_scale;
-                    let voice_footer_rect = [
-                        drawer_rect[0] + 10.0 * responsive_scale,
-                        voice_rect[1] + voice_rect[3]
-                            - voice_footer_height
-                            - 8.0 * responsive_scale,
-                        drawer_rect[2] - 20.0 * responsive_scale,
-                        voice_footer_height,
-                    ];
-                    let voice_content_x = voice_rect[0] + 12.0 * responsive_scale;
-                    let voice_header_y = voice_y + 12.0 * responsive_scale;
-                    let voice_transcript_y = voice_y + 38.0 * responsive_scale;
-                    let voice_transcript_bottom =
-                        voice_footer_rect[1] - 14.0 * responsive_scale;
+                    let voice_content_x = voice_rect[0] + 12.0 * responsive_scale * voice_scale;
+                    let voice_header_y = voice_y + 12.0 * responsive_scale * voice_scale;
+                    let voice_transcript_y = voice_y + 38.0 * responsive_scale * voice_scale;
+                    let voice_transcript_bottom = (voice_rect[1] + voice_rect[3])
+                        - (26.0 * responsive_scale * voice_scale);
                     let voice_transcript_room = voice_transcript_bottom - voice_transcript_y;
                     let voice_transcript_max_lines = if voice_transcript_room
-                        >= 56.0 * responsive_scale
+                        >= 56.0 * responsive_scale * voice_scale
                     {
                         3
-                    } else if voice_transcript_room >= 34.0 * responsive_scale {
+                    } else if voice_transcript_room >= 34.0 * responsive_scale * voice_scale {
                         2
                     } else {
                         1
@@ -39,7 +29,7 @@
                         border_dark,
                         soft_shadow,
                         surface,
-                        10.0 * responsive_scale,
+                        10.0 * responsive_scale * voice_scale,
                     );
 
                     let transcript = if chrome.voice_transcript.is_empty() {
@@ -70,10 +60,10 @@
                     };
                     if !live_hint.is_empty() {
                         let hint_rect = [
-                            drawer_rect[0] + drawer_rect[2] - 128.0 * responsive_scale,
-                            voice_y + 8.0 * responsive_scale,
-                            116.0 * responsive_scale,
-                            18.0 * responsive_scale,
+                            drawer_rect[0] + drawer_rect[2] - 128.0 * responsive_scale * voice_scale,
+                            voice_y + 8.0 * responsive_scale * voice_scale,
+                            116.0 * responsive_scale * voice_scale,
+                            18.0 * responsive_scale * voice_scale,
                         ];
                         append_soft_card_quads(
                             &mut quads,
@@ -90,23 +80,23 @@
                             },
                             [0.30, 0.40, 0.55, 0.10],
                             [0.97, 0.98, 1.0, 1.0],
-                            7.0 * responsive_scale,
+                            7.0 * responsive_scale * voice_scale,
                         );
                     }
                     if chrome.voice_state == VoiceCaptureState::Listening {
                         let base_x =
-                            drawer_rect[0] + drawer_rect[2] - 128.0 * responsive_scale;
-                        let base_y = voice_y + 30.0 * responsive_scale;
+                            drawer_rect[0] + drawer_rect[2] - 128.0 * responsive_scale * voice_scale;
+                        let base_y = voice_y + 30.0 * responsive_scale * voice_scale;
                         let phase = chrome.voice_visual_phase as f32;
                         for index in 0..4 {
                             let pulse = ((phase + index as f32 * 3.0) % 12.0) / 12.0;
                             let mirrored = if pulse > 0.5 { 1.0 - pulse } else { pulse };
-                            let bar_h = 8.0 + mirrored * 18.0;
+                            let bar_h = (8.0 + mirrored * 18.0) * voice_scale;
                             quads.push(CandidateQuad {
                                 rect: [
-                                    base_x + index as f32 * 12.0,
-                                    base_y + (22.0 - bar_h),
-                                    7.0,
+                                    base_x + index as f32 * 12.0 * responsive_scale * voice_scale,
+                                    base_y + (22.0 * responsive_scale * voice_scale - bar_h),
+                                    7.0 * responsive_scale * voice_scale,
                                     bar_h,
                                 ],
                                 color: voice_visual_bar,
@@ -119,13 +109,13 @@
                             origin: [voice_content_x, voice_header_y],
                             max_width: drawer_rect[2]
                                 - if live_hint.is_empty() {
-                                    28.0 * responsive_scale
+                                    28.0 * responsive_scale * voice_scale
                                 } else {
-                                    176.0 * responsive_scale
+                                    176.0 * responsive_scale * voice_scale
                                 },
-                            pixel_size: title_px,
-                            letter_spacing: ui_tracking,
-                            line_gap: base_line_gap,
+                            pixel_size: title_px * voice_scale,
+                            letter_spacing: ui_tracking * voice_scale,
+                            line_gap: base_line_gap * voice_scale,
                             max_lines: 1,
                             color: if chrome.voice_state == VoiceCaptureState::Listening {
                                 accent
@@ -148,13 +138,13 @@
                                 live_hint.to_string()
                             },
                             origin: [
-                                drawer_rect[0] + drawer_rect[2] - 122.0 * responsive_scale,
-                                voice_header_y + 1.0 * responsive_scale,
+                                drawer_rect[0] + drawer_rect[2] - 122.0 * responsive_scale * voice_scale,
+                                voice_header_y + 1.0 * responsive_scale * voice_scale,
                             ],
-                            max_width: 104.0 * responsive_scale,
-                            pixel_size: helper_px,
-                            letter_spacing: ui_tracking,
-                            line_gap: base_line_gap,
+                            max_width: 104.0 * responsive_scale * voice_scale,
+                            pixel_size: helper_px * voice_scale,
+                            letter_spacing: ui_tracking * voice_scale,
+                            line_gap: base_line_gap * voice_scale,
                             max_lines: 2,
                             color: if chrome.voice_state == VoiceCaptureState::Listening {
                                 voice_success_text
@@ -173,18 +163,18 @@
                         TextBlock {
                             text: transcript,
                             origin: [voice_content_x, voice_transcript_y],
-                            max_width: drawer_rect[2] - 24.0 * responsive_scale,
+                            max_width: drawer_rect[2] - 24.0 * responsive_scale * voice_scale,
                             pixel_size: if chrome.voice_transcript.is_empty() {
-                                input_value_px * 0.58
+                                input_value_px * 0.58 * voice_scale
                             } else {
-                                input_value_px * 0.74
+                                input_value_px * 0.74 * voice_scale
                             },
                             letter_spacing: if chrome.voice_transcript.is_empty() {
-                                ui_tracking
+                                ui_tracking * voice_scale
                             } else {
-                                heading_tracking
+                                heading_tracking * voice_scale
                             },
-                            line_gap: base_line_gap,
+                            line_gap: base_line_gap * voice_scale,
                             max_lines: voice_transcript_max_lines,
                             color: if chrome.voice_transcript.is_empty() {
                                 text_muted
@@ -215,7 +205,7 @@
                             } else {
                                 "Mic"
                             },
-                            78.0,
+                            (78.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
                             chrome.voice_state == VoiceCaptureState::Listening,
                             chrome.voice_permission != VoicePermissionState::Denied
                                 && chrome.voice_permission != VoicePermissionState::Error,
@@ -223,7 +213,7 @@
                         (
                             InteractionKind::InsertVoiceTranscript,
                             "Seed",
-                            88.0,
+                            (88.0 * voice_scale).max(62.0 * responsive_scale * voice_scale),
                             !chrome.voice_transcript.is_empty()
                                 && chrome.voice_state != VoiceCaptureState::Listening,
                             !chrome.voice_transcript.is_empty()
@@ -236,7 +226,7 @@
                         voice_actions.push((
                             InteractionKind::CycleVoiceSample,
                             "Next",
-                            84.0,
+                            (84.0 * voice_scale).max(62.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
@@ -248,14 +238,14 @@
                         voice_actions.push((
                             InteractionKind::OpenVoiceSettings,
                             "Prefs",
-                            86.0,
+                            (86.0 * voice_scale).max(62.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
                         voice_actions.push((
                             InteractionKind::RefreshVoicePermissions,
                             "Sync",
-                            72.0,
+                            (72.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
@@ -264,11 +254,45 @@
                         voice_actions.push((
                             InteractionKind::ClearVoiceTranscript,
                             "Clear",
-                            72.0,
+                            (72.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
                     }
+
+                    let action_row_h = 20.0 * responsive_scale * voice_scale;
+                    let action_row_gap_x = 8.0 * responsive_scale * voice_scale;
+                    let action_row_gap_y = 6.0 * responsive_scale * voice_scale;
+                    let action_start_x = drawer_rect[0] + 10.0 * responsive_scale * voice_scale;
+                    let action_end_x = drawer_rect[0] + drawer_rect[2] - 10.0 * responsive_scale * voice_scale;
+                    let action_row_width = (action_end_x - action_start_x).max(0.0);
+                    let mut action_rows = 1usize;
+                    let mut action_cursor_x = action_start_x;
+
+                    for (_, _, width, _, _) in &voice_actions {
+                        let next_width = width.min(action_row_width);
+                        if action_cursor_x > action_start_x
+                            && action_cursor_x + next_width + action_row_gap_x > action_end_x
+                        {
+                            action_rows += 1;
+                            action_cursor_x = action_start_x;
+                        }
+                        action_cursor_x = (action_cursor_x + next_width + action_row_gap_x).max(action_end_x);
+                    }
+                    let voice_footer_rows = action_rows.max(1);
+                    let voice_footer_height =
+                        (action_row_h * voice_footer_rows as f32
+                            + (action_rows.saturating_sub(1) as f32) * action_row_gap_y
+                            + 10.0 * responsive_scale * voice_scale)
+                        .max(30.0 * responsive_scale * voice_scale);
+                    let voice_footer_rect = [
+                        action_start_x,
+                        voice_rect[1] + voice_rect[3]
+                            - voice_footer_height
+                            - 8.0 * responsive_scale * voice_scale,
+                        drawer_rect[2] - 20.0 * responsive_scale * voice_scale,
+                        voice_footer_height,
+                    ];
                     append_soft_card_quads(
                         &mut quads,
                         voice_footer_rect,
@@ -276,30 +300,37 @@
                         border_dark,
                         [0.25, 0.34, 0.48, 0.06],
                         shell,
-                        8.0 * responsive_scale,
+                        8.0 * responsive_scale * voice_scale,
                     );
                     let mut voice_action_layouts = Vec::new();
-                    let mut action_cursor_x = voice_footer_rect[0] + 6.0 * responsive_scale;
+                    let mut action_cursor_x = voice_footer_rect[0] + 6.0 * responsive_scale * voice_scale;
                     let mut action_row = 0;
                     for (kind, label, width, emphasized, enabled) in voice_actions {
                         let (hovered, pressed) = interaction_state(kind);
-                        if action_cursor_x > voice_footer_rect[0] + 6.0 * responsive_scale
-                            && action_cursor_x + width
-                                > voice_footer_rect[0] + voice_footer_rect[2]
+                        let action_row_start = voice_footer_rect[0] + 6.0 * responsive_scale * voice_scale;
+                        let row_right = action_row_start + action_row_width;
+                        let next_width = width.min(action_row_width);
+
+                        if action_cursor_x > action_row_start
+                            && action_cursor_x + next_width + action_row_gap_x > row_right
                         {
                             action_row += 1;
-                            action_cursor_x = voice_footer_rect[0] + 6.0 * responsive_scale;
+                            if action_row >= voice_footer_rows {
+                                break;
+                            }
+                            action_cursor_x = action_row_start;
                         }
                         let rect = [
                             action_cursor_x,
                             voice_footer_rect[1]
-                                + 4.0 * responsive_scale
-                                + action_row as f32 * 24.0 * responsive_scale,
-                            width.min(voice_footer_rect[2] - 12.0 * responsive_scale),
-                            20.0,
+                                + 4.0 * responsive_scale * voice_scale
+                                + action_row as f32
+                                    * (action_row_h + action_row_gap_y),
+                            next_width,
+                            action_row_h,
                         ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
-                        action_cursor_x += width + 8.0 * responsive_scale;
+                        action_cursor_x += next_width + 8.0 * responsive_scale * voice_scale;
                         append_soft_card_quads(
                             &mut quads,
                             visual_rect,
@@ -325,7 +356,7 @@
                             },
                             animated_shadow(soft_shadow, hovered, pressed),
                             surface,
-                            8.0,
+                            8.0 * responsive_scale * voice_scale,
                         );
                         interactive_targets.push(InteractiveTarget { kind, rect });
                         let icon_color = if emphasized {
@@ -357,14 +388,17 @@
                             InteractionKind::ClearVoiceTranscript => {
                                 append_trash_icon_quads(&mut quads, visual_rect, icon_color)
                             }
-                            _ => {
-                                let layout = TextBlock {
-                                    text: label.to_string(),
-                                    origin: [visual_rect[0] + 8.0, visual_rect[1] + 6.0],
-                                    max_width: visual_rect[2] - 16.0,
-                                    pixel_size: 2.0,
-                                    letter_spacing: ui_tracking,
-                                    line_gap: base_line_gap,
+                        _ => {
+                            let layout = TextBlock {
+                                text: label.to_string(),
+                                    origin: [
+                                        visual_rect[0] + 8.0 * responsive_scale * voice_scale,
+                                        visual_rect[1] + 6.0 * responsive_scale * voice_scale,
+                                    ],
+                                    max_width: visual_rect[2] - 16.0 * responsive_scale * voice_scale,
+                                    pixel_size: 2.0 * voice_scale,
+                                    letter_spacing: ui_tracking * voice_scale,
+                                    line_gap: base_line_gap * voice_scale,
                                     max_lines: 1,
                                     color: icon_color,
                                     align: TextAlign::Center,

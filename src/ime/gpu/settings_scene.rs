@@ -23,123 +23,32 @@ impl WgpuCandidateRenderer {
         };
         let ui_tracking = tracking * 0.08 - 0.03;
         let heading_tracking = tracking * 0.04 - 0.02;
-        let base_line_gap = match chrome.candidate_density {
-            CandidateDensity::Compact => 4.0,
-            CandidateDensity::Cozy => 6.0,
+        let base_line_gap = if chrome.candidate_density == CandidateDensity::Compact {
+            4.8
+        } else {
+            6.0
         };
-        let title_px = 3.6;
-        let section_px = 2.45;
-        let chip_px = 2.2;
-        let panel_width = self.scene_width.clamp(520.0, 900.0) - 24.0;
+        let ui_scale = (self.scene_width / 560.0).clamp(0.96, 1.25);
+        let title_px = 3.72 * ui_scale;
+        let section_px = 2.58 * ui_scale;
+        let chip_px = 2.3 * ui_scale;
+        let panel_width = (self.scene_width * 0.98).clamp(460.0, 900.0);
         let panel_x = ((self.scene_width - panel_width) / 2.0).max(8.0);
-        let panel_y = 10.0;
-        let row_h = 36.0;
-        let title_h = 40.0;
-        let settings_row_count = 13.0;
-        let panel_height = title_h + 12.0 + settings_row_count * row_h + 12.0;
+        let row_height = 29.0 * ui_scale;
+        let section_gap_y = 6.5 * ui_scale;
+        let chip_start_x = panel_x + 132.0 * ui_scale;
+        let chip_max_x = panel_x + panel_width - 18.0;
+        let chip_gap_x = 9.0 * ui_scale;
+        let chip_gap_y = 7.0 * ui_scale;
+        let label_col_x = panel_x + 18.0 * ui_scale;
+        let label_max_width = (chip_start_x - label_col_x - 8.0).max(86.0);
+        let row_label_height = 22.0 * ui_scale;
+        let section_label_height = row_label_height;
+        let section_margin = 3.5 * ui_scale;
+        let min_panel_height = 198.0;
+        let chip_area_width = (chip_max_x - chip_start_x).max(130.0);
 
-        let mut quads = Vec::new();
-        let mut text_quads = Vec::new();
-        let mut atlas_glyphs = Vec::new();
-        let mut text_sections = Vec::new();
-        let hit_targets = Vec::new();
-        let mut interactive_targets = Vec::new();
-        let interaction_state = |kind: InteractionKind| {
-            (
-                chrome.hovered_interaction == Some(kind),
-                chrome.pressed_interaction == Some(kind),
-            )
-        };
-        let animated_rect = |rect: [f32; 4], hovered: bool, pressed: bool| {
-            if pressed {
-                [rect[0], rect[1] + 1.0, rect[2], rect[3]]
-            } else if hovered {
-                [rect[0], rect[1] - 1.0, rect[2], rect[3]]
-            } else {
-                rect
-            }
-        };
-        let animated_shadow = |shadow: [f32; 4], hovered: bool, pressed: bool| {
-            let mut next = shadow;
-            next[3] *= if pressed {
-                0.76
-            } else if hovered {
-                1.18
-            } else {
-                1.0
-            };
-            next
-        };
-
-        quads.push(CandidateQuad {
-            rect: [0.0, 0.0, self.scene_width, self.scene_height],
-            color: page_bg,
-        });
-        append_soft_card_quads(
-            &mut quads,
-            [panel_x, panel_y, panel_width, panel_height],
-            shell,
-            shell_border,
-            soft_shadow,
-            page_bg,
-            12.0,
-        );
-        quads.push(CandidateQuad {
-            rect: [panel_x + 10.0, panel_y + 8.0, panel_width - 20.0, 2.0],
-            color: [1.0, 1.0, 1.0, 0.16],
-        });
-
-        let close_rect = [panel_x + panel_width - 36.0, panel_y + 8.0, 22.0, 22.0];
-        let (close_hovered, close_pressed) = interaction_state(InteractionKind::SettingsToggle);
-        let close_visual_rect = animated_rect(close_rect, close_hovered, close_pressed);
-        append_soft_card_quads(
-            &mut quads,
-            close_visual_rect,
-            if close_pressed {
-                [0.67, 0.82, 0.97, 1.0]
-            } else if close_hovered {
-                [0.93, 0.96, 1.0, 1.0]
-            } else {
-                surface_alt
-            },
-            if close_pressed {
-                [0.08, 0.35, 0.68, 1.0]
-            } else if close_hovered {
-                [0.46, 0.62, 0.82, 1.0]
-            } else {
-                shell_border
-            },
-            animated_shadow(soft_shadow, close_hovered, close_pressed),
-            shell,
-            8.0,
-        );
-        interactive_targets.push(InteractiveTarget {
-            kind: InteractionKind::SettingsToggle,
-            rect: close_rect,
-        });
-        append_gear_icon_quads(&mut quads, close_visual_rect, text_secondary, surface_alt);
-
-        let title_layout = TextBlock {
-            text: "Panel Settings".to_string(),
-            origin: [panel_x + 16.0, panel_y + 12.0],
-            max_width: panel_width - 60.0,
-            pixel_size: title_px,
-            letter_spacing: heading_tracking,
-            line_gap: base_line_gap,
-            max_lines: 1,
-            color: text_primary,
-            align: TextAlign::Left,
-            role: TextRole::HeaderTitle,
-        }
-        .layout();
-        text_quads.extend(title_layout.quads.iter().copied());
-        atlas_glyphs.extend(title_layout.atlas_glyphs.iter().cloned());
-        text_sections.push(TextSection {
-            role: TextRole::HeaderTitle,
-            layouts: vec![title_layout],
-        });
-
-        let sections: [(&str, Vec<(InteractionKind, &str, bool)>); 11] = [
+        let sections: Vec<(&str, Vec<(InteractionKind, &str, bool)>)> = vec![
             (
                 "Text",
                 [
@@ -321,12 +230,11 @@ impl WgpuCandidateRenderer {
             ),
             (
                 "Model",
-                [(
+                vec![(
                     InteractionKind::SetLlmModel(LlmModelPreset::Llama32_3b),
-                    "Llama3.2 3B",
+                    "Llama3.2 3B (default)",
                     chrome.llm_model == LlmModelPreset::Llama32_3b,
-                )]
-                .to_vec(),
+                )],
             ),
             (
                 "Tone",
@@ -351,31 +259,165 @@ impl WgpuCandidateRenderer {
             ),
         ];
 
+        let estimated_chip_width = |label: &str| {
+            (label.chars().count() as f32 * 10.8)
+                .max(58.0)
+                .min(chip_area_width)
+                + 22.0 * ui_scale
+        };
+        let estimate_chip_rows = |options: &[(InteractionKind, &str, bool)]| {
+            let mut cursor_x = chip_start_x;
+            let mut rows = 1usize;
+            for (_, chip_label, _) in options {
+                let chip_w = estimated_chip_width(chip_label);
+                if cursor_x + chip_w > chip_max_x {
+                    rows += 1;
+                    cursor_x = chip_start_x;
+                }
+                cursor_x += chip_w + chip_gap_x;
+            }
+            rows
+        };
+        let mut estimated_height = 0.0;
+
+        for (_, options) in sections.iter() {
+            let section_rows = estimate_chip_rows(options.as_slice());
+            estimated_height += section_margin + section_label_height;
+            estimated_height += section_rows as f32 * row_height;
+            if section_rows > 1 {
+                estimated_height += (section_rows as f32 - 1.0) * chip_gap_y;
+            }
+            estimated_height += section_gap_y;
+        }
+
+        let title_section_h = 44.0;
+        let panel_padding_y = 12.0;
+        let panel_height = (title_section_h + estimated_height + panel_padding_y)
+            .max(min_panel_height)
+            .min((self.scene_height - 16.0).max(224.0));
+        let panel_y = if self.scene_height > panel_height + 20.0 {
+            10.0
+        } else {
+            0.0
+        };
+
+        let mut quads = Vec::new();
+        let mut text_quads = Vec::new();
+        let mut atlas_glyphs = Vec::new();
+        let mut text_sections = Vec::new();
+        let hit_targets = Vec::new();
+        let mut interactive_targets = Vec::new();
+        let interaction_state = |kind: InteractionKind| {
+            (
+                chrome.hovered_interaction == Some(kind),
+                chrome.pressed_interaction == Some(kind),
+            )
+        };
+        let animated_rect = |rect: [f32; 4], hovered: bool, pressed: bool| {
+            if pressed {
+                [rect[0], rect[1] + 1.0, rect[2], rect[3]]
+            } else if hovered {
+                [rect[0], rect[1] - 1.0, rect[2], rect[3]]
+            } else {
+                rect
+            }
+        };
+        let animated_shadow = |shadow: [f32; 4], hovered: bool, pressed: bool| {
+            let mut next = shadow;
+            next[3] *= if pressed {
+                0.76
+            } else if hovered {
+                1.18
+            } else {
+                1.0
+            };
+            next
+        };
+
+        quads.push(CandidateQuad {
+            rect: [0.0, 0.0, self.scene_width, self.scene_height],
+            color: page_bg,
+        });
+        append_soft_card_quads(
+            &mut quads,
+            [panel_x, panel_y, panel_width, panel_height],
+            shell,
+            shell_border,
+            soft_shadow,
+            page_bg,
+            12.0,
+        );
+        quads.push(CandidateQuad {
+            rect: [panel_x + 10.0, panel_y + 8.0, panel_width - 20.0, 2.0],
+            color: [1.0, 1.0, 1.0, 0.16],
+        });
+
+        let close_rect = [panel_x + panel_width - 36.0, panel_y + 8.0, 22.0, 22.0];
+        let (close_hovered, close_pressed) = interaction_state(InteractionKind::SettingsToggle);
+        let close_visual_rect = animated_rect(close_rect, close_hovered, close_pressed);
+        append_soft_card_quads(
+            &mut quads,
+            close_visual_rect,
+            if close_pressed {
+                [0.67, 0.82, 0.97, 1.0]
+            } else if close_hovered {
+                [0.93, 0.96, 1.0, 1.0]
+            } else {
+                surface_alt
+            },
+            if close_pressed {
+                [0.08, 0.35, 0.68, 1.0]
+            } else if close_hovered {
+                [0.46, 0.62, 0.82, 1.0]
+            } else {
+                shell_border
+            },
+            animated_shadow(soft_shadow, close_hovered, close_pressed),
+            shell,
+            8.0,
+        );
+        interactive_targets.push(InteractiveTarget {
+            kind: InteractionKind::SettingsToggle,
+            rect: close_rect,
+        });
+        append_gear_icon_quads(&mut quads, close_visual_rect, text_secondary, surface_alt);
+
+        let title_layout = TextBlock {
+            text: "Panel Settings".to_string(),
+            origin: [panel_x + 16.0, panel_y + 12.0],
+            max_width: panel_width - 60.0,
+            pixel_size: title_px,
+            letter_spacing: heading_tracking,
+            line_gap: base_line_gap,
+            max_lines: 1,
+            color: text_primary,
+            align: TextAlign::Left,
+            role: TextRole::HeaderTitle,
+        }
+        .layout();
+        text_quads.extend(title_layout.quads.iter().copied());
+        atlas_glyphs.extend(title_layout.atlas_glyphs.iter().cloned());
+        text_sections.push(TextSection {
+            role: TextRole::HeaderTitle,
+            layouts: vec![title_layout],
+        });
+
         let mut label_layouts = Vec::new();
         let mut option_layouts = Vec::new();
-        let mut row_y = panel_y + title_h + 10.0;
-        let label_col_x = panel_x + 18.0;
-        let chip_start_x = panel_x + 132.0;
-        let chip_max_x = panel_x + panel_width - 20.0;
-        let chip_gap_x = 12.0;
-        let chip_gap_y = 10.0;
+        let mut content_y = panel_y + 48.0;
+        let panel_bottom_guard = panel_y + panel_height - 6.0;
+
         for (label, options) in sections.iter() {
-            let section_top = row_y - 4.0;
-            let estimated_rows = options
-                .iter()
-                .fold(
-                    (chip_start_x, 1usize),
-                    |(cursor_x, rows), (_, chip_label, _): &(InteractionKind, &str, bool)| {
-                        let chip_w = (chip_label.chars().count() as f32 * 10.8).max(58.0) + 22.0;
-                        if cursor_x + chip_w > chip_max_x {
-                            (chip_start_x + chip_w + chip_gap_x, rows + 1)
-                        } else {
-                            (cursor_x + chip_w + chip_gap_x, rows)
-                        }
-                    },
-                )
-                .1;
-            let section_height = 18.0 + estimated_rows as f32 * row_h - (row_h - 26.0);
+            let section_rows = estimate_chip_rows(options.as_slice());
+            let mut section_height =
+                section_margin + section_label_height + section_rows as f32 * row_height;
+            if section_rows > 1 {
+                section_height += (section_rows as f32 - 1.0) * chip_gap_y;
+            }
+            let section_top = content_y - 4.0;
+            if section_top + section_height > panel_bottom_guard {
+                break;
+            }
             append_soft_card_quads(
                 &mut quads,
                 [
@@ -404,15 +446,76 @@ impl WgpuCandidateRenderer {
                 ],
                 color: [1.0, 1.0, 1.0, 0.08],
             });
+
+            let mut chip_x = chip_start_x;
+            let mut chip_y = content_y;
+            let chip_area_right = chip_max_x;
+            for (kind, chip_label, selected) in options {
+                let (hovered, pressed) = interaction_state(*kind);
+                let available_chip_w =
+                    (chip_area_width + chip_start_x - chip_x).max(70.0 * ui_scale);
+                let chip_w = estimated_chip_width(chip_label).min(available_chip_w);
+                if chip_x > chip_start_x && chip_x + chip_w > chip_area_right {
+                    chip_x = chip_start_x;
+                    chip_y += row_height + chip_gap_y;
+                }
+
+                let rect = [chip_x, chip_y, chip_w, row_height];
+                let visual_rect = animated_rect(rect, hovered, pressed);
+                append_soft_card_quads(
+                    &mut quads,
+                    visual_rect,
+                    if pressed {
+                        [0.67, 0.82, 0.97, 1.0]
+                    } else if *selected {
+                        accent_soft
+                    } else if hovered {
+                        [0.93, 0.96, 1.0, 1.0]
+                    } else {
+                        surface
+                    },
+                    if pressed {
+                        [0.08, 0.35, 0.68, 1.0]
+                    } else if *selected {
+                        accent
+                    } else if hovered {
+                        [0.46, 0.62, 0.82, 1.0]
+                    } else {
+                        shell_border
+                    },
+                    animated_shadow(soft_shadow, hovered, pressed),
+                    shell,
+                    8.0,
+                );
+                interactive_targets.push(InteractiveTarget { kind: *kind, rect });
+
+                let option_layout = TextBlock {
+                    text: (*chip_label).to_string(),
+                    origin: [
+                        visual_rect[0] + 10.0 * ui_scale,
+                        visual_rect[1] + 7.0 * ui_scale,
+                    ],
+                    max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
+                    pixel_size: chip_px,
+                    letter_spacing: ui_tracking,
+                    line_gap: base_line_gap,
+                    max_lines: 1,
+                    color: if *selected { accent_text } else { text_primary },
+                    align: TextAlign::Center,
+                    role: TextRole::SettingOption,
+                }
+                .layout();
+                text_quads.extend(option_layout.quads.iter().copied());
+                atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
+                option_layouts.push(option_layout);
+
+                chip_x += chip_w + chip_gap_x;
+            }
+
             let label_layout = TextBlock {
-                text: match *label {
-                    "LLM" => "LLM".to_string(),
-                    "Voice Auto" => "Voice Auto".to_string(),
-                    "Device Dark" => "Device Dark".to_string(),
-                    other => other.to_string(),
-                },
-                origin: [label_col_x, row_y + 7.0],
-                max_width: 100.0,
+                text: (*label).to_string(),
+                origin: [label_col_x, content_y + 7.0],
+                max_width: label_max_width,
                 pixel_size: section_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -426,64 +529,7 @@ impl WgpuCandidateRenderer {
             atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
             label_layouts.push(label_layout);
 
-            let mut chip_x = chip_start_x;
-            let mut chip_y = row_y;
-            let mut row_bottom = chip_y + 26.0;
-            for (kind, chip_label, selected) in options {
-                let (hovered, pressed) = interaction_state(*kind);
-                let chip_w = (chip_label.chars().count() as f32 * 10.8).max(58.0) + 22.0;
-                if chip_x + chip_w > chip_max_x {
-                    chip_x = chip_start_x;
-                    chip_y += row_h;
-                }
-                let rect = [chip_x, chip_y, chip_w, 26.0];
-                let visual_rect = animated_rect(rect, hovered, pressed);
-                append_soft_card_quads(
-                    &mut quads,
-                    visual_rect,
-                    if pressed {
-                        [0.67, 0.82, 0.97, 1.0]
-                    } else if *selected {
-                        accent_soft
-                    } else if hovered {
-                        [0.93, 0.96, 1.0, 1.0]
-                    } else {
-                        surface_alt
-                    },
-                    if pressed {
-                        [0.08, 0.35, 0.68, 1.0]
-                    } else if *selected {
-                        accent
-                    } else if hovered {
-                        [0.46, 0.62, 0.82, 1.0]
-                    } else {
-                        shell_border
-                    },
-                    animated_shadow(soft_shadow, hovered, pressed),
-                    shell,
-                    9.0,
-                );
-                interactive_targets.push(InteractiveTarget { kind: *kind, rect });
-                let option_layout = TextBlock {
-                    text: (*chip_label).to_string(),
-                    origin: [visual_rect[0] + 10.0, visual_rect[1] + 7.0],
-                    max_width: visual_rect[2] - 20.0,
-                    pixel_size: chip_px,
-                    letter_spacing: ui_tracking,
-                    line_gap: base_line_gap,
-                    max_lines: 1,
-                    color: if *selected { accent_text } else { text_primary },
-                    align: TextAlign::Center,
-                    role: TextRole::SettingOption,
-                }
-                .layout();
-                text_quads.extend(option_layout.quads.iter().copied());
-                atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
-                option_layouts.push(option_layout);
-                row_bottom = chip_y + 26.0;
-                chip_x += chip_w + chip_gap_x;
-            }
-            row_y = row_bottom + chip_gap_y;
+            content_y += section_height + section_gap_y;
         }
 
         text_sections.push(TextSection {

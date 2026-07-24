@@ -1,18 +1,27 @@
 {
-                    let keyboard_title_y = drawer_rect[1] + 18.0 * responsive_scale;
+                    let keyboard_scale =
+                        (drawer_rect[3] / (206.0 * responsive_scale)).clamp(0.78, 1.0);
+                    let keyboard_padding_x = 10.0 * responsive_scale * keyboard_scale;
+                    let keyboard_content_left = drawer_rect[0] + keyboard_padding_x;
+                    let keyboard_content_right = drawer_rect[0] + drawer_rect[2] - keyboard_padding_x;
+                    let keyboard_content_width = (keyboard_content_right - keyboard_content_left).max(120.0);
+                    let keyboard_title_y = drawer_rect[1] + 18.0 * responsive_scale * keyboard_scale;
                     let keyboard_status_y = keyboard_title_y;
-                    let key_gap = 5.0 * responsive_scale;
-                    let row_h = 24.0 * responsive_scale;
-                    let keyboard_y = drawer_rect[1] + 52.0 * responsive_scale;
+                    let row_h = 24.0 * responsive_scale * keyboard_scale;
+                    let keyboard_y = drawer_rect[1] + 52.0 * responsive_scale * keyboard_scale;
                     let mut keyboard_layouts = Vec::new();
                     let keyboard_header_layouts = vec![
                         TextBlock {
                             text: "Keyboard input".to_string(),
-                            origin: [drawer_rect[0] + 14.0 * responsive_scale, keyboard_title_y],
-                            max_width: drawer_rect[2] - 180.0 * responsive_scale,
-                            pixel_size: title_px,
+                            origin: [
+                                drawer_rect[0] + 14.0 * responsive_scale * keyboard_scale,
+                                keyboard_title_y,
+                            ],
+                            max_width: (drawer_rect[2] - 150.0 * responsive_scale * keyboard_scale)
+                                .max(110.0 * keyboard_scale),
+                            pixel_size: title_px * keyboard_scale,
                             letter_spacing: heading_tracking,
-                            line_gap: base_line_gap,
+                            line_gap: base_line_gap * keyboard_scale,
                             max_lines: 1,
                             color: text_secondary,
                             align: TextAlign::Left,
@@ -22,13 +31,14 @@
                         TextBlock {
                             text: "Tap to type".to_string(),
                             origin: [
-                                drawer_rect[0] + drawer_rect[2] - 118.0 * responsive_scale,
+                                drawer_rect[0] + drawer_rect[2]
+                                    - (132.0 * responsive_scale * keyboard_scale),
                                 keyboard_status_y,
                             ],
-                            max_width: 104.0 * responsive_scale,
-                            pixel_size: helper_px,
-                            letter_spacing: ui_tracking,
-                            line_gap: base_line_gap,
+                            max_width: (122.0 * responsive_scale * keyboard_scale).max(72.0),
+                            pixel_size: helper_px * keyboard_scale,
+                            letter_spacing: ui_tracking * keyboard_scale,
+                            line_gap: base_line_gap * keyboard_scale,
                             max_lines: 1,
                             color: text_primary,
                             align: TextAlign::Center,
@@ -44,6 +54,7 @@
                         role: TextRole::KeyboardKey,
                         layouts: keyboard_header_layouts,
                     });
+
                     let key_rows = if chrome.keyboard_numeric {
                         vec![
                             "1234567890"
@@ -113,26 +124,49 @@
 
                     for (row_index, keys) in key_rows.iter().enumerate() {
                         let key_count = keys.len() as f32;
-                        let row_y = keyboard_y + row_index as f32 * (row_h + key_gap);
                         let inset = if chrome.keyboard_numeric {
                             if row_index == 1 {
-                                12.0 * responsive_scale
+                                12.0 * responsive_scale * keyboard_scale
                             } else {
                                 0.0
                             }
                         } else if row_index == 1 {
-                            18.0 * responsive_scale
+                            18.0 * responsive_scale * keyboard_scale
                         } else if row_index == 2 {
-                            8.0 * responsive_scale
+                            8.0 * responsive_scale * keyboard_scale
                         } else {
                             0.0
                         };
-                        let row_width = drawer_rect[2] - inset * 2.0;
-                        let key_w = (row_width - key_gap * (key_count - 1.0)) / key_count;
+
+                        let row_width =
+                            (keyboard_content_width - inset * 2.0).max(20.0 * responsive_scale);
+                        let requested_gap = (row_width / (key_count + 1.0)).clamp(
+                            3.0 * responsive_scale * keyboard_scale,
+                            8.0 * responsive_scale * keyboard_scale,
+                        );
+                        let key_count_minus_1 = (key_count - 1.0).max(1.0);
+                        let mut key_gap = requested_gap;
+                        let mut key_w =
+                            (row_width - key_gap * key_count_minus_1) / key_count.max(1.0);
+                        let min_key_w = 18.0 * responsive_scale * keyboard_scale;
+                        let min_gap = 3.0 * responsive_scale * keyboard_scale;
+
+                        if key_w < min_key_w {
+                            key_w = min_key_w;
+                            key_gap =
+                                (row_width - key_count * key_w).max(0.0) / key_count_minus_1.max(1.0);
+                        }
+                        if key_gap < min_gap {
+                            key_w = (row_width / key_count.max(1.0)).max(8.0 * responsive_scale);
+                            key_gap = 0.0;
+                        }
+                        let content_w = key_w * key_count + key_gap * key_count_minus_1;
+                        let row_extra = (row_width - content_w) * 0.5;
+                        let row_x = keyboard_content_left + inset + row_extra.max(0.0);
+                        let row_y = keyboard_y + row_index as f32 * (row_h + key_gap);
 
                         for (key_index, key) in keys.iter().enumerate() {
-                            let x =
-                                drawer_rect[0] + inset + key_index as f32 * (key_w + key_gap);
+                            let x = row_x + key_index as f32 * (key_w + key_gap);
                             let rect = [x, row_y, key_w, row_h];
                             append_soft_card_quads(
                                 &mut quads,
@@ -156,7 +190,7 @@
                                 },
                                 soft_shadow,
                                 surface,
-                                7.0 * responsive_scale,
+                                7.0 * responsive_scale * keyboard_scale,
                             );
                             interactive_targets.push(InteractiveTarget {
                                 kind: InteractionKind::VirtualKeyboardKey(*key),
@@ -174,22 +208,23 @@
                             let layout = TextBlock {
                                 text: label,
                                 origin: [
-                                    x + 8.0 * responsive_scale,
-                                    row_y + 8.0 * responsive_scale,
+                                    x + 8.0 * responsive_scale * keyboard_scale,
+                                    row_y + 8.0 * responsive_scale * keyboard_scale,
                                 ],
-                                max_width: key_w - 16.0 * responsive_scale,
+                                max_width: key_w - 16.0 * responsive_scale * keyboard_scale,
                                 pixel_size: if matches!(
                                     key,
                                     VirtualKeyboardKey::Backspace
                                         | VirtualKeyboardKey::ToggleNumeric
                                         | VirtualKeyboardKey::ToggleAlphabetic
                                 ) {
-                                    (chip_px * 0.9).max(1.75 * responsive_scale)
+                                    (chip_px * 0.9 * keyboard_scale).max(1.8 * responsive_scale)
                                 } else {
-                                    (chip_px * 1.1).max(2.2 * responsive_scale)
+                                    (chip_px * 1.1 * keyboard_scale)
+                                        .max(2.0 * responsive_scale * keyboard_scale)
                                 },
-                                letter_spacing: ui_tracking,
-                                line_gap: base_line_gap,
+                                letter_spacing: ui_tracking * keyboard_scale,
+                                line_gap: base_line_gap * keyboard_scale,
                                 max_lines: 1,
                                 color: if matches!(
                                     key,
@@ -219,24 +254,70 @@
                         }
                     }
 
-                    let action_y = keyboard_y + 3.0 * (row_h + key_gap);
-                    let left_w = 70.0 * responsive_scale;
-                    let mid_key_w = 36.0 * responsive_scale;
-                    let right_w = 104.0 * responsive_scale;
-                    let space_w =
-                        drawer_rect[2] - left_w - right_w - key_gap * 3.0 - mid_key_w * 2.0;
+                    let action_y = keyboard_y + 3.0 * (row_h + 6.0 * responsive_scale * keyboard_scale);
+                    let action_gap = 6.0 * responsive_scale * keyboard_scale;
+                    let base_left_w = 72.0 * responsive_scale * keyboard_scale;
+                    let base_mid_w = 34.0 * responsive_scale * keyboard_scale;
+                    let base_right_w = 92.0 * responsive_scale * keyboard_scale;
+                    let base_space_w = 86.0 * responsive_scale * keyboard_scale;
+                    let min_left_w = 38.0 * responsive_scale * keyboard_scale;
+                    let min_mid_w = 20.0 * responsive_scale * keyboard_scale;
+                    let min_right_w = 56.0 * responsive_scale * keyboard_scale;
+                    let min_space_w = 56.0 * responsive_scale * keyboard_scale;
+                    let available_action_w = keyboard_content_width.max(0.0);
+                    let total_min =
+                        min_left_w + min_right_w + min_space_w + 2.0 * min_mid_w + action_gap * 4.0;
+                    let mut left_w = base_left_w;
+                    let mut mid_key_w = base_mid_w;
+                    let mut right_w = base_right_w;
+                    let mut space_w = base_space_w;
+                    if total_min >= available_action_w {
+                        let shrink = (available_action_w / total_min.max(1.0)).clamp(0.55, 1.0);
+                        left_w = (left_w * shrink).max(min_left_w);
+                        mid_key_w = (mid_key_w * shrink).max(min_mid_w);
+                        right_w = (right_w * shrink).max(min_right_w);
+                        space_w = (space_w * shrink).max(min_space_w);
+                    } else {
+                        let leftover = available_action_w - total_min;
+                        let total_grow = (base_left_w - min_left_w)
+                            + (base_mid_w - min_mid_w) * 2.0
+                            + (base_right_w - min_right_w)
+                            + (base_space_w - min_space_w);
+                        if total_grow > 0.0 {
+                            let grow_ratio = leftover / total_grow;
+                            left_w = min_left_w + (base_left_w - min_left_w) * grow_ratio;
+                            mid_key_w = min_mid_w + (base_mid_w - min_mid_w) * grow_ratio;
+                            right_w = min_right_w + (base_right_w - min_right_w) * grow_ratio;
+                            space_w = min_space_w + (base_space_w - min_space_w) * grow_ratio;
+                        } else {
+                            left_w = base_left_w;
+                            mid_key_w = base_mid_w;
+                            right_w = base_right_w;
+                            space_w = base_space_w;
+                        }
+                    }
+
+                    let mut cursor_x = keyboard_content_left;
                     let action_keys = if chrome.keyboard_numeric {
                         vec![
                             (
                                 VirtualKeyboardKey::ToggleAlphabetic,
                                 "ABC",
-                                [drawer_rect[0], action_y, left_w, row_h],
+                                [
+                                    cursor_x,
+                                    action_y,
+                                    left_w.max(min_left_w),
+                                    row_h,
+                                ],
                             ),
                             (
                                 VirtualKeyboardKey::Character(','),
                                 ",",
                                 [
-                                    drawer_rect[0] + left_w + key_gap,
+                                    {
+                                        cursor_x += left_w.max(min_left_w) + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     mid_key_w,
                                     row_h,
@@ -246,7 +327,10 @@
                                 VirtualKeyboardKey::Space,
                                 "Space",
                                 [
-                                    drawer_rect[0] + left_w + key_gap * 2.0 + mid_key_w,
+                                    {
+                                        cursor_x += mid_key_w + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     space_w,
                                     row_h,
@@ -256,11 +340,10 @@
                                 VirtualKeyboardKey::Character('.'),
                                 ".",
                                 [
-                                    drawer_rect[0]
-                                        + left_w
-                                        + key_gap * 3.0
-                                        + mid_key_w
-                                        + space_w,
+                                    {
+                                        cursor_x += space_w + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     mid_key_w,
                                     row_h,
@@ -270,11 +353,10 @@
                                 VirtualKeyboardKey::Backspace,
                                 "",
                                 [
-                                    drawer_rect[0]
-                                        + left_w
-                                        + key_gap * 4.0
-                                        + mid_key_w * 2.0
-                                        + space_w,
+                                    {
+                                        cursor_x += mid_key_w + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     right_w,
                                     row_h,
@@ -286,13 +368,21 @@
                             (
                                 VirtualKeyboardKey::ToggleNumeric,
                                 "123",
-                                [drawer_rect[0], action_y, left_w, row_h],
+                                [
+                                    cursor_x,
+                                    action_y,
+                                    left_w.max(min_left_w),
+                                    row_h,
+                                ],
                             ),
                             (
                                 VirtualKeyboardKey::Character(','),
                                 ",",
                                 [
-                                    drawer_rect[0] + left_w + key_gap,
+                                    {
+                                        cursor_x += left_w.max(min_left_w) + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     mid_key_w,
                                     row_h,
@@ -302,7 +392,10 @@
                                 VirtualKeyboardKey::Space,
                                 "Space",
                                 [
-                                    drawer_rect[0] + left_w + key_gap * 2.0 + mid_key_w,
+                                    {
+                                        cursor_x += mid_key_w + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     space_w,
                                     row_h,
@@ -312,11 +405,10 @@
                                 VirtualKeyboardKey::Character('.'),
                                 ".",
                                 [
-                                    drawer_rect[0]
-                                        + left_w
-                                        + key_gap * 3.0
-                                        + mid_key_w
-                                        + space_w,
+                                    {
+                                        cursor_x += space_w + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     mid_key_w,
                                     row_h,
@@ -326,11 +418,10 @@
                                 VirtualKeyboardKey::Backspace,
                                 "",
                                 [
-                                    drawer_rect[0]
-                                        + left_w
-                                        + key_gap * 4.0
-                                        + mid_key_w * 2.0
-                                        + space_w,
+                                    {
+                                        cursor_x += mid_key_w + action_gap;
+                                        cursor_x
+                                    },
                                     action_y,
                                     right_w,
                                     row_h,
@@ -339,7 +430,24 @@
                         ]
                     };
 
-                    for (key, label, rect) in action_keys {
+                    for (key, label, mut rect) in action_keys {
+                        rect[2] = rect[2].max(if matches!(
+                            key,
+                            VirtualKeyboardKey::ToggleNumeric
+                                | VirtualKeyboardKey::ToggleAlphabetic
+                                | VirtualKeyboardKey::Backspace
+                                | VirtualKeyboardKey::Character(',')
+                                | VirtualKeyboardKey::Character('.')
+                        ) {
+                            min_mid_w
+                        } else {
+                            min_left_w
+                        });
+                        if rect[0] + rect[2] > keyboard_content_right {
+                            rect[2] =
+                                (drawer_rect[0] + drawer_rect[2] - keyboard_padding_x - rect[0])
+                                    .max(min_mid_w);
+                        }
                         append_soft_card_quads(
                             &mut quads,
                             rect,
@@ -353,26 +461,27 @@
                             border_dark,
                             soft_shadow,
                             surface,
-                            8.0 * responsive_scale,
+                            8.0 * responsive_scale * keyboard_scale,
                         );
                         interactive_targets.push(InteractiveTarget {
                             kind: InteractionKind::VirtualKeyboardKey(key),
                             rect,
                         });
+                        let label_pixel_size = if label.chars().count() > 6 {
+                            1.8 * responsive_scale * keyboard_scale
+                        } else {
+                            2.2 * responsive_scale * keyboard_scale
+                        };
                         let layout = TextBlock {
                             text: label.to_string(),
                             origin: [
-                                rect[0] + 10.0 * responsive_scale,
-                                rect[1] + 8.0 * responsive_scale,
+                                rect[0] + 10.0 * responsive_scale * keyboard_scale,
+                                rect[1] + 8.0 * responsive_scale * keyboard_scale,
                             ],
-                            max_width: rect[2] - 20.0 * responsive_scale,
-                            pixel_size: if label.chars().count() > 6 {
-                                1.8 * responsive_scale
-                            } else {
-                                2.2 * responsive_scale
-                            },
-                            letter_spacing: ui_tracking,
-                            line_gap: base_line_gap,
+                            max_width: rect[2] - 20.0 * responsive_scale * keyboard_scale,
+                            pixel_size: label_pixel_size,
+                            letter_spacing: ui_tracking * keyboard_scale,
+                            line_gap: base_line_gap * keyboard_scale,
                             max_lines: if label.chars().count() > 6 { 2 } else { 1 },
                             color: if matches!(
                                 key,

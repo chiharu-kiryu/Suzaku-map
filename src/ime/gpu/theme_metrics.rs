@@ -54,13 +54,13 @@ impl PanelTheme {
                 keyboard_surface: [0.18, 0.22, 0.30, 1.0],
                 keyboard_special_surface: [0.28, 0.33, 0.43, 1.0],
                 keyboard_text: [0.96, 0.98, 1.0, 1.0],
-                keyboard_secondary_text: [0.88, 0.93, 0.99, 1.0],
+                keyboard_secondary_text: [0.93, 0.96, 1.0, 1.0],
                 accent: [0.40, 0.68, 1.0, 1.0],
                 accent_soft: [0.22, 0.41, 0.63, 1.0],
                 accent_text: [0.93, 0.97, 1.0, 1.0],
                 text_primary: [0.92, 0.95, 1.0, 1.0],
-                text_secondary: [0.74, 0.81, 0.90, 1.0],
-                text_muted: [0.56, 0.65, 0.77, 1.0],
+                text_secondary: [0.80, 0.86, 0.93, 1.0],
+                text_muted: [0.68, 0.76, 0.86, 1.0],
                 border_dark: [0.37, 0.46, 0.59, 1.0],
                 soft_shadow: [0.03, 0.05, 0.09, 0.34],
             },
@@ -80,7 +80,6 @@ pub(super) struct PanelSceneMetrics {
     pub(super) tool_button_h: f32,
     pub(super) tool_gap: f32,
     pub(super) tools_content_h: f32,
-    pub(super) settings_panel_h: f32,
     pub(super) item_height: f32,
     pub(super) hero_item_height: f32,
     pub(super) item_gap: f32,
@@ -99,83 +98,89 @@ impl PanelSceneMetrics {
         sentence_count: usize,
     ) -> Self {
         let collapsed_daily_mode = !chrome.input_modes_expanded;
-        let scene_margin = (7.0 * responsive_scale).max(6.0);
+        let scene_margin = (6.0 * responsive_scale).max(5.0);
         let max_panel_width = (scene_width - scene_margin * 2.0).max(320.0);
-        let min_panel_width = 380.0_f32.min(max_panel_width);
-        let desired_panel_width = scene_width * 0.94;
+        let min_panel_width = 330.0_f32.min(max_panel_width);
+        let desired_panel_width = (scene_width * 0.985).clamp(336.0, 940.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);
-        let input_box_h = 58.0 * responsive_scale;
+
+        let spacing_scale = if chrome.candidate_density == CandidateDensity::Compact {
+            0.92
+        } else {
+            1.0
+        };
+
+        let input_box_h = 54.0 * responsive_scale * spacing_scale;
         let tools_header_h = if collapsed_daily_mode {
-            34.0 * responsive_scale
-        } else {
             28.0 * responsive_scale
-        };
-        let tool_button_h = 22.0 * responsive_scale;
-        let tool_gap = 5.0 * responsive_scale;
-        let section_gap = 6.0 * responsive_scale;
-        let extended_input_panel_h = if chrome.input_modes_expanded {
-            228.0 * responsive_scale
         } else {
-            0.0
+            22.0 * responsive_scale
         };
-        let tools_content_h = if chrome.input_modes_expanded {
-            extended_input_panel_h
-        } else {
-            0.0
-        };
-        let settings_panel_h = if chrome.settings_open { 286.0 } else { 0.0 };
-        let item_height = match (chrome.candidate_density, chrome.preview_style) {
-            (CandidateDensity::Compact, PreviewStyle::Compact) => 62.0,
-            (CandidateDensity::Compact, PreviewStyle::Full) => 82.0,
-            (CandidateDensity::Cozy, PreviewStyle::Compact) => 72.0,
-            (CandidateDensity::Cozy, PreviewStyle::Full) => 92.0,
-        } * responsive_scale;
-        let hero_item_height = item_height + 12.0 * responsive_scale;
-        let item_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            5.0
-        } else {
-            6.0
-        } * responsive_scale;
-        let stacked_token_header = !collapsed_daily_mode
-            && max_panel_width < 560.0
-            && !chrome.next_token_candidates.is_empty();
-        let chip_section_h = if chrome.next_token_candidates.is_empty() {
-            0.0
-        } else if collapsed_daily_mode {
-            42.0 * responsive_scale
-        } else {
-            (if stacked_token_header { 74.0 } else { 52.0 }) * responsive_scale
-        };
-        let sentence_section_gap = if chip_section_h > 0.0 && sentence_count > 0 {
-            if collapsed_daily_mode {
-                4.0 * responsive_scale
-            } else {
-                6.0 * responsive_scale
+        let tool_button_h = 19.0 * responsive_scale * spacing_scale;
+        let tool_gap = 3.5 * responsive_scale * spacing_scale;
+        let section_gap = 4.5 * responsive_scale * spacing_scale;
+
+        let expanded_input_panel_h = if chrome.input_modes_expanded {
+            match chrome.active_input_mode {
+                crate::ime::gpu::InputMode::VirtualKeyboard => 190.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Dictation => 206.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Handwriting => 214.0 * responsive_scale,
             }
         } else {
             0.0
         };
-        let candidate_columns = if collapsed_daily_mode {
+
+        let stack_cap = (scene_height - scene_margin * 2.0).max(220.0);
+        let mut tools_content_h = expanded_input_panel_h;
+        let mut item_height = match (chrome.candidate_density, chrome.preview_style) {
+            (CandidateDensity::Compact, PreviewStyle::Compact) => 56.0,
+            (CandidateDensity::Compact, PreviewStyle::Full) => 76.0,
+            (CandidateDensity::Cozy, PreviewStyle::Compact) => 66.0,
+            (CandidateDensity::Cozy, PreviewStyle::Full) => 88.0,
+        } * responsive_scale;
+
+        let mut hero_item_height = item_height + 10.0 * responsive_scale;
+        let mut item_gap = if chrome.candidate_density == CandidateDensity::Compact {
+            4.0
+        } else {
+            5.0
+        } * responsive_scale;
+
+        let stacked_token_header = !collapsed_daily_mode
+            && max_panel_width < 560.0
+            && !chrome.next_token_candidates.is_empty();
+
+        let chip_section_h = if chrome.next_token_candidates.is_empty() {
+            0.0
+        } else if collapsed_daily_mode {
+            36.0 * responsive_scale
+        } else {
+            (if stacked_token_header { 62.0 } else { 44.0 }) * responsive_scale
+        };
+
+        let sentence_columns = if collapsed_daily_mode {
             sentence_count.clamp(1, 4)
         } else if panel_width >= 760.0 && sentence_count > 2 {
             2
         } else {
             1
         };
+
         let sentence_rows = if collapsed_daily_mode {
             if sentence_count == 0 { 0 } else { 1 }
         } else if sentence_count == 0 {
             0
         } else {
-            (sentence_count - 1).div_ceil(candidate_columns)
+            (sentence_count - 1).div_ceil(sentence_columns)
         };
-        let sentence_height = if collapsed_daily_mode {
+
+        let mut sentence_height = if collapsed_daily_mode {
             if sentence_count == 0 {
                 0.0
             } else {
-                52.0 * responsive_scale
+                46.0 * responsive_scale
             }
         } else if sentence_rows == 0 {
             if sentence_count == 0 {
@@ -189,18 +194,89 @@ impl PanelSceneMetrics {
                 + sentence_rows as f32 * item_height
                 + (sentence_rows as f32 - 1.0) * item_gap
         };
-        let panel_height = input_box_h
+
+        let fixed_without_sentence = input_box_h
             + section_gap
             + tools_header_h
             + tools_content_h
-            + settings_panel_h
             + section_gap
             + chip_section_h
-            + sentence_section_gap
-            + sentence_height;
+            + if chip_section_h > 0.0 && sentence_count > 0 {
+                if collapsed_daily_mode {
+                    3.0 * responsive_scale
+                } else {
+                    5.0 * responsive_scale
+                }
+            } else {
+                0.0
+            };
+
+        if fixed_without_sentence > stack_cap {
+            let base_without_tools = input_box_h
+                + section_gap
+                + tools_header_h
+                + section_gap
+                + chip_section_h
+                + if chip_section_h > 0.0 && sentence_count > 0 {
+                    if collapsed_daily_mode {
+                        3.0 * responsive_scale
+                    } else {
+                        5.0 * responsive_scale
+                    }
+                } else {
+                    0.0
+                };
+            tools_content_h = (stack_cap - base_without_tools).max(0.0);
+        }
+
+        let fixed_without_sentence = input_box_h
+            + section_gap
+            + tools_header_h
+            + tools_content_h
+            + section_gap
+            + chip_section_h
+            + if chip_section_h > 0.0 && sentence_count > 0 {
+                if collapsed_daily_mode {
+                    4.0 * responsive_scale
+                } else {
+                    6.0 * responsive_scale
+                }
+            } else {
+                0.0
+            };
+
+        let available_sentence_h = (stack_cap - fixed_without_sentence).max(0.0);
+        if sentence_count > 0 {
+            let height_scale = (available_sentence_h / sentence_height).clamp(0.22, 1.0);
+            if height_scale < 1.0 {
+                item_height *= height_scale;
+                item_gap *= height_scale;
+                hero_item_height = item_height + 10.0 * responsive_scale * height_scale;
+                sentence_height = if collapsed_daily_mode {
+                    if sentence_count == 0 {
+                        0.0
+                    } else {
+                        (46.0 * responsive_scale).max((40.0 * height_scale).max(item_height))
+                    }
+                } else if sentence_rows == 0 {
+                    if sentence_count == 0 {
+                        0.0
+                    } else {
+                        hero_item_height
+                    }
+                } else {
+                    hero_item_height
+                        + item_gap
+                        + sentence_rows as f32 * item_height
+                        + (sentence_rows as f32 - 1.0) * item_gap
+                };
+            }
+        }
+
+        let panel_height = (fixed_without_sentence + sentence_height).min(stack_cap);
+        let panel_y = scene_margin;
+
         let panel_x = ((scene_width - panel_width) / 2.0).max(scene_margin);
-        let centered_panel_y = (scene_height - panel_height) / 2.0;
-        let panel_y = centered_panel_y.max(14.0 * responsive_scale);
 
         Self {
             panel_width,
@@ -213,13 +289,20 @@ impl PanelSceneMetrics {
             tool_button_h,
             tool_gap,
             tools_content_h,
-            settings_panel_h,
             item_height,
             hero_item_height,
             item_gap,
             chip_section_h,
-            sentence_section_gap,
-            candidate_columns,
+            sentence_section_gap: if chip_section_h > 0.0 && sentence_count > 0 {
+                if collapsed_daily_mode {
+                    3.0 * responsive_scale
+                } else {
+                    5.0 * responsive_scale
+                }
+            } else {
+                0.0
+            },
+            candidate_columns: sentence_columns,
             stacked_token_header,
         }
     }

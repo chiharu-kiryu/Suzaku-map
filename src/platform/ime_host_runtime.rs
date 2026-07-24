@@ -10,6 +10,8 @@ pub struct ImeHostRuntimeProfile {
     pub platform: TargetPlatform,
     pub title: String,
     pub bootstrap_summary: String,
+    pub registration_target: String,
+    pub registration_ready: bool,
     pub registration_hint: String,
     pub preferred_command: &'static str,
     pub dispatch: ime_host_dispatch::ImeHostDispatch,
@@ -19,9 +21,13 @@ pub struct ImeHostRuntimeProfile {
 impl ImeHostRuntimeProfile {
     pub fn describe(&self) -> String {
         format!(
-            "{}\nbootstrap: {}\nime-dispatch: {}\npanel-dispatch: {}\nregistration-hint: {}\npreferred-command: {}",
+            "{}\nbootstrap: {}\nregistration: {}\nime-dispatch: {}\npanel-dispatch: {}\nregistration-hint: {}\npreferred-command: {}",
             self.title,
             self.bootstrap_summary,
+            format!(
+                "target=\"{}\" ready={}",
+                self.registration_target, self.registration_ready
+            ),
             self.dispatch.describe(),
             self.panel_dispatch.describe(),
             self.registration_hint,
@@ -52,11 +58,14 @@ pub fn current_runtime_profile() -> ImeHostRuntimeProfile {
 }
 
 pub fn runtime_profile_for(platform: TargetPlatform) -> ImeHostRuntimeProfile {
+    let adapter = ime_host_adapter::adapter_profile_for(platform);
     ImeHostRuntimeProfile {
         platform,
         title: runtime_title(platform),
-        bootstrap_summary: bootstrap_summary(platform),
-        registration_hint: registration_hint(platform),
+        bootstrap_summary: adapter.bootstrap_summary.clone(),
+        registration_target: adapter.registration_target,
+        registration_ready: adapter.registration_ready,
+        registration_hint: adapter.registration_hint,
         preferred_command: preferred_command(platform),
         dispatch: ime_host_dispatch::dispatch_for(platform),
         panel_dispatch: panel_companion_dispatch::dispatch_for(platform),

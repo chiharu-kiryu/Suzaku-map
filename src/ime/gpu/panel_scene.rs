@@ -161,8 +161,8 @@ impl WgpuCandidateRenderer {
         let panel_y = metrics.panel_y;
         let input_box_y = panel_y;
         let tools_y = input_box_y + metrics.input_box_h + metrics.section_gap;
-        let settings_y = tools_y + metrics.tools_header_h + metrics.tools_content_h;
-        let suggestions_y = settings_y + metrics.settings_panel_h + metrics.section_gap;
+        let suggestions_y =
+            tools_y + metrics.tools_header_h + metrics.tools_content_h + metrics.section_gap;
         let mut quads = Vec::with_capacity(snapshot.candidate_labels.len() + 6);
         let mut text_quads = Vec::new();
         let mut atlas_glyphs = Vec::new();
@@ -199,8 +199,9 @@ impl WgpuCandidateRenderer {
             rect: [0.0, 0.0, self.scene_width, self.scene_height],
             color: page_bg,
         });
-        let panel_shell_y = panel_y - 14.0 * responsive_scale;
-        let panel_shell_h = metrics.panel_height + 26.0 * responsive_scale;
+        let panel_shell_y = (panel_y - 10.0 * responsive_scale).max(0.0);
+        let panel_shell_h = (metrics.panel_height + 20.0 * responsive_scale)
+            .min((self.scene_height - panel_shell_y).max(1.0));
         append_soft_card_quads(
             &mut quads,
             [
@@ -405,8 +406,6 @@ impl WgpuCandidateRenderer {
             10.0 * responsive_scale,
         );
         let toolbar_button_size = metrics.tool_button_h;
-        let toolbar_y =
-            tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5 + 0.5 * responsive_scale;
         let icon_gap = metrics.tool_gap;
         let toolbar_buttons = [
             (
@@ -424,15 +423,29 @@ impl WgpuCandidateRenderer {
             ),
             (InteractionKind::SettingsToggle, chrome.settings_open),
         ];
+        let toolbar_margin_x = 10.0 * responsive_scale;
+        let toolbar_button_count = toolbar_buttons.len() as f32;
+        let toolbar_total_w =
+            toolbar_button_count * toolbar_button_size + (toolbar_button_count - 1.0) * icon_gap;
         let trailing_toggle_w = if chrome.input_modes_expanded {
             toolbar_button_size + 8.0 * responsive_scale
         } else {
             0.0
         };
-        let toolbar_total_w = toolbar_buttons.len() as f32 * toolbar_button_size
-            + (toolbar_buttons.len().saturating_sub(1)) as f32 * icon_gap;
-        let icon_x =
-            panel_x + panel_width - toolbar_total_w - trailing_toggle_w - 10.0 * responsive_scale;
+        let toolbar_available_w =
+            (panel_width - toolbar_margin_x * 2.0 - trailing_toggle_w).max(0.0);
+        let toolbar_scale = if toolbar_total_w > toolbar_available_w && toolbar_total_w > 0.0 {
+            (toolbar_available_w / toolbar_total_w).clamp(0.72, 1.0)
+        } else {
+            1.0
+        };
+        let toolbar_button_size = toolbar_button_size * toolbar_scale;
+        let icon_gap = icon_gap * toolbar_scale;
+        let toolbar_total_w =
+            toolbar_button_count * toolbar_button_size + (toolbar_button_count - 1.0) * icon_gap;
+        let icon_x = panel_x + panel_width - toolbar_total_w - trailing_toggle_w - toolbar_margin_x;
+        let toolbar_y =
+            tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5 + 0.5 * responsive_scale;
         for (index, (kind, selected)) in toolbar_buttons.iter().enumerate() {
             let rect = [
                 icon_x + index as f32 * (toolbar_button_size + icon_gap),
@@ -516,7 +529,8 @@ impl WgpuCandidateRenderer {
             panel_width,
             metrics.tools_content_h,
         ];
-        let show_expanded_tool_panel = chrome.input_modes_expanded;
+        let show_expanded_tool_panel =
+            chrome.input_modes_expanded && metrics.tools_content_h >= 40.0 * responsive_scale;
         if show_expanded_tool_panel {
             append_soft_card_quads(
                 &mut quads,
@@ -573,10 +587,6 @@ impl WgpuCandidateRenderer {
                     include!("panel_scene_handwriting_body_block.rs");
                 }
             }
-        }
-
-        if chrome.settings_open {
-            include!("panel_scene_settings_block.rs");
         }
 
         include!("panel_scene_candidates_block.rs")

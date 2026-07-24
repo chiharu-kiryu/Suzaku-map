@@ -117,17 +117,21 @@ impl ImePlatformAdapter for MacOsPlatformAdapter {
     fn profile(&self) -> ImeHostAdapterProfile {
         let bridge = macos_ime::bridge_state();
         let panel_role = panel_companion_dispatch::dispatch_for(TargetPlatform::MacOs).role;
+        let registration_target = bridge
+            .bundle_connection_name
+            .clone()
+            .unwrap_or_else(|| macos_ime::recommended_connection_name());
         ImeHostAdapterProfile {
             platform: TargetPlatform::MacOs,
             backend_id: "inputmethodkit",
             registration_ready: bridge.server_bootstrap_ready,
-            registration_target: macos_ime::recommended_connection_name(),
+            registration_target: registration_target.clone(),
             bootstrap_summary: format!(
                 "IMK available: {} | bundled: {} | bundle id: {} | bundle connection: {} | controller: {} | lifecycle ready: {} | server ready: {} | candidate companion ready: {} | host session active: {}",
                 bridge.input_methodkit_available,
                 bridge.bundled_runtime,
                 bridge.main_bundle_identifier.as_deref().unwrap_or("(none)"),
-                bridge.bundle_connection_name.as_deref().unwrap_or("(none)"),
+                registration_target,
                 bridge.controller_class_name.as_deref().unwrap_or("(none)"),
                 bridge.controller_lifecycle_ready,
                 bridge.server_bootstrap_ready,
@@ -136,8 +140,7 @@ impl ImePlatformAdapter for MacOsPlatformAdapter {
             ),
             registration_hint: format!(
                 "Register {} as the InputMethodKit connection and keep the GPU panel in {:?} mode.",
-                macos_ime::recommended_connection_name(),
-                panel_role
+                registration_target, panel_role
             ),
             lifecycle: ImeHostLifecycleCapabilities {
                 marked_text_roundtrip: bridge.host_session.active
