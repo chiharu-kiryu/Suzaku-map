@@ -62,6 +62,9 @@ impl PanelState {
     }
 
     pub(super) fn commit_sentence_candidate(&mut self, index: usize) -> bool {
+        let Some(index) = self.resolve_sentence_candidate_index(index) else {
+            return false;
+        };
         let Some(candidate) = self.engine.candidates().get(index).cloned() else {
             return false;
         };
@@ -86,6 +89,76 @@ impl PanelState {
         };
         self.reset_after_commit();
         true
+    }
+
+    fn resolve_sentence_candidate_index(&self, index: usize) -> Option<usize> {
+        let candidates = self.engine.candidates();
+        if candidates.is_empty() {
+            return None;
+        }
+
+        if index < candidates.len() {
+            return Some(index);
+        }
+
+        if let Some(display_index) = self
+            .chrome
+            .sentence_candidate_source_indices
+            .iter()
+            .position(|candidate_index| *candidate_index == index)
+        {
+            if let Some(label) = self.chrome.sentence_candidates.get(display_index) {
+                if let Some(fallback) =
+                    self.candidate_index_matching_sentence_label(label, candidates)
+                {
+                    return Some(fallback);
+                }
+            }
+        }
+
+        if let Some(label) = self.chrome.sentence_candidates.get(index) {
+            if let Some(fallback) = self.candidate_index_matching_sentence_label(label, candidates)
+            {
+                return Some(fallback);
+            }
+        }
+
+        let selected_index = self.engine.snapshot().selected_index;
+        if selected_index < candidates.len() {
+            Some(selected_index)
+        } else {
+            Some(candidates.len() - 1)
+        }
+    }
+
+    fn candidate_index_matching_sentence_label(
+        &self,
+        label: &str,
+        candidates: &[suzaku_map::ime::Candidate],
+    ) -> Option<usize> {
+        let normalized_label = Self::normalize_candidate_text(label);
+        candidates
+            .iter()
+            .enumerate()
+            .find_map(|(index, candidate)| {
+                let normalized_text = Self::normalize_candidate_text(&candidate.text);
+                let normalized_label_text = Self::normalize_candidate_text(&candidate.label);
+                if normalized_text == normalized_label || normalized_label_text == normalized_label
+                {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn normalize_candidate_text(text: &str) -> String {
+        text.to_ascii_lowercase()
+            .trim()
+            .trim_end_matches(|ch| matches!(ch, '.' | '!' | '?'))
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     fn persist_display_settings(&self) {

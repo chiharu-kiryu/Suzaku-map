@@ -3,61 +3,60 @@ pub fn derive_next_token_candidates(
     sentence_candidates: &[String],
     limit: usize,
 ) -> Vec<String> {
-    let seed_tokens: Vec<String> = seed_text
-        .split_whitespace()
-        .map(|token| token.to_ascii_lowercase())
-        .collect();
-    let mut next = Vec::new();
-    let mut later = Vec::new();
+    let seed_tokens = tokenize_seed_words(seed_text);
+    let seed_token_refs = seed_tokens.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut ranked = Vec::<(String, i32, usize)>::new();
 
-    for sentence in sentence_candidates {
+    for (source_index, sentence) in sentence_candidates.iter().enumerate() {
         let words: Vec<&str> = sentence.split_whitespace().collect();
-        let mut prefix_len = 0;
-        while prefix_len < seed_tokens.len()
-            && prefix_len < words.len()
-            && seed_tokens[prefix_len].eq_ignore_ascii_case(words[prefix_len])
-        {
-            prefix_len += 1;
-        }
+        let prefix_len = matching_prefix_len_str(&seed_token_refs, &words);
 
         if prefix_len >= words.len() {
             continue;
         }
 
-        let token = words[prefix_len]
-            .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
-            .to_ascii_lowercase();
-        if !token.is_empty()
-            && !seed_tokens.iter().any(|existing| existing == &token)
-            && !next.iter().any(|existing| existing == &token)
-        {
-            next.push(token);
-        }
-        if next.len() >= limit {
-            return next;
+        let immediate_token = words
+            .get(prefix_len)
+            .and_then(|raw| normalize_candidate_token(raw))
+            .filter(|token| !seed_tokens.iter().any(|existing| existing == token))
+            .map(|token| {
+                (
+                    token,
+                    score_next_token_candidate(source_index, true, 0),
+                    prefix_len,
+                )
+            });
+
+        if let Some((token, score, source_position)) = immediate_token {
+            push_ranked_token(&mut ranked, token, score, source_position);
         }
 
-        for candidate in words.iter().skip(prefix_len + 1) {
-            let token = candidate
-                .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
-                .to_ascii_lowercase();
-            if token.is_empty()
-                || seed_tokens.iter().any(|existing| existing == &token)
-                || next.iter().any(|existing| existing == &token)
-                || later.iter().any(|existing| existing == &token)
-            {
+        for (candidate_index, candidate) in words.iter().enumerate().skip(prefix_len + 1) {
+            let Some(token) = normalize_candidate_token(candidate) else {
+                continue;
+            };
+            if token.is_empty() || seed_tokens.iter().any(|existing| existing == &token) {
                 continue;
             }
-            later.push(token);
+            let distance = candidate_index.saturating_sub(prefix_len + 1);
+            let score = score_next_token_candidate(source_index, false, distance);
+            push_ranked_token(&mut ranked, token, score, candidate_index);
         }
     }
 
-    for token in later {
-        next.push(token);
-        if next.len() >= limit {
-            return next;
-        }
-    }
+    ranked.sort_by(|left, right| {
+        right
+            .1
+            .cmp(&left.1)
+            .then_with(|| left.2.cmp(&right.2))
+            .then_with(|| left.0.cmp(&right.0))
+    });
+
+    let mut next = ranked
+        .into_iter()
+        .map(|(token, _, _)| token)
+        .take(limit)
+        .collect::<Vec<_>>();
 
     for fallback in ["is", "can", "will", "for", "with", "next"] {
         if !seed_tokens.iter().any(|existing| existing == fallback)
@@ -70,6 +69,54 @@ pub fn derive_next_token_candidates(
         }
     }
     next
+}
+
+fn tokenize_seed_words(seed_text: &str) -> Vec<String> {
+    seed_text
+        .split_whitespace()
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
+}
+
+fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
+    let mut prefix_len = 0;
+    while prefix_len < seed_tokens.len()
+        && prefix_len < words.len()
+        && seed_tokens[prefix_len].eq_ignore_ascii_case(words[prefix_len])
+    {
+        prefix_len += 1;
+    }
+    prefix_len
+}
+
+fn normalize_candidate_token(raw: &str) -> Option<String> {
+    let token = raw
+        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
+        .to_ascii_lowercase();
+
+    if token.is_empty() { None } else { Some(token) }
+}
+
+fn score_next_token_candidate(source_index: usize, immediate: bool, offset: usize) -> i32 {
+    let source_credit = (1600_i32).saturating_sub(source_index as i32 * 35);
+    let immediate_bonus = if immediate { 260 } else { 130 };
+    let distance_penalty = (offset as i32).saturating_mul(26);
+    source_credit + immediate_bonus - distance_penalty
+}
+
+fn push_ranked_token(
+    ranked: &mut Vec<(String, i32, usize)>,
+    token: String,
+    score: i32,
+    source_position: usize,
+) {
+    if let Some(existing) = ranked.iter_mut().find(|entry| entry.0 == token) {
+        if score > existing.1 {
+            *existing = (token, score, source_position);
+        }
+        return;
+    }
+    ranked.push((token, score, source_position));
 }
 
 pub fn derive_sentence_candidates_with_indices(
@@ -138,11 +185,16 @@ fn sentence_candidate_rank(
     seed_text: &str,
     sentence: &str,
     source_index: usize,
-) -> (usize, usize, usize, usize, usize, usize) {
+) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
     let normalized_seed = seed_text.to_ascii_lowercase();
     let normalized_sentence = sentence.to_ascii_lowercase();
+    let seed_tokens = normalized_seed.split_whitespace().collect::<Vec<_>>();
+    let sentence_tokens = normalized_sentence.split_whitespace().collect::<Vec<_>>();
     let token_count = normalized_sentence.split_whitespace().count();
-    let ideal_length_delta = token_count.abs_diff(8);
+    let ideal_length_delta = token_count.abs_diff((seed_tokens.len() + 6).clamp(6, 14));
+    let continuation_penalty = seed_tokens
+        .len()
+        .abs_diff(matching_prefix_len_str(&seed_tokens, &sentence_tokens));
     let template_rank = if normalized_sentence.contains(" is ready.") {
         0
     } else if normalized_sentence.contains("next suggestion") {
@@ -152,7 +204,7 @@ fn sentence_candidate_rank(
     } else if normalized_sentence.contains("full sentence") {
         3
     } else {
-        0
+        4
     };
     let repeat_penalty = usize::from(has_adjacent_repeated_word(&normalized_sentence));
     let seed_repetition_penalty = usize::from(
@@ -165,12 +217,21 @@ fn sentence_candidate_rank(
     );
     let punctuation_penalty =
         usize::from(!matches!(sentence.chars().last(), Some('.' | '!' | '?')));
+    let seed_term_penalty = if seed_tokens.is_empty() {
+        0
+    } else if sentence_tokens.len() <= seed_tokens.len() {
+        3
+    } else {
+        0
+    };
 
     (
         template_rank,
+        continuation_penalty,
         repeat_penalty,
         seed_repetition_penalty,
         ideal_length_delta,
+        seed_term_penalty,
         punctuation_penalty,
         source_index,
     )
@@ -480,6 +541,50 @@ mod tests {
     }
 
     #[test]
+    fn next_and_sentence_candidates_change_after_token_selection() {
+        let base_candidates = vec![
+            "apple can is ready as the next full sentence".into(),
+            "apple can continue by tapping the next suggestion".into(),
+            "apple can now expands into a complete candidate".into(),
+            "apple can with this app".into(),
+        ];
+        let before_seed = "apple";
+        let before_next = derive_next_token_candidates(before_seed, &base_candidates, 6);
+        let before_sentence = derive_sentence_candidates(before_seed, &base_candidates, 4);
+
+        let selected = before_next
+            .iter()
+            .find(|token| token.as_str() == "can")
+            .cloned()
+            .unwrap_or_else(|| "can".to_string());
+        let selected_seed = format!("{before_seed} {}", selected);
+        let after_next = derive_next_token_candidates(&selected_seed, &base_candidates, 6);
+        let after_sentence = derive_sentence_candidates(&selected_seed, &base_candidates, 4);
+
+        assert!(
+            !selected_seed
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .is_empty()
+                && selected_seed.split_whitespace().count() >= 2
+        );
+        assert!(!before_next.is_empty());
+        assert!(!after_next.is_empty());
+        assert!(
+            !after_next.iter().any(|token| token == "can"),
+            "seed extension should consume `can` into context"
+        );
+        assert!(
+            after_sentence
+                .iter()
+                .any(|candidate| candidate.to_ascii_lowercase().starts_with("apple can")),
+            "extended seed should surface sentence candidates"
+        );
+        assert_ne!(before_next.first(), after_next.first());
+        assert_ne!(before_sentence, after_sentence);
+    }
+
+    #[test]
     fn sentence_derivation_cleans_generic_engine_templates() {
         let sentences = derive_sentence_candidates(
             "apple can",
@@ -514,6 +619,38 @@ mod tests {
         assert_eq!(
             sentences.first().map(|(_, sentence)| sentence.as_str()),
             Some("Now can as is ready.")
+        );
+    }
+
+    #[test]
+    fn next_token_derivation_prefers_immediate_continuation() {
+        let tokens = derive_next_token_candidates(
+            "apple",
+            &[
+                "apple can continue with confidence".into(),
+                "apple and then fly".into(),
+            ],
+            6,
+        );
+
+        assert!(!tokens.is_empty());
+        assert_eq!(tokens.first(), Some(&"can".to_string()));
+    }
+
+    #[test]
+    fn sentence_derivation_prefers_highest_continuation_signal() {
+        let sentences = derive_sentence_candidates_with_indices(
+            "let us",
+            &[
+                "let us now can continue".into(),
+                "let us is ready as the next full sentence".into(),
+            ],
+            2,
+        );
+
+        assert_eq!(
+            sentences.first().map(|(_, sentence)| sentence.as_str()),
+            Some("Let us is ready.")
         );
     }
 

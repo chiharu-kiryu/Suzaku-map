@@ -33,7 +33,7 @@ pub fn voice_transcript_placeholder(
             if supports_live_capture {
                 format!("Tap Listen, speak, then Use Seed with {backend_label}.")
             } else {
-                format!("{backend_label} is connected, but live capture is not ready yet.")
+                format!("{backend_label} is connected, but live capture is not available yet.")
             }
         }
     }

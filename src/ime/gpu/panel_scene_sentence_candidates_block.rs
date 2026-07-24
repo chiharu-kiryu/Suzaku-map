@@ -1,4 +1,8 @@
 {
+let separator_divider = match chrome.theme_preset {
+    ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.08],
+    ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.05],
+};
 let sentence_y = suggestions_y + metrics.chip_section_h + metrics.sentence_section_gap;
 let candidate_columns = metrics.candidate_columns;
 let candidate_gap_x = if collapsed_daily_mode {
@@ -178,7 +182,7 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
                 visual_rect[2] - 6.0 * responsive_scale,
                 visual_rect[3] - 6.0 * responsive_scale,
             ],
-            [1.0, 1.0, 1.0, 0.08],
+            separator_divider,
             8.0 * responsive_scale,
         );
     } else if collapsed_daily_mode && display_index > 0 {
@@ -189,7 +193,10 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
                 1.0,
                 visual_rect[3] - 14.0 * responsive_scale,
             ],
-            color: [1.0, 1.0, 1.0, 0.10],
+            color: match chrome.theme_preset {
+                ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.10],
+                ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.06],
+            },
         });
     }
     if is_hero {
@@ -201,7 +208,10 @@ for (display_index, (source_index, label)) in visible_sentence_candidates.iter()
                 visual_rect[2] - 8.0 * responsive_scale,
                 visual_rect[3] - 8.0 * responsive_scale,
             ],
-            [1.0, 1.0, 1.0, 0.08],
+            match chrome.theme_preset {
+                ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.08],
+                ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.05],
+            },
             10.0 * responsive_scale,
         );
     }

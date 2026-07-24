@@ -24,29 +24,29 @@ impl WgpuCandidateRenderer {
         let ui_tracking = tracking * 0.08 - 0.03;
         let heading_tracking = tracking * 0.04 - 0.02;
         let base_line_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            4.8
+            4.7
         } else {
             6.0
         };
-        let ui_scale = (self.scene_width / 560.0).clamp(0.96, 1.25);
-        let title_px = 3.72 * ui_scale;
-        let section_px = 2.58 * ui_scale;
-        let chip_px = 2.3 * ui_scale;
-        let panel_width = (self.scene_width * 0.98).clamp(460.0, 900.0);
+        let ui_scale = (self.scene_width / 640.0).clamp(0.86, 1.08);
+        let title_px = 3.82 * ui_scale;
+        let section_px = 2.52 * ui_scale;
+        let chip_px = 2.34 * ui_scale;
+        let panel_width = (self.scene_width * 0.92).clamp(390.0, 740.0);
         let panel_x = ((self.scene_width - panel_width) / 2.0).max(8.0);
-        let row_height = 29.0 * ui_scale;
-        let section_gap_y = 6.5 * ui_scale;
-        let chip_start_x = panel_x + 132.0 * ui_scale;
+        let row_height = 25.9 * ui_scale;
+        let section_gap_y = 5.4 * ui_scale;
+        let chip_start_x = panel_x + 116.0 * ui_scale;
         let chip_max_x = panel_x + panel_width - 18.0;
-        let chip_gap_x = 9.0 * ui_scale;
-        let chip_gap_y = 7.0 * ui_scale;
-        let label_col_x = panel_x + 18.0 * ui_scale;
-        let label_max_width = (chip_start_x - label_col_x - 8.0).max(86.0);
-        let row_label_height = 22.0 * ui_scale;
+        let chip_gap_x = 6.2 * ui_scale;
+        let chip_gap_y = 5.6 * ui_scale;
+        let label_col_x = panel_x + 17.0 * ui_scale;
+        let label_max_width = (chip_start_x - label_col_x - 8.0).max(94.0);
+        let row_label_height = 21.8 * ui_scale;
         let section_label_height = row_label_height;
-        let section_margin = 3.5 * ui_scale;
-        let min_panel_height = 198.0;
-        let chip_area_width = (chip_max_x - chip_start_x).max(130.0);
+        let section_margin = 2.9 * ui_scale;
+        let min_panel_height = 166.0;
+        let chip_area_width = (chip_max_x - chip_start_x).max(132.0);
 
         let sections: Vec<(&str, Vec<(InteractionKind, &str, bool)>)> = vec![
             (
@@ -260,10 +260,10 @@ impl WgpuCandidateRenderer {
         ];
 
         let estimated_chip_width = |label: &str| {
-            (label.chars().count() as f32 * 10.8)
-                .max(58.0)
+            (label.chars().count() as f32 * 10.0)
+                .max(56.0)
                 .min(chip_area_width)
-                + 22.0 * ui_scale
+                + 20.0 * ui_scale
         };
         let estimate_chip_rows = |options: &[(InteractionKind, &str, bool)]| {
             let mut cursor_x = chip_start_x;
@@ -290,8 +290,8 @@ impl WgpuCandidateRenderer {
             estimated_height += section_gap_y;
         }
 
-        let title_section_h = 44.0;
-        let panel_padding_y = 12.0;
+        let title_section_h = 35.0;
+        let panel_padding_y = 8.0;
         let panel_height = (title_section_h + estimated_height + panel_padding_y)
             .max(min_panel_height)
             .min((self.scene_height - 16.0).max(224.0));
@@ -349,10 +349,14 @@ impl WgpuCandidateRenderer {
         );
         quads.push(CandidateQuad {
             rect: [panel_x + 10.0, panel_y + 8.0, panel_width - 20.0, 2.0],
-            color: [1.0, 1.0, 1.0, 0.16],
+            color: if chrome.theme_preset == ThemePreset::DeviceDark {
+                [1.0, 1.0, 1.0, 0.06]
+            } else {
+                [1.0, 1.0, 1.0, 0.16]
+            },
         });
 
-        let close_rect = [panel_x + panel_width - 36.0, panel_y + 8.0, 22.0, 22.0];
+        let close_rect = [panel_x + panel_width - 36.0, panel_y + 8.5, 22.0, 22.0];
         let (close_hovered, close_pressed) = interaction_state(InteractionKind::SettingsToggle);
         let close_visual_rect = animated_rect(close_rect, close_hovered, close_pressed);
         append_soft_card_quads(
@@ -404,8 +408,8 @@ impl WgpuCandidateRenderer {
 
         let mut label_layouts = Vec::new();
         let mut option_layouts = Vec::new();
-        let mut content_y = panel_y + 48.0;
-        let panel_bottom_guard = panel_y + panel_height - 6.0;
+        let mut content_y = panel_y + 44.0;
+        let panel_bottom_guard = panel_y + panel_height - 5.0;
 
         for (label, options) in sections.iter() {
             let section_rows = estimate_chip_rows(options.as_slice());
@@ -414,7 +418,7 @@ impl WgpuCandidateRenderer {
             if section_rows > 1 {
                 section_height += (section_rows as f32 - 1.0) * chip_gap_y;
             }
-            let section_top = content_y - 4.0;
+            let section_top = content_y - 3.2;
             if section_top + section_height > panel_bottom_guard {
                 break;
             }
@@ -444,7 +448,11 @@ impl WgpuCandidateRenderer {
                     panel_width - 44.0,
                     1.0,
                 ],
-                color: [1.0, 1.0, 1.0, 0.08],
+                color: if chrome.theme_preset == ThemePreset::DeviceDark {
+                    [1.0, 1.0, 1.0, 0.06]
+                } else {
+                    [1.0, 1.0, 1.0, 0.08]
+                },
             });
 
             let mut chip_x = chip_start_x;
@@ -453,7 +461,7 @@ impl WgpuCandidateRenderer {
             for (kind, chip_label, selected) in options {
                 let (hovered, pressed) = interaction_state(*kind);
                 let available_chip_w =
-                    (chip_area_width + chip_start_x - chip_x).max(70.0 * ui_scale);
+                    (chip_area_width + chip_start_x - chip_x).max(72.0 * ui_scale);
                 let chip_w = estimated_chip_width(chip_label).min(available_chip_w);
                 if chip_x > chip_start_x && chip_x + chip_w > chip_area_right {
                     chip_x = chip_start_x;
@@ -493,7 +501,7 @@ impl WgpuCandidateRenderer {
                     text: (*chip_label).to_string(),
                     origin: [
                         visual_rect[0] + 10.0 * ui_scale,
-                        visual_rect[1] + 7.0 * ui_scale,
+                        visual_rect[1] + 6.2 * ui_scale,
                     ],
                     max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
                     pixel_size: chip_px,
@@ -514,7 +522,7 @@ impl WgpuCandidateRenderer {
 
             let label_layout = TextBlock {
                 text: (*label).to_string(),
-                origin: [label_col_x, content_y + 7.0],
+                origin: [label_col_x, content_y + 6.8],
                 max_width: label_max_width,
                 pixel_size: section_px,
                 letter_spacing: heading_tracking,

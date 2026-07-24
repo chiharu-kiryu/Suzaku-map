@@ -1,14 +1,14 @@
 {
-                    let handwriting_scale = (drawer_rect[3] / (246.0 * responsive_scale)).clamp(0.82, 1.0);
-                    let handwriting_y = drawer_rect[1] + 16.0 * responsive_scale * handwriting_scale;
+                    let handwriting_scale = (drawer_rect[3] / (238.0 * responsive_scale)).clamp(0.82, 1.0);
+                    let handwriting_y = drawer_rect[1] + 13.5 * responsive_scale * handwriting_scale;
                     let handwriting_title_y = handwriting_y + 6.0 * responsive_scale * handwriting_scale;
                     let handwriting_status_y = handwriting_title_y;
-                    let handwriting_hint_y = handwriting_y + 30.0 * responsive_scale * handwriting_scale;
+                    let handwriting_hint_y = handwriting_y + 26.5 * responsive_scale * handwriting_scale;
                     let handwriting_padding_x = 10.0 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_row_h = 18.0 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_gap_x = 8.0 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_gap_y = 6.0 * responsive_scale * handwriting_scale;
-                    let base_action_w = (68.0 * handwriting_scale).max(58.0 * responsive_scale * handwriting_scale);
+                    let handwriting_footer_row_h = 18.4 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_gap_x = 7.2 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_gap_y = 5.6 * responsive_scale * handwriting_scale;
+                    let base_action_w = (70.0 * handwriting_scale).max(58.0 * responsive_scale * handwriting_scale);
                     let candidate_text_max = 3usize;
                     let max_candidate_rows = 2usize;
 
@@ -16,7 +16,7 @@
                     let footer_right = drawer_rect[0] + drawer_rect[2] - handwriting_padding_x;
                     let footer_width = (footer_right - footer_left).max(112.0);
 
-                    let available_action_width = (footer_width * 0.38)
+                    let available_action_width = (footer_width * 0.39)
                         .clamp(base_action_w * 2.0 + handwriting_footer_gap_x, 190.0 * handwriting_scale);
                     let action_w = {
                         let candidate_area_min = 76.0 * responsive_scale * handwriting_scale;
@@ -47,7 +47,7 @@
                     let _candidate_area_width = (candidate_area_right - candidate_area_start).max(0.0);
 
                     let candidate_width = |text: &str, max_width: f32| {
-                        let raw = (text.chars().count() as f32 * 9.5 + 16.0)
+                        let raw = (text.chars().count() as f32 * 8.3 + 16.0)
                             .max(48.0)
                             * handwriting_scale;
                         raw.min(max_width).max(44.0 * handwriting_scale)
@@ -93,7 +93,7 @@
                         handwriting_footer_rows * (handwriting_footer_row_h + handwriting_footer_gap_y)
                             + 10.0 * responsive_scale * handwriting_scale,
                     ];
-                    let canvas_top = handwriting_y + 50.0 * responsive_scale * handwriting_scale;
+                    let canvas_top = handwriting_y + 48.0 * responsive_scale * handwriting_scale;
                     let canvas_rect = [
                         drawer_rect[0],
                         canvas_top,
@@ -231,7 +231,7 @@
                             + undo_rect[2]
                             + handwriting_footer_gap_x,
                         handwriting_footer_rect[1] + 2.0 * responsive_scale * handwriting_scale,
-                        clear_w.min(undo_rect[2] * 1.05),
+                        clear_w.min(undo_rect[2] * 1.02),
                         handwriting_footer_row_h,
                     ];
                     let clear_rect = if clear_rect[0] + clear_rect[2] <= handwriting_footer_rect[0] + handwriting_footer_rect[2] - 6.0 * responsive_scale * handwriting_scale

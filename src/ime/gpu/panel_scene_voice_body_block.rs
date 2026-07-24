@@ -1,23 +1,24 @@
 {
-                    let voice_scale = (drawer_rect[3] / (248.0 * responsive_scale)).clamp(0.82, 1.0);
-                    let voice_y = drawer_rect[1] + 16.0 * responsive_scale * voice_scale;
+                    let voice_scale = (drawer_rect[3] / (238.0 * responsive_scale)).clamp(0.76, 1.0);
+                    let voice_content_x_pad = 9.8 * responsive_scale * voice_scale;
+                    let voice_y = drawer_rect[1] + 12.0 * responsive_scale * voice_scale;
                     let voice_rect = [
                         drawer_rect[0],
                         voice_y,
                         drawer_rect[2],
-                        (drawer_rect[3] - 24.0 * responsive_scale).max(156.0 * responsive_scale * voice_scale),
+                        (drawer_rect[3] - 18.0 * responsive_scale).max(148.0 * responsive_scale * voice_scale),
                     ];
-                    let voice_content_x = voice_rect[0] + 12.0 * responsive_scale * voice_scale;
-                    let voice_header_y = voice_y + 12.0 * responsive_scale * voice_scale;
-                    let voice_transcript_y = voice_y + 38.0 * responsive_scale * voice_scale;
+                    let voice_content_x = voice_rect[0] + voice_content_x_pad;
+                    let voice_header_y = voice_y + 8.8 * responsive_scale * voice_scale;
+                    let voice_transcript_y = voice_y + 30.0 * responsive_scale * voice_scale;
                     let voice_transcript_bottom = (voice_rect[1] + voice_rect[3])
-                        - (26.0 * responsive_scale * voice_scale);
+                        - (20.0 * responsive_scale * voice_scale);
                     let voice_transcript_room = voice_transcript_bottom - voice_transcript_y;
                     let voice_transcript_max_lines = if voice_transcript_room
-                        >= 56.0 * responsive_scale * voice_scale
+                        >= 54.0 * responsive_scale * voice_scale
                     {
                         3
-                    } else if voice_transcript_room >= 34.0 * responsive_scale * voice_scale {
+                    } else if voice_transcript_room >= 32.0 * responsive_scale * voice_scale {
                         2
                     } else {
                         1
@@ -58,12 +59,17 @@
                     } else {
                         ""
                     };
+                    let live_hint_x = if live_hint.is_empty() {
+                        drawer_rect[0] + drawer_rect[2] - 120.0 * responsive_scale * voice_scale
+                    } else {
+                        drawer_rect[0] + drawer_rect[2] - 116.0 * responsive_scale * voice_scale
+                    };
                     if !live_hint.is_empty() {
                         let hint_rect = [
-                            drawer_rect[0] + drawer_rect[2] - 128.0 * responsive_scale * voice_scale,
-                            voice_y + 8.0 * responsive_scale * voice_scale,
-                            116.0 * responsive_scale * voice_scale,
-                            18.0 * responsive_scale * voice_scale,
+                            live_hint_x,
+                            voice_y + 7.0 * responsive_scale * voice_scale,
+                            112.0 * responsive_scale * voice_scale,
+                            17.0 * responsive_scale * voice_scale,
                         ];
                         append_soft_card_quads(
                             &mut quads,
@@ -109,9 +115,9 @@
                             origin: [voice_content_x, voice_header_y],
                             max_width: drawer_rect[2]
                                 - if live_hint.is_empty() {
-                                    28.0 * responsive_scale * voice_scale
+                                    26.0 * responsive_scale * voice_scale
                                 } else {
-                                    176.0 * responsive_scale * voice_scale
+                                    138.0 * responsive_scale * voice_scale
                                 },
                             pixel_size: title_px * voice_scale,
                             letter_spacing: ui_tracking * voice_scale,
@@ -138,10 +144,10 @@
                                 live_hint.to_string()
                             },
                             origin: [
-                                drawer_rect[0] + drawer_rect[2] - 122.0 * responsive_scale * voice_scale,
+                                live_hint_x,
                                 voice_header_y + 1.0 * responsive_scale * voice_scale,
                             ],
-                            max_width: 104.0 * responsive_scale * voice_scale,
+                            max_width: 110.0 * responsive_scale * voice_scale,
                             pixel_size: helper_px * voice_scale,
                             letter_spacing: ui_tracking * voice_scale,
                             line_gap: base_line_gap * voice_scale,
@@ -205,7 +211,7 @@
                             } else {
                                 "Mic"
                             },
-                            (78.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
+                            (76.0 * voice_scale).max(58.0 * responsive_scale * voice_scale),
                             chrome.voice_state == VoiceCaptureState::Listening,
                             chrome.voice_permission != VoicePermissionState::Denied
                                 && chrome.voice_permission != VoicePermissionState::Error,
@@ -213,7 +219,7 @@
                         (
                             InteractionKind::InsertVoiceTranscript,
                             "Seed",
-                            (88.0 * voice_scale).max(62.0 * responsive_scale * voice_scale),
+                            (86.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
                             !chrome.voice_transcript.is_empty()
                                 && chrome.voice_state != VoiceCaptureState::Listening,
                             !chrome.voice_transcript.is_empty()
@@ -226,7 +232,7 @@
                         voice_actions.push((
                             InteractionKind::CycleVoiceSample,
                             "Next",
-                            (84.0 * voice_scale).max(62.0 * responsive_scale * voice_scale),
+                            (82.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
@@ -238,14 +244,14 @@
                         voice_actions.push((
                             InteractionKind::OpenVoiceSettings,
                             "Prefs",
-                            (86.0 * voice_scale).max(62.0 * responsive_scale * voice_scale),
+                            (84.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
                         voice_actions.push((
                             InteractionKind::RefreshVoicePermissions,
                             "Sync",
-                            (72.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
+                            (70.0 * voice_scale).max(58.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
@@ -254,14 +260,14 @@
                         voice_actions.push((
                             InteractionKind::ClearVoiceTranscript,
                             "Clear",
-                            (72.0 * voice_scale).max(60.0 * responsive_scale * voice_scale),
+                            (70.0 * voice_scale).max(58.0 * responsive_scale * voice_scale),
                             false,
                             true,
                         ));
                     }
 
-                    let action_row_h = 20.0 * responsive_scale * voice_scale;
-                    let action_row_gap_x = 8.0 * responsive_scale * voice_scale;
+                    let action_row_h = 20.4 * responsive_scale * voice_scale;
+                    let action_row_gap_x = 6.6 * responsive_scale * voice_scale;
                     let action_row_gap_y = 6.0 * responsive_scale * voice_scale;
                     let action_start_x = drawer_rect[0] + 10.0 * responsive_scale * voice_scale;
                     let action_end_x = drawer_rect[0] + drawer_rect[2] - 10.0 * responsive_scale * voice_scale;
@@ -330,7 +336,7 @@
                             action_row_h,
                         ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
-                        action_cursor_x += next_width + 8.0 * responsive_scale * voice_scale;
+                        action_cursor_x += next_width + 7.2 * responsive_scale * voice_scale;
                         append_soft_card_quads(
                             &mut quads,
                             visual_rect,
@@ -392,10 +398,10 @@
                             let layout = TextBlock {
                                 text: label.to_string(),
                                     origin: [
-                                        visual_rect[0] + 8.0 * responsive_scale * voice_scale,
-                                        visual_rect[1] + 6.0 * responsive_scale * voice_scale,
-                                    ],
-                                    max_width: visual_rect[2] - 16.0 * responsive_scale * voice_scale,
+                                visual_rect[0] + 7.8 * responsive_scale * voice_scale,
+                                visual_rect[1] + 6.0 * responsive_scale * voice_scale,
+                            ],
+                            max_width: visual_rect[2] - 15.5 * responsive_scale * voice_scale,
                                     pixel_size: 2.0 * voice_scale,
                                     letter_spacing: ui_tracking * voice_scale,
                                     line_gap: base_line_gap * voice_scale,

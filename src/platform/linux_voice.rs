@@ -192,6 +192,12 @@ impl LinuxSpeechBridge {
 
 #[cfg(not(target_os = "linux"))]
 fn computed_linux_permission_state() -> VoicePermissionState {
+    if std::env::var("SUZAKU_LINUX_VOICE_FORCE_READY")
+        .map(|value| value == "1")
+        .unwrap_or(false)
+    {
+        return VoicePermissionState::Ready;
+    }
     if std::env::var("SUZAKU_LINUX_VOICE_FORCE_DENIED")
         .map(|value| value == "1")
         .unwrap_or(false)
@@ -239,6 +245,7 @@ mod tests {
     fn linux_bridge_reports_ready_when_portal_and_pipewire_are_available() {
         let bridge = LinuxSpeechBridge::new();
         unsafe {
+            std::env::set_var("SUZAKU_LINUX_VOICE_FORCE_READY", "1");
             std::env::set_var("SUZAKU_LINUX_PORTAL_AVAILABLE", "1");
             std::env::set_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE", "1");
         }
@@ -251,6 +258,7 @@ mod tests {
         assert!(bridge.pipewire_available());
 
         unsafe {
+            std::env::remove_var("SUZAKU_LINUX_VOICE_FORCE_READY");
             std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
             std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
         }

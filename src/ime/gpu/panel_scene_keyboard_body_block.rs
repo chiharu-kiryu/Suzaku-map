@@ -1,23 +1,24 @@
 {
                     let keyboard_scale =
-                        (drawer_rect[3] / (206.0 * responsive_scale)).clamp(0.78, 1.0);
-                    let keyboard_padding_x = 10.0 * responsive_scale * keyboard_scale;
+                        (drawer_rect[3] / (198.0 * responsive_scale)).clamp(0.74, 1.0);
+                    let keyboard_padding_x = 9.0 * responsive_scale * keyboard_scale;
                     let keyboard_content_left = drawer_rect[0] + keyboard_padding_x;
                     let keyboard_content_right = drawer_rect[0] + drawer_rect[2] - keyboard_padding_x;
                     let keyboard_content_width = (keyboard_content_right - keyboard_content_left).max(120.0);
-                    let keyboard_title_y = drawer_rect[1] + 18.0 * responsive_scale * keyboard_scale;
+                    let keyboard_title_y = drawer_rect[1] + 11.5 * responsive_scale * keyboard_scale;
                     let keyboard_status_y = keyboard_title_y;
-                    let row_h = 24.0 * responsive_scale * keyboard_scale;
-                    let keyboard_y = drawer_rect[1] + 52.0 * responsive_scale * keyboard_scale;
+                    let row_h = 22.0 * responsive_scale * keyboard_scale;
+                    let keyboard_y = drawer_rect[1] + 41.0 * responsive_scale * keyboard_scale;
+                    let key_row_gap = 3.4 * responsive_scale * keyboard_scale;
                     let mut keyboard_layouts = Vec::new();
                     let keyboard_header_layouts = vec![
                         TextBlock {
                             text: "Keyboard input".to_string(),
                             origin: [
-                                drawer_rect[0] + 14.0 * responsive_scale * keyboard_scale,
+                                drawer_rect[0] + 12.0 * responsive_scale * keyboard_scale,
                                 keyboard_title_y,
                             ],
-                            max_width: (drawer_rect[2] - 150.0 * responsive_scale * keyboard_scale)
+                            max_width: (drawer_rect[2] - 142.0 * responsive_scale * keyboard_scale)
                                 .max(110.0 * keyboard_scale),
                             pixel_size: title_px * keyboard_scale,
                             letter_spacing: heading_tracking,
@@ -32,10 +33,10 @@
                             text: "Tap to type".to_string(),
                             origin: [
                                 drawer_rect[0] + drawer_rect[2]
-                                    - (132.0 * responsive_scale * keyboard_scale),
+                                    - (120.0 * responsive_scale * keyboard_scale),
                                 keyboard_status_y,
                             ],
-                            max_width: (122.0 * responsive_scale * keyboard_scale).max(72.0),
+                            max_width: (114.0 * responsive_scale * keyboard_scale).max(66.0),
                             pixel_size: helper_px * keyboard_scale,
                             letter_spacing: ui_tracking * keyboard_scale,
                             line_gap: base_line_gap * keyboard_scale,
@@ -141,15 +142,15 @@
                         let row_width =
                             (keyboard_content_width - inset * 2.0).max(20.0 * responsive_scale);
                         let requested_gap = (row_width / (key_count + 1.0)).clamp(
-                            3.0 * responsive_scale * keyboard_scale,
-                            8.0 * responsive_scale * keyboard_scale,
+                            2.0 * responsive_scale * keyboard_scale,
+                            7.0 * responsive_scale * keyboard_scale,
                         );
                         let key_count_minus_1 = (key_count - 1.0).max(1.0);
                         let mut key_gap = requested_gap;
                         let mut key_w =
                             (row_width - key_gap * key_count_minus_1) / key_count.max(1.0);
-                        let min_key_w = 18.0 * responsive_scale * keyboard_scale;
-                        let min_gap = 3.0 * responsive_scale * keyboard_scale;
+                        let min_key_w = 16.0 * responsive_scale * keyboard_scale;
+                        let min_gap = 2.0 * responsive_scale * keyboard_scale;
 
                         if key_w < min_key_w {
                             key_w = min_key_w;
@@ -163,7 +164,7 @@
                         let content_w = key_w * key_count + key_gap * key_count_minus_1;
                         let row_extra = (row_width - content_w) * 0.5;
                         let row_x = keyboard_content_left + inset + row_extra.max(0.0);
-                        let row_y = keyboard_y + row_index as f32 * (row_h + key_gap);
+                        let row_y = keyboard_y + row_index as f32 * (row_h + key_row_gap);
 
                         for (key_index, key) in keys.iter().enumerate() {
                             let x = row_x + key_index as f32 * (key_w + key_gap);
@@ -209,7 +210,7 @@
                                 text: label,
                                 origin: [
                                     x + 8.0 * responsive_scale * keyboard_scale,
-                                    row_y + 8.0 * responsive_scale * keyboard_scale,
+                                    row_y + 7.4 * responsive_scale * keyboard_scale,
                                 ],
                                 max_width: key_w - 16.0 * responsive_scale * keyboard_scale,
                                 pixel_size: if matches!(
@@ -221,7 +222,7 @@
                                     (chip_px * 0.9 * keyboard_scale).max(1.8 * responsive_scale)
                                 } else {
                                     (chip_px * 1.1 * keyboard_scale)
-                                        .max(2.0 * responsive_scale * keyboard_scale)
+                                        .max(2.05 * responsive_scale * keyboard_scale)
                                 },
                                 letter_spacing: ui_tracking * keyboard_scale,
                                 line_gap: base_line_gap * keyboard_scale,
@@ -254,16 +255,18 @@
                         }
                     }
 
-                    let action_y = keyboard_y + 3.0 * (row_h + 6.0 * responsive_scale * keyboard_scale);
-                    let action_gap = 6.0 * responsive_scale * keyboard_scale;
-                    let base_left_w = 72.0 * responsive_scale * keyboard_scale;
-                    let base_mid_w = 34.0 * responsive_scale * keyboard_scale;
-                    let base_right_w = 92.0 * responsive_scale * keyboard_scale;
-                    let base_space_w = 86.0 * responsive_scale * keyboard_scale;
-                    let min_left_w = 38.0 * responsive_scale * keyboard_scale;
+                    let key_block_h = (key_rows.len() as f32).max(1.0) * row_h
+                        + (key_rows.len().saturating_sub(1)) as f32 * key_row_gap;
+                    let action_y = keyboard_y + key_block_h + 3.0 * responsive_scale * keyboard_scale;
+                    let action_gap = 5.0 * responsive_scale * keyboard_scale;
+                    let base_left_w = 65.5 * responsive_scale * keyboard_scale;
+                    let base_mid_w = 33.0 * responsive_scale * keyboard_scale;
+                    let base_right_w = 84.0 * responsive_scale * keyboard_scale;
+                    let base_space_w = 78.0 * responsive_scale * keyboard_scale;
+                    let min_left_w = 36.0 * responsive_scale * keyboard_scale;
                     let min_mid_w = 20.0 * responsive_scale * keyboard_scale;
-                    let min_right_w = 56.0 * responsive_scale * keyboard_scale;
-                    let min_space_w = 56.0 * responsive_scale * keyboard_scale;
+                    let min_right_w = 54.0 * responsive_scale * keyboard_scale;
+                    let min_space_w = 54.0 * responsive_scale * keyboard_scale;
                     let available_action_w = keyboard_content_width.max(0.0);
                     let total_min =
                         min_left_w + min_right_w + min_space_w + 2.0 * min_mid_w + action_gap * 4.0;
@@ -476,7 +479,7 @@
                             text: label.to_string(),
                             origin: [
                                 rect[0] + 10.0 * responsive_scale * keyboard_scale,
-                                rect[1] + 8.0 * responsive_scale * keyboard_scale,
+                                rect[1] + 7.4 * responsive_scale * keyboard_scale,
                             ],
                             max_width: rect[2] - 20.0 * responsive_scale * keyboard_scale,
                             pixel_size: label_pixel_size,

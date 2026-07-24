@@ -91,25 +91,29 @@ impl WgpuCandidateRenderer {
         };
         let responsive_scale = self.responsive_scale();
         let input_value_px = match chrome.text_scale {
-            DisplayTextScale::Small => 2.2,
-            DisplayTextScale::Medium => 3.25,
-            DisplayTextScale::Large => 4.1,
+            DisplayTextScale::Small => 2.4,
+            DisplayTextScale::Medium => 3.4,
+            DisplayTextScale::Large => 4.2,
         } * responsive_scale;
         let label_px = match chrome.text_scale {
-            DisplayTextScale::Small => 2.1,
-            DisplayTextScale::Medium => 2.35,
-            DisplayTextScale::Large => 3.0,
+            DisplayTextScale::Small => 2.2,
+            DisplayTextScale::Medium => 2.45,
+            DisplayTextScale::Large => 3.12,
         } * responsive_scale;
         let tracking = match chrome.text_spacing {
-            TextSpacing::Tight => -0.42,
-            TextSpacing::Normal => -0.34,
-            TextSpacing::Relaxed => 0.06,
+            TextSpacing::Tight => -0.41,
+            TextSpacing::Normal => -0.32,
+            TextSpacing::Relaxed => 0.08,
         } * responsive_scale;
         let base_line_gap = match chrome.text_spacing {
-            TextSpacing::Tight => 4.0,
-            TextSpacing::Normal => 5.0,
-            TextSpacing::Relaxed => 7.0,
+            TextSpacing::Tight => 4.2,
+            TextSpacing::Normal => 5.2,
+            TextSpacing::Relaxed => 7.2,
         } * responsive_scale;
+        let separator_divider = match chrome.theme_preset {
+            ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.16],
+            ThemePreset::DeviceDark => [0.94, 0.98, 1.0, 0.08],
+        };
         let ui_tracking = tracking * 0.16 - 0.02 * responsive_scale;
         let heading_tracking = tracking * 0.10 - 0.01 * responsive_scale;
         let visible_sentence_candidates: Vec<(usize, String)> = chrome
@@ -199,31 +203,31 @@ impl WgpuCandidateRenderer {
             rect: [0.0, 0.0, self.scene_width, self.scene_height],
             color: page_bg,
         });
-        let panel_shell_y = (panel_y - 10.0 * responsive_scale).max(0.0);
-        let panel_shell_h = (metrics.panel_height + 20.0 * responsive_scale)
+        let panel_shell_y = (panel_y - 3.6 * responsive_scale).max(0.0);
+        let panel_shell_h = (metrics.panel_height + 9.2 * responsive_scale)
             .min((self.scene_height - panel_shell_y).max(1.0));
         append_soft_card_quads(
             &mut quads,
             [
-                panel_x - 10.0 * responsive_scale,
+                panel_x - 6.0 * responsive_scale,
                 panel_shell_y,
-                panel_width + 20.0 * responsive_scale,
+                panel_width + 12.0 * responsive_scale,
                 panel_shell_h,
             ],
             shell,
             shell_border,
             soft_shadow,
             page_bg,
-            12.0 * responsive_scale,
+            9.6 * responsive_scale,
         );
         quads.push(CandidateQuad {
             rect: [
-                panel_x + 8.0 * responsive_scale,
-                panel_shell_y + 8.0 * responsive_scale,
-                panel_width - 16.0 * responsive_scale,
-                2.0 * responsive_scale,
+                panel_x + 6.0 * responsive_scale,
+                panel_shell_y + 6.0 * responsive_scale,
+                panel_width - 12.0 * responsive_scale,
+                1.5 * responsive_scale,
             ],
-            color: [1.0, 1.0, 1.0, 0.16],
+            color: separator_divider,
         });
         append_soft_card_quads(
             &mut quads,
@@ -246,30 +250,30 @@ impl WgpuCandidateRenderer {
             append_rounded_rect_quads(
                 &mut quads,
                 [
-                    panel_x + 3.0 * responsive_scale,
-                    input_box_y + 3.0 * responsive_scale,
-                    panel_width - 6.0 * responsive_scale,
-                    metrics.input_box_h - 6.0 * responsive_scale,
+                    panel_x + 2.5 * responsive_scale,
+                    input_box_y + 2.5 * responsive_scale,
+                    panel_width - 5.0 * responsive_scale,
+                    metrics.input_box_h - 5.0 * responsive_scale,
                 ],
                 [0.72, 0.87, 1.0, 0.12],
-                8.0 * responsive_scale,
+                7.0 * responsive_scale,
             );
         }
         if chrome.input_focused {
             append_rounded_rect_quads(
                 &mut quads,
                 [
-                    panel_x - 1.0 * responsive_scale,
-                    input_box_y - 1.0 * responsive_scale,
-                    panel_width + 2.0 * responsive_scale,
-                    metrics.input_box_h + 2.0 * responsive_scale,
+                    panel_x - 0.6 * responsive_scale,
+                    input_box_y - 0.6 * responsive_scale,
+                    panel_width + 1.2 * responsive_scale,
+                    metrics.input_box_h + 1.2 * responsive_scale,
                 ],
                 [0.56, 0.80, 1.0, 0.12],
-                11.0 * responsive_scale,
+                9.0 * responsive_scale,
             );
             quads.push(CandidateQuad {
                 rect: [
-                    panel_x + 12.0 * responsive_scale,
+                    panel_x + 10.0 * responsive_scale,
                     input_box_y + metrics.input_box_h - 5.0 * responsive_scale,
                     panel_width - 24.0 * responsive_scale,
                     2.0 * responsive_scale,
@@ -353,10 +357,10 @@ impl WgpuCandidateRenderer {
         }
 
         let compact_button_rect = [
-            panel_x + panel_width - 34.0 * responsive_scale,
-            input_box_y + 8.0 * responsive_scale,
-            20.0 * responsive_scale,
-            20.0 * responsive_scale,
+            panel_x + panel_width - 31.0 * responsive_scale,
+            input_box_y + 8.5 * responsive_scale,
+            18.0 * responsive_scale,
+            18.0 * responsive_scale,
         ];
         append_soft_card_quads(
             &mut quads,
@@ -378,10 +382,10 @@ impl WgpuCandidateRenderer {
         let compact_icon = TextBlock {
             text: "".to_string(),
             origin: [
-                compact_button_rect[0] + 4.0 * responsive_scale,
-                compact_button_rect[1] + 5.0 * responsive_scale,
+                compact_button_rect[0] + 3.4 * responsive_scale,
+                compact_button_rect[1] + 4.4 * responsive_scale,
             ],
-            max_width: compact_button_rect[2] - 8.0 * responsive_scale,
+            max_width: compact_button_rect[2] - 7.0 * responsive_scale,
             pixel_size: 2.0 * responsive_scale,
             letter_spacing: ui_tracking,
             line_gap: base_line_gap,
@@ -423,12 +427,12 @@ impl WgpuCandidateRenderer {
             ),
             (InteractionKind::SettingsToggle, chrome.settings_open),
         ];
-        let toolbar_margin_x = 10.0 * responsive_scale;
+        let toolbar_margin_x = 6.0 * responsive_scale;
         let toolbar_button_count = toolbar_buttons.len() as f32;
         let toolbar_total_w =
             toolbar_button_count * toolbar_button_size + (toolbar_button_count - 1.0) * icon_gap;
         let trailing_toggle_w = if chrome.input_modes_expanded {
-            toolbar_button_size + 8.0 * responsive_scale
+            toolbar_button_size + 4.2 * responsive_scale
         } else {
             0.0
         };
@@ -499,7 +503,7 @@ impl WgpuCandidateRenderer {
         }
         if chrome.input_modes_expanded {
             let toggle_rect = [
-                panel_x + panel_width - toolbar_button_size - 8.0 * responsive_scale,
+                panel_x + panel_width - toolbar_button_size - 4.2 * responsive_scale,
                 toolbar_y,
                 toolbar_button_size,
                 toolbar_button_size,
@@ -525,7 +529,7 @@ impl WgpuCandidateRenderer {
 
         let tools_panel_rect = [
             panel_x,
-            tools_y + metrics.tools_header_h + 4.0 * responsive_scale,
+            tools_y + metrics.tools_header_h + 1.9 * responsive_scale,
             panel_width,
             metrics.tools_content_h,
         ];
@@ -543,18 +547,21 @@ impl WgpuCandidateRenderer {
             );
             quads.push(CandidateQuad {
                 rect: [
-                    tools_panel_rect[0] + 12.0 * responsive_scale,
-                    tools_panel_rect[1] + 8.0 * responsive_scale,
-                    tools_panel_rect[2] - 24.0 * responsive_scale,
+                    tools_panel_rect[0] + 10.0 * responsive_scale,
+                    tools_panel_rect[1] + 6.0 * responsive_scale,
+                    tools_panel_rect[2] - 20.0 * responsive_scale,
                     2.0 * responsive_scale,
                 ],
-                color: [1.0, 1.0, 1.0, 0.14],
+                color: match chrome.theme_preset {
+                    ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.14],
+                    ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.10],
+                },
             });
             let drawer_rect = [
-                tools_panel_rect[0] + 10.0 * responsive_scale,
-                tools_panel_rect[1] + 6.0 * responsive_scale,
-                tools_panel_rect[2] - 20.0 * responsive_scale,
-                tools_panel_rect[3] - 10.0 * responsive_scale,
+                tools_panel_rect[0] + 8.0 * responsive_scale,
+                tools_panel_rect[1] + 4.0 * responsive_scale,
+                tools_panel_rect[2] - 16.0 * responsive_scale,
+                tools_panel_rect[3] - 8.0 * responsive_scale,
             ];
             append_soft_card_quads(
                 &mut quads,
@@ -569,11 +576,14 @@ impl WgpuCandidateRenderer {
             quads.push(CandidateQuad {
                 rect: [
                     drawer_rect[0] + (drawer_rect[2] - handle_w) * 0.5,
-                    drawer_rect[1] + 7.0 * responsive_scale,
+                    drawer_rect[1] + 6.0 * responsive_scale,
                     handle_w,
                     3.0 * responsive_scale,
                 ],
-                color: [1.0, 1.0, 1.0, 0.22],
+                color: match chrome.theme_preset {
+                    ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.22],
+                    ThemePreset::DeviceDark => [0.96, 0.98, 1.0, 0.12],
+                },
             });
 
             match chrome.active_input_mode {
