@@ -8,6 +8,13 @@ use suzaku_map::ime::gpu::{
 use suzaku_map::platform::settings_host::display_settings_path;
 use suzaku_map::platform::voice_host::HostSpeechRecognizer;
 
+const MIN_POINTER_TAP_SLOP_TENTHS: u16 = 20;
+const MAX_POINTER_TAP_SLOP_TENTHS: u16 = 120;
+const MIN_POINTER_TAP_MAX_MS: u16 = 120;
+const MAX_POINTER_TAP_MAX_MS: u16 = 1200;
+const MIN_POINTER_TARGET_SLOP_TENTHS: u16 = 10;
+const MAX_POINTER_TARGET_SLOP_TENTHS: u16 = 120;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PersistedDisplaySettings {
     pub(crate) text_scale: DisplayTextScale,
@@ -21,6 +28,9 @@ pub(crate) struct PersistedDisplaySettings {
     pub(crate) llm_enabled: bool,
     pub(crate) llm_model: LlmModelPreset,
     pub(crate) llm_temperature: LlmTemperaturePreset,
+    pub(crate) pointer_tap_slop_tenths: u16,
+    pub(crate) pointer_tap_max_ms: u16,
+    pub(crate) pointer_target_slop_tenths: u16,
 }
 
 pub(crate) struct VoiceInputController {
@@ -64,6 +74,9 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             llm_enabled: chrome.llm_enabled,
             llm_model: chrome.llm_model,
             llm_temperature: chrome.llm_temperature,
+            pointer_tap_slop_tenths: chrome.pointer_tap_slop_tenths,
+            pointer_tap_max_ms: chrome.pointer_tap_max_ms,
+            pointer_target_slop_tenths: chrome.pointer_target_slop_tenths,
         }
     }
 }
@@ -83,12 +96,16 @@ pub(crate) fn apply_display_settings(
     chrome.llm_enabled = settings.llm_enabled;
     chrome.llm_model = settings.llm_model;
     chrome.llm_temperature = settings.llm_temperature;
+    chrome.pointer_tap_slop_tenths = settings.pointer_tap_slop_tenths;
+    chrome.pointer_tap_max_ms = settings.pointer_tap_max_ms;
+    chrome.pointer_target_slop_tenths = settings.pointer_target_slop_tenths;
+    normalize_pointer_stability_settings(chrome);
     normalize_display_readability(chrome);
 }
 
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
     let contents = format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
@@ -108,6 +125,9 @@ pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std:
         },
         encode_llm_model(settings.llm_model),
         encode_llm_temperature(settings.llm_temperature),
+        settings.pointer_tap_slop_tenths,
+        settings.pointer_tap_max_ms,
+        settings.pointer_target_slop_tenths,
     );
     let path = display_settings_path();
     ensure_settings_parent(&path)?;
@@ -128,6 +148,9 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         llm_enabled: false,
         llm_model: LlmModelPreset::Llama32_3b,
         llm_temperature: LlmTemperaturePreset::Balanced,
+        pointer_tap_slop_tenths: 75,
+        pointer_tap_max_ms: 320,
+        pointer_target_slop_tenths: 35,
     };
 
     for line in contents.lines() {
@@ -182,11 +205,54 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
                     settings.llm_temperature = parsed;
                 }
             }
+            "pointer_tap_slop_tenths" => {
+                if let Some(parsed) = decode_u16(value.trim()) {
+                    settings.pointer_tap_slop_tenths = parsed;
+                }
+            }
+            "pointer_tap_max_ms" => {
+                if let Some(parsed) = decode_u16(value.trim()) {
+                    settings.pointer_tap_max_ms = parsed;
+                }
+            }
+            "pointer_target_slop_tenths" => {
+                if let Some(parsed) = decode_u16(value.trim()) {
+                    settings.pointer_target_slop_tenths = parsed;
+                }
+            }
             _ => {}
         }
     }
 
+    normalize_display_pointer_settings(&mut settings);
+
     Some(settings)
+}
+
+pub(crate) fn normalize_pointer_stability_settings(chrome: &mut PanelChromeState) {
+    chrome.pointer_tap_slop_tenths = chrome
+        .pointer_tap_slop_tenths
+        .clamp(MIN_POINTER_TAP_SLOP_TENTHS, MAX_POINTER_TAP_SLOP_TENTHS);
+    chrome.pointer_tap_max_ms = chrome
+        .pointer_tap_max_ms
+        .clamp(MIN_POINTER_TAP_MAX_MS, MAX_POINTER_TAP_MAX_MS);
+    chrome.pointer_target_slop_tenths = chrome.pointer_target_slop_tenths.clamp(
+        MIN_POINTER_TARGET_SLOP_TENTHS,
+        MAX_POINTER_TARGET_SLOP_TENTHS,
+    );
+}
+
+fn normalize_display_pointer_settings(settings: &mut PersistedDisplaySettings) {
+    settings.pointer_tap_slop_tenths = settings
+        .pointer_tap_slop_tenths
+        .clamp(MIN_POINTER_TAP_SLOP_TENTHS, MAX_POINTER_TAP_SLOP_TENTHS);
+    settings.pointer_tap_max_ms = settings
+        .pointer_tap_max_ms
+        .clamp(MIN_POINTER_TAP_MAX_MS, MAX_POINTER_TAP_MAX_MS);
+    settings.pointer_target_slop_tenths = settings.pointer_target_slop_tenths.clamp(
+        MIN_POINTER_TARGET_SLOP_TENTHS,
+        MAX_POINTER_TARGET_SLOP_TENTHS,
+    );
 }
 
 fn normalize_display_readability(chrome: &mut PanelChromeState) {
@@ -337,6 +403,10 @@ pub(crate) fn decode_llm_model(value: &str) -> Option<LlmModelPreset> {
     }
 }
 
+fn decode_u16(value: &str) -> Option<u16> {
+    value.trim().parse::<u16>().ok()
+}
+
 pub(crate) fn encode_llm_temperature(value: LlmTemperaturePreset) -> &'static str {
     match value {
         LlmTemperaturePreset::Focused => "focused",
@@ -372,10 +442,13 @@ mod tests {
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Expressive,
+            pointer_tap_slop_tenths: 95,
+            pointer_tap_max_ms: 240,
+            pointer_target_slop_tenths: 22,
         };
 
         let encoded = format!(
-            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\n",
+            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\n",
             encode_text_scale(settings.text_scale),
             encode_candidate_density(settings.candidate_density),
             encode_preview_style(settings.preview_style),
@@ -395,6 +468,9 @@ mod tests {
             },
             encode_llm_model(settings.llm_model),
             encode_llm_temperature(settings.llm_temperature),
+            settings.pointer_tap_slop_tenths,
+            settings.pointer_tap_max_ms,
+            settings.pointer_target_slop_tenths,
         );
 
         let mut decoded = PersistedDisplaySettings {
@@ -409,6 +485,9 @@ mod tests {
             llm_enabled: true,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
+            pointer_tap_slop_tenths: 75,
+            pointer_tap_max_ms: 320,
+            pointer_target_slop_tenths: 35,
         };
 
         for line in encoded.lines() {
@@ -435,6 +514,15 @@ mod tests {
                 "llm_temperature" => {
                     decoded.llm_temperature = decode_llm_temperature(value).expect("llm temp")
                 }
+                "pointer_tap_slop_tenths" => {
+                    decoded.pointer_tap_slop_tenths = decode_u16(value).expect("tap slop")
+                }
+                "pointer_tap_max_ms" => {
+                    decoded.pointer_tap_max_ms = decode_u16(value).expect("tap max")
+                }
+                "pointer_target_slop_tenths" => {
+                    decoded.pointer_target_slop_tenths = decode_u16(value).expect("target slop")
+                }
                 _ => {}
             }
         }
@@ -450,5 +538,58 @@ mod tests {
         assert_ne!(first, second);
         assert!(!first.is_empty());
         assert!(!second.is_empty());
+    }
+
+    #[test]
+    fn normalize_extreme_pointer_stability_values() {
+        let mut settings = PersistedDisplaySettings {
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Monaco,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Sharp,
+            theme_preset: ThemePreset::Daylight,
+            voice_auto_insert: true,
+            llm_enabled: false,
+            llm_model: LlmModelPreset::Llama32_3b,
+            llm_temperature: LlmTemperaturePreset::Balanced,
+            pointer_tap_slop_tenths: 3,
+            pointer_tap_max_ms: 20,
+            pointer_target_slop_tenths: 500,
+        };
+
+        normalize_display_pointer_settings(&mut settings);
+
+        assert_eq!(settings.pointer_tap_slop_tenths, 20);
+        assert_eq!(settings.pointer_tap_max_ms, 120);
+        assert_eq!(settings.pointer_target_slop_tenths, 120);
+    }
+
+    #[test]
+    fn apply_display_settings_clamps_pointer_stability() {
+        let mut chrome = PanelChromeState::default();
+        let settings = PersistedDisplaySettings {
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Monaco,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Sharp,
+            theme_preset: ThemePreset::Daylight,
+            voice_auto_insert: true,
+            llm_enabled: false,
+            llm_model: LlmModelPreset::Llama32_3b,
+            llm_temperature: LlmTemperaturePreset::Balanced,
+            pointer_tap_slop_tenths: 255,
+            pointer_tap_max_ms: 20,
+            pointer_target_slop_tenths: 4,
+        };
+
+        apply_display_settings(&mut chrome, &settings);
+
+        assert_eq!(chrome.pointer_tap_slop_tenths, 120);
+        assert_eq!(chrome.pointer_tap_max_ms, 120);
+        assert_eq!(chrome.pointer_target_slop_tenths, 10);
     }
 }

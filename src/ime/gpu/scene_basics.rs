@@ -21,6 +21,7 @@ impl WgpuCandidateRenderer {
             sentence_candidate_source_indices: (0..snapshot.candidate_labels.len())
                 .take(4)
                 .collect(),
+            input_modes_expanded: true,
             ..PanelChromeState::default()
         };
         self.build_panel_scene(snapshot, &chrome)

@@ -53,7 +53,7 @@ pub fn voice_status_text(
         VoicePermissionState::Pending => {
             format!("Voice permission required in System Settings · {backend_label}")
         }
-        VoicePermissionState::Denied => format!("Voice permission denied · {backend_label}"),
+        VoicePermissionState::Denied => "denied".to_string(),
         VoicePermissionState::Error => format!("Voice recognition error · {backend_label}"),
         VoicePermissionState::Unavailable => format!("Voice fallback mode · {backend_label}"),
         VoicePermissionState::Ready => {

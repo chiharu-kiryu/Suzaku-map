@@ -1,4 +1,4 @@
-use super::*;
+use suzaku_map::ime::{EngineConfig, XRTabletImeEngine};
 
 #[cfg(feature = "gpu")]
 #[test]
@@ -48,6 +48,7 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 
@@ -107,6 +108,7 @@ fn render_scene_exposes_display_settings_when_open() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 
@@ -289,6 +291,7 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 
@@ -344,6 +347,13 @@ fn render_scene_shows_full_strings_without_compacting_to_ellipsis() {
         .flat_map(|section| section.layouts.iter())
         .find(|layout| layout.role == TextRole::CandidateMeta)
         .expect("candidate meta layout");
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .any(|layout| layout.role == TextRole::CandidatePrimary)
+    );
     assert!(candidate_meta.lines.join(" ").contains("sentence"));
     assert!(!candidate_meta.lines.join(" ").contains("..."));
 }

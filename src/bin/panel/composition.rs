@@ -1,12 +1,28 @@
 use super::PanelState;
 use crate::render::create_font_atlas;
+use std::time::{Duration, Instant};
 use suzaku_map::ime::SignalState;
+use suzaku_map::ime::gpu::InteractionKind;
 use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
 use suzaku_map::panel_support::{
     derive_next_token_candidates, derive_sentence_candidates_with_indices,
 };
 
+const COMMIT_INPUT_REPEAT_WINDOW: Duration = Duration::from_millis(260);
+const ACTION_REPEAT_WINDOW: Duration = Duration::from_millis(260);
+
 impl PanelState {
+    pub(super) fn is_repeating_interaction(&self, target: InteractionKind) -> bool {
+        self.last_interaction_action
+            .is_some_and(|(last_action, started_at)| {
+                last_action == target && started_at.elapsed() < ACTION_REPEAT_WINDOW
+            })
+    }
+
+    pub(super) fn note_interaction_action(&mut self, action: InteractionKind) {
+        self.last_interaction_action = Some((action, Instant::now()));
+    }
+
     pub(super) fn reset_signal(&mut self) {
         self.engine.update_signal(SignalState {
             pointer_precision: 0.42,
@@ -48,16 +64,33 @@ impl PanelState {
         self.refresh_seed();
     }
 
-    pub(super) fn reset_after_commit(&mut self) {
-        let committed_snapshot = self.engine.snapshot();
+    pub(super) fn is_duplicate_commit(&self, selected_index: usize, text: &str) -> bool {
+        let Some(last) = self.last_commit_attempt.as_ref() else {
+            return false;
+        };
+        last.selected_index == selected_index
+            && last.text == text
+            && last.timestamp.elapsed() < COMMIT_INPUT_REPEAT_WINDOW
+    }
+
+    pub(super) fn note_commit_attempt(&mut self, selected_index: usize, text: &str) {
+        self.last_commit_attempt = Some(super::CommitAttempt {
+            selected_index,
+            text: text.to_string(),
+            timestamp: Instant::now(),
+        });
+    }
+
+    pub(super) fn reset_after_commit(&mut self, committed_seed: &str) {
         self.selected_next_tokens.clear();
         self.composition_base_seed.clear();
         self.chrome.composed_tokens.clear();
         self.chrome.next_token_candidates.clear();
         self.chrome.sentence_candidates.clear();
         self.chrome.sentence_candidate_source_indices.clear();
-        self.chrome.set_seed_text(committed_snapshot.seed_text);
+        self.chrome.set_seed_text(committed_seed.to_string());
         self.chrome.move_caret_to_end();
+        self.refresh_seed();
         self.chrome.focus_input();
     }
 
@@ -112,6 +145,11 @@ impl PanelState {
         let Some(token) = self.chrome.next_token_candidates.get(index).cloned() else {
             return;
         };
+        let action = InteractionKind::SelectNextToken(index);
+        if self.is_repeating_interaction(action) {
+            return;
+        }
+        self.note_interaction_action(action);
         if self.selected_next_tokens.is_empty() {
             self.composition_base_seed = self
                 .chrome
@@ -129,6 +167,10 @@ impl PanelState {
     }
 
     pub(super) fn rewind_next_token(&mut self) {
+        if self.is_repeating_interaction(InteractionKind::RewindNextToken) {
+            return;
+        }
+        self.note_interaction_action(InteractionKind::RewindNextToken);
         if self.selected_next_tokens.pop().is_none() {
             return;
         }

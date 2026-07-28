@@ -1,11 +1,24 @@
 use super::{DockEdge, PanelState, PanelWindowKind};
+use std::time::Duration;
 use winit::dpi::{LogicalSize, PhysicalPosition};
+
+const COMPACT_TOGGLE_DEBOUNCE: Duration = Duration::from_millis(180);
+const COMPACT_DRAG_MOVE_PX: f32 = 2.5;
+const COMPACT_SNAP_THRESHOLD_PX: i32 = 7;
+const COMPACT_DRAG_TAP_MAX_MS: u64 = 120;
 
 impl PanelState {
     pub(super) fn apply_compact_mode(&mut self, compact: bool) {
         if self.kind != PanelWindowKind::Main || self.chrome.compact_mode == compact {
             return;
         }
+
+        if let Some(last_toggle) = self.last_compact_toggle {
+            if last_toggle.elapsed() < COMPACT_TOGGLE_DEBOUNCE {
+                return;
+            }
+        }
+
         if compact {
             self.expanded_window_size = Some(
                 self.window
@@ -32,8 +45,10 @@ impl PanelState {
         self.compact_drag_moved = false;
         self.compact_drag_start_cursor = None;
         self.compact_drag_start_window_pos = None;
+        self.compact_drag_start_instant = None;
         self.touch_tap_pending = false;
         self.touch_start_position = None;
+        self.last_compact_toggle = Some(std::time::Instant::now());
     }
 
     pub(super) fn begin_compact_drag(&mut self) {
@@ -44,7 +59,22 @@ impl PanelState {
         self.compact_drag_moved = false;
         self.compact_drag_start_cursor = self.cursor_position;
         self.compact_drag_start_window_pos = self.window.outer_position().ok();
+        self.compact_drag_start_instant = Some(std::time::Instant::now());
         let _ = self.window.drag_window();
+    }
+
+    pub(super) fn record_compact_drag_motion(&mut self, cursor_x: f32, cursor_y: f32) {
+        if !self.compact_dragging {
+            self.compact_drag_moved = false;
+            return;
+        }
+        if let Some((start_x, start_y)) = self.compact_drag_start_cursor {
+            let moved = (cursor_x - start_x).abs() > COMPACT_DRAG_MOVE_PX
+                || (cursor_y - start_y).abs() > COMPACT_DRAG_MOVE_PX;
+            if moved {
+                self.compact_drag_moved = true;
+            }
+        }
     }
 
     pub(super) fn update_compact_hover(&mut self) {
@@ -68,16 +98,28 @@ impl PanelState {
         if !self.compact_dragging {
             return false;
         }
+        let elapsed_ms = self
+            .compact_drag_start_instant
+            .map(|instant| instant.elapsed().as_millis() as u64)
+            .unwrap_or(u64::MAX);
+        let has_drag_delta = if elapsed_ms > COMPACT_DRAG_TAP_MAX_MS {
+            false
+        } else {
+            self.compact_drag_moved
+        };
         let moved = match (
             self.compact_drag_start_window_pos,
             self.window.outer_position().ok(),
         ) {
-            (Some(start), Some(end)) => (end.x - start.x).abs() > 3 || (end.y - start.y).abs() > 3,
+            (Some(start), Some(end)) => {
+                (end.x - start.x).abs() > 3 || (end.y - start.y).abs() > 3 || has_drag_delta
+            }
             _ => self.compact_drag_moved,
         };
         self.compact_dragging = false;
         self.compact_drag_start_cursor = None;
         self.compact_drag_start_window_pos = None;
+        self.compact_drag_start_instant = None;
         self.compact_drag_moved = false;
         if moved {
             self.snap_compact_window_to_edge();
@@ -108,7 +150,7 @@ impl PanelState {
         let clamped_y = current_pos.y.clamp(min_y, max_y.max(min_y));
         let clamped_x = current_pos.x.clamp(min_x, max_x.max(min_x));
         let current = PhysicalPosition::new(clamped_x, clamped_y);
-        let threshold = 12_i32;
+        let threshold = COMPACT_SNAP_THRESHOLD_PX;
         let distances = [
             (
                 (clamped_x - min_x).abs(),

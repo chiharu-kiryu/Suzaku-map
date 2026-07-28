@@ -180,6 +180,13 @@ impl PanelState {
             InteractionKind::SetLlmTemperature(temp) => {
                 Some(format!("LLM creativity: {}", llm_temperature_label(temp)))
             }
+            InteractionKind::SetPointerTapSlopTenths(value) => {
+                Some(format!("Tap slop: {:.1}px", value as f32 / 10.0))
+            }
+            InteractionKind::SetPointerTapMaxMs(value) => Some(format!("Tap timeout: {}ms", value)),
+            InteractionKind::SetPointerTargetSlopTenths(value) => {
+                Some(format!("Target slop: {:.1}px", value as f32 / 10.0))
+            }
             InteractionKind::SelectNextToken(index) => {
                 self.chrome.next_token_candidates.get(index).cloned()
             }

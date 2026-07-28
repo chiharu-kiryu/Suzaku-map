@@ -1,15 +1,15 @@
 {
                     let keyboard_scale =
-                        (drawer_rect[3] / (198.0 * responsive_scale)).clamp(0.74, 1.0);
-                    let keyboard_padding_x = 9.0 * responsive_scale * keyboard_scale;
+                        (drawer_rect[3] / (194.0 * responsive_scale)).clamp(0.74, 1.0);
+                    let keyboard_padding_x = 7.6 * responsive_scale * keyboard_scale;
                     let keyboard_content_left = drawer_rect[0] + keyboard_padding_x;
                     let keyboard_content_right = drawer_rect[0] + drawer_rect[2] - keyboard_padding_x;
                     let keyboard_content_width = (keyboard_content_right - keyboard_content_left).max(120.0);
-                    let keyboard_title_y = drawer_rect[1] + 11.5 * responsive_scale * keyboard_scale;
+                    let keyboard_title_y = drawer_rect[1] + 10.0 * responsive_scale * keyboard_scale;
                     let keyboard_status_y = keyboard_title_y;
-                    let row_h = 22.0 * responsive_scale * keyboard_scale;
-                    let keyboard_y = drawer_rect[1] + 41.0 * responsive_scale * keyboard_scale;
-                    let key_row_gap = 3.4 * responsive_scale * keyboard_scale;
+                    let row_h = 21.0 * responsive_scale * keyboard_scale;
+                    let keyboard_y = drawer_rect[1] + 37.0 * responsive_scale * keyboard_scale;
+                    let key_row_gap = 3.2 * responsive_scale * keyboard_scale;
                     let mut keyboard_layouts = Vec::new();
                     let keyboard_header_layouts = vec![
                         TextBlock {
@@ -142,15 +142,15 @@
                         let row_width =
                             (keyboard_content_width - inset * 2.0).max(20.0 * responsive_scale);
                         let requested_gap = (row_width / (key_count + 1.0)).clamp(
-                            2.0 * responsive_scale * keyboard_scale,
-                            7.0 * responsive_scale * keyboard_scale,
+                            1.8 * responsive_scale * keyboard_scale,
+                            6.5 * responsive_scale * keyboard_scale,
                         );
                         let key_count_minus_1 = (key_count - 1.0).max(1.0);
                         let mut key_gap = requested_gap;
                         let mut key_w =
                             (row_width - key_gap * key_count_minus_1) / key_count.max(1.0);
-                        let min_key_w = 16.0 * responsive_scale * keyboard_scale;
-                        let min_gap = 2.0 * responsive_scale * keyboard_scale;
+                    let min_key_w = 16.0 * responsive_scale * keyboard_scale;
+                    let min_gap = 2.0 * responsive_scale * keyboard_scale;
 
                         if key_w < min_key_w {
                             key_w = min_key_w;
@@ -195,7 +195,7 @@
                             );
                             interactive_targets.push(InteractiveTarget {
                                 kind: InteractionKind::VirtualKeyboardKey(*key),
-                                rect,
+                                rect: interaction_hit_rect(rect),
                             });
                             let label = match key {
                                 VirtualKeyboardKey::Character(ch) => ch.to_string(),
@@ -257,16 +257,16 @@
 
                     let key_block_h = (key_rows.len() as f32).max(1.0) * row_h
                         + (key_rows.len().saturating_sub(1)) as f32 * key_row_gap;
-                    let action_y = keyboard_y + key_block_h + 3.0 * responsive_scale * keyboard_scale;
-                    let action_gap = 5.0 * responsive_scale * keyboard_scale;
-                    let base_left_w = 65.5 * responsive_scale * keyboard_scale;
+                    let action_y = keyboard_y + key_block_h + 2.2 * responsive_scale * keyboard_scale;
+                    let action_gap = 4.6 * responsive_scale * keyboard_scale;
+                    let base_left_w = 64.0 * responsive_scale * keyboard_scale;
                     let base_mid_w = 33.0 * responsive_scale * keyboard_scale;
                     let base_right_w = 84.0 * responsive_scale * keyboard_scale;
-                    let base_space_w = 78.0 * responsive_scale * keyboard_scale;
-                    let min_left_w = 36.0 * responsive_scale * keyboard_scale;
-                    let min_mid_w = 20.0 * responsive_scale * keyboard_scale;
-                    let min_right_w = 54.0 * responsive_scale * keyboard_scale;
-                    let min_space_w = 54.0 * responsive_scale * keyboard_scale;
+                    let base_space_w = 74.0 * responsive_scale * keyboard_scale;
+                    let min_left_w = 35.0 * responsive_scale * keyboard_scale;
+                    let min_mid_w = 18.5 * responsive_scale * keyboard_scale;
+                    let min_right_w = 53.0 * responsive_scale * keyboard_scale;
+                    let min_space_w = 52.0 * responsive_scale * keyboard_scale;
                     let available_action_w = keyboard_content_width.max(0.0);
                     let total_min =
                         min_left_w + min_right_w + min_space_w + 2.0 * min_mid_w + action_gap * 4.0;
@@ -468,7 +468,7 @@
                         );
                         interactive_targets.push(InteractiveTarget {
                             kind: InteractionKind::VirtualKeyboardKey(key),
-                            rect,
+                            rect: interaction_hit_rect(rect),
                         });
                         let label_pixel_size = if label.chars().count() > 6 {
                             1.8 * responsive_scale * keyboard_scale

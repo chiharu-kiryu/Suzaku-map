@@ -1,6 +1,12 @@
 {
     let chip_section_y = suggestions_y;
-    if !chrome.next_token_candidates.is_empty() {
+    let chip_section_h = if chrome.next_token_candidates.is_empty() {
+        0.0
+    } else {
+        (candidate_area_bottom - chip_section_y - 4.0 * responsive_scale).max(0.0)
+    };
+    if chip_section_h > 0.0 {
+        let available_section_h = chip_section_h.min(metrics.chip_section_h);
         let chip_section_rect = [
             panel_x,
             if collapsed_daily_mode {
@@ -9,7 +15,7 @@
                 chip_section_y - 3.0 * responsive_scale
             },
             panel_width,
-            metrics.chip_section_h,
+            available_section_h,
         ];
         append_soft_card_quads(
             &mut quads,
@@ -22,7 +28,7 @@
             border_dark,
             soft_shadow,
             shell,
-            10.0 * responsive_scale,
+            8.8 * responsive_scale,
         );
         if !collapsed_daily_mode {
             let next_label_layouts = vec![
@@ -61,22 +67,22 @@
             let back_rect = if collapsed_daily_mode {
                 [
                     panel_x + panel_width - 66.0 * responsive_scale,
-                    chip_section_y + 8.0 * responsive_scale,
-                    58.0 * responsive_scale,
-                    20.0 * responsive_scale,
+                    chip_section_y + 7.0 * responsive_scale,
+                    60.0 * responsive_scale,
+                    21.0 * responsive_scale,
                 ]
             } else if metrics.stacked_token_header {
                 [
-                    panel_x + 2.0 * responsive_scale,
-                    chip_section_y + 24.0 * responsive_scale,
-                    78.0 * responsive_scale,
+                    panel_x + 2.2 * responsive_scale,
+                    chip_section_y + 23.4 * responsive_scale,
+                    76.0 * responsive_scale,
                     22.0 * responsive_scale,
                 ]
             } else {
                 [
-                    panel_x + panel_width - 78.0 * responsive_scale,
-                    chip_section_y - 2.0 * responsive_scale,
-                    78.0 * responsive_scale,
+                    panel_x + panel_width - 80.0 * responsive_scale,
+                    chip_section_y - 1.4 * responsive_scale,
+                    80.0 * responsive_scale,
                     22.0 * responsive_scale,
                 ]
             };
@@ -101,11 +107,11 @@
                 },
                 animated_shadow(soft_shadow, hovered, pressed),
                 surface,
-                7.0 * responsive_scale,
+                6.6 * responsive_scale,
             );
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::RewindNextToken,
-                rect: back_rect,
+                rect: interaction_hit_rect(back_rect),
             });
             let back_layout = TextBlock {
                 text: if collapsed_daily_mode {
@@ -114,8 +120,8 @@
                     "Back".to_string()
                 },
             origin: [
-                    visual_back_rect[0] + 7.2 * responsive_scale,
-                    visual_back_rect[1] + 5.6 * responsive_scale,
+                    visual_back_rect[0] + 6.8 * responsive_scale,
+                    visual_back_rect[1] + 5.2 * responsive_scale,
                 ],
                 max_width: visual_back_rect[2] - 16.0 * responsive_scale,
                 pixel_size: 2.0 * responsive_scale,
@@ -136,40 +142,40 @@
         }
 
         let chip_y = if collapsed_daily_mode {
-            chip_section_y + 7.6 * responsive_scale
+            chip_section_y + 6.8 * responsive_scale
         } else if metrics.stacked_token_header {
             chip_section_y + 46.0 * responsive_scale
         } else {
-            chip_section_y + 29.0 * responsive_scale
+            chip_section_y + 27.5 * responsive_scale
         };
         let chip_height = if collapsed_daily_mode {
-            21.2 * responsive_scale
+            20.0 * responsive_scale
         } else {
-            22.6 * responsive_scale
+            22.2 * responsive_scale
         };
         let chip_inner_x = panel_x + 6.0 * responsive_scale;
         let chip_inner_width = panel_width - 12.0 * responsive_scale;
         let chip_inner_right = chip_inner_x + chip_inner_width;
-        let max_rows = if collapsed_daily_mode {
-            1
-        } else {
-            (((metrics.chip_section_h - 2.0 * responsive_scale - chip_height)
-                / (chip_height + 5.4 * responsive_scale))
-            .floor()
-            .max(0.0)
-            as usize
-                + 1)
+            let max_rows = if collapsed_daily_mode {
+                1
+            } else {
+                (((available_section_h - 2.0 * responsive_scale - chip_height)
+                    / (chip_height + 4.8 * responsive_scale))
+                    .floor()
+                    .max(0.0)
+                    as usize
+                    + 1)
                 .clamp(1, 2)
-        };
+            };
         let row_gap = if collapsed_daily_mode {
             0.0
         } else {
-            chip_height + 5.0 * responsive_scale
+            chip_height + 4.5 * responsive_scale
         };
         let chip_h_gap = if collapsed_daily_mode {
-            5.2 * responsive_scale
+            4.8 * responsive_scale
         } else {
-            6.2 * responsive_scale
+            5.0 * responsive_scale
         };
 
         let mut chip_x = chip_inner_x;
@@ -180,10 +186,10 @@
             let (hovered, pressed) = interaction_state(kind);
             let base_chip_w = if collapsed_daily_mode {
                 ((token.chars().count() as f32 * 10.0).max(52.0)
-                    + if index == 0 { 30.0 } else { 20.0 })
+                    + if index == 0 { 28.0 } else { 18.0 })
                     * responsive_scale
             } else {
-                ((token.chars().count() as f32 * 11.4).max(58.0) + 18.0) * responsive_scale
+                ((token.chars().count() as f32 * 10.9).max(56.0) + 16.0) * responsive_scale
             };
             if chip_x > chip_inner_x && chip_x + base_chip_w > chip_inner_right {
                 row += 1;
@@ -193,8 +199,8 @@
                 break;
             }
 
-                let available_chip_w = (chip_inner_right - chip_x).max(27.0 * responsive_scale);
-                let chip_w = base_chip_w.min(available_chip_w);
+                    let available_chip_w = (chip_inner_right - chip_x).max(27.0 * responsive_scale);
+                    let chip_w = base_chip_w.min(available_chip_w);
             let rect = [
                 chip_x,
                 chip_y + row as f32 * row_gap,
@@ -227,7 +233,10 @@
                 surface,
                 8.0 * responsive_scale,
             );
-            interactive_targets.push(InteractiveTarget { kind, rect });
+            interactive_targets.push(InteractiveTarget {
+                kind,
+                rect: interaction_hit_rect(rect),
+            });
             let layout = TextBlock {
                 text: if collapsed_daily_mode {
                     format!("{} {}", index + 1, token)
@@ -236,9 +245,9 @@
                 },
                 origin: [
                     visual_rect[0] + 7.2 * responsive_scale,
-                    visual_rect[1] + 5.6 * responsive_scale,
+                    visual_rect[1] + 5.8 * responsive_scale,
                 ],
-                max_width: visual_rect[2] - 14.8 * responsive_scale,
+                max_width: visual_rect[2] - 14.0 * responsive_scale,
                 pixel_size: if collapsed_daily_mode { chip_px * 0.95 } else { chip_px },
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,

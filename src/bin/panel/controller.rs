@@ -1,7 +1,12 @@
 use super::{PanelState, PanelWindowKind};
-use crate::app_state::{PersistedDisplaySettings, apply_display_settings, save_display_settings};
+use crate::app_state::{
+    PersistedDisplaySettings, apply_display_settings, normalize_pointer_stability_settings,
+    save_display_settings,
+};
+use crate::helpers::point_in_rect;
 use crate::helpers::window_title;
 use crate::render::{build_shape_vertices, build_text_vertices};
+use std::time::{Duration, Instant};
 use suzaku_map::ime::gpu::{
     InputMode, InteractionKind, RenderScene, VirtualKeyboardKey, VoiceCaptureState,
     VoicePermissionState,
@@ -27,13 +32,20 @@ impl PanelState {
             return false;
         };
 
+        if self.is_duplicate_commit(self.engine.snapshot().selected_index, &candidate.text) {
+            return false;
+        }
+
         self.chrome.blur_input();
+        let selected_index = self.engine.snapshot().selected_index;
         let result = self.engine.commit(options);
         if !result.ok {
             return false;
         }
 
+        let committed_text = result.text.unwrap_or_else(|| candidate.text.clone());
         let output = commit_text_to_active_target(&candidate.text);
+        self.note_commit_attempt(selected_index, &candidate.text);
         self.last_commit_feedback = Some(if output.delivered_successfully() {
             format!("Sent to active app: {}", candidate.text)
         } else {
@@ -44,7 +56,7 @@ impl PanelState {
         } else {
             40
         };
-        self.reset_after_commit();
+        self.reset_after_commit(&committed_text);
         true
     }
 
@@ -68,6 +80,11 @@ impl PanelState {
         let Some(candidate) = self.engine.candidates().get(index).cloned() else {
             return false;
         };
+
+        if self.is_duplicate_commit(index, &candidate.text) {
+            return false;
+        }
+
         self.chrome.blur_input();
         self.engine.select_candidate(index);
         let result = self
@@ -76,7 +93,9 @@ impl PanelState {
         if !result.ok {
             return false;
         }
+        let committed_text = result.text.unwrap_or_else(|| candidate.text.clone());
         let output = commit_text_to_active_target(&candidate.text);
+        self.note_commit_attempt(index, &candidate.text);
         self.last_commit_feedback = Some(if output.delivered_successfully() {
             format!("Sent to active app: {}", candidate.text)
         } else {
@@ -87,7 +106,7 @@ impl PanelState {
         } else {
             40
         };
-        self.reset_after_commit();
+        self.reset_after_commit(&committed_text);
         true
     }
 
@@ -97,23 +116,19 @@ impl PanelState {
             return None;
         }
 
-        if index < candidates.len() {
-            return Some(index);
+        if let Some(maybe_match) =
+            self.resolve_candidate_index_by_displayed_label(index, candidates, |display_index| {
+                self.chrome
+                    .sentence_candidates
+                    .get(display_index)
+                    .map(String::as_str)
+            })
+        {
+            return Some(maybe_match);
         }
 
-        if let Some(display_index) = self
-            .chrome
-            .sentence_candidate_source_indices
-            .iter()
-            .position(|candidate_index| *candidate_index == index)
-        {
-            if let Some(label) = self.chrome.sentence_candidates.get(display_index) {
-                if let Some(fallback) =
-                    self.candidate_index_matching_sentence_label(label, candidates)
-                {
-                    return Some(fallback);
-                }
-            }
+        if index < candidates.len() {
+            return Some(index);
         }
 
         if let Some(label) = self.chrome.sentence_candidates.get(index) {
@@ -129,6 +144,31 @@ impl PanelState {
         } else {
             Some(candidates.len() - 1)
         }
+    }
+
+    fn resolve_candidate_index_by_displayed_label<'a, F>(
+        &self,
+        index: usize,
+        candidates: &[suzaku_map::ime::Candidate],
+        label_for_display: F,
+    ) -> Option<usize>
+    where
+        F: Fn(usize) -> Option<&'a str>,
+    {
+        let display_index = self
+            .chrome
+            .sentence_candidate_source_indices
+            .iter()
+            .position(|candidate_index| *candidate_index == index)
+            .or_else(|| {
+                self.chrome
+                    .sentence_candidate_source_indices
+                    .get(index)
+                    .copied()
+            })?;
+
+        let label = label_for_display(display_index)?;
+        self.candidate_index_matching_sentence_label(label, candidates)
     }
 
     fn candidate_index_matching_sentence_label(
@@ -428,6 +468,21 @@ impl PanelState {
                     self.reconfigure_llama_plugin();
                     self.persist_display_settings();
                 }
+                InteractionKind::SetPointerTapSlopTenths(value) => {
+                    self.chrome.pointer_tap_slop_tenths = value;
+                    normalize_pointer_stability_settings(&mut self.chrome);
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetPointerTapMaxMs(value) => {
+                    self.chrome.pointer_tap_max_ms = value;
+                    normalize_pointer_stability_settings(&mut self.chrome);
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetPointerTargetSlopTenths(value) => {
+                    self.chrome.pointer_target_slop_tenths = value;
+                    normalize_pointer_stability_settings(&mut self.chrome);
+                    self.persist_display_settings();
+                }
                 InteractionKind::SetVoiceAutoInsert(enabled) => {
                     self.chrome.voice_auto_insert = enabled;
                     self.persist_display_settings();
@@ -509,6 +564,11 @@ impl PanelState {
                     }
                 }
                 InteractionKind::Candidate(index) => {
+                    let action = InteractionKind::Candidate(index);
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     let _ = self.commit_sentence_candidate(index);
                 }
             }
@@ -527,14 +587,69 @@ impl PanelState {
     pub(super) fn update_pressed_interaction(&mut self) {
         let Some((x, y)) = self.cursor_position else {
             self.pressed_interaction = None;
+            self.press_target_rect = None;
+            self.press_start_cursor = None;
+            self.press_start_instant = None;
             return;
         };
         let scene = self.current_scene();
         self.pressed_interaction = scene.hit_interaction(x, y);
+        self.press_target_rect = self.pressed_interaction.and_then(|target| {
+            scene
+                .interactive_targets
+                .iter()
+                .find(|candidate| candidate.kind == target)
+                .map(|candidate| candidate.rect)
+        });
+        self.press_start_cursor = Some((x, y));
+        self.press_start_instant = Some(Instant::now());
+    }
+
+    pub(super) fn press_target_is_stable(&self, expected: InteractionKind) -> bool {
+        if self.pressed_interaction != Some(expected) {
+            return false;
+        }
+        let Some((start_x, start_y)) = self.press_start_cursor else {
+            return false;
+        };
+        let Some(started_at) = self.press_start_instant else {
+            return false;
+        };
+        let tap_max_ms = Duration::from_millis(self.chrome.pointer_tap_max_ms as u64);
+        if started_at.elapsed() > tap_max_ms {
+            return false;
+        }
+        let Some((x, y)) = self.cursor_position else {
+            return false;
+        };
+        let delta_x = (x - start_x).abs();
+        let delta_y = (y - start_y).abs();
+        let tap_slop = self.chrome.pointer_tap_slop_tenths as f32 / 10.0;
+        if delta_x > tap_slop || delta_y > tap_slop {
+            return false;
+        }
+
+        if let Some(rect) = self.press_target_rect {
+            let target_slop = self.chrome.pointer_target_slop_tenths as f32 / 10.0;
+            let expanded_rect = [
+                rect[0] - target_slop,
+                rect[1] - target_slop,
+                rect[2] + target_slop * 2.0,
+                rect[3] + target_slop * 2.0,
+            ];
+            if !point_in_rect(x, y, expanded_rect) {
+                return false;
+            }
+        }
+        let scene = self.current_scene();
+        scene.hit_interaction(x, y) == Some(expected)
     }
 
     pub(super) fn clear_pressed_interaction(&mut self) {
         self.pressed_interaction = None;
+        self.press_target_rect = None;
+        self.press_start_cursor = None;
+        self.press_start_instant = None;
     }
 
     pub(super) fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {

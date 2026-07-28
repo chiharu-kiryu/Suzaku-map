@@ -1,4 +1,4 @@
-use super::*;
+use suzaku_map::ime::{EngineConfig, XRTabletImeEngine};
 
 #[cfg(feature = "gpu")]
 #[test]
@@ -50,6 +50,7 @@ fn render_scene_shows_voice_permission_denied_message() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 
@@ -64,6 +65,15 @@ fn render_scene_shows_voice_permission_denied_message() {
                         .lines
                         .iter()
                         .any(|line| line.to_lowercase().contains("denied"))
+            })
+    );
+    assert!(
+        scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .any(|layout| {
+                layout.role == TextRole::VoiceLabel && layout.lines.join(" ").contains("denied")
             })
     );
 }
@@ -118,6 +128,7 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
             handwriting_strokes: vec![vec![[320.0, 220.0], [350.0, 250.0]]],
             handwriting_candidates: vec!["apple".into(), "input".into()],
             handwriting_hint: "Tap a recognized seed to insert it.".into(),
+            ..PanelChromeState::default()
         },
     );
 

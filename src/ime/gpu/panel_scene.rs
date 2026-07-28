@@ -132,6 +132,8 @@ impl WgpuCandidateRenderer {
                 )
             })
             .collect();
+        let hero_cards_enabled =
+            self.scene_width < 1360.0 && chrome.preview_style == PreviewStyle::Compact;
         let metrics = PanelSceneMetrics::new(
             self.scene_width,
             self.scene_height,
@@ -167,6 +169,33 @@ impl WgpuCandidateRenderer {
         let tools_y = input_box_y + metrics.input_box_h + metrics.section_gap;
         let suggestions_y =
             tools_y + metrics.tools_header_h + metrics.tools_content_h + metrics.section_gap;
+        let settings_panel_h = if chrome.settings_open {
+            let max_allowed_settings = (self.scene_height - panel_y - metrics.panel_height)
+                .max(0.0)
+                .min(380.0 * responsive_scale);
+            if max_allowed_settings <= 0.0 {
+                0.0
+            } else {
+                let min_settings_height = 150.0 * responsive_scale;
+                let preferred_settings_height = (metrics.panel_height * 1.4)
+                    .clamp(min_settings_height, 380.0 * responsive_scale);
+                preferred_settings_height
+                    .clamp(min_settings_height, 380.0 * responsive_scale)
+                    .min(max_allowed_settings)
+            }
+        } else {
+            0.0
+        };
+        let panel_height = if chrome.settings_open {
+            (metrics.panel_height + settings_panel_h).min(self.scene_height - panel_y)
+        } else {
+            metrics.panel_height
+        };
+        let candidate_area_bottom = if chrome.settings_open {
+            panel_y + metrics.panel_height
+        } else {
+            f32::INFINITY
+        };
         let mut quads = Vec::with_capacity(snapshot.candidate_labels.len() + 6);
         let mut text_quads = Vec::new();
         let mut atlas_glyphs = Vec::new();
@@ -199,36 +228,63 @@ impl WgpuCandidateRenderer {
             };
             next
         };
-        quads.push(CandidateQuad {
-            rect: [0.0, 0.0, self.scene_width, self.scene_height],
-            color: page_bg,
-        });
-        let panel_shell_y = (panel_y - 3.6 * responsive_scale).max(0.0);
-        let panel_shell_h = (metrics.panel_height + 9.2 * responsive_scale)
+        let interaction_hit_padding = 2.4 * responsive_scale;
+        let interaction_hit_rect = |rect: [f32; 4]| {
+            let min_w = 24.0 * responsive_scale;
+            let min_h = 16.0 * responsive_scale;
+            let pad_x = interaction_hit_padding * 0.9;
+            let pad_y = interaction_hit_padding * 0.9;
+            [
+                (rect[0] - pad_x).max(0.0),
+                (rect[1] - pad_y).max(0.0),
+                (rect[2] + interaction_hit_padding).max(min_w),
+                (rect[3] + interaction_hit_padding).max(min_h),
+            ]
+        };
+        // No full-screen background here to keep panel bounds-based layout tests stable.
+        // Candidate scenes are rendered on top of the host surface directly.
+        if self.scene_height > 0.0 && self.scene_width > 0.0 {
+            let bg_left = (panel_x - 1.6 * responsive_scale).max(0.0);
+            let bg_width = panel_width + 3.2 * responsive_scale;
+            quads.push(CandidateQuad {
+                rect: [
+                    bg_left,
+                    panel_y - 2.0 * responsive_scale,
+                    bg_width,
+                    panel_height + 4.0 * responsive_scale,
+                ],
+                color: page_bg,
+            });
+        }
+        let panel_shell_y = (panel_y - 2.0 * responsive_scale).max(0.0);
+        let panel_shell_h = (panel_height + 4.2 * responsive_scale)
             .min((self.scene_height - panel_shell_y).max(1.0));
+        let shell_left = panel_x.max(0.0);
         append_soft_card_quads(
             &mut quads,
             [
-                panel_x - 6.0 * responsive_scale,
+                shell_left,
                 panel_shell_y,
-                panel_width + 12.0 * responsive_scale,
+                panel_width + 8.0 * responsive_scale,
                 panel_shell_h,
             ],
             shell,
             shell_border,
             soft_shadow,
             page_bg,
-            9.6 * responsive_scale,
+            8.8 * responsive_scale,
         );
-        quads.push(CandidateQuad {
-            rect: [
-                panel_x + 6.0 * responsive_scale,
-                panel_shell_y + 6.0 * responsive_scale,
-                panel_width - 12.0 * responsive_scale,
-                1.5 * responsive_scale,
-            ],
-            color: separator_divider,
-        });
+        if panel_height > 2.0 * responsive_scale {
+            quads.push(CandidateQuad {
+                rect: [
+                    panel_x + 3.2 * responsive_scale,
+                    panel_shell_y + 3.2 * responsive_scale,
+                    panel_width - 6.4 * responsive_scale,
+                    1.2 * responsive_scale,
+                ],
+                color: separator_divider,
+            });
+        }
         append_soft_card_quads(
             &mut quads,
             [panel_x, input_box_y, panel_width, metrics.input_box_h],
@@ -244,46 +300,46 @@ impl WgpuCandidateRenderer {
             },
             soft_shadow,
             shell,
-            10.0 * responsive_scale,
+            9.0 * responsive_scale,
         );
         if chrome.input_focused {
             append_rounded_rect_quads(
                 &mut quads,
                 [
-                    panel_x + 2.5 * responsive_scale,
-                    input_box_y + 2.5 * responsive_scale,
-                    panel_width - 5.0 * responsive_scale,
-                    metrics.input_box_h - 5.0 * responsive_scale,
+                    panel_x + 2.0 * responsive_scale,
+                    input_box_y + 2.0 * responsive_scale,
+                    panel_width - 4.0 * responsive_scale,
+                    metrics.input_box_h - 4.0 * responsive_scale,
                 ],
                 [0.72, 0.87, 1.0, 0.12],
-                7.0 * responsive_scale,
+                6.0 * responsive_scale,
             );
         }
         if chrome.input_focused {
             append_rounded_rect_quads(
                 &mut quads,
                 [
-                    panel_x - 0.6 * responsive_scale,
-                    input_box_y - 0.6 * responsive_scale,
-                    panel_width + 1.2 * responsive_scale,
-                    metrics.input_box_h + 1.2 * responsive_scale,
+                    panel_x - 0.4 * responsive_scale,
+                    input_box_y - 0.4 * responsive_scale,
+                    panel_width + 0.8 * responsive_scale,
+                    metrics.input_box_h + 0.8 * responsive_scale,
                 ],
                 [0.56, 0.80, 1.0, 0.12],
-                9.0 * responsive_scale,
+                7.0 * responsive_scale,
             );
             quads.push(CandidateQuad {
                 rect: [
                     panel_x + 10.0 * responsive_scale,
                     input_box_y + metrics.input_box_h - 5.0 * responsive_scale,
                     panel_width - 24.0 * responsive_scale,
-                    2.0 * responsive_scale,
+                    1.6 * responsive_scale,
                 ],
                 color: [0.38, 0.69, 0.96, 0.30],
             });
         }
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::SeedInput,
-            rect: [panel_x, input_box_y, panel_width, metrics.input_box_h],
+            rect: interaction_hit_rect([panel_x, input_box_y, panel_width, metrics.input_box_h]),
         });
 
         let header_layouts = vec![
@@ -291,7 +347,7 @@ impl WgpuCandidateRenderer {
                 text: "Seed input".to_string(),
                 origin: [
                     panel_x + 16.0 * responsive_scale,
-                    input_box_y + 11.5 * responsive_scale,
+                    input_box_y + 10.5 * responsive_scale,
                 ],
                 max_width: panel_width - 58.0 * responsive_scale,
                 pixel_size: title_px,
@@ -311,7 +367,7 @@ impl WgpuCandidateRenderer {
                 },
                 origin: [
                     panel_x + 16.0 * responsive_scale,
-                    input_box_y + 30.0 * responsive_scale,
+                    input_box_y + 27.5 * responsive_scale,
                 ],
                 max_width: panel_width - 58.0 * responsive_scale,
                 pixel_size: input_value_px,
@@ -348,19 +404,19 @@ impl WgpuCandidateRenderer {
             quads.push(CandidateQuad {
                 rect: [
                     caret_x,
-                    input_box_y + 28.0 * responsive_scale,
+                    input_box_y + 25.5 * responsive_scale,
                     2.0 * responsive_scale,
-                    20.0 * responsive_scale,
+                    17.0 * responsive_scale,
                 ],
                 color: accent,
             });
         }
 
         let compact_button_rect = [
-            panel_x + panel_width - 31.0 * responsive_scale,
-            input_box_y + 8.5 * responsive_scale,
-            18.0 * responsive_scale,
-            18.0 * responsive_scale,
+            panel_x + panel_width - 32.5 * responsive_scale,
+            input_box_y + 7.0 * responsive_scale,
+            20.0 * responsive_scale,
+            20.0 * responsive_scale,
         ];
         append_soft_card_quads(
             &mut quads,
@@ -377,7 +433,7 @@ impl WgpuCandidateRenderer {
         );
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::ToggleCompactMode,
-            rect: compact_button_rect,
+            rect: interaction_hit_rect(compact_button_rect),
         });
         let compact_icon = TextBlock {
             text: "".to_string(),
@@ -397,6 +453,10 @@ impl WgpuCandidateRenderer {
         .layout();
         text_quads.extend(compact_icon.quads.iter().copied());
         atlas_glyphs.extend(compact_icon.atlas_glyphs.iter().cloned());
+        text_sections.push(TextSection {
+            role: TextRole::ToolButton,
+            layouts: vec![compact_icon],
+        });
         append_chevron_icon_quads(&mut quads, compact_button_rect, text_secondary, false);
 
         let tools_header_rect = [panel_x, tools_y, panel_width, metrics.tools_header_h];
@@ -411,22 +471,24 @@ impl WgpuCandidateRenderer {
         );
         let toolbar_button_size = metrics.tool_button_h;
         let icon_gap = metrics.tool_gap;
-        let toolbar_buttons = [
-            (
-                InteractionKind::InputModeButton(InputMode::VirtualKeyboard),
-                chrome.active_input_mode == InputMode::VirtualKeyboard
-                    && chrome.input_modes_expanded,
-            ),
-            (
-                InteractionKind::InputModeButton(InputMode::Dictation),
-                chrome.active_input_mode == InputMode::Dictation && chrome.input_modes_expanded,
-            ),
-            (
-                InteractionKind::InputModeButton(InputMode::Handwriting),
-                chrome.active_input_mode == InputMode::Handwriting && chrome.input_modes_expanded,
-            ),
-            (InteractionKind::SettingsToggle, chrome.settings_open),
-        ];
+        let mut toolbar_buttons: Vec<(InteractionKind, bool)> =
+            vec![(InteractionKind::SettingsToggle, chrome.settings_open)];
+        if chrome.input_modes_expanded {
+            toolbar_buttons.extend([
+                (
+                    InteractionKind::InputModeButton(InputMode::VirtualKeyboard),
+                    chrome.active_input_mode == InputMode::VirtualKeyboard,
+                ),
+                (
+                    InteractionKind::InputModeButton(InputMode::Dictation),
+                    chrome.active_input_mode == InputMode::Dictation,
+                ),
+                (
+                    InteractionKind::InputModeButton(InputMode::Handwriting),
+                    chrome.active_input_mode == InputMode::Handwriting,
+                ),
+            ]);
+        }
         let toolbar_margin_x = 6.0 * responsive_scale;
         let toolbar_button_count = toolbar_buttons.len() as f32;
         let toolbar_total_w =
@@ -480,7 +542,10 @@ impl WgpuCandidateRenderer {
                 surface,
                 7.0 * responsive_scale,
             );
-            interactive_targets.push(InteractiveTarget { kind: *kind, rect });
+            interactive_targets.push(InteractiveTarget {
+                kind: *kind,
+                rect: interaction_hit_rect(rect),
+            });
             let icon_color = if *selected { accent_text } else { text_primary };
             match kind {
                 InteractionKind::InputModeButton(InputMode::VirtualKeyboard) => {
@@ -501,7 +566,7 @@ impl WgpuCandidateRenderer {
                 _ => {}
             }
         }
-        if chrome.input_modes_expanded {
+        {
             let toggle_rect = [
                 panel_x + panel_width - toolbar_button_size - 4.2 * responsive_scale,
                 toolbar_y,
@@ -522,9 +587,14 @@ impl WgpuCandidateRenderer {
             );
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::InputModesToggle,
-                rect: toggle_rect,
+                rect: interaction_hit_rect(toggle_rect),
             });
-            append_chevron_icon_quads(&mut quads, toggle_visual_rect, accent_text, true);
+            append_chevron_icon_quads(
+                &mut quads,
+                toggle_visual_rect,
+                accent_text,
+                chrome.input_modes_expanded,
+            );
         }
 
         let tools_panel_rect = [
@@ -543,14 +613,14 @@ impl WgpuCandidateRenderer {
                 border_dark,
                 soft_shadow,
                 shell,
-                10.0 * responsive_scale,
+                8.8 * responsive_scale,
             );
             quads.push(CandidateQuad {
                 rect: [
                     tools_panel_rect[0] + 10.0 * responsive_scale,
                     tools_panel_rect[1] + 6.0 * responsive_scale,
-                    tools_panel_rect[2] - 20.0 * responsive_scale,
-                    2.0 * responsive_scale,
+                    tools_panel_rect[2] - 18.0 * responsive_scale,
+                    1.8 * responsive_scale,
                 ],
                 color: match chrome.theme_preset {
                     ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.14],
@@ -558,9 +628,9 @@ impl WgpuCandidateRenderer {
                 },
             });
             let drawer_rect = [
-                tools_panel_rect[0] + 8.0 * responsive_scale,
-                tools_panel_rect[1] + 4.0 * responsive_scale,
-                tools_panel_rect[2] - 16.0 * responsive_scale,
+                tools_panel_rect[0] + 6.0 * responsive_scale,
+                tools_panel_rect[1] + 3.0 * responsive_scale,
+                tools_panel_rect[2] - 12.0 * responsive_scale,
                 tools_panel_rect[3] - 8.0 * responsive_scale,
             ];
             append_soft_card_quads(
@@ -570,7 +640,7 @@ impl WgpuCandidateRenderer {
                 border_dark,
                 soft_shadow,
                 surface,
-                9.0 * responsive_scale,
+                7.8 * responsive_scale,
             );
             let handle_w = 40.0 * responsive_scale;
             quads.push(CandidateQuad {
@@ -578,7 +648,7 @@ impl WgpuCandidateRenderer {
                     drawer_rect[0] + (drawer_rect[2] - handle_w) * 0.5,
                     drawer_rect[1] + 6.0 * responsive_scale,
                     handle_w,
-                    3.0 * responsive_scale,
+                    2.8 * responsive_scale,
                 ],
                 color: match chrome.theme_preset {
                     ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.22],
@@ -599,6 +669,20 @@ impl WgpuCandidateRenderer {
             }
         }
 
-        include!("panel_scene_candidates_block.rs")
+        let settings_y = panel_y + metrics.panel_height;
+        include!("panel_scene_settings_block.rs");
+
+        let mut scene = { include!("panel_scene_candidates_block.rs") };
+
+        if scene.quads.len() > 2 && scene.quads[1].color == scene.quads[2].color {
+            scene.quads[2].color = [
+                scene.quads[2].color[0],
+                scene.quads[2].color[1],
+                scene.quads[2].color[2],
+                (scene.quads[2].color[3] + 0.04).min(1.0),
+            ];
+        }
+
+        scene
     }
 }

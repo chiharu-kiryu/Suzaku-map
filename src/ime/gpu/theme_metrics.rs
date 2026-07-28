@@ -98,10 +98,12 @@ impl PanelSceneMetrics {
         sentence_count: usize,
     ) -> Self {
         let collapsed_daily_mode = !chrome.input_modes_expanded;
-        let scene_margin = (4.0 * responsive_scale).max(3.6);
-        let max_panel_width = (scene_width - scene_margin * 2.0).max(320.0);
-        let min_panel_width = 330.0_f32.min(max_panel_width);
-        let desired_panel_width = (scene_width * 0.965).clamp(330.0, 860.0);
+        let scene_margin = (3.6 * responsive_scale).max(2.8);
+        let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0).min(940.0);
+        let min_panel_width = (max_panel_width * 0.78)
+            .clamp(190.0, 310.0)
+            .min(max_panel_width);
+        let desired_panel_width = (scene_width * 0.91).clamp(190.0, 940.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);
@@ -112,40 +114,40 @@ impl PanelSceneMetrics {
             1.0
         };
 
-        let input_box_h = 50.9 * responsive_scale * spacing_scale;
+        let input_box_h = 47.0 * responsive_scale * spacing_scale;
         let tools_header_h = if collapsed_daily_mode {
-            25.1 * responsive_scale
+            22.0 * responsive_scale
         } else {
-            20.6 * responsive_scale
+            18.6 * responsive_scale
         };
-        let tool_button_h = 17.2 * responsive_scale * spacing_scale;
-        let tool_gap = 2.9 * responsive_scale * spacing_scale;
-        let section_gap = 3.6 * responsive_scale * spacing_scale;
+        let tool_button_h = 16.8 * responsive_scale * spacing_scale;
+        let tool_gap = 2.6 * responsive_scale * spacing_scale;
+        let section_gap = 3.0 * responsive_scale * spacing_scale;
 
         let expanded_input_panel_h = if chrome.input_modes_expanded {
             match chrome.active_input_mode {
-                crate::ime::gpu::InputMode::VirtualKeyboard => 172.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Dictation => 184.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Handwriting => 190.0 * responsive_scale,
+                crate::ime::gpu::InputMode::VirtualKeyboard => 162.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Dictation => 174.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Handwriting => 178.0 * responsive_scale,
             }
         } else {
             0.0
         };
 
-        let stack_cap = (scene_height - scene_margin * 2.0).max(220.0);
+        let stack_cap = (scene_height - scene_margin * 2.0).max(0.0);
         let mut tools_content_h = expanded_input_panel_h;
         let mut item_height = match (chrome.candidate_density, chrome.preview_style) {
-            (CandidateDensity::Compact, PreviewStyle::Compact) => 54.0,
-            (CandidateDensity::Compact, PreviewStyle::Full) => 66.0,
-            (CandidateDensity::Cozy, PreviewStyle::Compact) => 60.0,
-            (CandidateDensity::Cozy, PreviewStyle::Full) => 78.0,
+            (CandidateDensity::Compact, PreviewStyle::Compact) => 50.0,
+            (CandidateDensity::Compact, PreviewStyle::Full) => 62.0,
+            (CandidateDensity::Cozy, PreviewStyle::Compact) => 56.0,
+            (CandidateDensity::Cozy, PreviewStyle::Full) => 74.0,
         } * responsive_scale;
 
-        let mut hero_item_height = item_height + 9.0 * responsive_scale;
+        let mut hero_item_height = item_height + 8.0 * responsive_scale;
         let mut item_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            3.0
+            2.6
         } else {
-            3.8
+            3.2
         } * responsive_scale;
 
         let stacked_token_header = !collapsed_daily_mode
@@ -155,9 +157,9 @@ impl PanelSceneMetrics {
         let chip_section_h = if chrome.next_token_candidates.is_empty() {
             0.0
         } else if collapsed_daily_mode {
-            33.6 * responsive_scale
+            31.5 * responsive_scale
         } else {
-            (if stacked_token_header { 48.0 } else { 37.0 }) * responsive_scale
+            (if stacked_token_header { 44.0 } else { 34.0 }) * responsive_scale
         };
 
         let sentence_columns = if collapsed_daily_mode {
@@ -274,9 +276,17 @@ impl PanelSceneMetrics {
         }
 
         let panel_height = (fixed_without_sentence + sentence_height).min(stack_cap);
-        let panel_y = scene_margin;
+        let panel_y = if panel_height < scene_height - scene_margin * 2.0 {
+            scene_margin
+        } else {
+            0.0
+        };
 
-        let panel_x = ((scene_width - panel_width) / 2.0).max(scene_margin);
+        let panel_x = if scene_width > panel_width + scene_margin * 2.0 {
+            ((scene_width - panel_width) / 2.0).max(scene_margin)
+        } else {
+            0.0
+        };
 
         Self {
             panel_width,

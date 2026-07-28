@@ -2,6 +2,7 @@
 
 use std::error::Error;
 use std::sync::Arc;
+use std::time::Instant;
 
 #[path = "panel/app_state.rs"]
 mod app_state;
@@ -27,7 +28,10 @@ mod voice;
 #[path = "panel/windowing.rs"]
 mod windowing;
 
-use crate::app_state::{VoiceInputController, apply_display_settings, load_display_settings};
+use crate::app_state::{
+    VoiceInputController, apply_display_settings, load_display_settings,
+    normalize_pointer_stability_settings,
+};
 use crate::input::handle_panel_window_event;
 use crate::render::{FontAtlas, PanelVertex, TextVertex, create_font_atlas};
 use suzaku_map::ime::gpu::{
@@ -149,6 +153,13 @@ enum DockEdge {
     Right,
     Top,
     Bottom,
+}
+
+#[derive(Clone, Debug)]
+struct CommitAttempt {
+    selected_index: usize,
+    text: String,
+    timestamp: Instant,
 }
 
 #[derive(Default)]
@@ -287,9 +298,13 @@ struct PanelState {
     compact_dragging: bool,
     compact_drag_moved: bool,
     compact_drag_start_cursor: Option<(f32, f32)>,
+    compact_drag_start_instant: Option<std::time::Instant>,
     compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
     hovered_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
     pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
+    press_target_rect: Option<[f32; 4]>,
+    press_start_cursor: Option<(f32, f32)>,
+    press_start_instant: Option<Instant>,
     touch_tap_pending: bool,
     touch_start_position: Option<(f32, f32)>,
     voice_stability_ticks: u8,
@@ -302,6 +317,9 @@ struct PanelState {
     expanded_window_size: Option<LogicalSize<f64>>,
     expanded_window_pos: Option<PhysicalPosition<i32>>,
     compact_dock_edge: Option<DockEdge>,
+    last_compact_toggle: Option<Instant>,
+    last_commit_attempt: Option<CommitAttempt>,
+    last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
 }
 
 impl PanelState {
@@ -465,6 +483,9 @@ impl PanelState {
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
+            pointer_tap_slop_tenths: 75,
+            pointer_tap_max_ms: 320,
+            pointer_target_slop_tenths: 35,
             composed_tokens: Vec::new(),
             next_token_candidates: Vec::new(),
             sentence_candidates: Vec::new(),
@@ -480,6 +501,7 @@ impl PanelState {
         } else if let Some(saved) = load_display_settings() {
             apply_display_settings(&mut chrome, &saved);
         }
+        apply_pointer_stability_env_overrides(&mut chrome);
 
         if let Some(bridge) = voice.bridge.as_ref() {
             chrome.voice_backend_label = bridge.source_label().to_string();
@@ -570,9 +592,13 @@ impl PanelState {
             compact_dragging: false,
             compact_drag_moved: false,
             compact_drag_start_cursor: None,
+            compact_drag_start_instant: None,
             compact_drag_start_window_pos: None,
             hovered_interaction: None,
             pressed_interaction: None,
+            press_target_rect: None,
+            press_start_cursor: None,
+            press_start_instant: None,
             touch_tap_pending: false,
             touch_start_position: None,
             voice_stability_ticks: 0,
@@ -585,6 +611,9 @@ impl PanelState {
             expanded_window_size: None,
             expanded_window_pos: None,
             compact_dock_edge: None,
+            last_compact_toggle: None,
+            last_commit_attempt: None,
+            last_interaction_action: None,
         };
         if kind == PanelWindowKind::Main {
             state.reconfigure_llama_plugin();
@@ -592,4 +621,26 @@ impl PanelState {
 
         Ok(state)
     }
+}
+
+fn apply_pointer_stability_env_overrides(chrome: &mut PanelChromeState) {
+    if let Ok(raw_tap_slop_px) = std::env::var("SUZAKU_POINTER_TAP_SLOP_PX") {
+        if let Ok(px) = raw_tap_slop_px.parse::<f32>() {
+            let clamped = (px * 10.0).round().clamp(20.0, 120.0) as u16;
+            chrome.pointer_tap_slop_tenths = clamped;
+        }
+    }
+    if let Ok(raw_tap_max_ms) = std::env::var("SUZAKU_POINTER_TAP_MAX_MS") {
+        if let Ok(ms) = raw_tap_max_ms.parse::<u16>() {
+            chrome.pointer_tap_max_ms = ms;
+        }
+    }
+    if let Ok(raw_target_slop_px) = std::env::var("SUZAKU_POINTER_TARGET_SLOP_PX") {
+        if let Ok(px) = raw_target_slop_px.parse::<f32>() {
+            let clamped = (px * 10.0).round().clamp(10.0, 120.0) as u16;
+            chrome.pointer_target_slop_tenths = clamped;
+        }
+    }
+
+    normalize_pointer_stability_settings(chrome);
 }

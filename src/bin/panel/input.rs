@@ -1,12 +1,10 @@
 use super::{PanelState, PanelWindowKind};
-use suzaku_map::ime::gpu::{InputMode, VoiceCaptureState};
+use suzaku_map::ime::gpu::{InputMode, InteractionKind, VoiceCaptureState};
 use suzaku_map::ime::{CommitOptions, SignalState};
 use wgpu::SurfaceError;
 use winit::event::{ElementState, MouseButton, TouchPhase, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
-
-const TOUCH_TAP_SLOP_PX: f32 = 14.0;
 
 pub(super) fn handle_panel_window_event(
     state: &mut PanelState,
@@ -33,6 +31,9 @@ pub(super) fn handle_panel_window_event(
         WindowEvent::CursorMoved { position, .. } => {
             state.cursor_position = Some((position.x as f32, position.y as f32));
             if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                if let Some((x, y)) = state.cursor_position {
+                    state.record_compact_drag_motion(x, y);
+                }
                 state.update_compact_hover();
             } else if state.kind == PanelWindowKind::Main {
                 state.extend_handwriting_stroke();
@@ -59,9 +60,8 @@ pub(super) fn handle_panel_window_event(
                         } else if let (Some((start_x, start_y)), Some((x, y))) =
                             (state.touch_start_position, state.cursor_position)
                         {
-                            if (x - start_x).abs() > TOUCH_TAP_SLOP_PX
-                                || (y - start_y).abs() > TOUCH_TAP_SLOP_PX
-                            {
+                            let tap_slop = (state.chrome.pointer_tap_slop_tenths as f32) / 10.0;
+                            if (x - start_x).abs() > tap_slop || (y - start_y).abs() > tap_slop {
                                 state.touch_tap_pending = false;
                             }
                         }
@@ -70,7 +70,11 @@ pub(super) fn handle_panel_window_event(
                         if state.handwriting_dragging {
                             state.finish_handwriting_stroke();
                         } else if state.touch_tap_pending {
-                            state.select_at_cursor();
+                            if let Some(target) = state.pressed_interaction {
+                                if state.press_target_is_stable(target) {
+                                    state.select_at_cursor();
+                                }
+                            }
                         }
                         state.clear_pressed_interaction();
                         state.touch_tap_pending = false;
@@ -93,10 +97,11 @@ pub(super) fn handle_panel_window_event(
         } => {
             state.update_pressed_interaction();
             if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                state.begin_compact_drag();
-            } else if !(state.kind == PanelWindowKind::Main && state.try_begin_handwriting_stroke())
-            {
-                state.select_at_cursor();
+                if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
+                    state.begin_compact_drag();
+                }
+            } else if state.kind == PanelWindowKind::Main {
+                let _ = state.try_begin_handwriting_stroke();
             }
             state.window.request_redraw();
         }
@@ -106,10 +111,28 @@ pub(super) fn handle_panel_window_event(
             ..
         } => {
             if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                if !state.end_compact_drag() {
+                if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
+                    if !state.end_compact_drag()
+                        && state
+                            .pressed_interaction
+                            .is_some_and(|target| state.press_target_is_stable(target))
+                    {
+                        state.select_at_cursor();
+                    }
+                } else if state
+                    .pressed_interaction
+                    .is_some_and(|target| state.press_target_is_stable(target))
+                {
                     state.select_at_cursor();
                 }
-            } else if state.kind == PanelWindowKind::Main {
+            } else {
+                if let Some(target) = state.pressed_interaction {
+                    if state.press_target_is_stable(target)
+                        && (state.kind != PanelWindowKind::Main || !state.handwriting_dragging)
+                    {
+                        state.select_at_cursor();
+                    }
+                }
                 state.finish_handwriting_stroke();
             }
             state.clear_pressed_interaction();
@@ -118,6 +141,28 @@ pub(super) fn handle_panel_window_event(
         }
         WindowEvent::KeyboardInput { event, .. } => {
             if event.state == ElementState::Pressed {
+                if event.repeat
+                    && matches!(
+                        event.physical_key,
+                        PhysicalKey::Code(KeyCode::Space)
+                            | PhysicalKey::Code(KeyCode::Enter)
+                            | PhysicalKey::Code(KeyCode::NumpadEnter)
+                            | PhysicalKey::Code(KeyCode::Digit1)
+                            | PhysicalKey::Code(KeyCode::Digit2)
+                            | PhysicalKey::Code(KeyCode::Digit3)
+                            | PhysicalKey::Code(KeyCode::Digit4)
+                            | PhysicalKey::Code(KeyCode::Tab)
+                            | PhysicalKey::Code(KeyCode::KeyV)
+                            | PhysicalKey::Code(KeyCode::KeyN)
+                            | PhysicalKey::Code(KeyCode::KeyI)
+                            | PhysicalKey::Code(KeyCode::KeyR)
+                            | PhysicalKey::Code(KeyCode::KeyD)
+                    )
+                {
+                    state.window.request_redraw();
+                    return;
+                }
+
                 if allow_exit && state.is_quit_shortcut(&event.physical_key) {
                     event_loop.exit();
                     return;

@@ -1,16 +1,16 @@
 {
-                    let voice_scale = (drawer_rect[3] / (238.0 * responsive_scale)).clamp(0.76, 1.0);
-                    let voice_content_x_pad = 9.8 * responsive_scale * voice_scale;
-                    let voice_y = drawer_rect[1] + 12.0 * responsive_scale * voice_scale;
+                    let voice_scale = (drawer_rect[3] / (230.0 * responsive_scale)).clamp(0.76, 1.0);
+                    let voice_content_x_pad = 8.6 * responsive_scale * voice_scale;
+                    let voice_y = drawer_rect[1] + 10.5 * responsive_scale * voice_scale;
                     let voice_rect = [
                         drawer_rect[0],
                         voice_y,
                         drawer_rect[2],
-                        (drawer_rect[3] - 18.0 * responsive_scale).max(148.0 * responsive_scale * voice_scale),
+                        (drawer_rect[3] - 16.0 * responsive_scale).max(142.0 * responsive_scale * voice_scale),
                     ];
                     let voice_content_x = voice_rect[0] + voice_content_x_pad;
-                    let voice_header_y = voice_y + 8.8 * responsive_scale * voice_scale;
-                    let voice_transcript_y = voice_y + 30.0 * responsive_scale * voice_scale;
+                    let voice_header_y = voice_y + 8.0 * responsive_scale * voice_scale;
+                    let voice_transcript_y = voice_y + 28.0 * responsive_scale * voice_scale;
                     let voice_transcript_bottom = (voice_rect[1] + voice_rect[3])
                         - (20.0 * responsive_scale * voice_scale);
                     let voice_transcript_room = voice_transcript_bottom - voice_transcript_y;
@@ -30,7 +30,7 @@
                         border_dark,
                         soft_shadow,
                         surface,
-                        10.0 * responsive_scale * voice_scale,
+                        8.8 * responsive_scale * voice_scale,
                     );
 
                     let transcript = if chrome.voice_transcript.is_empty() {
@@ -266,11 +266,11 @@
                         ));
                     }
 
-                    let action_row_h = 20.4 * responsive_scale * voice_scale;
-                    let action_row_gap_x = 6.6 * responsive_scale * voice_scale;
-                    let action_row_gap_y = 6.0 * responsive_scale * voice_scale;
-                    let action_start_x = drawer_rect[0] + 10.0 * responsive_scale * voice_scale;
-                    let action_end_x = drawer_rect[0] + drawer_rect[2] - 10.0 * responsive_scale * voice_scale;
+                    let action_row_h = 20.6 * responsive_scale * voice_scale;
+                    let action_row_gap_x = 5.0 * responsive_scale * voice_scale;
+                    let action_row_gap_y = 5.0 * responsive_scale * voice_scale;
+                    let action_start_x = drawer_rect[0] + 8.0 * responsive_scale * voice_scale;
+                    let action_end_x = drawer_rect[0] + drawer_rect[2] - 8.0 * responsive_scale * voice_scale;
                     let action_row_width = (action_end_x - action_start_x).max(0.0);
                     let mut action_rows = 1usize;
                     let mut action_cursor_x = action_start_x;
@@ -289,14 +289,14 @@
                     let voice_footer_height =
                         (action_row_h * voice_footer_rows as f32
                             + (action_rows.saturating_sub(1) as f32) * action_row_gap_y
-                            + 10.0 * responsive_scale * voice_scale)
+                            + 8.0 * responsive_scale * voice_scale)
                         .max(30.0 * responsive_scale * voice_scale);
                     let voice_footer_rect = [
                         action_start_x,
                         voice_rect[1] + voice_rect[3]
                             - voice_footer_height
                             - 8.0 * responsive_scale * voice_scale,
-                        drawer_rect[2] - 20.0 * responsive_scale * voice_scale,
+                            drawer_rect[2] - 16.0 * responsive_scale * voice_scale,
                         voice_footer_height,
                     ];
                     append_soft_card_quads(
@@ -309,11 +309,11 @@
                         8.0 * responsive_scale * voice_scale,
                     );
                     let mut voice_action_layouts = Vec::new();
-                    let mut action_cursor_x = voice_footer_rect[0] + 6.0 * responsive_scale * voice_scale;
+                    let mut action_cursor_x = voice_footer_rect[0] + 5.0 * responsive_scale * voice_scale;
                     let mut action_row = 0;
                     for (kind, label, width, emphasized, enabled) in voice_actions {
                         let (hovered, pressed) = interaction_state(kind);
-                        let action_row_start = voice_footer_rect[0] + 6.0 * responsive_scale * voice_scale;
+                        let action_row_start = voice_footer_rect[0] + 5.0 * responsive_scale * voice_scale;
                         let row_right = action_row_start + action_row_width;
                         let next_width = width.min(action_row_width);
 
@@ -329,14 +329,14 @@
                         let rect = [
                             action_cursor_x,
                             voice_footer_rect[1]
-                                + 4.0 * responsive_scale * voice_scale
+                                + 3.6 * responsive_scale * voice_scale
                                 + action_row as f32
                                     * (action_row_h + action_row_gap_y),
                             next_width,
                             action_row_h,
                         ];
                         let visual_rect = animated_rect(rect, hovered, pressed);
-                        action_cursor_x += next_width + 7.2 * responsive_scale * voice_scale;
+                        action_cursor_x += next_width + 6.4 * responsive_scale * voice_scale;
                         append_soft_card_quads(
                             &mut quads,
                             visual_rect,
@@ -364,7 +364,10 @@
                             surface,
                             8.0 * responsive_scale * voice_scale,
                         );
-                        interactive_targets.push(InteractiveTarget { kind, rect });
+                        interactive_targets.push(InteractiveTarget {
+                            kind,
+                            rect: interaction_hit_rect(rect),
+                        });
                         let icon_color = if emphasized {
                             accent_text
                         } else if !enabled {
@@ -398,10 +401,10 @@
                             let layout = TextBlock {
                                 text: label.to_string(),
                                     origin: [
-                                visual_rect[0] + 7.8 * responsive_scale * voice_scale,
-                                visual_rect[1] + 6.0 * responsive_scale * voice_scale,
+                                visual_rect[0] + 7.2 * responsive_scale * voice_scale,
+                                visual_rect[1] + 5.8 * responsive_scale * voice_scale,
                             ],
-                            max_width: visual_rect[2] - 15.5 * responsive_scale * voice_scale,
+                            max_width: visual_rect[2] - 15.0 * responsive_scale * voice_scale,
                                     pixel_size: 2.0 * voice_scale,
                                     letter_spacing: ui_tracking * voice_scale,
                                     line_gap: base_line_gap * voice_scale,

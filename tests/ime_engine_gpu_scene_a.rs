@@ -1,4 +1,4 @@
-use super::*;
+use suzaku_map::ime::{EngineConfig, XRTabletImeEngine};
 
 #[cfg(feature = "gpu")]
 #[test]
@@ -300,6 +300,7 @@ fn render_scene_can_collapse_input_method_buttons() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 
@@ -359,6 +360,7 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 
@@ -431,6 +433,7 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: String::new(),
+            ..PanelChromeState::default()
         },
     );
 

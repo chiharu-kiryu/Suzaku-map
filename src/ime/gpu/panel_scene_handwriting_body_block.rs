@@ -1,13 +1,13 @@
 {
-                    let handwriting_scale = (drawer_rect[3] / (238.0 * responsive_scale)).clamp(0.82, 1.0);
-                    let handwriting_y = drawer_rect[1] + 13.5 * responsive_scale * handwriting_scale;
+                    let handwriting_scale = (drawer_rect[3] / (232.0 * responsive_scale)).clamp(0.82, 1.0);
+                    let handwriting_y = drawer_rect[1] + 12.2 * responsive_scale * handwriting_scale;
                     let handwriting_title_y = handwriting_y + 6.0 * responsive_scale * handwriting_scale;
                     let handwriting_status_y = handwriting_title_y;
-                    let handwriting_hint_y = handwriting_y + 26.5 * responsive_scale * handwriting_scale;
-                    let handwriting_padding_x = 10.0 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_row_h = 18.4 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_gap_x = 7.2 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_gap_y = 5.6 * responsive_scale * handwriting_scale;
+                    let handwriting_hint_y = handwriting_y + 25.0 * responsive_scale * handwriting_scale;
+                    let handwriting_padding_x = 8.5 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_row_h = 19.6 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_gap_x = 5.6 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_gap_y = 5.1 * responsive_scale * handwriting_scale;
                     let base_action_w = (70.0 * handwriting_scale).max(58.0 * responsive_scale * handwriting_scale);
                     let candidate_text_max = 3usize;
                     let max_candidate_rows = 2usize;
@@ -88,32 +88,32 @@
                         footer_left,
                         drawer_rect[1] + drawer_rect[3]
                             - (handwriting_footer_rows * (handwriting_footer_row_h + handwriting_footer_gap_y)
-                                + 10.0 * responsive_scale * handwriting_scale),
+                                + 8.0 * responsive_scale * handwriting_scale),
                         footer_width,
                         handwriting_footer_rows * (handwriting_footer_row_h + handwriting_footer_gap_y)
-                            + 10.0 * responsive_scale * handwriting_scale,
+                            + 8.0 * responsive_scale * handwriting_scale,
                     ];
-                    let canvas_top = handwriting_y + 48.0 * responsive_scale * handwriting_scale;
+                    let canvas_top = handwriting_y + 46.0 * responsive_scale * handwriting_scale;
                     let canvas_rect = [
                         drawer_rect[0],
                         canvas_top,
                         drawer_rect[2],
-                        (handwriting_footer_rect[1] - 8.0 * responsive_scale * handwriting_scale - canvas_top)
-                            .max(104.0 * responsive_scale * handwriting_scale),
+                        (handwriting_footer_rect[1] - 7.0 * responsive_scale * handwriting_scale - canvas_top)
+                            .max(102.0 * responsive_scale * handwriting_scale),
                     ];
 
                     append_soft_card_quads(
                         &mut quads,
                         canvas_rect,
-                        [0.98, 0.99, 1.0, 1.0],
-                        border_dark,
-                        soft_shadow,
-                        surface,
-                        10.0 * responsive_scale * handwriting_scale,
+                            [0.98, 0.99, 1.0, 1.0],
+                            border_dark,
+                            soft_shadow,
+                            surface,
+                            8.8 * responsive_scale * handwriting_scale,
                     );
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::HandwritingCanvas,
-                        rect: canvas_rect,
+                        rect: interaction_hit_rect(canvas_rect),
                     });
 
                     for stroke in &chrome.handwriting_strokes {
@@ -191,7 +191,7 @@
                         border_dark,
                         [0.25, 0.34, 0.48, 0.06],
                         shell,
-                        8.0 * responsive_scale * handwriting_scale,
+                        7.2 * responsive_scale * handwriting_scale,
                     );
 
                     let undo_rect = [
@@ -223,7 +223,7 @@
                     );
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::UndoHandwritingStroke,
-                        rect: undo_rect,
+                        rect: interaction_hit_rect(undo_rect),
                     });
 
                     let clear_rect = [
@@ -265,7 +265,7 @@
                     );
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::ClearHandwriting,
-                        rect: clear_rect,
+                        rect: interaction_hit_rect(clear_rect),
                     });
 
                     let mut handwriting_action_layouts = Vec::new();
@@ -335,7 +335,10 @@
                             surface,
                             8.0 * responsive_scale * handwriting_scale,
                         );
-                        interactive_targets.push(InteractiveTarget { kind, rect });
+                        interactive_targets.push(InteractiveTarget {
+                            kind,
+                            rect: interaction_hit_rect(rect),
+                        });
                         let layout = TextBlock {
                             text: candidate.clone(),
                             origin: [
