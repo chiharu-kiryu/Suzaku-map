@@ -180,6 +180,8 @@ impl WindowsSpeechBridge {
 mod tests {
     use super::WindowsSpeechBridge;
     use crate::ime::gpu::VoicePermissionState;
+    use crate::platform::test_env;
+    use crate::platform::test_env::ScopedEnv;
 
     #[test]
     fn windows_bridge_starts_in_permission_pending_state() {
@@ -208,20 +210,17 @@ mod tests {
 
     #[test]
     fn windows_bridge_can_seed_debug_transcript_from_env() {
-        let bridge = WindowsSpeechBridge::new();
-        unsafe {
-            std::env::set_var("SUZAKU_WINDOWS_VOICE_SAMPLE", "hello from windows");
-        }
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            let bridge = WindowsSpeechBridge::new();
+            env.set_var("SUZAKU_WINDOWS_VOICE_SAMPLE", "hello from windows");
 
-        bridge.seed_debug_transcript_from_env();
+            bridge.seed_debug_transcript_from_env();
 
-        assert_eq!(
-            bridge.poll_transcript().as_deref(),
-            Some("hello from windows")
-        );
-        unsafe {
-            std::env::remove_var("SUZAKU_WINDOWS_VOICE_SAMPLE");
-        }
+            assert_eq!(
+                bridge.poll_transcript().as_deref(),
+                Some("hello from windows")
+            );
+        });
     }
 
     #[test]

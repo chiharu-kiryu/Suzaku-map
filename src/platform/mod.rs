@@ -83,6 +83,8 @@ pub mod macos_ime;
 pub mod macos_voice;
 pub mod panel_companion_dispatch;
 pub mod settings_host;
+#[cfg(test)]
+mod test_env;
 pub mod text_output_host;
 pub mod ubuntu_voice;
 pub mod voice_host;
@@ -179,7 +181,8 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
 #[cfg(test)]
 mod tests {
     use super::{
-        PLATFORM_SUPPORT_ROADMAP, SupportTier, TargetPlatform, host_platform, support_for,
+        PLATFORM_SUPPORT_ROADMAP, PlatformCapabilities, SupportTier, TargetPlatform, host_platform,
+        support_for,
     };
 
     #[test]
@@ -210,5 +213,98 @@ mod tests {
         let host = host_platform();
 
         assert_eq!(support_for(host).platform, host);
+    }
+
+    fn support_matches_expected(
+        actual: super::PlatformSupport,
+        expected_platform: TargetPlatform,
+        expected_tier: SupportTier,
+        expected_capabilities: PlatformCapabilities,
+    ) {
+        assert_eq!(actual.platform, expected_platform);
+        assert_eq!(actual.tier, expected_tier);
+        assert_eq!(actual.capabilities, expected_capabilities);
+    }
+
+    #[test]
+    fn support_profiles_define_expected_platform_capabilities() {
+        support_matches_expected(
+            support_for(TargetPlatform::MacOs),
+            TargetPlatform::MacOs,
+            SupportTier::Primary,
+            PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: true,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: true,
+            },
+        );
+        support_matches_expected(
+            support_for(TargetPlatform::Windows),
+            TargetPlatform::Windows,
+            SupportTier::Primary,
+            PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: true,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: true,
+            },
+        );
+        support_matches_expected(
+            support_for(TargetPlatform::Android),
+            TargetPlatform::Android,
+            SupportTier::Secondary,
+            PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: true,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: true,
+            },
+        );
+        support_matches_expected(
+            support_for(TargetPlatform::Ubuntu),
+            TargetPlatform::Ubuntu,
+            SupportTier::Secondary,
+            PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: false,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: false,
+            },
+        );
+        support_matches_expected(
+            support_for(TargetPlatform::ArchLinux),
+            TargetPlatform::ArchLinux,
+            SupportTier::Secondary,
+            PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: false,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: false,
+            },
+        );
+        support_matches_expected(
+            support_for(TargetPlatform::SteamOs),
+            TargetPlatform::SteamOs,
+            SupportTier::Secondary,
+            PlatformCapabilities {
+                window_host: true,
+                gpu_panel: true,
+                system_ime_host: false,
+                voice_input: true,
+                handwriting_input: true,
+                permission_bridge: false,
+            },
+        );
     }
 }

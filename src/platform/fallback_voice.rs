@@ -32,3 +32,27 @@ impl FallbackSpeechBridge {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{FallbackSpeechBridge, VoicePermissionState};
+
+    #[test]
+    fn fallback_bridge_is_always_unavailable() {
+        let bridge = FallbackSpeechBridge::new();
+
+        assert!(!bridge.start());
+        assert_eq!(bridge.permission_state(), VoicePermissionState::Unavailable);
+        assert_eq!(bridge.source_label(), "Fallback Samples");
+        assert!(!bridge.supports_live_capture());
+    }
+
+    #[test]
+    fn fallback_bridge_polling_is_safe_and_empty() {
+        let bridge = FallbackSpeechBridge::new();
+
+        bridge.request_permissions();
+        bridge.stop();
+        assert!(bridge.poll_transcript().is_none());
+    }
+}

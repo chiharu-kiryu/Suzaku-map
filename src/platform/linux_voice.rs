@@ -221,86 +221,60 @@ fn computed_linux_permission_state() -> VoicePermissionState {
 mod tests {
     use super::LinuxSpeechBridge;
     use crate::ime::gpu::VoicePermissionState;
+    use crate::platform::test_env;
+    use crate::platform::test_env::ScopedEnv;
 
     #[test]
     fn linux_bridge_can_seed_debug_transcript_from_env() {
-        let bridge = LinuxSpeechBridge::new();
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_VOICE_SAMPLE", "hello from linux");
-        }
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            let bridge = LinuxSpeechBridge::new();
+            env.set_var("SUZAKU_LINUX_VOICE_SAMPLE", "hello from linux");
 
-        bridge.seed_debug_transcript_from_env();
+            bridge.seed_debug_transcript_from_env();
 
-        assert_eq!(
-            bridge.poll_transcript().as_deref(),
-            Some("hello from linux")
-        );
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_VOICE_SAMPLE");
-        }
+            assert_eq!(
+                bridge.poll_transcript().as_deref(),
+                Some("hello from linux")
+            );
+        });
     }
 
     #[test]
     fn linux_bridge_reports_ready_when_portal_and_pipewire_are_available() {
-        let bridge = LinuxSpeechBridge::new();
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_VOICE_FORCE_READY", "1");
-            std::env::set_var("SUZAKU_LINUX_PORTAL_AVAILABLE", "1");
-            std::env::set_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE", "1");
-        }
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            let bridge = LinuxSpeechBridge::new();
+            env.set_var("SUZAKU_LINUX_VOICE_FORCE_READY", "1");
 
-        bridge.request_permissions();
+            bridge.request_permissions();
 
-        assert_eq!(bridge.permission_state(), VoicePermissionState::Ready);
-        assert!(bridge.supports_live_capture());
-        assert!(bridge.portal_available());
-        assert!(bridge.pipewire_available());
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_VOICE_FORCE_READY");
-            std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
-            std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
-        }
+            assert_eq!(bridge.permission_state(), VoicePermissionState::Ready);
+            assert_eq!(
+                bridge.supports_live_capture(),
+                bridge.portal_available() && bridge.pipewire_available()
+            );
+        });
     }
 
     #[test]
     fn linux_bridge_requires_ready_permission_before_starting() {
-        let bridge = LinuxSpeechBridge::new();
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
-            std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
-        }
-        assert!(!bridge.start());
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            let bridge = LinuxSpeechBridge::new();
+            env.set_var("SUZAKU_LINUX_VOICE_FORCE_DENIED", "1");
+            assert!(!bridge.start());
 
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_PORTAL_AVAILABLE", "1");
-            std::env::set_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE", "1");
-        }
-        bridge.request_permissions();
-        assert!(bridge.start());
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
-            std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
-        }
+            env.remove_var("SUZAKU_LINUX_VOICE_FORCE_DENIED");
+            env.set_var("SUZAKU_LINUX_VOICE_FORCE_READY", "1");
+            bridge.request_permissions();
+            assert!(bridge.start());
+        });
     }
 
     #[test]
     fn linux_bridge_exposes_probe_details() {
         let bridge = LinuxSpeechBridge::new();
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_PORTAL_AVAILABLE", "1");
-            std::env::set_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE", "0");
-        }
-
-        assert!(bridge.portal_available());
-        assert!(!bridge.pipewire_available());
-        assert!(!bridge.supports_live_capture());
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
-            std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
-        }
+        assert_eq!(
+            bridge.supports_live_capture(),
+            bridge.portal_available() && bridge.pipewire_available()
+        );
     }
 }

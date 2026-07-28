@@ -67,6 +67,8 @@ fn detected_framework() -> LinuxImeFramework {
 mod tests {
     use super::{LinuxImeFramework, bootstrap_status, recommended_connection_name};
     use crate::platform::TargetPlatform;
+    use crate::platform::test_env;
+    use crate::platform::test_env::ScopedEnv;
 
     #[test]
     fn linux_ime_connection_name_stays_stable() {
@@ -75,11 +77,12 @@ mod tests {
 
     #[test]
     fn linux_ime_bootstrap_defaults_to_ibus() {
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_IME_FRAMEWORK");
-        }
-        let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
-        assert_eq!(bootstrap.framework, LinuxImeFramework::IBus);
-        assert!(!bootstrap.host_registration_ready);
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.remove_var("SUZAKU_LINUX_IME_FRAMEWORK");
+
+            let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert_eq!(bootstrap.framework, LinuxImeFramework::IBus);
+            assert!(!bootstrap.host_registration_ready);
+        });
     }
 }

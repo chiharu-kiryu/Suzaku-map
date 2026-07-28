@@ -62,10 +62,10 @@ pub fn runtime_profile_for(platform: TargetPlatform) -> ImeHostRuntimeProfile {
     ImeHostRuntimeProfile {
         platform,
         title: runtime_title(platform),
-        bootstrap_summary: adapter.bootstrap_summary.clone(),
+        bootstrap_summary: bootstrap_summary(platform),
         registration_target: adapter.registration_target,
         registration_ready: adapter.registration_ready,
-        registration_hint: adapter.registration_hint,
+        registration_hint: registration_hint(platform),
         preferred_command: preferred_command(platform),
         dispatch: ime_host_dispatch::dispatch_for(platform),
         panel_dispatch: panel_companion_dispatch::dispatch_for(platform),

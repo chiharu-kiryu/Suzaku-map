@@ -128,3 +128,44 @@ fn macos_commit_text(text: &str) -> HostTextOutputResult {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helper_variants_encode_expected_statuses() {
+        let delivered = HostTextOutputResult::delivered("ok");
+        let permission_required = HostTextOutputResult::permission_required("perm");
+        let unsupported = HostTextOutputResult::unsupported("no");
+        let error = HostTextOutputResult::error("bad");
+
+        assert!(delivered.delivered_successfully());
+        assert_eq!(permission_required.status, HostTextOutputStatus::PermissionRequired);
+        assert_eq!(unsupported.status, HostTextOutputStatus::Unsupported);
+        assert_eq!(error.status, HostTextOutputStatus::Error);
+        assert_eq!(delivered.message, "ok");
+    }
+
+    #[test]
+    fn commit_text_rejects_empty_or_whitespace_text() {
+        let empty = commit_text_to_active_target("");
+        let blank = commit_text_to_active_target("   \n\t");
+
+        assert_eq!(empty.status, HostTextOutputStatus::Error);
+        assert_eq!(
+            empty.message,
+            "Nothing to send to the active app.".to_string()
+        );
+        assert_eq!(blank.status, HostTextOutputStatus::Error);
+        assert_eq!(blank.message, empty.message);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn commit_text_reports_unsupported_when_active_target_not_wired() {
+        let result = commit_text_to_active_target("hello");
+        assert_eq!(result.status, HostTextOutputStatus::Unsupported);
+        assert!(result.message.contains("not wired yet"));
+    }
+}

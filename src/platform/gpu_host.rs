@@ -127,3 +127,52 @@ pub fn preferred_font_paths(_font_face: FontFaceChoice) -> Vec<(&'static str, &'
     #[allow(unreachable_code)]
     Vec::new()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        configure_event_loop_builder,
+        decorate_main_window_attributes,
+        decorate_settings_window_attributes,
+        is_quit_shortcut,
+        preferred_font_paths,
+    };
+    use crate::ime::gpu::FontFaceChoice;
+    use winit::event_loop::EventLoop;
+    use winit::keyboard::ModifiersState;
+    use winit::window::WindowAttributes;
+
+    #[test]
+    fn event_loop_builder_configures_macos_attributes_if_available() {
+        let mut builder = EventLoop::<()>::builder();
+        configure_event_loop_builder(&mut builder);
+    }
+
+    #[test]
+    fn window_attributes_have_macos_variants_if_available() {
+        let attrs = WindowAttributes::default();
+        let _ = decorate_main_window_attributes(attrs);
+        let attrs = WindowAttributes::default();
+        let _ = decorate_settings_window_attributes(attrs);
+    }
+
+    #[test]
+    fn quit_shortcut_tracks_super_on_macos() {
+        let modifiers = ModifiersState::SUPER;
+        let modifiers_off = ModifiersState::default();
+
+        assert_eq!(is_quit_shortcut(modifiers), true);
+        assert_eq!(is_quit_shortcut(modifiers_off), false);
+    }
+
+    #[test]
+    fn preferred_fonts_available_for_all_choices() {
+        assert!(!preferred_font_paths(FontFaceChoice::Auto).is_empty());
+        assert!(!preferred_font_paths(FontFaceChoice::Monaco).is_empty());
+        assert!(!preferred_font_paths(FontFaceChoice::Menlo).is_empty());
+        assert!(!preferred_font_paths(FontFaceChoice::Geneva).is_empty());
+        assert!(!preferred_font_paths(FontFaceChoice::Helvetica).is_empty());
+        assert!(!preferred_font_paths(FontFaceChoice::PingFang).is_empty());
+        assert!(!preferred_font_paths(FontFaceChoice::ArialUnicode).is_empty());
+    }
+}

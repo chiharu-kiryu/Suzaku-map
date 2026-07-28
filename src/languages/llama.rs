@@ -247,4 +247,103 @@ mod tests {
         assert_eq!(parsed.port, 11434);
         assert_eq!(parsed.path, "/v1/chat/completions");
     }
+
+    #[test]
+    fn parse_http_endpoint_defaults_path_and_port() {
+        let parsed = parse_http_endpoint("http://127.0.0.1")
+            .expect("parsed endpoint");
+        assert_eq!(parsed.host, "127.0.0.1");
+        assert_eq!(parsed.port, 80);
+        assert_eq!(parsed.path, "/v1/chat/completions");
+    }
+
+    #[test]
+    fn parse_http_endpoint_rejects_missing_scheme() {
+        assert!(parse_http_endpoint("127.0.0.1:11434").is_none());
+        assert!(parse_http_endpoint("https://127.0.0.1:11434").is_none());
+    }
+
+    #[test]
+    fn parse_http_endpoint_with_invalid_port_is_none() {
+        assert!(parse_http_endpoint("http://127.0.0.1:notaport/v1/chat/completions").is_none());
+    }
+
+    #[test]
+    fn parse_http_endpoint_keeps_nested_paths() {
+        let parsed = parse_http_endpoint("http://127.0.0.1:11434/api/v1/chat/completions").expect("parsed");
+        assert_eq!(parsed.path, "/api/v1/chat/completions");
+    }
+
+    #[test]
+    fn escapes_json_control_chars() {
+        let escaped = escape_json_string("a\\b\"c\nd\re\tf");
+        assert_eq!(escaped, "a\\\\b\\\"c\\nd\\re\\tf");
+    }
+
+    #[test]
+    fn consume_json_string_reads_escapes_and_reports_rest() {
+        let input = r#"foo\\bar\"baz\nline\tone\rend"tail"#;
+        let (value, rest) = consume_json_string(input).expect("parsed");
+        assert_eq!(value, "foo\\bar\"baz\nline\tone\rend");
+        assert_eq!(rest, "tail");
+    }
+
+    #[test]
+    fn consume_json_string_returns_none_on_truncated_escape() {
+        let input = r#"broken\"#;
+        assert!(consume_json_string(input).is_none());
+    }
+
+    #[test]
+    fn consume_json_string_returns_none_without_closing_quote() {
+        let input = r#"abc\nde"#;
+        assert!(consume_json_string(input).is_none());
+    }
+
+    #[test]
+    fn normalize_model_lines_trims_numbering_and_empty_lines() {
+        let normalized = normalize_model_lines("1. first\n2. second\n- third\n4) fourth\n\n  final ");
+        assert_eq!(
+            normalized,
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_model_lines_limits_to_three_lines() {
+        let normalized = normalize_model_lines("1. one\n2. two\n3. three\n4. four\n5. five\n");
+        assert_eq!(
+            normalized,
+            vec![
+                "one".to_string(),
+                "two".to_string(),
+                "three".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_chat_completion_candidates_deduplicates_and_filters_blank_lines() {
+        let body = r#"{"choices":[{"message":{"role":"assistant","content":"1. alpha\n\n2. alpha\n3. bravo"}},{"message":{"role":"assistant","content":"1. bravo\n2. charlie"}}]}"#;
+        let parsed = parse_chat_completion_candidates(body);
+        assert_eq!(
+            parsed,
+            vec![
+                "alpha".to_string(),
+                "bravo".to_string(),
+                "charlie".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_chat_completion_candidates_ignores_malformed_content_fields() {
+        let body = r#"{"choices":[{"message":{"role":"assistant","content":"alpha"}},{"message":{"role":"assistant","content":"unterminated"#;
+        let parsed = parse_chat_completion_candidates(body);
+        assert_eq!(parsed, vec!["alpha".to_string()]);
+    }
 }

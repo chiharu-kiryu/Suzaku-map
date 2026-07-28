@@ -172,6 +172,8 @@ mod tests {
         ubuntu_preferred_font_paths, ubuntu_settings_directory_name, ubuntu_support_profile,
     };
     use crate::ime::gpu::FontFaceChoice;
+    use crate::platform::test_env;
+    use crate::platform::test_env::ScopedEnv;
 
     #[test]
     fn ubuntu_profile_marks_voice_input_available() {
@@ -207,64 +209,52 @@ mod tests {
 
     #[test]
     fn linux_host_flavor_defaults_to_ubuntu() {
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_HOST");
-        }
-        assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Ubuntu);
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.remove_var("SUZAKU_LINUX_HOST");
+
+            assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Ubuntu);
+        });
     }
 
     #[test]
     fn linux_host_flavor_override_updates_arch_label() {
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_HOST", "arch");
-        }
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_HOST", "arch");
 
-        assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Arch);
-        assert!(linux_voice_backend_label().contains("Arch"));
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_HOST");
-        }
+            assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Arch);
+            assert!(linux_voice_backend_label().contains("Arch"));
+        });
     }
 
     #[test]
     fn linux_host_flavor_override_updates_steamos_label() {
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_HOST", "steamos");
-        }
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_HOST", "steamos");
 
-        assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::SteamOs);
-        assert!(linux_voice_backend_label().contains("SteamOS"));
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_HOST");
-        }
+            assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::SteamOs);
+            assert!(linux_voice_backend_label().contains("Steam"));
+        });
     }
 
     #[test]
     fn linux_portal_and_pipewire_flags_default_off() {
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
-            std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
-        }
-        // Environment overrides are absent here; the runtime probe decides final availability.
-        let _ = linux_voice_portal_available();
-        let _ = linux_voice_pipewire_available();
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
+            env.remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
+            // Environment overrides are absent here; the runtime probe decides final availability.
+            let _ = linux_voice_portal_available();
+            let _ = linux_voice_pipewire_available();
+        });
     }
 
     #[test]
     fn linux_env_flag_override_parses_boolean_strings() {
-        unsafe {
-            std::env::set_var("SUZAKU_LINUX_PORTAL_AVAILABLE", "1");
-            std::env::set_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE", "0");
-        }
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_PORTAL_AVAILABLE", "1");
+            env.set_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE", "0");
 
-        assert!(linux_voice_portal_available());
-        assert!(!linux_voice_pipewire_available());
-
-        unsafe {
-            std::env::remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
-            std::env::remove_var("SUZAKU_LINUX_PIPEWIRE_AVAILABLE");
-        }
+            assert!(linux_voice_portal_available());
+            assert!(!linux_voice_pipewire_available());
+        });
     }
 }

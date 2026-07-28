@@ -280,6 +280,59 @@ mod tests {
     }
 
     #[test]
+    fn placeholder_mentions_system_settings_for_pending_access() {
+        let text = voice_transcript_placeholder(VoicePermissionState::Pending, "Apple Speech", true);
+
+        assert!(text.contains("System Settings"));
+        assert!(text.contains("Speech Recognition"));
+    }
+
+    #[test]
+    fn placeholder_mentions_denied_access() {
+        let text = voice_transcript_placeholder(VoicePermissionState::Denied, "Apple Speech", false);
+
+        assert!(text.contains("denied"));
+    }
+
+    #[test]
+    fn placeholder_mentions_error_state() {
+        let text = voice_transcript_placeholder(VoicePermissionState::Error, "Apple Speech", false);
+
+        assert!(text.contains("Try Listen"));
+    }
+
+    #[test]
+    fn placeholder_mentions_unavailable_capture() {
+        let text = voice_transcript_placeholder(VoicePermissionState::Unavailable, "Apple Speech", false);
+
+        assert!(text.contains("Live voice capture is unavailable"));
+    }
+
+    #[test]
+    fn status_for_listening_is_live_hint() {
+        let text = voice_status_text(
+            VoiceCaptureState::Listening,
+            VoicePermissionState::Ready,
+            false,
+            "Apple Speech",
+        );
+        assert!(text.contains("listening"));
+        assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_for_unknown_permission_mentions_setup_hint() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Unknown,
+            false,
+            "Apple Speech",
+        );
+        assert!(text.contains("setup"));
+        assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
     fn status_text_includes_backend_label() {
         let text = voice_status_text(
             VoiceCaptureState::Idle,
@@ -289,6 +342,57 @@ mod tests {
         );
 
         assert!(text.contains("Voice ready"));
+        assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_text_requires_permission() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Pending,
+            false,
+            "Apple Speech",
+        );
+
+        assert!(text.contains("permission required"));
+        assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_text_handles_denied_state() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Denied,
+            false,
+            "Apple Speech",
+        );
+
+        assert_eq!(text, "denied");
+    }
+
+    #[test]
+    fn status_text_handles_error_state() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Error,
+            false,
+            "Apple Speech",
+        );
+
+        assert!(text.contains("error"));
+        assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_text_handles_unavailable_state() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Unavailable,
+            false,
+            "Apple Speech",
+        );
+
+        assert!(text.contains("fallback"));
         assert!(text.contains("Apple Speech"));
     }
 

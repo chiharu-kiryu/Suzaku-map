@@ -180,7 +180,20 @@ pub extern "C" fn suzaku_host_companion_border_rgba8() -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{current_companion_theme_preset, detached_candidate_companion_style_for_preset};
+    use std::ffi::{CStr, CString};
+
+    use super::{
+        current_companion_theme_preset, detached_candidate_companion_style,
+        detached_candidate_companion_style_for_preset, suzaku_host_companion_accent_rgba8,
+        suzaku_host_companion_border_rgba8, suzaku_host_companion_header_title_utf8,
+        suzaku_host_companion_horizontal_padding, suzaku_host_companion_max_text_lines,
+        suzaku_host_companion_max_width, suzaku_host_companion_min_width, suzaku_host_companion_panel_background_rgba8,
+        suzaku_host_companion_row_height, suzaku_host_companion_row_hover_text_rgba8,
+        suzaku_host_companion_row_normal_text_rgba8, suzaku_host_companion_row_selected_text_rgba8,
+        suzaku_host_companion_show_header, suzaku_host_companion_title_text_rgba8,
+        suzaku_host_companion_vertical_padding, suzaku_host_companion_window_title_utf8,
+    };
+    use std::os::raw::c_char;
     use crate::ime::gpu::ThemePreset;
 
     #[test]
@@ -199,10 +212,68 @@ mod tests {
     }
 
     #[test]
+    fn detached_candidate_companion_style_exports_are_consistent() {
+        let style = detached_candidate_companion_style();
+
+        let title = suzaku_host_companion_window_title_utf8();
+        let header = suzaku_host_companion_header_title_utf8();
+
+        let title = unsafe { c_string_to_owned(title) };
+        let header = unsafe { c_string_to_owned(header) };
+
+        assert_eq!(title.as_deref(), Some(style.window_title));
+        assert_eq!(header.as_deref(), Some(style.header_title));
+        assert_eq!(
+            suzaku_host_companion_panel_background_rgba8(),
+            style.panel_background
+        );
+        assert_eq!(
+            suzaku_host_companion_horizontal_padding(),
+            style.horizontal_padding
+        );
+    }
+
+    #[test]
+    fn detached_candidate_companion_style_exports_are_numeric() {
+        let style = detached_candidate_companion_style();
+
+        assert_eq!(suzaku_host_companion_min_width(), style.min_width);
+        assert_eq!(suzaku_host_companion_max_width(), style.max_width);
+        assert_eq!(suzaku_host_companion_row_height(), style.row_height);
+        assert_eq!(suzaku_host_companion_max_text_lines(), style.max_text_lines);
+        assert_eq!(suzaku_host_companion_vertical_padding(), style.vertical_padding);
+        assert_eq!(suzaku_host_companion_title_text_rgba8(), style.title_text);
+        assert_eq!(
+            suzaku_host_companion_row_normal_text_rgba8(),
+            style.row_normal_text
+        );
+        assert_eq!(
+            suzaku_host_companion_row_hover_text_rgba8(),
+            style.row_hover_text
+        );
+        assert_eq!(
+            suzaku_host_companion_row_selected_text_rgba8(),
+            style.row_selected_text
+        );
+        assert_eq!(suzaku_host_companion_accent_rgba8(), style.accent);
+        assert_eq!(suzaku_host_companion_border_rgba8(), style.border);
+        assert_eq!(suzaku_host_companion_show_header(), style.show_header);
+    }
+
+    #[test]
     fn current_companion_theme_preset_defaults_to_known_theme() {
         assert!(matches!(
             current_companion_theme_preset(),
             ThemePreset::Daylight | ThemePreset::DeviceDark
         ));
+    }
+
+    unsafe fn c_string_to_owned(ptr: *mut c_char) -> Option<String> {
+        if ptr.is_null() {
+            return None;
+        }
+        let text = unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() };
+        let _ = unsafe { CString::from_raw(ptr) };
+        Some(text)
     }
 }
