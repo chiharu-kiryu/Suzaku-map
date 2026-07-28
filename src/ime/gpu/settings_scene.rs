@@ -45,6 +45,17 @@ impl WgpuCandidateRenderer {
         let row_label_height = 21.8 * ui_scale;
         let section_label_height = row_label_height;
         let section_margin = 2.4 * ui_scale;
+        let interaction_hit_rect = |rect: [f32; 4]| {
+            self.interaction_hit_rect(
+                rect,
+                ui_scale,
+                chrome.pointer_target_slop_tenths,
+                1.0,
+                2.0,
+                2.0,
+                true,
+            )
+        };
         let min_panel_height = 166.0;
         let chip_area_width = (chip_max_x - chip_start_x).max(132.0);
 
@@ -450,7 +461,7 @@ impl WgpuCandidateRenderer {
         );
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::SettingsToggle,
-            rect: close_rect,
+            rect: interaction_hit_rect(close_rect),
         });
         append_gear_icon_quads(&mut quads, close_visual_rect, text_secondary, surface_alt);
 
@@ -563,7 +574,10 @@ impl WgpuCandidateRenderer {
                     shell,
                     8.0,
                 );
-                interactive_targets.push(InteractiveTarget { kind: *kind, rect });
+                interactive_targets.push(InteractiveTarget {
+                    kind: *kind,
+                    rect: interaction_hit_rect(rect),
+                });
 
                 let option_layout = TextBlock {
                     text: (*chip_label).to_string(),

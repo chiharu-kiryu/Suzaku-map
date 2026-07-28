@@ -211,6 +211,50 @@ fn settings_scene_exposes_settings_controls_in_a_standalone_window() {
 
 #[cfg(feature = "gpu")]
 #[test]
+fn settings_scene_target_slop_expands_interactive_hit_area() {
+    use suzaku_map::ime::gpu::{
+        DisplayTextScale, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let renderer = WgpuCandidateRenderer::new(520.0, 340.0);
+    let base_scene = renderer.build_settings_scene(&PanelChromeState {
+        pointer_target_slop_tenths: 20,
+        ..PanelChromeState::default()
+    });
+    let expanded_scene = renderer.build_settings_scene(&PanelChromeState {
+        pointer_target_slop_tenths: 80,
+        ..PanelChromeState::default()
+    });
+
+    let target = InteractionKind::SetTextScale(DisplayTextScale::Large);
+    let base_target = base_scene
+        .interactive_targets
+        .iter()
+        .find(|entry| entry.kind == target)
+        .expect("base large text scale target");
+    let expanded_target = expanded_scene
+        .interactive_targets
+        .iter()
+        .find(|entry| entry.kind == target)
+        .expect("expanded large text scale target");
+
+    assert!(expanded_target.rect[2] > base_target.rect[2] + 1.0);
+    assert!(expanded_target.rect[3] > base_target.rect[3] + 1.0);
+
+    let probe_x = base_target.rect[0]
+        + base_target.rect[2]
+        + ((expanded_target.rect[2] - base_target.rect[2]) * 0.4);
+    let probe_y = base_target.rect[1] + base_target.rect[3] * 0.5;
+
+    assert_eq!(base_scene.hit_interaction(probe_x, probe_y), None);
+    assert_eq!(
+        expanded_scene.hit_interaction(probe_x, probe_y),
+        Some(target)
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
 fn render_scene_switches_to_compact_floating_bubble_mode() {
     use suzaku_map::ime::gpu::{InteractionKind, PanelChromeState, WgpuCandidateRenderer};
 

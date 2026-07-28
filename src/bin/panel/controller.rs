@@ -19,6 +19,72 @@ use wgpu::util::DeviceExt;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 impl PanelState {
+    pub(super) fn dispatch_input<F, R>(&mut self, handler: F) -> Option<R>
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        if self.input_dispatch_guard {
+            return None;
+        }
+        self.input_dispatch_guard = true;
+        let result = handler(self);
+        self.input_dispatch_guard = false;
+        Some(result)
+    }
+
+    pub(super) fn set_window_focus(&mut self, focused: bool) {
+        if self.is_focused == focused {
+            return;
+        }
+        self.is_focused = focused;
+        if !focused {
+            if self.kind == PanelWindowKind::Main {
+                self.chosen_canvas_abandon_state();
+            } else {
+                self.clear_pressed_interaction();
+            }
+            self.voice_stability_ticks = 0;
+            self.last_polled_voice_transcript.clear();
+            self.chrome.blur_input();
+            self.touch_tap_pending = false;
+            self.touch_start_position = None;
+            self.scale_dragging = false;
+            self.scale_drag_start_cursor_x = None;
+            self.compact_dragging = false;
+            self.compact_drag_moved = false;
+            self.compact_hovered = false;
+            self.compact_drag_start_cursor = None;
+            self.compact_drag_start_window_pos = None;
+            self.compact_drag_start_instant = None;
+            if self.chrome.voice_state == VoiceCaptureState::Listening {
+                self.stop_voice_capture();
+            }
+        }
+    }
+
+    fn chosen_canvas_abandon_state(&mut self) {
+        self.clear_pressed_interaction();
+        self.touch_tap_pending = false;
+        self.touch_start_position = None;
+        self.scale_dragging = false;
+        self.scale_drag_start_cursor_x = None;
+        self.scale_drag_start_scale = self.window_scale;
+        self.compact_dragging = false;
+        self.compact_drag_moved = false;
+        self.compact_hovered = false;
+        self.compact_drag_start_cursor = None;
+        self.compact_drag_start_window_pos = None;
+        self.compact_drag_start_instant = None;
+        self.handwriting_dragging = false;
+        if self.chrome.active_input_mode == InputMode::Handwriting {
+            self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
+        }
+        if self.chrome.voice_state == VoiceCaptureState::Listening {
+            self.stop_voice_capture();
+        }
+        self.chrome.blur_input();
+    }
+
     pub(super) fn commit_selected_candidate_to_host(
         &mut self,
         options: suzaku_map::ime::CommitOptions,
@@ -201,8 +267,10 @@ impl PanelState {
             .join(" ")
     }
 
-    fn persist_display_settings(&self) {
-        let _ = save_display_settings(&PersistedDisplaySettings::from(&self.chrome));
+    pub(super) fn persist_display_settings(&self) {
+        let mut settings = PersistedDisplaySettings::from(&self.chrome);
+        settings.window_scale = self.window_scale;
+        let _ = save_display_settings(&settings);
     }
 
     pub(super) fn current_scene(&self) -> RenderScene {
@@ -212,6 +280,7 @@ impl PanelState {
                 chrome.settings_open = false;
                 chrome.hovered_interaction = self.hovered_interaction;
                 chrome.pressed_interaction = self.pressed_interaction;
+                chrome.window_scale = self.window_scale;
                 if chrome.compact_mode {
                     self.renderer.build_compact_scene(
                         &self.engine.snapshot(),
@@ -259,11 +328,9 @@ impl PanelState {
             return;
         }
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
-            self.expanded_window_size = Some(
-                self.window
-                    .inner_size()
-                    .to_logical::<f64>(self.window.scale_factor()),
-            );
+            let logical_size = winit::dpi::PhysicalSize::new(width, height)
+                .to_logical::<f64>(self.window.scale_factor());
+            self.record_scaled_expanded_size(logical_size);
             self.note_expanded_window_position();
         }
         self.size.width = width;
@@ -396,6 +463,22 @@ impl PanelState {
                 }
                 InteractionKind::ToggleCompactMode => {
                     self.apply_compact_mode(!self.chrome.compact_mode);
+                }
+                InteractionKind::DecreaseWindowScale => {
+                    if self.chrome.can_decrease_window_scale() {
+                        self.adjust_window_scale(-1);
+                    }
+                }
+                InteractionKind::DragWindowScale => {}
+                InteractionKind::IncreaseWindowScale => {
+                    if self.chrome.can_increase_window_scale() {
+                        self.adjust_window_scale(1);
+                    }
+                }
+                InteractionKind::ResetWindowScale => {
+                    if self.chrome.can_reset_window_scale() {
+                        self.reset_window_scale();
+                    }
                 }
                 InteractionKind::InputModesToggle => {
                     if self.chrome.input_modes_expanded {

@@ -228,18 +228,16 @@ impl WgpuCandidateRenderer {
             };
             next
         };
-        let interaction_hit_padding = 2.4 * responsive_scale;
         let interaction_hit_rect = |rect: [f32; 4]| {
-            let min_w = 24.0 * responsive_scale;
-            let min_h = 16.0 * responsive_scale;
-            let pad_x = interaction_hit_padding * 0.9;
-            let pad_y = interaction_hit_padding * 0.9;
-            [
-                (rect[0] - pad_x).max(0.0),
-                (rect[1] - pad_y).max(0.0),
-                (rect[2] + interaction_hit_padding).max(min_w),
-                (rect[3] + interaction_hit_padding).max(min_h),
-            ]
+            self.interaction_hit_rect(
+                rect,
+                responsive_scale,
+                chrome.pointer_target_slop_tenths,
+                0.9,
+                1.0,
+                1.0,
+                true,
+            )
         };
         // No full-screen background here to keep panel bounds-based layout tests stable.
         // Candidate scenes are rendered on top of the host surface directly.
@@ -418,6 +416,92 @@ impl WgpuCandidateRenderer {
             20.0 * responsive_scale,
             20.0 * responsive_scale,
         ];
+        let scale_button_size = 16.0 * responsive_scale;
+        let scale_button_spacing = 4.2 * responsive_scale;
+        let scale_label_width = 30.0 * responsive_scale;
+        let scale_plus_rect = [
+            compact_button_rect[0] - scale_button_spacing - scale_button_size,
+            compact_button_rect[1],
+            scale_button_size,
+            20.0 * responsive_scale,
+        ];
+        let scale_reset_rect = [
+            scale_plus_rect[0] - scale_button_spacing - scale_button_size,
+            compact_button_rect[1],
+            scale_button_size,
+            20.0 * responsive_scale,
+        ];
+        let scale_minus_rect = [
+            scale_reset_rect[0] - scale_button_spacing - scale_button_size,
+            compact_button_rect[1],
+            scale_button_size,
+            20.0 * responsive_scale,
+        ];
+        let scale_drag_rect = [
+            scale_minus_rect[0],
+            compact_button_rect[1],
+            (scale_plus_rect[0] + scale_plus_rect[2] - scale_minus_rect[0]).max(scale_button_size),
+            20.0 * responsive_scale,
+        ];
+        let scale_text_x = (scale_minus_rect[0] - scale_label_width - 4.0 * responsive_scale)
+            .max(panel_x + 8.0 * responsive_scale);
+        let can_decrease_scale = chrome.can_decrease_window_scale();
+        let can_increase_scale = chrome.can_increase_window_scale();
+        let can_reset_scale = chrome.can_reset_window_scale();
+        if (scale_minus_rect[0] - scale_text_x) >= (18.0 * responsive_scale) {
+            let scale_text = TextBlock {
+                text: format!(
+                    "{}%",
+                    (chrome.window_scale * 100.0).round().clamp(1.0, 999.0) as i32
+                ),
+                origin: [
+                    scale_text_x,
+                    compact_button_rect[1] + 4.2 * responsive_scale,
+                ],
+                max_width: scale_label_width,
+                pixel_size: 2.0 * responsive_scale,
+                letter_spacing: ui_tracking,
+                line_gap: base_line_gap,
+                max_lines: 1,
+                color: if chrome.window_scale == 1.0 {
+                    text_muted
+                } else {
+                    text_primary
+                },
+                align: TextAlign::Left,
+                role: TextRole::ToolButton,
+            }
+            .layout();
+            text_quads.extend(scale_text.quads.iter().copied());
+            atlas_glyphs.extend(scale_text.atlas_glyphs.iter().cloned());
+            text_sections.push(TextSection {
+                role: TextRole::ToolButton,
+                layouts: vec![scale_text],
+            });
+        }
+        let (drag_hovered, drag_pressed) = interaction_state(InteractionKind::DragWindowScale);
+        let drag_visual_rect = animated_rect(scale_drag_rect, drag_hovered, drag_pressed);
+        append_soft_card_quads(
+            &mut quads,
+            drag_visual_rect,
+            if can_decrease_scale || can_increase_scale {
+                if drag_hovered || drag_pressed {
+                    surface_alt
+                } else {
+                    surface_muted
+                }
+            } else {
+                surface_muted
+            },
+            border_dark,
+            animated_shadow(soft_shadow, drag_hovered, drag_pressed),
+            surface,
+            6.2 * responsive_scale,
+        );
+        interactive_targets.push(InteractiveTarget {
+            kind: InteractionKind::DragWindowScale,
+            rect: interaction_hit_rect(scale_drag_rect),
+        });
         append_soft_card_quads(
             &mut quads,
             compact_button_rect,
@@ -458,6 +542,166 @@ impl WgpuCandidateRenderer {
             layouts: vec![compact_icon],
         });
         append_chevron_icon_quads(&mut quads, compact_button_rect, text_secondary, false);
+
+        let (decrease_hovered, decrease_pressed) = if can_decrease_scale {
+            interaction_state(InteractionKind::DecreaseWindowScale)
+        } else {
+            (false, false)
+        };
+        let decrease_visual_rect =
+            animated_rect(scale_minus_rect, decrease_hovered, decrease_pressed);
+        append_soft_card_quads(
+            &mut quads,
+            decrease_visual_rect,
+            if can_decrease_scale {
+                surface_bright
+            } else {
+                surface_muted
+            },
+            border_dark,
+            if can_decrease_scale {
+                animated_shadow(soft_shadow, decrease_hovered, decrease_pressed)
+            } else {
+                animated_shadow(border_dark, false, false)
+            },
+            surface,
+            5.4 * responsive_scale,
+        );
+        if can_decrease_scale {
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::DecreaseWindowScale,
+                rect: interaction_hit_rect(scale_minus_rect),
+            });
+        }
+        let minus_text = TextBlock {
+            text: "-".to_string(),
+            origin: [
+                scale_minus_rect[0] + (scale_minus_rect[2] - 3.2 * responsive_scale) / 2.0,
+                compact_button_rect[1] + 4.2 * responsive_scale,
+            ],
+            max_width: scale_minus_rect[2].max(6.0),
+            pixel_size: 2.0 * responsive_scale,
+            letter_spacing: ui_tracking,
+            line_gap: base_line_gap,
+            max_lines: 1,
+            color: if can_decrease_scale {
+                text_primary
+            } else {
+                text_muted
+            },
+            align: TextAlign::Center,
+            role: TextRole::ToolButton,
+        }
+        .layout();
+        text_quads.extend(minus_text.quads.iter().copied());
+        atlas_glyphs.extend(minus_text.atlas_glyphs.iter().cloned());
+        text_sections.push(TextSection {
+            role: TextRole::ToolButton,
+            layouts: vec![minus_text],
+        });
+
+        let (reset_hovered, reset_pressed) = if can_reset_scale {
+            interaction_state(InteractionKind::ResetWindowScale)
+        } else {
+            (false, false)
+        };
+        let reset_visual_rect = animated_rect(scale_reset_rect, reset_hovered, reset_pressed);
+        append_soft_card_quads(
+            &mut quads,
+            reset_visual_rect,
+            if !can_reset_scale {
+                surface_muted
+            } else if chrome.window_scale == 1.0 {
+                surface
+            } else {
+                accent_soft
+            },
+            if chrome.window_scale == 1.0 {
+                border_dark
+            } else {
+                accent
+            },
+            if can_reset_scale {
+                animated_shadow(soft_shadow, reset_hovered, reset_pressed)
+            } else {
+                animated_shadow(border_dark, false, false)
+            },
+            surface,
+            5.4 * responsive_scale,
+        );
+        if can_reset_scale {
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::ResetWindowScale,
+                rect: interaction_hit_rect(scale_reset_rect),
+            });
+        }
+        append_refresh_icon_quads(
+            &mut quads,
+            reset_visual_rect,
+            if !can_reset_scale {
+                text_muted
+            } else if chrome.window_scale == 1.0 {
+                text_secondary
+            } else {
+                accent_text
+            },
+        );
+        let (increase_hovered, increase_pressed) = if can_increase_scale {
+            interaction_state(InteractionKind::IncreaseWindowScale)
+        } else {
+            (false, false)
+        };
+        let increase_visual_rect =
+            animated_rect(scale_plus_rect, increase_hovered, increase_pressed);
+        append_soft_card_quads(
+            &mut quads,
+            increase_visual_rect,
+            if can_increase_scale {
+                surface_bright
+            } else {
+                surface_muted
+            },
+            border_dark,
+            if can_increase_scale {
+                animated_shadow(soft_shadow, increase_hovered, increase_pressed)
+            } else {
+                animated_shadow(border_dark, false, false)
+            },
+            surface,
+            5.4 * responsive_scale,
+        );
+        if can_increase_scale {
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::IncreaseWindowScale,
+                rect: interaction_hit_rect(scale_plus_rect),
+            });
+        }
+        let plus_text = TextBlock {
+            text: "+".to_string(),
+            origin: [
+                scale_plus_rect[0] + (scale_plus_rect[2] - 3.2 * responsive_scale) / 2.0,
+                compact_button_rect[1] + 4.2 * responsive_scale,
+            ],
+            max_width: scale_plus_rect[2].max(6.0),
+            pixel_size: 2.0 * responsive_scale,
+            letter_spacing: ui_tracking,
+            line_gap: base_line_gap,
+            max_lines: 1,
+            color: if can_increase_scale {
+                text_primary
+            } else {
+                text_muted
+            },
+            align: TextAlign::Center,
+            role: TextRole::ToolButton,
+        }
+        .layout();
+        text_quads.extend(plus_text.quads.iter().copied());
+        atlas_glyphs.extend(plus_text.atlas_glyphs.iter().cloned());
+        text_sections.push(TextSection {
+            role: TextRole::ToolButton,
+            layouts: vec![plus_text],
+        });
 
         let tools_header_rect = [panel_x, tools_y, panel_width, metrics.tools_header_h];
         append_soft_card_quads(

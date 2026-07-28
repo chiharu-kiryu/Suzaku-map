@@ -166,6 +166,10 @@ impl PanelState {
             InteractionKind::SetThemePreset(theme) => {
                 Some(format!("Theme: {}", theme_preset_label(theme)))
             }
+            InteractionKind::DecreaseWindowScale => Some("Shrink window scale".to_string()),
+            InteractionKind::DragWindowScale => Some("Drag to resize window".to_string()),
+            InteractionKind::IncreaseWindowScale => Some("Enlarge window scale".to_string()),
+            InteractionKind::ResetWindowScale => Some("Reset scale to 100%".to_string()),
             InteractionKind::SetVoiceAutoInsert(enabled) => Some(if enabled {
                 "Voice auto insert: on".to_string()
             } else {

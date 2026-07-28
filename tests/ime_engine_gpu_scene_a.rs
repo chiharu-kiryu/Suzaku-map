@@ -254,6 +254,54 @@ fn render_scene_prefers_settings_toggle_over_seed_input_when_overlapping() {
 
 #[cfg(feature = "gpu")]
 #[test]
+fn render_scene_target_slop_expands_interactive_hit_area() {
+    use suzaku_map::ime::gpu::{InteractionKind, PanelChromeState, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+
+    let base_scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            pointer_target_slop_tenths: 20,
+            ..PanelChromeState::default()
+        },
+    );
+    let expanded_scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            pointer_target_slop_tenths: 80,
+            ..PanelChromeState::default()
+        },
+    );
+
+    let base_toggle = base_scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == InteractionKind::SettingsToggle)
+        .expect("base settings toggle target");
+    let expanded_toggle = expanded_scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == InteractionKind::SettingsToggle)
+        .expect("expanded settings toggle target");
+
+    assert!(expanded_toggle.rect[2] > base_toggle.rect[2] + 1.0);
+    assert!(expanded_toggle.rect[3] > base_toggle.rect[3] + 1.0);
+
+    let probe_x = expanded_toggle.rect[0] + 1.0;
+    let probe_y = expanded_toggle.rect[1] + expanded_toggle.rect[3] * 0.5;
+
+    assert_eq!(base_scene.hit_interaction(probe_x, probe_y), None);
+    assert_eq!(
+        expanded_scene.hit_interaction(probe_x, probe_y),
+        Some(InteractionKind::SettingsToggle)
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
 fn render_scene_can_collapse_input_method_buttons() {
     use suzaku_map::ime::gpu::{
         InputMode, InteractionKind, PanelChromeState, WgpuCandidateRenderer,
@@ -448,5 +496,121 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             .interactive_targets
             .iter()
             .any(|target| target.kind == InteractionKind::ToggleVoiceCapture)
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_exposes_window_scale_reset_control() {
+    use suzaku_map::ime::gpu::{InteractionKind, PanelChromeState, WgpuCandidateRenderer};
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+    let scene = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            window_scale: 1.2,
+            sentence_candidates: vec!["ni hao example".into()],
+            ..PanelChromeState::default()
+        },
+    );
+
+    assert!(
+        scene
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::ResetWindowScale)
+    );
+    let reset = scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == InteractionKind::ResetWindowScale)
+        .expect("reset window scale target");
+    let hit = scene.hit_interaction(reset.rect[0] + 2.0, reset.rect[1] + 2.0);
+    assert_eq!(hit, Some(InteractionKind::ResetWindowScale));
+
+    let decrease = scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == InteractionKind::DecreaseWindowScale)
+        .expect("decrease window scale target");
+    let increase = scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == InteractionKind::IncreaseWindowScale)
+        .expect("increase window scale target");
+    assert_eq!(
+        scene.hit_interaction(decrease.rect[0] + 2.0, decrease.rect[1] + 2.0),
+        Some(InteractionKind::DecreaseWindowScale)
+    );
+    assert_eq!(
+        scene.hit_interaction(increase.rect[0] + 2.0, increase.rect[1] + 2.0),
+        Some(InteractionKind::IncreaseWindowScale)
+    );
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+fn render_scene_disables_scale_controls_at_boundaries() {
+    use suzaku_map::ime::gpu::{
+        InteractionKind, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PanelChromeState, WgpuCandidateRenderer,
+    };
+
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.seed("ni hao");
+    let renderer = WgpuCandidateRenderer::new(900.0, 520.0);
+
+    let at_min = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            window_scale: PANEL_SCALE_MIN,
+            ..PanelChromeState::default()
+        },
+    );
+    let at_max = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            window_scale: PANEL_SCALE_MAX,
+            ..PanelChromeState::default()
+        },
+    );
+    let at_default = renderer.build_panel_scene(
+        &snapshot,
+        &PanelChromeState {
+            window_scale: 1.0,
+            ..PanelChromeState::default()
+        },
+    );
+
+    assert!(
+        !at_min
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::DecreaseWindowScale)
+    );
+    assert!(
+        at_min
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::IncreaseWindowScale)
+    );
+    assert!(
+        !at_max
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::IncreaseWindowScale)
+    );
+    assert!(
+        at_max
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::DecreaseWindowScale)
+    );
+    assert!(
+        !at_default
+            .interactive_targets
+            .iter()
+            .any(|target| target.kind == InteractionKind::ResetWindowScale)
     );
 }

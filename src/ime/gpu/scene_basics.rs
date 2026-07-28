@@ -14,6 +14,35 @@ impl WgpuCandidateRenderer {
         (width_factor * 0.65 + height_factor * 0.35).clamp(0.8, 1.28)
     }
 
+    pub(super) fn interaction_hit_rect(
+        &self,
+        rect: [f32; 4],
+        scale: f32,
+        pointer_target_slop_tenths: u16,
+        pad_ratio: f32,
+        width_growth: f32,
+        height_growth: f32,
+        include_min_size: bool,
+    ) -> [f32; 4] {
+        let interaction_hit_padding = (2.2 * scale) + (pointer_target_slop_tenths as f32 / 10.0);
+        let mut hit_w = rect[2] + interaction_hit_padding * width_growth;
+        let mut hit_h = rect[3] + interaction_hit_padding * height_growth;
+        if include_min_size {
+            let min_w = (22.0 + pointer_target_slop_tenths as f32 * 0.08) * scale;
+            let min_h = (18.0 + pointer_target_slop_tenths as f32 * 0.06) * scale;
+            hit_w = hit_w.max(min_w);
+            hit_h = hit_h.max(min_h);
+        }
+        let pad_x = (interaction_hit_padding * pad_ratio).max(0.0);
+        let pad_y = (interaction_hit_padding * pad_ratio).max(0.0);
+        [
+            (rect[0] - pad_x).max(0.0),
+            (rect[1] - pad_y).max(0.0),
+            hit_w,
+            hit_h,
+        ]
+    }
+
     pub fn build_scene(&self, snapshot: &Snapshot) -> RenderScene {
         let chrome = PanelChromeState {
             seed_text: snapshot.seed_text.clone(),
@@ -184,9 +213,18 @@ impl WgpuCandidateRenderer {
             [0.33, 0.63, 0.96, 0.85],
             orb_size * 0.03,
         );
+        let compact_hit_rect = self.interaction_hit_rect(
+            orb_rect,
+            1.0,
+            chrome.pointer_target_slop_tenths,
+            1.0,
+            2.0,
+            2.0,
+            false,
+        );
         let mut targets = vec![InteractiveTarget {
             kind: InteractionKind::ToggleCompactMode,
-            rect: orb_rect,
+            rect: compact_hit_rect,
         }];
         let icon_rect = [
             orb_rect[0] + orb_size * 0.15,

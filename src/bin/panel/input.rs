@@ -2,7 +2,7 @@ use super::{PanelState, PanelWindowKind};
 use suzaku_map::ime::gpu::{InputMode, InteractionKind, VoiceCaptureState};
 use suzaku_map::ime::{CommitOptions, SignalState};
 use wgpu::SurfaceError;
-use winit::event::{ElementState, MouseButton, TouchPhase, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -12,318 +12,416 @@ pub(super) fn handle_panel_window_event(
     event: WindowEvent,
     allow_exit: bool,
 ) {
-    match event {
-        WindowEvent::CloseRequested => {
-            if allow_exit {
-                event_loop.exit();
-            }
+    let _ = state.dispatch_input(|state| {
+        if !state.is_focused
+            && !matches!(
+                &event,
+                WindowEvent::Focused(_)
+                    | WindowEvent::CloseRequested
+                    | WindowEvent::Resized(_)
+                    | WindowEvent::ScaleFactorChanged { .. }
+                    | WindowEvent::RedrawRequested
+            )
+        {
+            return;
         }
-        WindowEvent::Resized(size) => state.resize(size.width, size.height),
-        WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
-        WindowEvent::Focused(true) => {
-            if state.kind == PanelWindowKind::Main
-                && state.chrome.active_input_mode == InputMode::Dictation
-            {
-                state.refresh_voice_permission_state();
-            }
-            state.window.request_redraw();
-        }
-        WindowEvent::CursorMoved { position, .. } => {
-            state.cursor_position = Some((position.x as f32, position.y as f32));
-            if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                if let Some((x, y)) = state.cursor_position {
-                    state.record_compact_drag_motion(x, y);
-                }
-                state.update_compact_hover();
-            } else if state.kind == PanelWindowKind::Main {
-                state.extend_handwriting_stroke();
-            }
-            state.update_hovered_interaction();
-            state.window.request_redraw();
-        }
-        WindowEvent::ModifiersChanged(modifiers) => {
-            state.modifiers = modifiers.state();
-        }
-        WindowEvent::Touch(touch) => {
-            state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
-            state.update_hovered_interaction();
-            if state.kind == PanelWindowKind::Main {
-                match touch.phase {
-                    TouchPhase::Started => {
-                        state.update_pressed_interaction();
-                        state.touch_start_position = state.cursor_position;
-                        state.touch_tap_pending = !state.try_begin_handwriting_stroke();
-                    }
-                    TouchPhase::Moved => {
-                        if state.handwriting_dragging {
-                            state.extend_handwriting_stroke();
-                        } else if let (Some((start_x, start_y)), Some((x, y))) =
-                            (state.touch_start_position, state.cursor_position)
-                        {
-                            let tap_slop = (state.chrome.pointer_tap_slop_tenths as f32) / 10.0;
-                            if (x - start_x).abs() > tap_slop || (y - start_y).abs() > tap_slop {
-                                state.touch_tap_pending = false;
-                            }
-                        }
-                    }
-                    TouchPhase::Ended => {
-                        if state.handwriting_dragging {
-                            state.finish_handwriting_stroke();
-                        } else if state.touch_tap_pending {
-                            if let Some(target) = state.pressed_interaction {
-                                if state.press_target_is_stable(target) {
-                                    state.select_at_cursor();
-                                }
-                            }
-                        }
-                        state.clear_pressed_interaction();
-                        state.touch_tap_pending = false;
-                        state.touch_start_position = None;
-                    }
-                    TouchPhase::Cancelled => {
-                        state.finish_handwriting_stroke();
-                        state.clear_pressed_interaction();
-                        state.touch_tap_pending = false;
-                        state.touch_start_position = None;
-                    }
-                }
-            }
-            state.window.request_redraw();
-        }
-        WindowEvent::MouseInput {
-            state: ElementState::Pressed,
-            button: MouseButton::Left,
-            ..
-        } => {
-            state.update_pressed_interaction();
-            if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
-                    state.begin_compact_drag();
-                }
-            } else if state.kind == PanelWindowKind::Main {
-                let _ = state.try_begin_handwriting_stroke();
-            }
-            state.window.request_redraw();
-        }
-        WindowEvent::MouseInput {
-            state: ElementState::Released,
-            button: MouseButton::Left,
-            ..
-        } => {
-            if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
-                    if !state.end_compact_drag()
-                        && state
-                            .pressed_interaction
-                            .is_some_and(|target| state.press_target_is_stable(target))
-                    {
-                        state.select_at_cursor();
-                    }
-                } else if state
-                    .pressed_interaction
-                    .is_some_and(|target| state.press_target_is_stable(target))
-                {
-                    state.select_at_cursor();
-                }
-            } else {
-                if let Some(target) = state.pressed_interaction {
-                    if state.press_target_is_stable(target)
-                        && (state.kind != PanelWindowKind::Main || !state.handwriting_dragging)
-                    {
-                        state.select_at_cursor();
-                    }
-                }
-                state.finish_handwriting_stroke();
-            }
-            state.clear_pressed_interaction();
-            state.update_hovered_interaction();
-            state.window.request_redraw();
-        }
-        WindowEvent::KeyboardInput { event, .. } => {
-            if event.state == ElementState::Pressed {
-                if event.repeat
-                    && matches!(
-                        event.physical_key,
-                        PhysicalKey::Code(KeyCode::Space)
-                            | PhysicalKey::Code(KeyCode::Enter)
-                            | PhysicalKey::Code(KeyCode::NumpadEnter)
-                            | PhysicalKey::Code(KeyCode::Digit1)
-                            | PhysicalKey::Code(KeyCode::Digit2)
-                            | PhysicalKey::Code(KeyCode::Digit3)
-                            | PhysicalKey::Code(KeyCode::Digit4)
-                            | PhysicalKey::Code(KeyCode::Tab)
-                            | PhysicalKey::Code(KeyCode::KeyV)
-                            | PhysicalKey::Code(KeyCode::KeyN)
-                            | PhysicalKey::Code(KeyCode::KeyI)
-                            | PhysicalKey::Code(KeyCode::KeyR)
-                            | PhysicalKey::Code(KeyCode::KeyD)
-                    )
-                {
-                    state.window.request_redraw();
-                    return;
-                }
 
-                if allow_exit && state.is_quit_shortcut(&event.physical_key) {
+        match event {
+            WindowEvent::CloseRequested => {
+                if allow_exit {
                     event_loop.exit();
-                    return;
                 }
-                if state.kind == PanelWindowKind::Settings {
-                    if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
-                        state.chrome.settings_open = false;
+            }
+            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
+            WindowEvent::Focused(focused) => {
+                state.set_window_focus(focused);
+                if focused {
+                    if state.kind == PanelWindowKind::Main
+                        && state.chrome.active_input_mode == InputMode::Dictation
+                    {
+                        state.refresh_voice_permission_state();
                     }
-                } else {
-                    match event.physical_key {
-                        PhysicalKey::Code(KeyCode::ArrowLeft) => state.chrome.move_caret_left(),
-                        PhysicalKey::Code(KeyCode::ArrowRight) => state.chrome.move_caret_right(),
-                        PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            if state.chrome.input_focused {
-                                state.chrome.blur_input();
-                            } else {
-                                state.engine.move_selection(1);
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            state.engine.move_selection(-1);
-                        }
-                        PhysicalKey::Code(KeyCode::Digit1) => {
-                            if !state.chrome.input_modes_expanded
-                                && !state.chrome.sentence_candidate_source_indices.is_empty()
-                            {
-                                let index = state.chrome.sentence_candidate_source_indices[0];
-                                let _ = state.commit_sentence_candidate(index);
-                            } else {
-                                state.chrome.active_input_mode = InputMode::VirtualKeyboard;
-                                state.chrome.input_modes_expanded = true;
-                                state.chrome.focus_input();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Digit2) => {
-                            if !state.chrome.input_modes_expanded
-                                && state.chrome.sentence_candidate_source_indices.len() > 1
-                            {
-                                let index = state.chrome.sentence_candidate_source_indices[1];
-                                let _ = state.commit_sentence_candidate(index);
-                            } else {
-                                state.chrome.input_modes_expanded = true;
-                                state.enter_voice_mode();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Digit3) => {
-                            if !state.chrome.input_modes_expanded
-                                && state.chrome.sentence_candidate_source_indices.len() > 2
-                            {
-                                let index = state.chrome.sentence_candidate_source_indices[2];
-                                let _ = state.commit_sentence_candidate(index);
-                            } else {
-                                state.chrome.active_input_mode = InputMode::Handwriting;
-                                state.chrome.input_modes_expanded = true;
-                                state.chrome.blur_input();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Digit4) => {
-                            if !state.chrome.input_modes_expanded
-                                && state.chrome.sentence_candidate_source_indices.len() > 3
-                            {
-                                let index = state.chrome.sentence_candidate_source_indices[3];
-                                let _ = state.commit_sentence_candidate(index);
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Tab) => {
-                            state.chrome.input_modes_expanded = !state.chrome.input_modes_expanded;
-                        }
-                        PhysicalKey::Code(KeyCode::KeyD) => {
-                            if !state.chrome.input_focused {
-                                state.engine.update_signal(SignalState {
-                                    pointer_precision: 0.2,
-                                    gaze_stability: 0.2,
-                                    host_intent_weight: 0.4,
-                                    source_confidence: 0.4,
-                                });
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::KeyV) => {
-                            if state.chrome.active_input_mode == InputMode::Dictation {
-                                if state.chrome.voice_state == VoiceCaptureState::Listening {
-                                    state.stop_voice_capture();
-                                } else {
-                                    state.start_voice_capture();
-                                }
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::KeyN) => {
-                            if state.chrome.active_input_mode == InputMode::Dictation {
-                                state.advance_voice_sample();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::KeyI) => {
-                            if state.chrome.active_input_mode == InputMode::Dictation {
-                                state.insert_voice_transcript();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::KeyR) => {
-                            if !state.chrome.input_focused {
-                                state.reset_signal();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::KeyZ) => {
-                            if state.chrome.active_input_mode == InputMode::Handwriting
-                                && !state.chrome.input_focused
-                            {
-                                state.undo_handwriting_stroke();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Backspace) => {
-                            if state.chrome.input_focused {
-                                state.backspace_seed();
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Space) => {
-                            if state.chrome.active_input_mode == InputMode::VirtualKeyboard
-                                && state.chrome.input_focused
-                            {
-                                state.handle_text_input(" ");
-                            } else {
-                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
-                                    force: true,
-                                });
-                            }
-                        }
-                        PhysicalKey::Code(KeyCode::Enter)
-                        | PhysicalKey::Code(KeyCode::NumpadEnter) => {
-                            if state.chrome.input_focused {
-                                state.chrome.blur_input();
-                            } else if state.commit_primary_sentence_candidate() {
-                                // The main sentence action should feel like a direct submit.
-                            } else {
-                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
-                                    force: true,
-                                });
-                            }
-                        }
-                        _ => {}
-                    }
-                    if let Some(text) = event.text.as_deref() {
-                        state.handle_text_input(text);
+                    if state.kind == PanelWindowKind::Main {
+                        state.chrome.focus_input();
                     }
                 }
                 state.window.request_redraw();
             }
-        }
-        WindowEvent::RedrawRequested => {
-            if let Err(err) = state.render() {
-                match err {
-                    SurfaceError::Lost | SurfaceError::Outdated => {
-                        state.resize(state.size.width, state.size.height);
+            WindowEvent::CursorMoved { position, .. } => {
+                state.cursor_position = Some((position.x as f32, position.y as f32));
+                if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                    if let Some((x, y)) = state.cursor_position {
+                        state.record_compact_drag_motion(x, y);
                     }
-                    SurfaceError::OutOfMemory => {
-                        if allow_exit {
-                            event_loop.exit();
+                    state.update_compact_hover();
+                } else if state.scale_dragging {
+                    state.update_window_scale_drag(position.x as f32);
+                } else if state.kind == PanelWindowKind::Main {
+                    state.extend_handwriting_stroke();
+                }
+                state.update_hovered_interaction();
+                state.window.request_redraw();
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                state.modifiers = modifiers.state();
+            }
+            WindowEvent::Touch(touch) => {
+                state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
+                state.update_hovered_interaction();
+                if state.kind == PanelWindowKind::Main {
+                    match touch.phase {
+                        TouchPhase::Started => {
+                            state.update_pressed_interaction();
+                            state.touch_start_position = state.cursor_position;
+                            state.touch_tap_pending = !state.try_begin_handwriting_stroke();
+                        }
+                        TouchPhase::Moved => {
+                            if state.handwriting_dragging {
+                                state.extend_handwriting_stroke();
+                            } else if let (Some((start_x, start_y)), Some((x, y))) =
+                                (state.touch_start_position, state.cursor_position)
+                            {
+                                let tap_slop = (state.chrome.pointer_tap_slop_tenths as f32) / 10.0;
+                                if (x - start_x).abs() > tap_slop || (y - start_y).abs() > tap_slop
+                                {
+                                    state.touch_tap_pending = false;
+                                }
+                            }
+                        }
+                        TouchPhase::Ended => {
+                            if state.handwriting_dragging {
+                                state.finish_handwriting_stroke();
+                            } else if state.touch_tap_pending {
+                                if let Some(target) = state.pressed_interaction {
+                                    if state.press_target_is_stable(target) {
+                                        state.select_at_cursor();
+                                    }
+                                }
+                            }
+                            state.clear_pressed_interaction();
+                            state.touch_tap_pending = false;
+                            state.touch_start_position = None;
+                        }
+                        TouchPhase::Cancelled => {
+                            state.finish_handwriting_stroke();
+                            state.clear_pressed_interaction();
+                            state.touch_tap_pending = false;
+                            state.touch_start_position = None;
                         }
                     }
-                    SurfaceError::Timeout | SurfaceError::Other => {}
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => {
+                state.update_pressed_interaction();
+                if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                    if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
+                        state.begin_compact_drag();
+                    }
+                } else if state.pressed_interaction == Some(InteractionKind::DragWindowScale) {
+                    state.begin_window_scale_drag();
+                } else if state.kind == PanelWindowKind::Main {
+                    let _ = state.try_begin_handwriting_stroke();
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } => {
+                if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                    if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
+                        if !state.end_compact_drag()
+                            && state
+                                .pressed_interaction
+                                .is_some_and(|target| state.press_target_is_stable(target))
+                        {
+                            state.select_at_cursor();
+                        }
+                    } else if state
+                        .pressed_interaction
+                        .is_some_and(|target| state.press_target_is_stable(target))
+                    {
+                        state.select_at_cursor();
+                    }
+                } else if state.scale_dragging {
+                    state.end_window_scale_drag();
+                } else {
+                    if let Some(target) = state.pressed_interaction {
+                        if state.press_target_is_stable(target)
+                            && (state.kind != PanelWindowKind::Main || !state.handwriting_dragging)
+                        {
+                            state.select_at_cursor();
+                        }
+                    }
+                    state.finish_handwriting_stroke();
+                }
+                state.clear_pressed_interaction();
+                state.update_hovered_interaction();
+                state.window.request_redraw();
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    let scale_modifier =
+                        state.modifiers.control_key() || state.modifiers.super_key();
+                    let scale_shortcut_handled = if scale_modifier {
+                        match event.physical_key {
+                            PhysicalKey::Code(KeyCode::Equal) if state.modifiers.shift_key() => {
+                                state.adjust_window_scale(1);
+                                true
+                            }
+                            PhysicalKey::Code(KeyCode::Minus) => {
+                                state.adjust_window_scale(-1);
+                                true
+                            }
+                            PhysicalKey::Code(KeyCode::NumpadAdd) => {
+                                state.adjust_window_scale(1);
+                                true
+                            }
+                            PhysicalKey::Code(KeyCode::NumpadSubtract) => {
+                                state.adjust_window_scale(-1);
+                                true
+                            }
+                            PhysicalKey::Code(KeyCode::Digit0) => {
+                                state.reset_window_scale();
+                                true
+                            }
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    };
+                    if scale_shortcut_handled {
+                        state.window.request_redraw();
+                        return;
+                    }
+
+                    if event.repeat
+                        && matches!(
+                            event.physical_key,
+                            PhysicalKey::Code(KeyCode::Space)
+                                | PhysicalKey::Code(KeyCode::Enter)
+                                | PhysicalKey::Code(KeyCode::NumpadEnter)
+                                | PhysicalKey::Code(KeyCode::Digit1)
+                                | PhysicalKey::Code(KeyCode::Digit2)
+                                | PhysicalKey::Code(KeyCode::Digit3)
+                                | PhysicalKey::Code(KeyCode::Digit4)
+                                | PhysicalKey::Code(KeyCode::Tab)
+                                | PhysicalKey::Code(KeyCode::KeyV)
+                                | PhysicalKey::Code(KeyCode::KeyN)
+                                | PhysicalKey::Code(KeyCode::KeyI)
+                                | PhysicalKey::Code(KeyCode::KeyR)
+                                | PhysicalKey::Code(KeyCode::KeyD)
+                        )
+                    {
+                        state.window.request_redraw();
+                        return;
+                    }
+
+                    if allow_exit && state.is_quit_shortcut(&event.physical_key) {
+                        event_loop.exit();
+                        return;
+                    }
+                    if state.kind == PanelWindowKind::Settings {
+                        if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
+                            state.chrome.settings_open = false;
+                        }
+                    } else {
+                        match event.physical_key {
+                            PhysicalKey::Code(KeyCode::ArrowLeft) => state.chrome.move_caret_left(),
+                            PhysicalKey::Code(KeyCode::ArrowRight) => {
+                                state.chrome.move_caret_right()
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowDown) => {
+                                if state.chrome.input_focused {
+                                    state.chrome.blur_input();
+                                } else {
+                                    state.engine.move_selection(1);
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowUp) => {
+                                state.engine.move_selection(-1);
+                            }
+                            PhysicalKey::Code(KeyCode::Digit1) => {
+                                if !state.chrome.input_modes_expanded
+                                    && !state.chrome.sentence_candidate_source_indices.is_empty()
+                                {
+                                    let index = state.chrome.sentence_candidate_source_indices[0];
+                                    let _ = state.commit_sentence_candidate(index);
+                                } else {
+                                    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                                    state.chrome.input_modes_expanded = true;
+                                    state.chrome.focus_input();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Digit2) => {
+                                if !state.chrome.input_modes_expanded
+                                    && state.chrome.sentence_candidate_source_indices.len() > 1
+                                {
+                                    let index = state.chrome.sentence_candidate_source_indices[1];
+                                    let _ = state.commit_sentence_candidate(index);
+                                } else {
+                                    state.chrome.input_modes_expanded = true;
+                                    state.enter_voice_mode();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Digit3) => {
+                                if !state.chrome.input_modes_expanded
+                                    && state.chrome.sentence_candidate_source_indices.len() > 2
+                                {
+                                    let index = state.chrome.sentence_candidate_source_indices[2];
+                                    let _ = state.commit_sentence_candidate(index);
+                                } else {
+                                    state.chrome.active_input_mode = InputMode::Handwriting;
+                                    state.chrome.input_modes_expanded = true;
+                                    state.chrome.blur_input();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Digit4) => {
+                                if !state.chrome.input_modes_expanded
+                                    && state.chrome.sentence_candidate_source_indices.len() > 3
+                                {
+                                    let index = state.chrome.sentence_candidate_source_indices[3];
+                                    let _ = state.commit_sentence_candidate(index);
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Tab) => {
+                                state.chrome.input_modes_expanded =
+                                    !state.chrome.input_modes_expanded;
+                            }
+                            PhysicalKey::Code(KeyCode::KeyD) => {
+                                if !state.chrome.input_focused {
+                                    state.engine.update_signal(SignalState {
+                                        pointer_precision: 0.2,
+                                        gaze_stability: 0.2,
+                                        host_intent_weight: 0.4,
+                                        source_confidence: 0.4,
+                                    });
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::KeyV) => {
+                                if state.chrome.active_input_mode == InputMode::Dictation {
+                                    if state.chrome.voice_state == VoiceCaptureState::Listening {
+                                        state.stop_voice_capture();
+                                    } else {
+                                        state.start_voice_capture();
+                                    }
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::KeyN) => {
+                                if state.chrome.active_input_mode == InputMode::Dictation {
+                                    state.advance_voice_sample();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::KeyI) => {
+                                if state.chrome.active_input_mode == InputMode::Dictation {
+                                    state.insert_voice_transcript();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::KeyR) => {
+                                if !state.chrome.input_focused {
+                                    state.reset_signal();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::KeyZ) => {
+                                if state.chrome.active_input_mode == InputMode::Handwriting
+                                    && !state.chrome.input_focused
+                                {
+                                    state.undo_handwriting_stroke();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Backspace) => {
+                                if state.chrome.input_focused {
+                                    state.backspace_seed();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Space) => {
+                                if state.chrome.active_input_mode == InputMode::VirtualKeyboard
+                                    && state.chrome.input_focused
+                                {
+                                    state.handle_text_input(" ");
+                                } else {
+                                    let _ =
+                                        state.commit_selected_candidate_to_host(CommitOptions {
+                                            force: true,
+                                        });
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::Enter)
+                            | PhysicalKey::Code(KeyCode::NumpadEnter) => {
+                                if state.chrome.input_focused {
+                                    state.chrome.blur_input();
+                                } else if state.commit_primary_sentence_candidate() {
+                                    // The main sentence action should feel like a direct submit.
+                                } else {
+                                    let _ =
+                                        state.commit_selected_candidate_to_host(CommitOptions {
+                                            force: true,
+                                        });
+                                }
+                            }
+                            _ => {}
+                        }
+                        if let Some(text) = event.text.as_deref() {
+                            state.handle_text_input(text);
+                        }
+                    }
+                    state.window.request_redraw();
                 }
             }
+            WindowEvent::MouseWheel { delta, .. } => {
+                if state.modifiers.control_key() || state.modifiers.super_key() {
+                    let zoom_delta = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y,
+                        MouseScrollDelta::PixelDelta(position) => {
+                            (position.y as f32 / 80.0).signum()
+                        }
+                    };
+                    if state.kind == PanelWindowKind::Main {
+                        state.scale_window_by_wheel_delta(zoom_delta);
+                    }
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::PinchGesture { delta, .. } => {
+                if state.kind == PanelWindowKind::Main && !state.chrome.compact_mode {
+                    let magnitude = (delta as f32).signum();
+                    if magnitude > 0.0 {
+                        state.adjust_window_scale(1);
+                    } else if magnitude < 0.0 {
+                        state.adjust_window_scale(-1);
+                    }
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::DoubleTapGesture { .. } => {
+                if state.kind == PanelWindowKind::Main && !state.chrome.compact_mode {
+                    state.reset_window_scale();
+                }
+                state.window.request_redraw();
+            }
+            WindowEvent::RedrawRequested => {
+                if let Err(err) = state.render() {
+                    match err {
+                        SurfaceError::Lost | SurfaceError::Outdated => {
+                            state.resize(state.size.width, state.size.height);
+                        }
+                        SurfaceError::OutOfMemory => {
+                            if allow_exit {
+                                event_loop.exit();
+                            }
+                        }
+                        SurfaceError::Timeout | SurfaceError::Other => {}
+                    }
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
+    });
 }

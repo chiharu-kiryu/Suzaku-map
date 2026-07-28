@@ -36,8 +36,9 @@ use crate::input::handle_panel_window_event;
 use crate::render::{FontAtlas, PanelVertex, TextVertex, create_font_atlas};
 use suzaku_map::ime::gpu::{
     CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, LlmModelPreset,
-    LlmTemperaturePreset, PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing,
-    VoiceCaptureState, VoicePermissionState, WgpuCandidateRenderer,
+    LlmTemperaturePreset, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelChromeState,
+    PreviewStyle, TextSmoothing, TextSpacing, VoiceCaptureState, VoicePermissionState,
+    WgpuCandidateRenderer,
 };
 use suzaku_map::ime::{EngineConfig, InputSource, SignalState, XRTabletImeEngine};
 use suzaku_map::platform::gpu_host::{
@@ -52,6 +53,13 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowAttributes, WindowId};
+
+const DEFAULT_PANEL_INNER_WIDTH: f64 = 760.0;
+const DEFAULT_PANEL_INNER_HEIGHT: f64 = 380.0;
+const MIN_PANEL_INNER_WIDTH: f64 = 420.0;
+const MIN_PANEL_INNER_HEIGHT: f64 = 300.0;
+const COMPACT_PANEL_INNER_WIDTH: f64 = 92.0;
+const COMPACT_PANEL_INNER_HEIGHT: f64 = 92.0;
 
 const SHADER: &str = r#"
 struct VsIn {
@@ -124,11 +132,22 @@ fn build_event_loop() -> Result<EventLoop<()>, winit::error::EventLoopError> {
 }
 
 fn panel_window_attributes() -> WindowAttributes {
+    let scale = load_display_settings()
+        .as_ref()
+        .map(|settings| settings.window_scale)
+        .unwrap_or(1.0)
+        .clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
     let panel_dispatch = current_panel_companion_dispatch();
     let attrs = WindowAttributes::default()
         .with_title(panel_dispatch.default_panel_title())
-        .with_inner_size(LogicalSize::new(760.0, 380.0))
-        .with_min_inner_size(LogicalSize::new(620.0, 360.0))
+        .with_inner_size(LogicalSize::new(
+            DEFAULT_PANEL_INNER_WIDTH * scale as f64,
+            DEFAULT_PANEL_INNER_HEIGHT * scale as f64,
+        ))
+        .with_min_inner_size(LogicalSize::new(
+            MIN_PANEL_INNER_WIDTH,
+            MIN_PANEL_INNER_HEIGHT,
+        ))
         .with_resizable(true);
     decorate_main_window_attributes(attrs)
 }
@@ -252,7 +271,9 @@ impl ApplicationHandler for PanelApp {
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(panel) = self.panel.as_mut() {
-            panel.poll_voice_bridge();
+            if panel.is_focused {
+                panel.poll_voice_bridge();
+            }
             if panel.commit_feedback_ticks > 0 {
                 panel.commit_feedback_ticks -= 1;
                 if panel.commit_feedback_ticks == 0 {
@@ -300,6 +321,9 @@ struct PanelState {
     compact_drag_start_cursor: Option<(f32, f32)>,
     compact_drag_start_instant: Option<std::time::Instant>,
     compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
+    scale_dragging: bool,
+    scale_drag_start_cursor_x: Option<f32>,
+    scale_drag_start_scale: f32,
     hovered_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
     pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
     press_target_rect: Option<[f32; 4]>,
@@ -315,9 +339,13 @@ struct PanelState {
     composition_base_seed: String,
     selected_next_tokens: Vec<String>,
     expanded_window_size: Option<LogicalSize<f64>>,
+    expanded_window_base_size: Option<LogicalSize<f64>>,
     expanded_window_pos: Option<PhysicalPosition<i32>>,
+    window_scale: f32,
     compact_dock_edge: Option<DockEdge>,
     last_compact_toggle: Option<Instant>,
+    is_focused: bool,
+    input_dispatch_guard: bool,
     last_commit_attempt: Option<CommitAttempt>,
     last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
 }
@@ -340,6 +368,21 @@ impl PanelState {
         initial_chrome: Option<PanelChromeState>,
     ) -> Result<Self, Box<dyn Error>> {
         let size = window.inner_size();
+        let persisted_settings = load_display_settings();
+        let initial_window_scale = if kind == PanelWindowKind::Main {
+            persisted_settings
+                .as_ref()
+                .map(|settings| settings.window_scale)
+                .unwrap_or(1.0)
+        } else {
+            1.0
+        };
+        let initial_base_size = if kind == PanelWindowKind::Main {
+            Some(size.to_logical::<f64>(window.scale_factor()))
+        } else {
+            None
+        };
+        let is_focused = window.has_focus();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(window.clone())?;
         let adapter = instance
@@ -453,7 +496,6 @@ impl PanelState {
                 ],
             });
         let voice: VoiceInputController = VoiceInputController::new();
-        let had_initial_chrome = initial_chrome.is_some();
         let mut chrome = initial_chrome.unwrap_or(PanelChromeState {
             seed_text: "ni hao".into(),
             compact_mode: false,
@@ -486,6 +528,7 @@ impl PanelState {
             pointer_tap_slop_tenths: 75,
             pointer_tap_max_ms: 320,
             pointer_target_slop_tenths: 35,
+            window_scale: 1.0,
             composed_tokens: Vec::new(),
             next_token_candidates: Vec::new(),
             sentence_candidates: Vec::new(),
@@ -494,12 +537,8 @@ impl PanelState {
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
         });
-        if !had_initial_chrome {
-            if let Some(saved) = load_display_settings() {
-                apply_display_settings(&mut chrome, &saved);
-            }
-        } else if let Some(saved) = load_display_settings() {
-            apply_display_settings(&mut chrome, &saved);
+        if let Some(saved) = persisted_settings.as_ref() {
+            apply_display_settings(&mut chrome, saved);
         }
         apply_pointer_stability_env_overrides(&mut chrome);
 
@@ -594,6 +633,9 @@ impl PanelState {
             compact_drag_start_cursor: None,
             compact_drag_start_instant: None,
             compact_drag_start_window_pos: None,
+            scale_dragging: false,
+            scale_drag_start_cursor_x: None,
+            scale_drag_start_scale: initial_window_scale,
             hovered_interaction: None,
             pressed_interaction: None,
             press_target_rect: None,
@@ -609,13 +651,22 @@ impl PanelState {
             composition_base_seed,
             selected_next_tokens: Vec::new(),
             expanded_window_size: None,
+            expanded_window_base_size: initial_base_size,
             expanded_window_pos: None,
+            window_scale: initial_window_scale,
             compact_dock_edge: None,
             last_compact_toggle: None,
+            is_focused,
+            input_dispatch_guard: false,
             last_commit_attempt: None,
             last_interaction_action: None,
         };
         if kind == PanelWindowKind::Main {
+            if (initial_window_scale - 1.0).abs() > f32::EPSILON {
+                state.set_window_scale(initial_window_scale);
+            } else {
+                state.window_scale = 1.0;
+            }
             state.reconfigure_llama_plugin();
         }
 

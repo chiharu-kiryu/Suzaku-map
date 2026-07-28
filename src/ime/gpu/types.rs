@@ -1,5 +1,9 @@
 use super::{layout_text_block, point_in_rect};
 
+pub const PANEL_SCALE_STEP: f32 = 0.1;
+pub const PANEL_SCALE_MIN: f32 = 0.65;
+pub const PANEL_SCALE_MAX: f32 = 1.55;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CandidateQuad {
     pub rect: [f32; 4],
@@ -169,6 +173,7 @@ pub struct PanelChromeState {
     pub pointer_tap_slop_tenths: u16,
     pub pointer_tap_max_ms: u16,
     pub pointer_target_slop_tenths: u16,
+    pub window_scale: f32,
     pub composed_tokens: Vec<String>,
     pub next_token_candidates: Vec<String>,
     pub sentence_candidates: Vec<String>,
@@ -212,6 +217,7 @@ impl Default for PanelChromeState {
             pointer_tap_slop_tenths: 75,
             pointer_tap_max_ms: 320,
             pointer_target_slop_tenths: 35,
+            window_scale: 1.0,
             composed_tokens: Vec::new(),
             next_token_candidates: Vec::new(),
             sentence_candidates: Vec::new(),
@@ -284,6 +290,18 @@ impl PanelChromeState {
         self.keyboard_numeric = false;
     }
 
+    pub fn can_decrease_window_scale(&self) -> bool {
+        self.window_scale > PANEL_SCALE_MIN + 0.0001
+    }
+
+    pub fn can_increase_window_scale(&self) -> bool {
+        self.window_scale < PANEL_SCALE_MAX - 0.0001
+    }
+
+    pub fn can_reset_window_scale(&self) -> bool {
+        (self.window_scale - 1.0).abs() > 0.0001
+    }
+
     pub fn display_text(&self) -> String {
         if self.seed_text.is_empty() {
             "Type seed words".to_string()
@@ -308,6 +326,10 @@ pub enum InteractionKind {
     SetTextSpacing(TextSpacing),
     SetTextSmoothing(TextSmoothing),
     SetThemePreset(ThemePreset),
+    DecreaseWindowScale,
+    IncreaseWindowScale,
+    DragWindowScale,
+    ResetWindowScale,
     SetLlmEnabled(bool),
     SetPointerTapSlopTenths(u16),
     SetPointerTapMaxMs(u16),

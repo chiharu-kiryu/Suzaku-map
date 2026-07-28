@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 use suzaku_map::ime::gpu::{
     CandidateDensity, DisplayTextScale, FontFaceChoice, LlmModelPreset, LlmTemperaturePreset,
-    PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing, ThemePreset,
+    PANEL_SCALE_MAX, PANEL_SCALE_MIN, PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing,
+    ThemePreset,
 };
 use suzaku_map::platform::settings_host::display_settings_path;
 use suzaku_map::platform::voice_host::HostSpeechRecognizer;
@@ -15,7 +16,7 @@ const MAX_POINTER_TAP_MAX_MS: u16 = 1200;
 const MIN_POINTER_TARGET_SLOP_TENTHS: u16 = 10;
 const MAX_POINTER_TARGET_SLOP_TENTHS: u16 = 120;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PersistedDisplaySettings {
     pub(crate) text_scale: DisplayTextScale,
     pub(crate) candidate_density: CandidateDensity,
@@ -31,6 +32,7 @@ pub(crate) struct PersistedDisplaySettings {
     pub(crate) pointer_tap_slop_tenths: u16,
     pub(crate) pointer_tap_max_ms: u16,
     pub(crate) pointer_target_slop_tenths: u16,
+    pub(crate) window_scale: f32,
 }
 
 pub(crate) struct VoiceInputController {
@@ -77,6 +79,7 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             pointer_tap_slop_tenths: chrome.pointer_tap_slop_tenths,
             pointer_tap_max_ms: chrome.pointer_tap_max_ms,
             pointer_target_slop_tenths: chrome.pointer_target_slop_tenths,
+            window_scale: chrome.window_scale,
         }
     }
 }
@@ -99,13 +102,14 @@ pub(crate) fn apply_display_settings(
     chrome.pointer_tap_slop_tenths = settings.pointer_tap_slop_tenths;
     chrome.pointer_tap_max_ms = settings.pointer_tap_max_ms;
     chrome.pointer_target_slop_tenths = settings.pointer_target_slop_tenths;
+    chrome.window_scale = settings.window_scale;
     normalize_pointer_stability_settings(chrome);
     normalize_display_readability(chrome);
 }
 
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
     let contents = format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\n",
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
@@ -128,6 +132,7 @@ pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std:
         settings.pointer_tap_slop_tenths,
         settings.pointer_tap_max_ms,
         settings.pointer_target_slop_tenths,
+        settings.window_scale,
     );
     let path = display_settings_path();
     ensure_settings_parent(&path)?;
@@ -151,6 +156,7 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         pointer_tap_slop_tenths: 75,
         pointer_tap_max_ms: 320,
         pointer_target_slop_tenths: 35,
+        window_scale: 1.0,
     };
 
     for line in contents.lines() {
@@ -220,6 +226,11 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
                     settings.pointer_target_slop_tenths = parsed;
                 }
             }
+            "window_scale" => {
+                if let Some(parsed) = decode_window_scale(value.trim()) {
+                    settings.window_scale = parsed;
+                }
+            }
             _ => {}
         }
     }
@@ -253,6 +264,17 @@ fn normalize_display_pointer_settings(settings: &mut PersistedDisplaySettings) {
         MIN_POINTER_TARGET_SLOP_TENTHS,
         MAX_POINTER_TARGET_SLOP_TENTHS,
     );
+    settings.window_scale = settings
+        .window_scale
+        .clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
+}
+
+fn decode_window_scale(value: &str) -> Option<f32> {
+    let parsed = value.trim().parse::<f32>().ok()?;
+    if !parsed.is_finite() {
+        return None;
+    }
+    Some(parsed.clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX))
 }
 
 fn normalize_display_readability(chrome: &mut PanelChromeState) {
@@ -445,10 +467,11 @@ mod tests {
             pointer_tap_slop_tenths: 95,
             pointer_tap_max_ms: 240,
             pointer_target_slop_tenths: 22,
+            window_scale: 1.2,
         };
 
         let encoded = format!(
-            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\n",
+            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
             encode_text_scale(settings.text_scale),
             encode_candidate_density(settings.candidate_density),
             encode_preview_style(settings.preview_style),
@@ -471,6 +494,7 @@ mod tests {
             settings.pointer_tap_slop_tenths,
             settings.pointer_tap_max_ms,
             settings.pointer_target_slop_tenths,
+            settings.window_scale,
         );
 
         let mut decoded = PersistedDisplaySettings {
@@ -488,6 +512,7 @@ mod tests {
             pointer_tap_slop_tenths: 75,
             pointer_tap_max_ms: 320,
             pointer_target_slop_tenths: 35,
+            window_scale: 1.0,
         };
 
         for line in encoded.lines() {
@@ -523,6 +548,9 @@ mod tests {
                 "pointer_target_slop_tenths" => {
                     decoded.pointer_target_slop_tenths = decode_u16(value).expect("target slop")
                 }
+                "window_scale" => {
+                    decoded.window_scale = decode_window_scale(value).expect("window scale")
+                }
                 _ => {}
             }
         }
@@ -557,6 +585,7 @@ mod tests {
             pointer_tap_slop_tenths: 3,
             pointer_tap_max_ms: 20,
             pointer_target_slop_tenths: 500,
+            window_scale: 1.55,
         };
 
         normalize_display_pointer_settings(&mut settings);
@@ -584,6 +613,7 @@ mod tests {
             pointer_tap_slop_tenths: 255,
             pointer_tap_max_ms: 20,
             pointer_target_slop_tenths: 4,
+            window_scale: 1.0,
         };
 
         apply_display_settings(&mut chrome, &settings);

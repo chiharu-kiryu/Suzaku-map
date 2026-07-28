@@ -1,4 +1,8 @@
-use super::{DockEdge, PanelState, PanelWindowKind};
+use super::{
+    COMPACT_PANEL_INNER_HEIGHT, COMPACT_PANEL_INNER_WIDTH, DockEdge, MIN_PANEL_INNER_HEIGHT,
+    MIN_PANEL_INNER_WIDTH, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelState,
+    PanelWindowKind,
+};
 use std::time::Duration;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 
@@ -6,6 +10,8 @@ const COMPACT_TOGGLE_DEBOUNCE: Duration = Duration::from_millis(180);
 const COMPACT_DRAG_MOVE_PX: f32 = 2.5;
 const COMPACT_SNAP_THRESHOLD_PX: i32 = 7;
 const COMPACT_DRAG_TAP_MAX_MS: u64 = 120;
+const WINDOW_SCALE_DRAG_PIXELS_PER_STEP: f32 = 160.0;
+const MIN_SCALE_DRAG_EPSILON: f32 = 0.001;
 
 impl PanelState {
     pub(super) fn apply_compact_mode(&mut self, compact: bool) {
@@ -29,11 +35,17 @@ impl PanelState {
             self.chrome.settings_open = false;
             self.window.set_decorations(false);
             self.window.set_resizable(false);
-            let _ = self.window.request_inner_size(LogicalSize::new(92.0, 92.0));
+            let _ = self.window.request_inner_size(LogicalSize::new(
+                COMPACT_PANEL_INNER_WIDTH,
+                COMPACT_PANEL_INNER_HEIGHT,
+            ));
         } else {
-            let restored = self
-                .expanded_window_size
-                .unwrap_or_else(|| LogicalSize::new(420.0, 520.0));
+            let restored = self.expanded_window_size.unwrap_or_else(|| {
+                LogicalSize::new(
+                    super::DEFAULT_PANEL_INNER_WIDTH,
+                    super::DEFAULT_PANEL_INNER_HEIGHT,
+                )
+            });
             self.window.set_decorations(true);
             self.window.set_resizable(true);
             let _ = self.window.request_inner_size(restored);
@@ -46,6 +58,9 @@ impl PanelState {
         self.compact_drag_start_cursor = None;
         self.compact_drag_start_window_pos = None;
         self.compact_drag_start_instant = None;
+        self.scale_dragging = false;
+        self.scale_drag_start_cursor_x = None;
+        self.scale_drag_start_scale = self.window_scale;
         self.touch_tap_pending = false;
         self.touch_start_position = None;
         self.last_compact_toggle = Some(std::time::Instant::now());
@@ -244,5 +259,119 @@ impl PanelState {
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
             self.expanded_window_pos = self.window.outer_position().ok();
         }
+    }
+
+    pub(super) fn adjust_window_scale(&mut self, step_delta: i32) {
+        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+        let current_scale = self.window_scale;
+        let target_scale = (current_scale + step_delta as f32 * PANEL_SCALE_STEP)
+            .clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
+        self.set_window_scale(target_scale);
+    }
+
+    pub(super) fn set_window_scale(&mut self, scale: f32) {
+        self.set_window_scale_internal(scale, true);
+    }
+
+    pub(super) fn set_window_scale_continuous(&mut self, scale: f32) {
+        self.set_window_scale_internal(scale, false);
+    }
+
+    pub(super) fn begin_window_scale_drag(&mut self) {
+        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+        self.scale_dragging = true;
+        self.scale_drag_start_scale = self.window_scale;
+        self.scale_drag_start_cursor_x = self.cursor_position.map(|(x, _)| x);
+    }
+
+    pub(super) fn update_window_scale_drag(&mut self, cursor_x: f32) {
+        if !self.scale_dragging || self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+        let Some(start_x) = self.scale_drag_start_cursor_x else {
+            return;
+        };
+
+        let scale_delta =
+            (cursor_x - start_x) / WINDOW_SCALE_DRAG_PIXELS_PER_STEP * PANEL_SCALE_STEP;
+        let target_scale = self.scale_drag_start_scale + scale_delta;
+        self.set_window_scale_continuous(target_scale);
+    }
+
+    pub(super) fn end_window_scale_drag(&mut self) {
+        if self.scale_dragging {
+            self.scale_dragging = false;
+            self.scale_drag_start_cursor_x = None;
+            self.scale_drag_start_scale = self.window_scale;
+        }
+    }
+
+    fn set_window_scale_internal(&mut self, scale: f32, quantize: bool) {
+        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+
+        let clamped_scale = scale.clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
+        let requested_scale = if quantize {
+            (clamped_scale / PANEL_SCALE_STEP).round() * PANEL_SCALE_STEP
+        } else {
+            clamped_scale
+        };
+        let base = match self.expanded_window_base_size {
+            Some(base_size) => base_size,
+            None => self.expanded_window_size.unwrap_or_else(|| {
+                self.window
+                    .inner_size()
+                    .to_logical::<f64>(self.window.scale_factor())
+            }),
+        };
+
+        let min_scale_for_base = ((MIN_PANEL_INNER_WIDTH / base.width)
+            .max(MIN_PANEL_INNER_HEIGHT / base.height))
+        .max(PANEL_SCALE_MIN as f64);
+        let target_scale = requested_scale.clamp(
+            (min_scale_for_base as f32).max(PANEL_SCALE_MIN),
+            PANEL_SCALE_MAX,
+        );
+        if (target_scale - self.window_scale).abs() < MIN_SCALE_DRAG_EPSILON {
+            return;
+        }
+
+        let target = LogicalSize::new(
+            base.width * target_scale as f64,
+            base.height * target_scale as f64,
+        );
+        let _ = self.window.request_inner_size(target);
+        self.expanded_window_size = Some(target);
+        self.window_scale = target_scale;
+        self.expanded_window_base_size = Some(base);
+        self.persist_display_settings();
+    }
+
+    pub(super) fn reset_window_scale(&mut self) {
+        self.set_window_scale(1.0);
+    }
+
+    pub(super) fn scale_window_by_wheel_delta(&mut self, delta: f32) {
+        if delta > 0.0 {
+            self.adjust_window_scale(1);
+        } else if delta < 0.0 {
+            self.adjust_window_scale(-1);
+        }
+    }
+
+    pub(super) fn record_scaled_expanded_size(&mut self, logical_size: LogicalSize<f64>) {
+        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+        self.expanded_window_size = Some(logical_size);
+        self.expanded_window_base_size = Some(LogicalSize::new(
+            logical_size.width / self.window_scale as f64,
+            logical_size.height / self.window_scale as f64,
+        ));
     }
 }
