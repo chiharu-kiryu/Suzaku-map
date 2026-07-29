@@ -131,11 +131,8 @@ pub fn preferred_font_paths(_font_face: FontFaceChoice) -> Vec<(&'static str, &'
 #[cfg(test)]
 mod tests {
     use super::{
-        configure_event_loop_builder,
-        decorate_main_window_attributes,
-        decorate_settings_window_attributes,
-        is_quit_shortcut,
-        preferred_font_paths,
+        configure_event_loop_builder, decorate_main_window_attributes,
+        decorate_settings_window_attributes, is_quit_shortcut, preferred_font_paths,
     };
     use crate::ime::gpu::FontFaceChoice;
     use winit::event_loop::EventLoop;
@@ -157,11 +154,18 @@ mod tests {
     }
 
     #[test]
-    fn quit_shortcut_tracks_super_on_macos() {
-        let modifiers = ModifiersState::SUPER;
+    fn quit_shortcut_tracks_platform_primary_modifier() {
+        let super_mod = ModifiersState::SUPER;
+        let control_mod = ModifiersState::CONTROL;
         let modifiers_off = ModifiersState::default();
 
-        assert_eq!(is_quit_shortcut(modifiers), true);
+        if cfg!(target_os = "macos") {
+            assert_eq!(is_quit_shortcut(super_mod), true);
+            assert_eq!(is_quit_shortcut(control_mod), false);
+        } else {
+            assert_eq!(is_quit_shortcut(control_mod), true);
+            assert_eq!(is_quit_shortcut(super_mod), false);
+        }
         assert_eq!(is_quit_shortcut(modifiers_off), false);
     }
 

@@ -77,3 +77,65 @@ unsafe extern "C" {
     fn suzaku_speech_stop();
     fn suzaku_speech_consume_transcript(buffer: *mut std::ffi::c_char, capacity: usize) -> bool;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{MacOsSpeechBridge, native_voice_enabled};
+    use crate::platform::test_env;
+    use crate::platform::test_env::ScopedEnv;
+
+    #[test]
+    fn macos_voice_bridge_is_default_enabled_when_env_not_set() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.remove_var("SUZAKU_MACOS_VOICE_NATIVE");
+
+            assert!(native_voice_enabled());
+        });
+    }
+
+    #[test]
+    fn macos_voice_bridge_respects_falsey_environment_flags() {
+        let falsey = ["0", "false", "FALSE", "no", "NO"];
+        for value in falsey {
+            test_env::with_test_env(|env: &mut ScopedEnv| {
+                env.set_var("SUZAKU_MACOS_VOICE_NATIVE", value);
+                assert!(!native_voice_enabled());
+            });
+        }
+    }
+
+    #[test]
+    fn macos_voice_bridge_respects_truthy_environment_flags() {
+        let truthy = ["1", "true", "TRUE", "yes", "YES", "on", "On"];
+        for value in truthy {
+            test_env::with_test_env(|env: &mut ScopedEnv| {
+                env.set_var("SUZAKU_MACOS_VOICE_NATIVE", value);
+                assert!(native_voice_enabled());
+            });
+        }
+    }
+
+    #[test]
+    fn macos_voice_bridge_normalizes_whitespace_before_truthiness_check() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_MACOS_VOICE_NATIVE", " false ");
+            assert!(!native_voice_enabled());
+        });
+    }
+
+    #[test]
+    fn macos_voice_bridge_treats_unknown_values_as_enabled() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_MACOS_VOICE_NATIVE", "maybe");
+            assert!(native_voice_enabled());
+        });
+    }
+
+    #[test]
+    fn macos_voice_bridge_reports_fallback_label_and_capture_support() {
+        let bridge = MacOsSpeechBridge;
+
+        assert_eq!(bridge.source_label(), "Apple Speech");
+        assert!(bridge.supports_live_capture());
+    }
+}

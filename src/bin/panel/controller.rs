@@ -259,7 +259,7 @@ impl PanelState {
     }
 
     fn normalize_candidate_text(text: &str) -> String {
-        text.to_ascii_lowercase()
+        text.to_lowercase()
             .trim()
             .trim_end_matches(|ch| matches!(ch, '.' | '!' | '?'))
             .split_whitespace()

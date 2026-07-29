@@ -112,7 +112,9 @@ fn preferred_command(platform: TargetPlatform) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{current_runtime_profile, runtime_profile_for};
+    use super::{
+        current_runtime_profile, current_runtime_report, runtime_profile_for, runtime_report_for,
+    };
     use crate::platform::{TargetPlatform, host_platform};
 
     #[test]
@@ -131,5 +133,149 @@ mod tests {
     fn android_profile_mentions_input_method_service() {
         let profile = runtime_profile_for(TargetPlatform::Android);
         assert!(profile.registration_hint.contains("InputMethodService"));
+    }
+
+    #[test]
+    fn runtime_profile_contains_expected_preferred_command() {
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::MacOs).preferred_command,
+            "cargo ime-host"
+        );
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::Windows).preferred_command,
+            "cargo ime-host"
+        );
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::Android).preferred_command,
+            "cargo android-ime-host"
+        );
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::Ubuntu).preferred_command,
+            "cargo ime-host"
+        );
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::ArchLinux).preferred_command,
+            "cargo ime-host"
+        );
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::SteamOs).preferred_command,
+            "cargo ime-host"
+        );
+    }
+
+    #[test]
+    fn runtime_profile_includes_platform_title_for_steam_and_arch_linux() {
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::ArchLinux).title,
+            "Suzaku Arch Linux IME Host"
+        );
+        assert_eq!(
+            runtime_profile_for(TargetPlatform::SteamOs).title,
+            "Suzaku SteamOS IME Host"
+        );
+    }
+
+    #[test]
+    fn runtime_report_can_include_session_probe_line() {
+        let compact = runtime_report_for(TargetPlatform::Ubuntu, false);
+        let with_probe = runtime_report_for(TargetPlatform::Ubuntu, true);
+
+        assert!(!compact.contains("session-probe:"));
+        assert!(with_probe.contains("session-probe:"));
+        assert!(with_probe.contains("committed=\"\""));
+    }
+
+    #[test]
+    fn runtime_report_for_platform_includes_profile_title_and_preferred_command() {
+        let report = runtime_report_for(TargetPlatform::SteamOs, false);
+
+        assert!(report.contains("Suzaku SteamOS IME Host"));
+        assert!(report.contains("preferred-command: cargo ime-host"));
+        assert!(report.contains("registration-hint"));
+    }
+
+    #[test]
+    fn runtime_profile_describe_mentions_all_sections() {
+        let profile = runtime_profile_for(TargetPlatform::Windows);
+        let description = profile.describe();
+
+        assert!(description.contains(&profile.title));
+        assert!(description.contains("bootstrap:"));
+        assert!(description.contains("registration:"));
+        assert!(description.contains("ime-dispatch:"));
+        assert!(description.contains("panel-dispatch:"));
+        assert!(description.contains("registration-hint:"));
+        assert!(description.contains("preferred-command:"));
+    }
+
+    #[test]
+    fn current_runtime_report_can_toggle_session_probe_line() {
+        let without_probe = current_runtime_report(false);
+        let with_probe = current_runtime_report(true);
+
+        assert!(!without_probe.contains("session-probe:"));
+        assert!(with_probe.contains("session-probe:"));
+        assert!(with_probe.contains("committed=\"\""));
+    }
+
+    #[test]
+    fn current_runtime_report_includes_profile_title_and_preferred_command() {
+        let profile = current_runtime_profile();
+        let report = current_runtime_report(false);
+
+        assert!(report.contains(&profile.title));
+        assert!(report.contains(&format!(
+            "preferred-command: {}",
+            profile.preferred_command
+        )));
+    }
+
+    #[test]
+    fn current_runtime_report_matches_runtime_report_for_host_platform() {
+        let platform = host_platform();
+
+        assert_eq!(
+            current_runtime_report(false),
+            runtime_report_for(platform, false)
+        );
+        assert_eq!(
+            current_runtime_report(true),
+            runtime_report_for(platform, true)
+        );
+    }
+
+    #[test]
+    fn runtime_report_for_all_platforms_exposes_profile_fields() {
+        let platforms = [
+            TargetPlatform::MacOs,
+            TargetPlatform::Windows,
+            TargetPlatform::Android,
+            TargetPlatform::Ubuntu,
+            TargetPlatform::ArchLinux,
+            TargetPlatform::SteamOs,
+        ];
+
+        for platform in platforms {
+            let profile = runtime_profile_for(platform);
+            let compact = runtime_report_for(platform, false);
+            let with_probe = runtime_report_for(platform, true);
+
+            assert!(compact.contains(&profile.title));
+            assert!(compact.contains("bootstrap:"));
+            assert!(compact.contains("registration:"));
+            assert!(compact.contains("ime-dispatch:"));
+            assert!(compact.contains("panel-dispatch:"));
+            assert!(compact.contains("registration-hint:"));
+            assert!(compact.contains(&format!(
+                "preferred-command: {}",
+                profile.preferred_command
+            )));
+            assert!(!compact.contains("session-probe:"));
+
+            assert!(with_probe.contains("session-probe:"));
+            assert!(with_probe.contains("active="));
+            assert!(with_probe.contains("candidates="));
+            assert!(with_probe.contains("committed=\"\""));
+        }
     }
 }

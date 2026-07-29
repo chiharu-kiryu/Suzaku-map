@@ -199,30 +199,7 @@ impl PanelState {
             return;
         }
 
-        let mut accepted = String::new();
-        for ch in text.chars() {
-            if ch.is_ascii_alphanumeric()
-                || ch == ' '
-                || matches!(
-                    ch,
-                    '.' | ','
-                        | '?'
-                        | '!'
-                        | '\''
-                        | '-'
-                        | '/'
-                        | ':'
-                        | ';'
-                        | '('
-                        | ')'
-                        | '$'
-                        | '&'
-                        | '@'
-                )
-            {
-                accepted.push(ch);
-            }
-        }
+        let accepted: String = text.chars().filter(should_accept_input_char).collect();
 
         if !accepted.is_empty() {
             self.chrome.insert_text(&accepted);
@@ -246,5 +223,33 @@ impl PanelState {
             .join(" ");
         self.engine.seed(&normalized);
         self.refresh_composition_candidates();
+    }
+}
+
+fn should_accept_input_char(ch: char) -> bool {
+    !ch.is_control()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_input_keeps_emoji_characters() {
+        assert_eq!(
+            "hello 😀 world"
+                .chars()
+                .filter(should_accept_input_char)
+                .collect::<String>(),
+            "hello 😀 world"
+        );
+    }
+
+    #[test]
+    fn text_input_removes_control_characters() {
+        let input = "hello\t😀\n";
+        let output: String = input.chars().filter(should_accept_input_char).collect();
+
+        assert_eq!(output, "hello😀");
     }
 }

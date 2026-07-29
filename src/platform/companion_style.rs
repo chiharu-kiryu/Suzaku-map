@@ -181,20 +181,31 @@ pub extern "C" fn suzaku_host_companion_border_rgba8() -> u32 {
 #[cfg(test)]
 mod tests {
     use std::ffi::{CStr, CString};
+    #[cfg(target_os = "linux")]
+    use std::fs;
+    #[cfg(target_os = "linux")]
+    use std::path::PathBuf;
+    #[cfg(target_os = "linux")]
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
         current_companion_theme_preset, detached_candidate_companion_style,
         detached_candidate_companion_style_for_preset, suzaku_host_companion_accent_rgba8,
         suzaku_host_companion_border_rgba8, suzaku_host_companion_header_title_utf8,
         suzaku_host_companion_horizontal_padding, suzaku_host_companion_max_text_lines,
-        suzaku_host_companion_max_width, suzaku_host_companion_min_width, suzaku_host_companion_panel_background_rgba8,
-        suzaku_host_companion_row_height, suzaku_host_companion_row_hover_text_rgba8,
-        suzaku_host_companion_row_normal_text_rgba8, suzaku_host_companion_row_selected_text_rgba8,
-        suzaku_host_companion_show_header, suzaku_host_companion_title_text_rgba8,
-        suzaku_host_companion_vertical_padding, suzaku_host_companion_window_title_utf8,
+        suzaku_host_companion_max_width, suzaku_host_companion_min_width,
+        suzaku_host_companion_panel_background_rgba8, suzaku_host_companion_row_height,
+        suzaku_host_companion_row_hover_text_rgba8, suzaku_host_companion_row_normal_text_rgba8,
+        suzaku_host_companion_row_selected_text_rgba8, suzaku_host_companion_show_header,
+        suzaku_host_companion_title_text_rgba8, suzaku_host_companion_vertical_padding,
+        suzaku_host_companion_window_title_utf8,
     };
-    use std::os::raw::c_char;
     use crate::ime::gpu::ThemePreset;
+    #[cfg(target_os = "linux")]
+    use crate::platform::test_env;
+    #[cfg(target_os = "linux")]
+    use crate::platform::test_env::ScopedEnv;
+    use std::os::raw::c_char;
 
     #[test]
     fn detached_candidate_companion_style_uses_nonempty_titles() {
@@ -218,8 +229,8 @@ mod tests {
         let title = suzaku_host_companion_window_title_utf8();
         let header = suzaku_host_companion_header_title_utf8();
 
-        let title = unsafe { c_string_to_owned(title) };
-        let header = unsafe { c_string_to_owned(header) };
+        let title = c_string_to_owned(title);
+        let header = c_string_to_owned(header);
 
         assert_eq!(title.as_deref(), Some(style.window_title));
         assert_eq!(header.as_deref(), Some(style.header_title));
@@ -234,6 +245,21 @@ mod tests {
     }
 
     #[test]
+    fn detached_candidate_companion_style_matches_preset_selector() {
+        let theme = current_companion_theme_preset();
+        let preset_style = detached_candidate_companion_style_for_preset(theme);
+        let current_style = detached_candidate_companion_style();
+
+        assert_eq!(preset_style.window_title, current_style.window_title);
+        assert_eq!(preset_style.header_title, current_style.header_title);
+        assert_eq!(preset_style.show_header, current_style.show_header);
+        assert_eq!(preset_style.min_width, current_style.min_width);
+        assert_eq!(preset_style.max_width, current_style.max_width);
+        assert_eq!(preset_style.row_height, current_style.row_height);
+        assert_eq!(preset_style.max_text_lines, current_style.max_text_lines);
+    }
+
+    #[test]
     fn detached_candidate_companion_style_exports_are_numeric() {
         let style = detached_candidate_companion_style();
 
@@ -241,7 +267,10 @@ mod tests {
         assert_eq!(suzaku_host_companion_max_width(), style.max_width);
         assert_eq!(suzaku_host_companion_row_height(), style.row_height);
         assert_eq!(suzaku_host_companion_max_text_lines(), style.max_text_lines);
-        assert_eq!(suzaku_host_companion_vertical_padding(), style.vertical_padding);
+        assert_eq!(
+            suzaku_host_companion_vertical_padding(),
+            style.vertical_padding
+        );
         assert_eq!(suzaku_host_companion_title_text_rgba8(), style.title_text);
         assert_eq!(
             suzaku_host_companion_row_normal_text_rgba8(),
@@ -268,7 +297,75 @@ mod tests {
         ));
     }
 
-    unsafe fn c_string_to_owned(ptr: *mut c_char) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn current_companion_theme_preset_reads_device_dark_setting() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            write_theme_setting_file("theme_preset=device_dark", env);
+            assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn current_companion_theme_preset_falls_back_for_unknown_lines() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            write_theme_setting_file("something else\nnot_a_key=42\ntheme_preset=starlight", env);
+            assert_eq!(current_companion_theme_preset(), ThemePreset::Daylight);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn current_companion_theme_preset_ignores_whitespace_around_key_value() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            write_theme_setting_file(" theme_preset = device_dark \n", env);
+            assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn current_companion_theme_preset_defaults_on_empty_or_missing_value() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            write_theme_setting_file("theme_preset=\n", env);
+            assert_eq!(current_companion_theme_preset(), ThemePreset::Daylight);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn current_companion_theme_preset_uses_first_matching_entry_when_duplicated() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            write_theme_setting_file(
+                "theme_preset=device_dark\ntheme_preset=daylight",
+                env,
+            );
+            assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    fn write_theme_setting_file(contents: &str, env: &mut ScopedEnv) {
+        let now_nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let mut temp_root = std::env::temp_dir();
+        temp_root.push(format!(
+            "suzaku-theme-settings-{}-{}",
+            std::process::id(),
+            now_nanos
+        ));
+        env.set_var("XDG_CONFIG_HOME", temp_root.to_str().expect("temp path"));
+
+        let settings_path = super::super::settings_host::display_settings_path();
+        let parent = settings_path.parent().unwrap_or_else(|| PathBuf::from("."));
+        fs::create_dir_all(parent).expect("create settings directory");
+        fs::write(settings_path, contents).expect("write settings file");
+    }
+
+    fn c_string_to_owned(ptr: *mut c_char) -> Option<String> {
         if ptr.is_null() {
             return None;
         }

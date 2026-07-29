@@ -440,6 +440,7 @@ fn create_font_atlas_resources(
 fn atlas_charset() -> Vec<char> {
     let mut glyphs: Vec<char> = (32u8..=126u8).map(char::from).collect();
     glyphs.push('…');
+    glyphs.extend(emoji_glyph_range());
     glyphs
 }
 
@@ -451,7 +452,33 @@ fn atlas_lookup_char(ch: char) -> char {
     } else if ch.is_ascii() {
         ch
     } else {
-        '?'
+        ch
+    }
+}
+
+fn emoji_glyph_range() -> Vec<char> {
+    (0x1F300u32..=0x1FAFF)
+        .filter_map(char::from_u32)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::atlas_charset;
+    use super::atlas_lookup_char;
+
+    #[test]
+    fn atlas_charset_contains_emoji_block() {
+        let charset = atlas_charset();
+
+        assert!(charset.contains(&'😀'));
+        assert!(charset.contains(&'🎉'));
+        assert!(charset.contains(&'🚀'));
+    }
+
+    #[test]
+    fn atlas_lookup_does_not_scrub_emoji() {
+        assert_eq!(atlas_lookup_char('😀'), '😀');
     }
 }
 

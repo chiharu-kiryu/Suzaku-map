@@ -74,7 +74,7 @@ pub fn derive_next_token_candidates(
 fn tokenize_seed_words(seed_text: &str) -> Vec<String> {
     seed_text
         .split_whitespace()
-        .map(|token| token.to_ascii_lowercase())
+        .map(|token| token.to_lowercase())
         .collect()
 }
 
@@ -82,7 +82,7 @@ fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
     let mut prefix_len = 0;
     while prefix_len < seed_tokens.len()
         && prefix_len < words.len()
-        && seed_tokens[prefix_len].eq_ignore_ascii_case(words[prefix_len])
+        && seed_tokens[prefix_len].to_lowercase() == words[prefix_len].to_lowercase()
     {
         prefix_len += 1;
     }
@@ -91,8 +91,8 @@ fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
 
 fn normalize_candidate_token(raw: &str) -> Option<String> {
     let token = raw
-        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
-        .to_ascii_lowercase();
+        .trim_matches(|ch: char| ch.is_ascii() && !ch.is_ascii_alphanumeric() && ch != '\'')
+        .to_lowercase();
 
     if token.is_empty() { None } else { Some(token) }
 }
@@ -162,7 +162,7 @@ pub fn sentence_candidate_style_label(sentence: &str, primary: bool) -> &'static
         return "Best";
     }
 
-    let normalized = sentence.to_ascii_lowercase();
+    let normalized = sentence.to_lowercase();
     let token_count = normalized.split_whitespace().count();
     if token_count <= 5 {
         "Short"
@@ -186,8 +186,8 @@ fn sentence_candidate_rank(
     sentence: &str,
     source_index: usize,
 ) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
-    let normalized_seed = seed_text.to_ascii_lowercase();
-    let normalized_sentence = sentence.to_ascii_lowercase();
+    let normalized_seed = seed_text.to_lowercase();
+    let normalized_sentence = sentence.to_lowercase();
     let seed_tokens = normalized_seed.split_whitespace().collect::<Vec<_>>();
     let sentence_tokens = normalized_sentence.split_whitespace().collect::<Vec<_>>();
     let token_count = normalized_sentence.split_whitespace().count();
@@ -241,7 +241,7 @@ fn has_adjacent_repeated_word(sentence: &str) -> bool {
     let mut previous = None;
     for token in sentence
         .split_whitespace()
-        .map(|token| token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\''))
+        .map(|token| token.trim_matches(|ch: char| ch.is_ascii() && !ch.is_ascii_alphanumeric() && ch != '\''))
         .filter(|token| !token.is_empty())
     {
         if previous == Some(token) {
@@ -259,8 +259,8 @@ fn clean_sentence_candidate(seed_text: &str, candidate: &str) -> String {
         return String::new();
     }
 
-    let normalized_seed = seed.to_ascii_lowercase();
-    let normalized_candidate = candidate.to_ascii_lowercase();
+    let normalized_seed = seed.to_lowercase();
+    let normalized_candidate = candidate.to_lowercase();
     let normalized_template_candidate =
         normalized_candidate.trim_end_matches(|ch: char| matches!(ch, '.' | '!' | '?'));
 
@@ -285,7 +285,7 @@ fn clean_sentence_candidate(seed_text: &str, candidate: &str) -> String {
 
 fn trim_repeated_suffix<'a>(seed: &'a str, normalized_candidate: &str) -> &'a str {
     if normalized_candidate.contains(" can continue by tapping the next suggestion")
-        && seed.to_ascii_lowercase().ends_with(" can")
+        && seed.to_lowercase().ends_with(" can")
     {
         return seed
             .strip_suffix(" can")
@@ -300,7 +300,7 @@ fn finalize_sentence(sentence: &str, normalized_seed: &str) -> String {
     if text.is_empty() {
         return text;
     }
-    if !normalized_seed.is_empty() && text.to_ascii_lowercase() == normalized_seed {
+    if !normalized_seed.is_empty() && text.to_lowercase() == normalized_seed.to_lowercase() {
         text.push('.');
     } else if !matches!(text.chars().last(), Some('.' | '!' | '?')) {
         text.push('.');
@@ -577,7 +577,7 @@ mod tests {
         assert!(
             after_sentence
                 .iter()
-                .any(|candidate| candidate.to_ascii_lowercase().starts_with("apple can")),
+                .any(|candidate| candidate.to_lowercase().starts_with("apple can")),
             "extended seed should surface sentence candidates"
         );
         assert_ne!(before_next.first(), after_next.first());
@@ -716,5 +716,33 @@ mod tests {
         ]);
 
         assert!(candidates.iter().any(|candidate| candidate.contains(' ')));
+    }
+
+    #[test]
+    fn seed_tokenization_keeps_emoji() {
+        assert_eq!(
+            tokenize_seed_words("hello 😀 world"),
+            vec!["hello".to_string(), "😀".to_string(), "world".to_string()]
+        );
+    }
+
+    #[test]
+    fn next_token_candidates_keep_emoji() {
+        let tokens = derive_next_token_candidates(
+            "hello",
+            &["hello 😀".into(), "hello world".into()],
+            6,
+        );
+
+        assert!(tokens.iter().any(|token| token == "😀"));
+    }
+
+    #[test]
+    fn candidate_token_normalization_keeps_emoji() {
+        assert_eq!(normalize_candidate_token("😀").as_deref(), Some("😀"));
+        assert_eq!(
+            normalize_candidate_token("Hello😀").as_deref(),
+            Some("hello😀")
+        );
     }
 }

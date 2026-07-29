@@ -296,9 +296,14 @@ pub extern "C" fn suzaku_host_platform_free_utf8(raw: *mut std::os::raw::c_char)
 mod tests {
     use super::{
         ImeHostSessionBridge, adapter_profile_for, current_adapter_profile, shared_session_bridge,
+        suzaku_host_platform_adapter_summary_utf8, suzaku_host_platform_free_utf8,
+        suzaku_host_platform_on_demand_companion, suzaku_host_platform_registration_hint_utf8,
+        suzaku_host_platform_registration_ready, suzaku_host_platform_registration_target_utf8,
     };
     use crate::ime::InputSource;
     use crate::platform::TargetPlatform;
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
 
     #[test]
     fn android_profile_requires_on_demand_companion() {
@@ -316,8 +321,172 @@ mod tests {
     }
 
     #[test]
+    fn shared_bridge_activation_toggles_session_state() {
+        let bridge = shared_session_bridge();
+
+        bridge.deactivate_session();
+        assert!(!bridge.snapshot().active);
+
+        assert!(bridge.activate_session());
+        assert!(bridge.snapshot().active);
+
+        bridge.deactivate_session();
+        assert!(!bridge.snapshot().active);
+    }
+
+    #[test]
+    fn shared_bridge_selection_ops_are_noop_without_candidates() {
+        let bridge = shared_session_bridge();
+
+        bridge.deactivate_session();
+        bridge.clear_marked_text();
+        let before = bridge.snapshot();
+
+        bridge.move_selection(10);
+        bridge.select_candidate(usize::MAX);
+        let after = bridge.snapshot();
+
+        assert_eq!(before.selected_index, after.selected_index);
+        assert_eq!(before.marked_text, after.marked_text);
+    }
+
+    #[test]
     fn current_profile_description_mentions_backend() {
         let profile = current_adapter_profile();
         assert!(profile.describe().contains("backend="));
+    }
+
+    #[test]
+    fn linux_adapter_reports_ibus_fcitx_backend() {
+        let profile = adapter_profile_for(TargetPlatform::Ubuntu);
+        assert_eq!(profile.platform, TargetPlatform::Ubuntu);
+        assert_eq!(profile.backend_id, "ibus-fcitx");
+        assert!(!profile.lifecycle.on_demand_companion);
+        assert!(profile.describe().contains("platform=Ubuntu"));
+    }
+
+    #[test]
+    fn current_adapter_api_summary_exposes_backend_state() {
+        let summary = c_string_to_owned(suzaku_host_platform_adapter_summary_utf8());
+        assert!(summary.as_deref().unwrap_or("").contains("backend="));
+        assert!(
+            summary
+                .as_deref()
+                .unwrap_or("")
+                .contains("registration_ready=")
+        );
+    }
+
+    #[test]
+    fn platform_api_exposes_registration_summary_fields() {
+        let profile = current_adapter_profile();
+        let target = c_string_to_owned(suzaku_host_platform_registration_target_utf8());
+        let hint = c_string_to_owned(suzaku_host_platform_registration_hint_utf8());
+        assert!(!target.unwrap_or_default().is_empty());
+        assert!(!hint.unwrap_or_default().is_empty());
+        assert_eq!(
+            suzaku_host_platform_registration_ready(),
+            profile.registration_ready
+        );
+        assert_eq!(
+            suzaku_host_platform_on_demand_companion(),
+            profile.lifecycle.on_demand_companion
+        );
+    }
+
+    #[test]
+    fn adapter_profile_for_non_mac_variants_stays_ibus_fcitx() {
+        let linux = adapter_profile_for(TargetPlatform::Ubuntu);
+        let arch = adapter_profile_for(TargetPlatform::ArchLinux);
+        let steam = adapter_profile_for(TargetPlatform::SteamOs);
+
+        assert_eq!(linux.backend_id, "ibus-fcitx");
+        assert_eq!(arch.backend_id, "ibus-fcitx");
+        assert_eq!(steam.backend_id, "ibus-fcitx");
+        assert!(!linux.lifecycle.on_demand_companion);
+        assert!(!arch.lifecycle.on_demand_companion);
+        assert!(!steam.lifecycle.on_demand_companion);
+    }
+
+    #[test]
+    fn adapter_profile_for_windows_and_android_are_expected_types() {
+        let windows = adapter_profile_for(TargetPlatform::Windows);
+        let android = adapter_profile_for(TargetPlatform::Android);
+
+        assert_eq!(windows.backend_id, "tsf");
+        assert_eq!(android.backend_id, "input-method-service");
+        assert!(windows.lifecycle.on_demand_companion);
+        assert!(android.lifecycle.on_demand_companion);
+        assert!(!windows.registration_target.is_empty());
+        assert!(!android.registration_target.is_empty());
+    }
+
+    #[test]
+    fn macos_profile_uses_inputmethodkit_backend_and_marks_candidate_capabilities() {
+        let profile = adapter_profile_for(TargetPlatform::MacOs);
+
+        assert_eq!(profile.platform, TargetPlatform::MacOs);
+        assert_eq!(profile.backend_id, "inputmethodkit");
+        assert!(profile.lifecycle.candidate_selection);
+        assert!(profile.lifecycle.native_candidate_window);
+        assert!(profile.lifecycle.on_demand_companion);
+        assert!(profile.registration_hint.contains("InputMethodKit"));
+        assert!(profile.registration_hint.contains(&profile.registration_target));
+    }
+
+    #[test]
+    fn linux_profiles_mark_non_demand_companion_and_have_connection_hint() {
+        let profile = adapter_profile_for(TargetPlatform::ArchLinux);
+
+        assert_eq!(profile.platform, TargetPlatform::ArchLinux);
+        assert!(!profile.lifecycle.on_demand_companion);
+        assert!(profile.lifecycle.candidate_selection);
+        assert!(profile.registration_hint.starts_with("Keep the GPU panel primary until"));
+        assert!(!profile.bootstrap_summary.is_empty());
+    }
+
+    #[test]
+    fn current_adapter_profile_matches_host_platform_profile() {
+        assert_eq!(
+            current_adapter_profile(),
+            adapter_profile_for(super::host_platform())
+        );
+    }
+
+    #[test]
+    fn adapter_describe_includes_platform_backend_and_flags() {
+        let macos = current_adapter_profile();
+        let text = macos.describe();
+
+        assert!(text.contains("platform="));
+        assert!(text.contains("backend="));
+        assert!(text.contains("registration_ready="));
+        assert!(text.contains("marked_text="));
+        assert!(text.contains("on_demand_companion="));
+    }
+
+    #[test]
+    fn free_utf8_pointer_is_noop_for_null() {
+        suzaku_host_platform_free_utf8(std::ptr::null_mut());
+    }
+
+    #[test]
+    fn free_utf8_pointer_releases_allocated_buffer() {
+        let raw = CString::new("adapter-summary")
+            .expect("string allocation")
+            .into_raw();
+
+        suzaku_host_platform_free_utf8(raw);
+    }
+
+    fn c_string_to_owned(raw: *mut c_char) -> Option<String> {
+        if raw.is_null() {
+            return None;
+        }
+        let text = unsafe { CStr::from_ptr(raw).to_string_lossy().into_owned() };
+        unsafe {
+            let _ = CString::from_raw(raw);
+        }
+        Some(text)
     }
 }

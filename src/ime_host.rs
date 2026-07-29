@@ -344,11 +344,33 @@ pub extern "C" fn suzaku_host_ime_free_utf8(raw: *mut std::os::raw::c_char) {
 
 #[cfg(test)]
 mod tests {
-    use super::{HostImeSession, host_bridge_snapshot, reset_host_bridge_session};
+    use super::{
+        HostImeSession, host_bridge_commit_selected, host_bridge_replace_marked_text,
+        host_bridge_snapshot, host_bridge_take_last_committed_text, reset_host_bridge_session,
+        suzaku_host_ime_activate, suzaku_host_ime_candidate_count,
+        suzaku_host_ime_candidate_label_utf8, suzaku_host_ime_clear_marked_text,
+        suzaku_host_ime_commit_selected, suzaku_host_ime_deactivate,
+        suzaku_host_ime_display_text_utf8, suzaku_host_ime_free_utf8, suzaku_host_ime_move_selection,
+        suzaku_host_ime_primary_candidate_utf8, suzaku_host_ime_select_candidate,
+        suzaku_host_ime_replace_marked_text_utf8,
+        suzaku_host_ime_selected_index, suzaku_host_ime_take_last_committed_text_utf8,
+    };
     use crate::ime::{CommitOptions, EngineConfig, InputSource, SignalState};
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+    use std::sync::{Mutex, OnceLock};
+
+    fn host_bridge_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static HOST_BRIDGE_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        HOST_BRIDGE_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("host bridge test lock poisoned")
+    }
 
     #[test]
     fn host_session_tracks_marked_text_and_candidates() {
+        let _guard = host_bridge_test_lock();
         let mut session = HostImeSession::new(EngineConfig::default());
         session.activate();
         let update = session.replace_marked_text("ni hao", InputSource::HardwareKeyboard);
@@ -360,6 +382,7 @@ mod tests {
 
     #[test]
     fn host_session_commit_moves_text_into_committed_state() {
+        let _guard = host_bridge_test_lock();
         let mut session = HostImeSession::new(EngineConfig::default());
         session.activate();
         session.update_signal(SignalState {
@@ -378,6 +401,7 @@ mod tests {
 
     #[test]
     fn host_bridge_snapshot_starts_clean() {
+        let _guard = host_bridge_test_lock();
         reset_host_bridge_session();
         let snapshot = host_bridge_snapshot();
         assert!(!snapshot.active);
@@ -388,6 +412,7 @@ mod tests {
 
     #[test]
     fn extract_new_commit_chunk_prefers_incremental_delta() {
+        let _guard = host_bridge_test_lock();
         assert_eq!(
             super::extract_new_commit_chunk("hello", "hello world"),
             "world"
@@ -396,5 +421,245 @@ mod tests {
             super::extract_new_commit_chunk("", "hello world"),
             "hello world"
         );
+        assert_eq!(
+            super::extract_new_commit_chunk("previous", "unrelated text"),
+            "unrelated text"
+        );
+    }
+
+    #[test]
+    fn host_bridge_snapshot_starts_with_no_committed_text() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        assert!(host_bridge_take_last_committed_text().is_none());
+    }
+
+    #[test]
+    fn host_bridge_commit_selected_is_noop_until_candidates_exist() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        assert!(!host_bridge_commit_selected(false));
+        assert!(host_bridge_take_last_committed_text().is_none());
+    }
+
+    #[test]
+    fn host_bridge_c_api_rejects_null_marked_text_pointer() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        assert!(!suzaku_host_ime_replace_marked_text_utf8(std::ptr::null()));
+    }
+
+    #[test]
+    fn host_bridge_c_api_replaces_marked_text_and_reads_display_text() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+
+        assert!(suzaku_host_ime_activate());
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+
+        let snapshot = host_bridge_snapshot();
+        assert!(snapshot.active);
+        assert!(snapshot.candidate_count > 0);
+        assert_eq!(suzaku_host_ime_candidate_count(), snapshot.candidate_count);
+
+        let raw = suzaku_host_ime_display_text_utf8();
+        assert!(!raw.is_null());
+        let display = c_string_to_owned(raw);
+        assert!(display.unwrap().contains("ni"));
+    }
+
+    #[test]
+    fn host_bridge_c_api_handles_candidate_queries() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+        let _ = suzaku_host_ime_activate();
+
+        let first = c_string_to_owned(suzaku_host_ime_candidate_label_utf8(0));
+        let missing = suzaku_host_ime_candidate_label_utf8(9999);
+        let primary = c_string_to_owned(suzaku_host_ime_primary_candidate_utf8());
+
+        assert!(first.is_some());
+        assert!(primary.is_some());
+        assert!(missing.is_null());
+    }
+
+    #[test]
+    fn host_bridge_c_api_rejects_empty_marked_text() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("").expect("empty text");
+
+        assert!(!suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+        let snapshot = host_bridge_snapshot();
+        assert!(snapshot.marked_text.is_empty());
+        assert_eq!(snapshot.candidate_count, 0);
+        assert!(suzaku_host_ime_candidate_label_utf8(0).is_null());
+        assert!(suzaku_host_ime_primary_candidate_utf8().is_null());
+    }
+
+    #[test]
+    fn host_bridge_c_api_primary_candidate_is_null_before_candidates_exist() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        assert!(suzaku_host_ime_primary_candidate_utf8().is_null());
+    }
+
+    #[test]
+    fn host_bridge_c_api_movement_clamps_selection_index() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        assert!(suzaku_host_ime_activate());
+        let text = CString::new("ni hao").expect("seed text");
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+
+        let count = host_bridge_snapshot().candidate_count;
+        assert!(count > 0);
+
+        suzaku_host_ime_move_selection(99);
+        assert_eq!(host_bridge_snapshot().selected_index, count - 1);
+
+        suzaku_host_ime_move_selection(-99);
+        assert_eq!(host_bridge_snapshot().selected_index, 0);
+    }
+
+    #[test]
+    fn host_bridge_c_api_select_candidate_ignores_out_of_range_index() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+
+        let start_index = host_bridge_snapshot().selected_index;
+        suzaku_host_ime_select_candidate(usize::MAX);
+        assert_eq!(host_bridge_snapshot().selected_index, start_index);
+    }
+
+    #[test]
+    fn host_bridge_c_api_returns_null_display_text_until_seeded() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        assert!(suzaku_host_ime_display_text_utf8().is_null());
+        let text = CString::new("ni hao").expect("seed text");
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+
+        let display = c_string_to_owned(suzaku_host_ime_display_text_utf8());
+        assert!(display.as_deref().is_some_and(|value| !value.is_empty()));
+    }
+
+    #[test]
+    fn host_bridge_c_api_commits_with_force_and_reports_last_chunk() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+
+        assert!(suzaku_host_ime_activate());
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+
+        let committed = suzaku_host_ime_commit_selected(true);
+        assert!(committed);
+        let last_commit = c_string_to_owned(suzaku_host_ime_take_last_committed_text_utf8());
+        assert!(!last_commit.as_deref().unwrap_or_default().is_empty());
+    }
+
+    #[test]
+    fn host_bridge_c_api_take_last_committed_text_utf8_is_one_shot() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+
+        assert!(suzaku_host_ime_activate());
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+        assert!(suzaku_host_ime_commit_selected(true));
+
+        let first = c_string_to_owned(suzaku_host_ime_take_last_committed_text_utf8());
+        assert!(first.as_deref().is_some_and(|value| !value.is_empty()));
+
+        let second = suzaku_host_ime_take_last_committed_text_utf8();
+        assert!(second.is_null());
+    }
+
+    #[test]
+    fn host_bridge_c_api_clears_marked_text_and_keeps_snapshot_stable() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+        assert!(!host_bridge_snapshot().marked_text.is_empty());
+        suzaku_host_ime_clear_marked_text();
+        assert!(host_bridge_snapshot().marked_text.is_empty());
+    }
+
+    #[test]
+    fn host_bridge_c_api_tracks_selection_and_free_pointer_api() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        let raw_ptr = CString::new("ni hao").expect("seed text").into_raw();
+        assert!(suzaku_host_ime_replace_marked_text_utf8(raw_ptr));
+        let selected_before = suzaku_host_ime_selected_index();
+        assert_eq!(selected_before, 0);
+        // free manually taken from Raw to prove host helper accepts normal C pointers
+        suzaku_host_ime_free_utf8(raw_ptr);
+    }
+
+    #[test]
+    fn host_bridge_c_api_free_utf8_accepts_null() {
+        suzaku_host_ime_free_utf8(std::ptr::null_mut());
+    }
+
+    #[test]
+    fn read_optional_utf8_treats_embedded_nul_and_empty_inputs_as_expected() {
+        let with_prefix = b"ni hao\0ignored\0".as_ptr() as *const c_char;
+        let blank = b"\0".as_ptr() as *const c_char;
+
+        assert_eq!(super::read_optional_utf8(with_prefix), Some("ni hao".to_string()));
+        assert_eq!(super::read_optional_utf8(blank), None);
+    }
+
+    #[test]
+    fn host_bridge_replace_marked_text_tracks_input_source() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+
+        assert!(host_bridge_replace_marked_text(
+            "ni hao",
+            crate::ime::InputSource::OnScreenPanel
+        ));
+        assert_eq!(host_bridge_snapshot().marked_text, "ni hao");
+    }
+
+    #[test]
+    fn host_bridge_c_api_deactivate_clears_active_state() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        let text = CString::new("ni hao").expect("seed text");
+
+        assert!(suzaku_host_ime_activate());
+        assert!(suzaku_host_ime_replace_marked_text_utf8(text.as_ptr()));
+        assert!(host_bridge_snapshot().active);
+
+        suzaku_host_ime_deactivate();
+        assert!(!host_bridge_snapshot().active);
+    }
+
+    fn c_string_to_owned(raw: *mut c_char) -> Option<String> {
+        if raw.is_null() {
+            return None;
+        }
+        let text = unsafe { CStr::from_ptr(raw).to_string_lossy().into_owned() };
+        unsafe {
+            let _ = CString::from_raw(raw);
+        }
+        Some(text)
     }
 }

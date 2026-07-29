@@ -198,3 +198,32 @@ pub(super) fn ellipsize(text: &str, max_chars: usize, force_suffix: bool) -> Str
     result.push('…');
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::TextAlign;
+    use super::{TextBlock, TextRole};
+
+    #[test]
+    fn layout_preserves_emoji_in_atlas_glyphs() {
+        let block = TextBlock {
+            text: "hello 😀 world".to_string(),
+            origin: [0.0, 0.0],
+            max_width: 320.0,
+            pixel_size: 12.0,
+            letter_spacing: 0.0,
+            line_gap: 2.0,
+            max_lines: 2,
+            color: [1.0, 1.0, 1.0, 1.0],
+            align: TextAlign::Left,
+            role: TextRole::InputValue,
+        };
+
+        let layout = block.layout();
+
+        assert!(layout
+            .atlas_glyphs
+            .iter()
+            .any(|glyph| glyph.ch == '😀'));
+    }
+}

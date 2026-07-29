@@ -1,5 +1,6 @@
 use suzaku_map::ime::{
-    CommitOptions, CommitResult, EngineConfig, InputSource, SignalState, Snapshot, XRTabletImeEngine,
+    CommitOptions, CommitResult, EngineConfig, InputSource, SignalState, Snapshot,
+    XRTabletImeEngine,
 };
 
 #[derive(Debug, Clone)]
@@ -100,11 +101,20 @@ mod tests {
         let demo = super::run_demo();
 
         assert!(matches!(demo.initial.mode, suzaku_map::ime::Mode::Idle));
-        assert!(matches!(demo.after_signal.mode, suzaku_map::ime::Mode::Idle));
-        assert!(matches!(demo.after_seed.mode, suzaku_map::ime::Mode::Composing));
+        assert!(matches!(
+            demo.after_signal.mode,
+            suzaku_map::ime::Mode::Idle
+        ));
+        assert!(matches!(
+            demo.after_seed.mode,
+            suzaku_map::ime::Mode::Composing
+        ));
         assert!(demo.after_seed.seed_text.starts_with("ni hao"));
         assert_eq!(demo.after_selection.selected_index, 1);
-        assert_eq!(demo.default_commit.reason, CommitReason::ConfirmationRequired);
+        assert_eq!(
+            demo.default_commit.reason,
+            CommitReason::ConfirmationRequired
+        );
         assert!(demo.forced_commit.ok);
         assert!(demo.forced_commit.text.is_some());
     }
@@ -123,5 +133,12 @@ mod tests {
         assert!(output.contains("commit without force:"));
         assert!(output.contains("commit with force:"));
         assert!(output.contains("undo:"));
+    }
+
+    #[test]
+    fn demo_undo_is_presented_after_forced_commit() {
+        let demo = super::run_demo();
+
+        assert!(demo.undo.is_some());
     }
 }

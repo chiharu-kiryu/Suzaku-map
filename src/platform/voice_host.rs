@@ -251,7 +251,8 @@ impl HostSpeechRecognizer {
 #[cfg(test)]
 mod tests {
     use super::{
-        HostSpeechRecognizer, VoiceBackend, voice_status_text, voice_transcript_placeholder,
+        open_voice_permission_settings, HostSpeechRecognizer, VoiceBackend, voice_status_text,
+        voice_transcript_placeholder,
     };
     use crate::ime::gpu::{VoiceCaptureState, VoicePermissionState};
 
@@ -268,6 +269,53 @@ mod tests {
     }
 
     #[test]
+    fn fallback_backend_wrapper_methods_reflect_fallback_state() {
+        let host = HostSpeechRecognizer {
+            backend: VoiceBackend::Fallback(
+                crate::platform::fallback_voice::FallbackSpeechBridge::new(),
+            ),
+        };
+
+        assert!(!host.start());
+        host.request_permissions();
+        host.stop();
+        host.seed_debug_transcript_from_env();
+        assert_eq!(host.permission_state(), VoicePermissionState::Unavailable);
+        assert_eq!(host.source_label(), "Fallback Samples");
+        assert!(host.poll_transcript().is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn open_voice_permission_settings_is_disabled_in_linux_host() {
+        assert!(!open_voice_permission_settings());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn open_voice_permission_settings_is_callable_on_macos_without_panicking() {
+        let _ = open_voice_permission_settings();
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn open_voice_permission_settings_is_callable_on_windows_without_panicking() {
+        let _ = open_voice_permission_settings();
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn placeholder_mentions_windows_permission_preparation_state() {
+        let text = voice_transcript_placeholder(
+            VoicePermissionState::Pending,
+            "Windows Native Speech",
+            true,
+        );
+
+        assert!(text.contains("preparing permission and recognition state"));
+    }
+
+    #[test]
     fn placeholder_mentions_backend_when_live_capture_is_missing() {
         let text = voice_transcript_placeholder(
             VoicePermissionState::Ready,
@@ -281,7 +329,8 @@ mod tests {
 
     #[test]
     fn placeholder_mentions_system_settings_for_pending_access() {
-        let text = voice_transcript_placeholder(VoicePermissionState::Pending, "Apple Speech", true);
+        let text =
+            voice_transcript_placeholder(VoicePermissionState::Pending, "Apple Speech", true);
 
         assert!(text.contains("System Settings"));
         assert!(text.contains("Speech Recognition"));
@@ -289,7 +338,8 @@ mod tests {
 
     #[test]
     fn placeholder_mentions_denied_access() {
-        let text = voice_transcript_placeholder(VoicePermissionState::Denied, "Apple Speech", false);
+        let text =
+            voice_transcript_placeholder(VoicePermissionState::Denied, "Apple Speech", false);
 
         assert!(text.contains("denied"));
     }
@@ -303,9 +353,23 @@ mod tests {
 
     #[test]
     fn placeholder_mentions_unavailable_capture() {
-        let text = voice_transcript_placeholder(VoicePermissionState::Unavailable, "Apple Speech", false);
+        let text =
+            voice_transcript_placeholder(VoicePermissionState::Unavailable, "Apple Speech", false);
 
         assert!(text.contains("Live voice capture is unavailable"));
+    }
+
+    #[test]
+    fn placeholder_mentions_listen_flow_when_capture_is_available() {
+        let text = voice_transcript_placeholder(
+            VoicePermissionState::Ready,
+            "Apple Speech",
+            true,
+        );
+
+        assert!(text.contains("Tap Listen"));
+        assert!(text.contains("Use Seed"));
+        assert!(text.contains("Apple Speech"));
     }
 
     #[test]
@@ -318,6 +382,17 @@ mod tests {
         );
         assert!(text.contains("listening"));
         assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_for_listening_ignores_permission_and_transcript_state() {
+        let text = voice_status_text(
+            VoiceCaptureState::Listening,
+            VoicePermissionState::Denied,
+            true,
+            "Apple Speech",
+        );
+        assert_eq!(text, "Voice listening · Apple Speech");
     }
 
     #[test]
@@ -343,6 +418,17 @@ mod tests {
 
         assert!(text.contains("Voice ready"));
         assert!(text.contains("Apple Speech"));
+    }
+
+    #[test]
+    fn status_text_ready_without_transcript_uses_ready_copy() {
+        let text = voice_status_text(
+            VoiceCaptureState::Idle,
+            VoicePermissionState::Ready,
+            false,
+            "Fallback Samples",
+        );
+        assert_eq!(text, "Voice ready · Fallback Samples");
     }
 
     #[test]
