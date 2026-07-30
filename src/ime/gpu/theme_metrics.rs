@@ -98,7 +98,7 @@ impl PanelSceneMetrics {
         sentence_count: usize,
     ) -> Self {
         let collapsed_daily_mode = !chrome.input_modes_expanded;
-        let scene_margin = (3.6 * responsive_scale).max(2.8);
+        let scene_margin = (3.2 * responsive_scale).max(2.2);
         let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0).min(940.0);
         let min_panel_width = (max_panel_width * 0.78)
             .clamp(190.0, 310.0)
@@ -109,26 +109,26 @@ impl PanelSceneMetrics {
             .max(min_panel_width);
 
         let spacing_scale = if chrome.candidate_density == CandidateDensity::Compact {
-            0.96
+            0.93
         } else {
-            1.0
+            0.98
         };
 
-        let input_box_h = 47.0 * responsive_scale * spacing_scale;
+        let input_box_h = 44.0 * responsive_scale * spacing_scale;
         let tools_header_h = if collapsed_daily_mode {
-            22.0 * responsive_scale
+            20.0 * responsive_scale
         } else {
-            18.6 * responsive_scale
+            17.2 * responsive_scale
         };
-        let tool_button_h = 16.8 * responsive_scale * spacing_scale;
-        let tool_gap = 2.6 * responsive_scale * spacing_scale;
-        let section_gap = 3.0 * responsive_scale * spacing_scale;
+        let tool_button_h = 15.6 * responsive_scale * spacing_scale;
+        let tool_gap = 2.2 * responsive_scale * spacing_scale;
+        let section_gap = 2.4 * responsive_scale * spacing_scale;
 
         let expanded_input_panel_h = if chrome.input_modes_expanded {
             match chrome.active_input_mode {
-                crate::ime::gpu::InputMode::VirtualKeyboard => 162.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Dictation => 174.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Handwriting => 178.0 * responsive_scale,
+                crate::ime::gpu::InputMode::VirtualKeyboard => 152.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Dictation => 165.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Handwriting => 168.0 * responsive_scale,
             }
         } else {
             0.0
@@ -137,17 +137,17 @@ impl PanelSceneMetrics {
         let stack_cap = (scene_height - scene_margin * 2.0).max(0.0);
         let mut tools_content_h = expanded_input_panel_h;
         let mut item_height = match (chrome.candidate_density, chrome.preview_style) {
-            (CandidateDensity::Compact, PreviewStyle::Compact) => 50.0,
-            (CandidateDensity::Compact, PreviewStyle::Full) => 62.0,
-            (CandidateDensity::Cozy, PreviewStyle::Compact) => 56.0,
-            (CandidateDensity::Cozy, PreviewStyle::Full) => 74.0,
+            (CandidateDensity::Compact, PreviewStyle::Compact) => 47.0,
+            (CandidateDensity::Compact, PreviewStyle::Full) => 58.0,
+            (CandidateDensity::Cozy, PreviewStyle::Compact) => 53.0,
+            (CandidateDensity::Cozy, PreviewStyle::Full) => 69.0,
         } * responsive_scale;
 
         let mut hero_item_height = item_height + 8.0 * responsive_scale;
         let mut item_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            2.6
+            2.2
         } else {
-            3.2
+            2.7
         } * responsive_scale;
 
         let stacked_token_header = !collapsed_daily_mode
@@ -182,7 +182,7 @@ impl PanelSceneMetrics {
             if sentence_count == 0 {
                 0.0
             } else {
-                46.0 * responsive_scale
+                43.0 * responsive_scale
             }
         } else if sentence_rows == 0 {
             if sentence_count == 0 {
@@ -205,9 +205,9 @@ impl PanelSceneMetrics {
             + chip_section_h
             + if chip_section_h > 0.0 && sentence_count > 0 {
                 if collapsed_daily_mode {
-                    3.0 * responsive_scale
+                    2.4 * responsive_scale
                 } else {
-                    4.0 * responsive_scale
+                    3.2 * responsive_scale
                 }
             } else {
                 0.0
@@ -221,9 +221,9 @@ impl PanelSceneMetrics {
                 + chip_section_h
                 + if chip_section_h > 0.0 && sentence_count > 0 {
                     if collapsed_daily_mode {
-                        3.0 * responsive_scale
+                        2.4 * responsive_scale
                     } else {
-                        4.0 * responsive_scale
+                        3.2 * responsive_scale
                     }
                 } else {
                     0.0
@@ -239,9 +239,9 @@ impl PanelSceneMetrics {
             + chip_section_h
             + if chip_section_h > 0.0 && sentence_count > 0 {
                 if collapsed_daily_mode {
-                    4.0 * responsive_scale
+                    3.2 * responsive_scale
                 } else {
-                    5.0 * responsive_scale
+                    4.0 * responsive_scale
                 }
             } else {
                 0.0
@@ -258,7 +258,7 @@ impl PanelSceneMetrics {
                     if sentence_count == 0 {
                         0.0
                     } else {
-                        (46.0 * responsive_scale).max((40.0 * height_scale).max(item_height))
+                        (43.0 * responsive_scale).max((40.0 * height_scale).max(item_height))
                     }
                 } else if sentence_rows == 0 {
                     if sentence_count == 0 {
@@ -305,9 +305,9 @@ impl PanelSceneMetrics {
             chip_section_h,
             sentence_section_gap: if chip_section_h > 0.0 && sentence_count > 0 {
                 if collapsed_daily_mode {
-                    3.0 * responsive_scale
+                    2.4 * responsive_scale
                 } else {
-                    5.0 * responsive_scale
+                    4.0 * responsive_scale
                 }
             } else {
                 0.0

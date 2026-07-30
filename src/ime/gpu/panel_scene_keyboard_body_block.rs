@@ -212,7 +212,7 @@
                                     x + 8.0 * responsive_scale * keyboard_scale,
                                     row_y + 7.4 * responsive_scale * keyboard_scale,
                                 ],
-                                max_width: key_w - 16.0 * responsive_scale * keyboard_scale,
+                            max_width: (key_w - 16.0 * responsive_scale * keyboard_scale).max(0.0),
                                 pixel_size: if matches!(
                                     key,
                                     VirtualKeyboardKey::Backspace
@@ -481,7 +481,7 @@
                                 rect[0] + 10.0 * responsive_scale * keyboard_scale,
                                 rect[1] + 7.4 * responsive_scale * keyboard_scale,
                             ],
-                            max_width: rect[2] - 20.0 * responsive_scale * keyboard_scale,
+                            max_width: (rect[2] - 20.0 * responsive_scale * keyboard_scale).max(0.0),
                             pixel_size: label_pixel_size,
                             letter_spacing: ui_tracking * keyboard_scale,
                             line_gap: base_line_gap * keyboard_scale,

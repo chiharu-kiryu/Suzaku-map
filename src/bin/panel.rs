@@ -29,8 +29,8 @@ mod voice;
 mod windowing;
 
 use crate::app_state::{
-    VoiceInputController, apply_display_settings, load_display_settings,
-    normalize_pointer_stability_settings,
+    VoiceInputController, FIRST_LAUNCH_WINDOW_SCALE, apply_display_settings,
+    load_display_settings, normalize_pointer_stability_settings,
 };
 use crate::input::handle_panel_window_event;
 use crate::render::{FontAtlas, PanelVertex, TextVertex, create_font_atlas};
@@ -54,8 +54,8 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowAttributes, WindowId};
 
-const DEFAULT_PANEL_INNER_WIDTH: f64 = 760.0;
-const DEFAULT_PANEL_INNER_HEIGHT: f64 = 380.0;
+const DEFAULT_PANEL_INNER_WIDTH: f64 = 900.0;
+const DEFAULT_PANEL_INNER_HEIGHT: f64 = 520.0;
 const MIN_PANEL_INNER_WIDTH: f64 = 420.0;
 const MIN_PANEL_INNER_HEIGHT: f64 = 300.0;
 const COMPACT_PANEL_INNER_WIDTH: f64 = 92.0;
@@ -135,7 +135,7 @@ fn panel_window_attributes() -> WindowAttributes {
     let scale = load_display_settings()
         .as_ref()
         .map(|settings| settings.window_scale)
-        .unwrap_or(1.0)
+        .unwrap_or(FIRST_LAUNCH_WINDOW_SCALE)
         .clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
     let panel_dispatch = current_panel_companion_dispatch();
     let attrs = WindowAttributes::default()
@@ -185,6 +185,28 @@ struct CommitAttempt {
 struct PanelApp {
     panel: Option<PanelState>,
     settings: Option<PanelState>,
+}
+
+#[derive(Default)]
+struct PanelInteractionState {
+    hovered_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
+    pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
+    press_target_rect: Option<[f32; 4]>,
+    press_start_cursor: Option<(f32, f32)>,
+    press_start_instant: Option<Instant>,
+    touch_tap_pending: bool,
+    touch_start_position: Option<(f32, f32)>,
+    handwriting_dragging: bool,
+    compact_hovered: bool,
+    compact_dragging: bool,
+    compact_drag_moved: bool,
+    compact_drag_start_cursor: Option<(f32, f32)>,
+    compact_drag_start_instant: Option<Instant>,
+    compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
+    scale_dragging: bool,
+    scale_drag_start_cursor_x: Option<f32>,
+    scale_drag_start_scale: f32,
+    last_input_was_touch: bool,
 }
 
 impl ApplicationHandler for PanelApp {
@@ -314,23 +336,7 @@ struct PanelState {
     voice: VoiceInputController,
     cursor_position: Option<(f32, f32)>,
     modifiers: ModifiersState,
-    handwriting_dragging: bool,
-    compact_hovered: bool,
-    compact_dragging: bool,
-    compact_drag_moved: bool,
-    compact_drag_start_cursor: Option<(f32, f32)>,
-    compact_drag_start_instant: Option<std::time::Instant>,
-    compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
-    scale_dragging: bool,
-    scale_drag_start_cursor_x: Option<f32>,
-    scale_drag_start_scale: f32,
-    hovered_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
-    pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
-    press_target_rect: Option<[f32; 4]>,
-    press_start_cursor: Option<(f32, f32)>,
-    press_start_instant: Option<Instant>,
-    touch_tap_pending: bool,
-    touch_start_position: Option<(f32, f32)>,
+    interaction: PanelInteractionState,
     voice_stability_ticks: u8,
     last_polled_voice_transcript: String,
     last_handwriting_summary: Option<String>,
@@ -373,7 +379,7 @@ impl PanelState {
             persisted_settings
                 .as_ref()
                 .map(|settings| settings.window_scale)
-                .unwrap_or(1.0)
+                .unwrap_or(FIRST_LAUNCH_WINDOW_SCALE)
         } else {
             1.0
         };
@@ -525,9 +531,9 @@ impl PanelState {
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
-            pointer_tap_slop_tenths: 75,
-            pointer_tap_max_ms: 320,
-            pointer_target_slop_tenths: 35,
+            pointer_tap_slop_tenths: 100,
+            pointer_tap_max_ms: 420,
+            pointer_target_slop_tenths: 50,
             window_scale: 1.0,
             composed_tokens: Vec::new(),
             next_token_candidates: Vec::new(),
@@ -626,23 +632,10 @@ impl PanelState {
             voice,
             cursor_position: None,
             modifiers: ModifiersState::default(),
-            handwriting_dragging: false,
-            compact_hovered: false,
-            compact_dragging: false,
-            compact_drag_moved: false,
-            compact_drag_start_cursor: None,
-            compact_drag_start_instant: None,
-            compact_drag_start_window_pos: None,
-            scale_dragging: false,
-            scale_drag_start_cursor_x: None,
-            scale_drag_start_scale: initial_window_scale,
-            hovered_interaction: None,
-            pressed_interaction: None,
-            press_target_rect: None,
-            press_start_cursor: None,
-            press_start_instant: None,
-            touch_tap_pending: false,
-            touch_start_position: None,
+            interaction: PanelInteractionState {
+                scale_drag_start_scale: initial_window_scale,
+                ..PanelInteractionState::default()
+            },
             voice_stability_ticks: 0,
             last_polled_voice_transcript: String::new(),
             last_handwriting_summary: None,

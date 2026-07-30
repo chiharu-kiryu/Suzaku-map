@@ -290,6 +290,9 @@
                             chip_y += section_row_step;
                             row_bottom = chip_y + chip_height;
                         }
+                        if chip_x + chip_w > chip_max_x {
+                            break 'chip_loop;
+                        }
 
                         if chip_y + chip_height > settings_content_bottom {
                             break 'chip_loop;

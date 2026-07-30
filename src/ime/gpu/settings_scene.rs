@@ -33,18 +33,18 @@ impl WgpuCandidateRenderer {
         let section_px = 2.52 * ui_scale;
         let chip_px = 2.34 * ui_scale;
         let panel_width = (self.scene_width * 0.92).clamp(390.0, 740.0);
-        let panel_x = ((self.scene_width - panel_width) / 2.0).max(6.0);
-        let row_height = 24.8 * ui_scale;
-        let section_gap_y = 4.8 * ui_scale;
+        let panel_x = ((self.scene_width - panel_width) / 2.0).max(5.0);
+        let row_height = 24.0 * ui_scale;
+        let section_gap_y = 4.0 * ui_scale;
         let chip_start_x = panel_x + 112.0 * ui_scale;
         let chip_max_x = panel_x + panel_width - 18.0;
-        let chip_gap_x = 6.0 * ui_scale;
-        let chip_gap_y = 5.0 * ui_scale;
+        let chip_gap_x = 5.2 * ui_scale;
+        let chip_gap_y = 4.4 * ui_scale;
         let label_col_x = panel_x + 17.0 * ui_scale;
         let label_max_width = (chip_start_x - label_col_x - 8.0).max(94.0);
         let row_label_height = 21.8 * ui_scale;
         let section_label_height = row_label_height;
-        let section_margin = 2.4 * ui_scale;
+        let section_margin = 2.0 * ui_scale;
         let interaction_hit_rect = |rect: [f32; 4]| {
             self.interaction_hit_rect(
                 rect,
@@ -369,13 +369,13 @@ impl WgpuCandidateRenderer {
             estimated_height += section_gap_y;
         }
 
-        let title_section_h = 35.0;
-        let panel_padding_y = 8.0;
+        let title_section_h = 33.8;
+        let panel_padding_y = 7.0;
         let panel_height = (title_section_h + estimated_height + panel_padding_y)
             .max(min_panel_height)
             .min((self.scene_height - 16.0).max(224.0));
         let panel_y = if self.scene_height > panel_height + 20.0 {
-            10.0
+            8.0
         } else {
             0.0
         };
@@ -427,7 +427,7 @@ impl WgpuCandidateRenderer {
             12.0,
         );
         quads.push(CandidateQuad {
-            rect: [panel_x + 10.0, panel_y + 8.0, panel_width - 20.0, 2.0],
+            rect: [panel_x + 10.0, panel_y + 7.0, panel_width - 20.0, 1.6],
             color: if chrome.theme_preset == ThemePreset::DeviceDark {
                 [1.0, 1.0, 1.0, 0.06]
             } else {
@@ -435,7 +435,7 @@ impl WgpuCandidateRenderer {
             },
         });
 
-        let close_rect = [panel_x + panel_width - 34.0, panel_y + 9.0, 20.0, 20.0];
+        let close_rect = [panel_x + panel_width - 34.0, panel_y + 7.0, 20.0, 20.0];
         let (close_hovered, close_pressed) = interaction_state(InteractionKind::SettingsToggle);
         let close_visual_rect = animated_rect(close_rect, close_hovered, close_pressed);
         append_soft_card_quads(
@@ -467,8 +467,8 @@ impl WgpuCandidateRenderer {
 
         let title_layout = TextBlock {
             text: "Panel Settings".to_string(),
-            origin: [panel_x + 16.0, panel_y + 11.0],
-            max_width: panel_width - 60.0,
+            origin: [panel_x + 15.0, panel_y + 9.0],
+            max_width: (panel_width - 60.0).max(0.0),
             pixel_size: title_px,
             letter_spacing: heading_tracking,
             line_gap: base_line_gap,
@@ -487,8 +487,8 @@ impl WgpuCandidateRenderer {
 
         let mut label_layouts = Vec::new();
         let mut option_layouts = Vec::new();
-        let mut content_y = panel_y + 42.0;
-        let panel_bottom_guard = panel_y + panel_height - 5.0;
+        let mut content_y = panel_y + 40.0;
+        let panel_bottom_guard = panel_y + panel_height - 4.0;
 
         for (label, options) in sections.iter() {
             let section_rows = estimate_chip_rows(options.as_slice());
@@ -604,7 +604,7 @@ impl WgpuCandidateRenderer {
 
             let label_layout = TextBlock {
                 text: (*label).to_string(),
-                origin: [label_col_x, content_y + 6.8],
+                origin: [label_col_x, content_y + 6.2],
                 max_width: label_max_width,
                 pixel_size: section_px,
                 letter_spacing: heading_tracking,

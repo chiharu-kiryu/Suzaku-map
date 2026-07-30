@@ -52,17 +52,17 @@ impl PanelState {
             self.restore_expanded_window_position(restored);
         }
         self.chrome.compact_mode = compact;
-        self.compact_hovered = false;
-        self.compact_dragging = false;
-        self.compact_drag_moved = false;
-        self.compact_drag_start_cursor = None;
-        self.compact_drag_start_window_pos = None;
-        self.compact_drag_start_instant = None;
-        self.scale_dragging = false;
-        self.scale_drag_start_cursor_x = None;
-        self.scale_drag_start_scale = self.window_scale;
-        self.touch_tap_pending = false;
-        self.touch_start_position = None;
+        self.interaction.compact_hovered = false;
+        self.interaction.compact_dragging = false;
+        self.interaction.compact_drag_moved = false;
+        self.interaction.compact_drag_start_cursor = None;
+        self.interaction.compact_drag_start_window_pos = None;
+        self.interaction.compact_drag_start_instant = None;
+        self.interaction.scale_dragging = false;
+        self.interaction.scale_drag_start_cursor_x = None;
+        self.interaction.scale_drag_start_scale = self.window_scale;
+        self.interaction.touch_tap_pending = false;
+        self.interaction.touch_start_position = None;
         self.last_compact_toggle = Some(std::time::Instant::now());
     }
 
@@ -70,35 +70,35 @@ impl PanelState {
         if self.kind != PanelWindowKind::Main || !self.chrome.compact_mode {
             return;
         }
-        self.compact_dragging = true;
-        self.compact_drag_moved = false;
-        self.compact_drag_start_cursor = self.cursor_position;
-        self.compact_drag_start_window_pos = self.window.outer_position().ok();
-        self.compact_drag_start_instant = Some(std::time::Instant::now());
+        self.interaction.compact_dragging = true;
+        self.interaction.compact_drag_moved = false;
+        self.interaction.compact_drag_start_cursor = self.cursor_position;
+        self.interaction.compact_drag_start_window_pos = self.window.outer_position().ok();
+        self.interaction.compact_drag_start_instant = Some(std::time::Instant::now());
         let _ = self.window.drag_window();
     }
 
     pub(super) fn record_compact_drag_motion(&mut self, cursor_x: f32, cursor_y: f32) {
-        if !self.compact_dragging {
-            self.compact_drag_moved = false;
+        if !self.interaction.compact_dragging {
+            self.interaction.compact_drag_moved = false;
             return;
         }
-        if let Some((start_x, start_y)) = self.compact_drag_start_cursor {
+        if let Some((start_x, start_y)) = self.interaction.compact_drag_start_cursor {
             let moved = (cursor_x - start_x).abs() > COMPACT_DRAG_MOVE_PX
                 || (cursor_y - start_y).abs() > COMPACT_DRAG_MOVE_PX;
             if moved {
-                self.compact_drag_moved = true;
+                self.interaction.compact_drag_moved = true;
             }
         }
     }
 
     pub(super) fn update_compact_hover(&mut self) {
-        self.compact_hovered = if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
+        self.interaction.compact_hovered = if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             match self.cursor_position {
                 Some((x, y)) => {
                     let snapshot = self.engine.snapshot();
                     self.renderer
-                        .build_compact_scene(&snapshot, &self.chrome, false, self.compact_dragging)
+                        .build_compact_scene(&snapshot, &self.chrome, false, self.interaction.compact_dragging)
                         .hit_interaction(x, y)
                         == Some(suzaku_map::ime::gpu::InteractionKind::ToggleCompactMode)
                 }
@@ -110,32 +110,33 @@ impl PanelState {
     }
 
     pub(super) fn end_compact_drag(&mut self) -> bool {
-        if !self.compact_dragging {
+        if !self.interaction.compact_dragging {
             return false;
         }
         let elapsed_ms = self
+            .interaction
             .compact_drag_start_instant
             .map(|instant| instant.elapsed().as_millis() as u64)
             .unwrap_or(u64::MAX);
         let has_drag_delta = if elapsed_ms > COMPACT_DRAG_TAP_MAX_MS {
             false
         } else {
-            self.compact_drag_moved
+            self.interaction.compact_drag_moved
         };
         let moved = match (
-            self.compact_drag_start_window_pos,
+            self.interaction.compact_drag_start_window_pos,
             self.window.outer_position().ok(),
         ) {
             (Some(start), Some(end)) => {
                 (end.x - start.x).abs() > 3 || (end.y - start.y).abs() > 3 || has_drag_delta
             }
-            _ => self.compact_drag_moved,
+            _ => self.interaction.compact_drag_moved,
         };
-        self.compact_dragging = false;
-        self.compact_drag_start_cursor = None;
-        self.compact_drag_start_window_pos = None;
-        self.compact_drag_start_instant = None;
-        self.compact_drag_moved = false;
+        self.interaction.compact_dragging = false;
+        self.interaction.compact_drag_start_cursor = None;
+        self.interaction.compact_drag_start_window_pos = None;
+        self.interaction.compact_drag_start_instant = None;
+        self.interaction.compact_drag_moved = false;
         if moved {
             self.snap_compact_window_to_edge();
         }
@@ -283,30 +284,30 @@ impl PanelState {
         if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
             return;
         }
-        self.scale_dragging = true;
-        self.scale_drag_start_scale = self.window_scale;
-        self.scale_drag_start_cursor_x = self.cursor_position.map(|(x, _)| x);
+        self.interaction.scale_dragging = true;
+        self.interaction.scale_drag_start_scale = self.window_scale;
+        self.interaction.scale_drag_start_cursor_x = self.cursor_position.map(|(x, _)| x);
     }
 
     pub(super) fn update_window_scale_drag(&mut self, cursor_x: f32) {
-        if !self.scale_dragging || self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+        if !self.interaction.scale_dragging || self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
             return;
         }
-        let Some(start_x) = self.scale_drag_start_cursor_x else {
+        let Some(start_x) = self.interaction.scale_drag_start_cursor_x else {
             return;
         };
 
         let scale_delta =
             (cursor_x - start_x) / WINDOW_SCALE_DRAG_PIXELS_PER_STEP * PANEL_SCALE_STEP;
-        let target_scale = self.scale_drag_start_scale + scale_delta;
+        let target_scale = self.interaction.scale_drag_start_scale + scale_delta;
         self.set_window_scale_continuous(target_scale);
     }
 
     pub(super) fn end_window_scale_drag(&mut self) {
-        if self.scale_dragging {
-            self.scale_dragging = false;
-            self.scale_drag_start_cursor_x = None;
-            self.scale_drag_start_scale = self.window_scale;
+        if self.interaction.scale_dragging {
+            self.interaction.scale_dragging = false;
+            self.interaction.scale_drag_start_cursor_x = None;
+            self.interaction.scale_drag_start_scale = self.window_scale;
         }
     }
 

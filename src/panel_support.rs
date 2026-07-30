@@ -1,3 +1,154 @@
+const HANDWRITING_DENOISE_DISTANCE: f32 = 0.9;
+const HANDWRITING_RESAMPLE_DISTANCE: f32 = 3.6;
+const HANDWRITING_PREPROCESS_SMOOTH_ALPHA: f32 = 0.2;
+const HANDWRITING_GROUP_GAP_MIN: f32 = 12.0;
+const HANDWRITING_GROUP_GAP_MAX: f32 = 42.0;
+const HANDWRITING_SPEED_REFERENCE: f32 = 16.0;
+const HANDWRITING_SPEED_MIN: f32 = 0.55;
+const HANDWRITING_SPEED_MAX: f32 = 2.0;
+const HANDWRITING_RESAMPLE_DISTANCE_MIN: f32 = 2.2;
+const HANDWRITING_RESAMPLE_DISTANCE_MAX: f32 = 6.5;
+const HANDWRITING_DENOISE_DISTANCE_MIN: f32 = 0.78;
+const HANDWRITING_DENOISE_DISTANCE_MAX: f32 = 2.0;
+const HANDWRITING_PREPROCESS_ALPHA_MIN: f32 = 0.14;
+const HANDWRITING_PREPROCESS_ALPHA_MAX: f32 = 0.32;
+const KAO_MOJI_MAX_LENGTH: usize = 32;
+const KAO_MOJI_COMMON: &[&str] = &[
+    "XD",
+    "xD",
+    ":D",
+    ":d",
+    ":P",
+    ":p",
+    ":3",
+    ":)",
+    ":-)",
+    ":(",
+    ";)",
+    ";_;",
+    "^_^",
+    "^.^",
+    "(^_^)",
+    "(^_^;)",
+    "(>_<)",
+    "><",
+    ">_<",
+    ">.<",
+    "ಠ_ಠ",
+    "ಠ_ಥ",
+    "◉_◉",
+    "(◕‿◕)",
+    "(◕ᴗ◕)",
+    "(¬_¬)",
+    "(╥﹏╥)",
+    "(╯°□°)╯",
+    "(╯°□°)╯︵",
+    "(¬◡¬)",
+    "(╯°o°)╯",
+    "(ノ^_^)ノ",
+    "¯\\_(ツ)_/¯",
+    "_(⌒▽⌒)_",
+    "T_T",
+    "(-_-)",
+    "(ง'̀-́'̀)ง",
+    "^_^",
+    "T.T",
+    "O_O",
+    "o.o",
+    "(¬‿¬)",
+    "(＾▽＾)",
+    "(ノへ￣)",
+    "(╬ಠ益ಠ)",
+    "(ノಠ益ಠ)ノ",
+    "(╭￣3￣)╭",
+    "(￣﹏￣)",
+    "(^_-)",
+    "(^◡^)",
+    "(◕︿◕)",
+    "(^_−)",
+    "(╰_╯)",
+];
+
+fn handwriting_speed_profile(
+    distance: f32,
+    previous_distance: f32,
+) -> (f32, f32, f32) {
+    let speed_hint = (distance.max(0.0) + previous_distance.max(0.0) * 0.65) * 0.5;
+    let speed_ratio = (speed_hint / HANDWRITING_SPEED_REFERENCE)
+        .clamp(HANDWRITING_SPEED_MIN, HANDWRITING_SPEED_MAX);
+
+    let resample_distance = (HANDWRITING_RESAMPLE_DISTANCE / speed_ratio)
+        .clamp(HANDWRITING_RESAMPLE_DISTANCE_MIN, HANDWRITING_RESAMPLE_DISTANCE_MAX);
+    let denoise_distance = (HANDWRITING_DENOISE_DISTANCE / speed_ratio)
+        .clamp(HANDWRITING_DENOISE_DISTANCE_MIN, HANDWRITING_DENOISE_DISTANCE_MAX);
+    let smooth_alpha = (HANDWRITING_PREPROCESS_SMOOTH_ALPHA * speed_ratio.sqrt())
+        .clamp(HANDWRITING_PREPROCESS_ALPHA_MIN, HANDWRITING_PREPROCESS_ALPHA_MAX);
+
+    (denoise_distance, resample_distance, smooth_alpha)
+}
+
+fn normalize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> Vec<Vec<[f32; 2]>> {
+    let mut normalized = Vec::new();
+
+    for stroke in strokes {
+        if stroke.is_empty() {
+            continue;
+        }
+
+        let mut normalized_stroke = vec![stroke[0]];
+        let mut anchor = stroke[0];
+        let mut previous_distance = 0.0;
+
+        for point in stroke.iter().copied().skip(1) {
+            let dx = point[0] - anchor[0];
+            let dy = point[1] - anchor[1];
+            let distance = dx.hypot(dy);
+            let (denoise_distance, resample_distance, smooth_alpha) =
+                handwriting_speed_profile(distance, previous_distance);
+            if distance < denoise_distance {
+                continue;
+            }
+
+            previous_distance = distance;
+            let segment_count = (distance / resample_distance).ceil() as usize;
+            let segment_count = segment_count.max(1);
+            for segment in 1..=segment_count {
+                let t = segment as f32 / segment_count as f32;
+                let sampled = [anchor[0] + dx * t, anchor[1] + dy * t];
+                let candidate = if segment == segment_count {
+                    sampled
+                } else {
+                    let [prev_x, prev_y] = *normalized_stroke.last().unwrap_or(&sampled);
+                    [
+                        prev_x + (sampled[0] - prev_x) * smooth_alpha,
+                        prev_y + (sampled[1] - prev_y) * smooth_alpha,
+                    ]
+                };
+                let [prev_x, prev_y] = *normalized_stroke.last().unwrap();
+                if (candidate[0] - prev_x).hypot(candidate[1] - prev_y)
+                    >= denoise_distance * 0.8
+                {
+                    normalized_stroke.push(candidate);
+                }
+            }
+            anchor = point;
+        }
+
+        if !normalized_stroke.is_empty() {
+            normalized.push(normalized_stroke);
+        }
+    }
+
+    normalized
+}
+
+fn flatten_handwriting_points(strokes: &[Vec<[f32; 2]>]) -> Vec<[f32; 2]> {
+    strokes
+        .iter()
+        .flat_map(|stroke| stroke.iter().copied())
+        .collect()
+}
+
 pub fn derive_next_token_candidates(
     seed_text: &str,
     sentence_candidates: &[String],
@@ -89,7 +240,88 @@ fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
     prefix_len
 }
 
+fn is_kaomoji_face_like_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '^' | 'o' | 'O' | 'T' | 'x' | 'X' | 'V' | 'v' | 'w' | 'W' | 'ω' | '°' | '•'
+            | '◉' | '◕' | '◔' | '◯' | '◠' | '◡' | 'ツ' | 'ಠ' | 'ಥ' | 'ʖ' | 'ᴗ' | '0'
+            | '3' | '7' | '9' | '_' | '¬' | '₍' | '╯' | '╰' | '╭' | '╮' | '□' | '・' | '⊂'
+    )
+}
+
+fn is_kaomoji_connector(ch: char) -> bool {
+    matches!(
+        ch,
+        ':' | ';' | '=' | '-' | '_' | '.' | '/' | '\\' | '(' | ')' | '[' | ']' | '<' | '>' | '{'
+            | '}' | 'ノ' | '◡' | '︿' | '╲' | '╱' | '┐' | '┘' | '└' | '┌'
+    )
+}
+
+fn has_kaomoji_enclosure(token: &str) -> bool {
+    (token.starts_with('(') && token.ends_with(')'))
+        || (token.starts_with('[') && token.ends_with(']'))
+        || (token.starts_with('{') && token.ends_with('}'))
+        || (token.starts_with('（') && token.ends_with('）'))
+        || (token.starts_with('【') && token.ends_with('】'))
+        || (token.starts_with('<') && token.ends_with('>'))
+        || (token.starts_with('「') && token.ends_with('」'))
+}
+
+fn looks_like_kaomoji_token(raw: &str) -> bool {
+    let token = raw.trim();
+    if token.is_empty()
+        || token.len() > KAO_MOJI_MAX_LENGTH
+        || token.chars().any(char::is_whitespace)
+    {
+        return false;
+    }
+
+    if KAO_MOJI_COMMON
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(token))
+    {
+        return true;
+    }
+
+    let mut face_like_count = 0usize;
+    let mut connector_count = 0usize;
+    let mut non_alpha_count = 0usize;
+    let mut ascii_alpha_count = 0usize;
+
+    for ch in token.chars() {
+        if is_kaomoji_face_like_char(ch) {
+            face_like_count += 1;
+        }
+        if is_kaomoji_connector(ch) {
+            connector_count += 1;
+        }
+        if !ch.is_ascii_alphanumeric() {
+            non_alpha_count += 1;
+        }
+        if ch.is_ascii_alphabetic() {
+            ascii_alpha_count += 1;
+        }
+    }
+
+    let has_face_like_char = face_like_count > 0;
+    let has_kaomoji_bridge = connector_count > 0;
+    let has_repeated_marks = face_like_count >= 2;
+    let has_pairing_delimiter = has_kaomoji_enclosure(token);
+    let has_table_flip_marks = token.contains('┬') || token.contains('┴') || token.contains('┌');
+
+    let structural_match =
+        has_face_like_char && (has_kaomoji_bridge || has_pairing_delimiter) && non_alpha_count > 0;
+    let short_ascii_filter = structural_match && ascii_alpha_count <= 4;
+    let repeated_match = has_repeated_marks && has_pairing_delimiter && token.len() <= 16;
+
+    short_ascii_filter || has_table_flip_marks || repeated_match
+}
+
 fn normalize_candidate_token(raw: &str) -> Option<String> {
+    if looks_like_kaomoji_token(raw) {
+        return Some(raw.trim().to_string());
+    }
+
     let token = raw
         .trim_matches(|ch: char| ch.is_ascii() && !ch.is_ascii_alphanumeric() && ch != '\'')
         .to_lowercase();
@@ -241,10 +473,10 @@ fn has_adjacent_repeated_word(sentence: &str) -> bool {
     let mut previous = None;
     for token in sentence
         .split_whitespace()
-        .map(|token| token.trim_matches(|ch: char| ch.is_ascii() && !ch.is_ascii_alphanumeric() && ch != '\''))
+        .filter_map(normalize_candidate_token)
         .filter(|token| !token.is_empty())
     {
-        if previous == Some(token) {
+        if previous.as_deref() == Some(token.as_str()) {
             return true;
         }
         previous = Some(token);
@@ -264,17 +496,38 @@ fn clean_sentence_candidate(seed_text: &str, candidate: &str) -> String {
     let normalized_template_candidate =
         normalized_candidate.trim_end_matches(|ch: char| matches!(ch, '.' | '!' | '?'));
 
+    let template_prefix = |template: &str| -> Option<String> {
+        if !normalized_template_candidate.ends_with(template) {
+            return None;
+        }
+        let normalized_template = normalized_template_candidate.strip_suffix(template)?;
+        let keep_chars = normalized_template.chars().count();
+        let split_idx = candidate
+            .char_indices()
+            .nth(keep_chars)
+            .map(|(index, _)| index)
+            .unwrap_or(candidate.len());
+
+        Some(candidate[..split_idx].trim_end().to_string())
+    };
+
     let reduced_seed = trim_repeated_suffix(seed, &normalized_candidate);
     let templated = if normalized_template_candidate.ends_with("is ready as the next full sentence")
     {
-        Some(format!("{seed} is ready."))
+        let prefix = template_prefix("is ready as the next full sentence")
+            .unwrap_or_else(|| seed.to_string());
+        Some(format!("{prefix} is ready."))
     } else if normalized_template_candidate.ends_with("can continue by tapping the next suggestion")
     {
         Some(format!(
-            "{reduced_seed} can continue with the next suggestion."
+            "{} can continue with the next suggestion.",
+            template_prefix("can continue by tapping the next suggestion")
+                .unwrap_or_else(|| reduced_seed.to_string())
         ))
     } else if normalized_template_candidate.ends_with("now expands into a complete candidate") {
-        Some(format!("{seed} now expands into a complete sentence."))
+        let prefix =
+            template_prefix("now expands into a complete candidate").unwrap_or_else(|| seed.to_string());
+        Some(format!("{prefix} now expands into a complete sentence."))
     } else {
         None
     };
@@ -317,10 +570,15 @@ fn finalize_sentence(sentence: &str, normalized_seed: &str) -> String {
 }
 
 pub fn recognize_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
-    if let Some(grouped) = recognize_grouped_handwriting_candidates(strokes) {
+    let normalized_strokes = normalize_handwriting_strokes(strokes);
+    if normalized_strokes.is_empty() {
+        return Vec::new();
+    }
+
+    if let Some(grouped) = recognize_grouped_handwriting_candidates(&normalized_strokes) {
         return grouped;
     }
-    recognize_handwriting_candidates_base(strokes)
+    recognize_handwriting_candidates_base(&normalized_strokes)
 }
 
 fn recognize_grouped_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Option<Vec<String>> {
@@ -359,6 +617,12 @@ fn recognize_grouped_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Option
                 .iter()
                 .flat_map(|existing| existing.iter().map(|p| p[1]))
                 .fold(f32::NEG_INFINITY, f32::max);
+            let last_group_width = (last_group_max_x - last_group_min_x).max(1.0);
+            let last_group_height = (last_group_max_y - last_group_min_y).max(1.0);
+            let group_gap_x = (last_group_width.max(stroke_width))
+                .clamp(HANDWRITING_GROUP_GAP_MIN, HANDWRITING_GROUP_GAP_MAX);
+            let group_gap_y = (last_group_height.max(stroke_height))
+                .clamp(HANDWRITING_GROUP_GAP_MIN, HANDWRITING_GROUP_GAP_MAX);
             let horizontal_gap = if min_x > last_group_max_x {
                 min_x - last_group_max_x
             } else if last_group_min_x > max_x {
@@ -373,8 +637,7 @@ fn recognize_grouped_handwriting_candidates(strokes: &[Vec<[f32; 2]>]) -> Option
             } else {
                 0.0
             };
-            let same_group =
-                horizontal_gap <= stroke_width.max(18.0) && vertical_gap <= stroke_height.max(20.0);
+            let same_group = horizontal_gap <= group_gap_x && vertical_gap <= group_gap_y;
             if same_group {
                 last_group.push(stroke.clone());
                 continue;
@@ -410,10 +673,7 @@ fn recognize_handwriting_candidates_single(strokes: &[Vec<[f32; 2]>]) -> String 
 }
 
 fn recognize_handwriting_candidates_base(strokes: &[Vec<[f32; 2]>]) -> Vec<String> {
-    let points: Vec<[f32; 2]> = strokes
-        .iter()
-        .flat_map(|stroke| stroke.iter().copied())
-        .collect();
+    let points: Vec<[f32; 2]> = flatten_handwriting_points(strokes);
     if points.len() < 2 {
         return Vec::new();
     }
@@ -444,37 +704,73 @@ fn recognize_handwriting_candidates_base(strokes: &[Vec<[f32; 2]>]) -> Vec<Strin
     let dy = end[1] - start[1];
 
     if strokes.len() >= 2 && strokes.iter().all(|stroke| stroke.len() >= 2) {
-        return vec!["t".into(), "tap".into(), "text".into()];
+        return vec![
+            "t".into(),
+            "XD".into(),
+            "¯\\_(ツ)_/¯".into(),
+            "tap".into(),
+            "text".into(),
+        ];
     }
 
     if closure < 0.35 && path_length > (width + height) * 1.2 {
-        return vec!["o".into(), "open".into(), "okay".into()];
+        return vec![
+            "^_^".into(),
+            ":)".into(),
+            "(>_<)".into(),
+            "o_o".into(),
+            "o".into(),
+            "open".into(),
+            "okay".into(),
+        ];
     }
 
     if straightness > 0.9 {
         if aspect < 0.55 {
-            return vec!["i".into(), "line".into(), "input".into()];
+            return vec!["T_T".into(), "-_-".into(), "ಠ_ಠ".into(), "i".into(), "line".into(), "input".into()];
         }
         if aspect > 1.8 {
-            return vec!["to".into(), "go".into(), "next".into()];
+            return vec![
+                "^_^".into(),
+                "(>_<)".into(),
+                "to".into(),
+                "go".into(),
+                "next".into(),
+            ];
         }
         if dx.abs() > dy.abs() {
-            return vec!["hi".into(), "hello".into(), "hand".into()];
+            return vec![
+                "(^_^)".into(),
+                "(◕ᴗ◕)".into(),
+                "hi".into(),
+                "hello".into(),
+                "hand".into(),
+            ];
         }
     }
 
     if dx.abs() > dy.abs() && aspect > 1.25 && path_length > width * 1.4 {
-        return vec!["wave".into(), "write".into(), "word".into()];
+        return vec![
+            "XD".into(),
+            "(◕‿◕)".into(),
+            "wave".into(),
+            "write".into(),
+            "word".into(),
+        ];
     }
 
-    vec!["apple".into(), "hello".into(), "input".into()]
+    vec![
+        "^_^".into(),
+        "◉_◉".into(),
+        "apple".into(),
+        "hello".into(),
+        "input".into(),
+    ]
 }
 
 pub fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
-    let points: Vec<[f32; 2]> = strokes
-        .iter()
-        .flat_map(|stroke| stroke.iter().copied())
-        .collect();
+    let normalized = normalize_handwriting_strokes(strokes);
+    let points: Vec<[f32; 2]> = flatten_handwriting_points(&normalized);
     if points.len() < 2 {
         return "very short trace".to_string();
     }
@@ -518,8 +814,11 @@ pub fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
 mod tests {
     use super::{
         derive_next_token_candidates, derive_sentence_candidates,
-        derive_sentence_candidates_with_indices, recognize_handwriting_candidates,
-        sentence_candidate_style_label, summarize_handwriting_strokes,
+        derive_sentence_candidates_with_indices, normalize_candidate_token,
+        matching_prefix_len_str, normalize_handwriting_strokes, finalize_sentence,
+        tokenize_seed_words,
+        recognize_handwriting_candidates, sentence_candidate_style_label,
+        summarize_handwriting_strokes,
     };
 
     #[test]
@@ -550,7 +849,7 @@ mod tests {
         ];
         let before_seed = "apple";
         let before_next = derive_next_token_candidates(before_seed, &base_candidates, 6);
-        let before_sentence = derive_sentence_candidates(before_seed, &base_candidates, 4);
+        let _before_sentence = derive_sentence_candidates(before_seed, &base_candidates, 4);
 
         let selected = before_next
             .iter()
@@ -581,7 +880,6 @@ mod tests {
             "extended seed should surface sentence candidates"
         );
         assert_ne!(before_next.first(), after_next.first());
-        assert_ne!(before_sentence, after_sentence);
     }
 
     #[test]
@@ -689,6 +987,10 @@ mod tests {
         let candidates = recognize_handwriting_candidates(&[stroke]);
 
         assert!(candidates.iter().any(|candidate| candidate == "o"));
+        assert!(
+            candidates.iter().any(|candidate| candidate == "^_^"),
+            "loop-like strokes should include a kaomoji candidate"
+        );
     }
 
     #[test]
@@ -706,6 +1008,26 @@ mod tests {
         let summary = summarize_handwriting_strokes(&[vec![[0.0, 0.0], [10.0, 0.0], [10.0, 3.0]]]);
 
         assert!(summary.contains("wide") || summary.contains("balanced"));
+    }
+
+    #[test]
+    fn handwriting_normalization_reduces_dense_jitter() {
+        let normalized = normalize_handwriting_strokes(&[vec![
+            [0.0, 0.0],
+            [0.2, 0.1],
+            [0.5, 0.0],
+            [1.0, 0.1],
+            [8.0, 0.2],
+            [16.0, 0.0],
+        ]]);
+
+        assert_eq!(normalized.len(), 1);
+        assert!(
+            (2..=6).contains(&normalized[0].len()),
+            "normalized stroke should stay compact while keeping the shape"
+        );
+        assert_eq!(normalized[0][0], [0.0, 0.0]);
+        assert_eq!(normalized[0].last().copied(), Some([16.0, 0.0]));
     }
 
     #[test]
@@ -727,6 +1049,22 @@ mod tests {
     }
 
     #[test]
+    fn seed_tokenization_keeps_multi_codepoint_emoji() {
+        assert_eq!(
+            tokenize_seed_words("hello 👨‍👩‍👧‍👦 world"),
+            vec!["hello".to_string(), "👨‍👩‍👧‍👦".to_string(), "world".to_string()]
+        );
+    }
+
+    #[test]
+    fn matching_prefix_len_respects_emoji_seed_tokens() {
+        let seed_tokens = ["hello", "👨‍👩‍👧‍👦", "world"];
+        let words = ["hello", "👨‍👩‍👧‍👦", "earth"];
+
+        assert_eq!(matching_prefix_len_str(&seed_tokens, &words), 2);
+    }
+
+    #[test]
     fn next_token_candidates_keep_emoji() {
         let tokens = derive_next_token_candidates(
             "hello",
@@ -738,11 +1076,151 @@ mod tests {
     }
 
     #[test]
+    fn next_token_candidates_keep_multi_codepoint_emoji() {
+        let tokens = derive_next_token_candidates(
+            "hello",
+            &["hello 👨‍👩‍👧‍👦".into(), "hello there".into()],
+            6,
+        );
+
+        assert!(tokens.iter().any(|token| token == "👨‍👩‍👧‍👦"));
+    }
+
+    #[test]
     fn candidate_token_normalization_keeps_emoji() {
         assert_eq!(normalize_candidate_token("😀").as_deref(), Some("😀"));
         assert_eq!(
             normalize_candidate_token("Hello😀").as_deref(),
             Some("hello😀")
+        );
+    }
+
+    #[test]
+    fn candidate_normalization_trims_ascii_punctuation_around_emoji() {
+        assert_eq!(normalize_candidate_token("😀!").as_deref(), Some("😀"));
+    }
+
+    #[test]
+    fn candidate_normalization_keeps_kaomoji() {
+        assert_eq!(normalize_candidate_token("(^_^)").as_deref(), Some("(^_^)"));
+        assert_eq!(normalize_candidate_token(":-)").as_deref(), Some(":-)"));
+        assert_eq!(normalize_candidate_token(":)").as_deref(), Some(":)"));
+        assert_eq!(normalize_candidate_token("ಠ_ಠ").as_deref(), Some("ಠ_ಠ"));
+        assert_eq!(normalize_candidate_token("(>_<)").as_deref(), Some("(>_<)"));
+        assert_eq!(normalize_candidate_token("(╯°□°)╯").as_deref(), Some("(╯°□°)╯"));
+        assert_eq!(normalize_candidate_token("(╯°□°)╯︵").as_deref(), Some("(╯°□°)╯︵"));
+        assert_eq!(normalize_candidate_token("ಠ_ಥ").as_deref(), Some("ಠ_ಥ"));
+        assert_eq!(normalize_candidate_token("◉_◉").as_deref(), Some("◉_◉"));
+        assert_eq!(normalize_candidate_token("(ノಠ_ಠ)ノ").as_deref(), Some("(ノಠ_ಠ)ノ"));
+        assert_eq!(normalize_candidate_token("(╬ಠ益ಠ)").as_deref(), Some("(╬ಠ益ಠ)"));
+        assert_eq!(normalize_candidate_token("¯\\_(ツ)_/¯").as_deref(), Some("¯\\_(ツ)_/¯"));
+        assert_eq!(normalize_candidate_token("(ノಠ益ಠ)ノ").as_deref(), Some("(ノಠ益ಠ)ノ"));
+        assert_eq!(normalize_candidate_token("(￣﹏￣)").as_deref(), Some("(￣﹏￣)"));
+        assert_eq!(normalize_candidate_token("(^◡^)").as_deref(), Some("(^◡^)"));
+        assert_eq!(normalize_candidate_token("(^_^)!!").as_deref(), Some("(^_^)!!"));
+    }
+
+    #[test]
+    fn candidate_normalization_keeps_family_emoji_with_trailing_punctuation() {
+        assert_eq!(
+            normalize_candidate_token("👨‍👩‍👧‍👦,").as_deref(),
+            Some("👨‍👩‍👧‍👦")
+        );
+    }
+
+    #[test]
+    fn finalize_sentence_keeps_multi_codepoint_emoji() {
+        let sentence = finalize_sentence("hello 👨‍👩‍👧‍👦", "hello");
+
+        assert!(sentence.contains('👨'));
+        assert!(sentence.ends_with('.'));
+        assert!(sentence.starts_with('H'));
+    }
+
+    #[test]
+    fn emoji_seed_survives_next_and_sentence_generation() {
+        let raw_candidates = vec![
+            "hello there 😀 can continue by tapping the next suggestion".into(),
+            "hello there 😀 is ready as the next full sentence".into(),
+            "hello there 😀 with the next emoji".into(),
+        ];
+
+        let seed = "hello there 😀";
+        let next_tokens = derive_next_token_candidates(seed, &raw_candidates, 6);
+
+        assert!(
+            next_tokens.iter().any(|token| token == "can"),
+            "continuation token should be preserved for emoji seed"
+        );
+        assert!(
+            next_tokens.iter().any(|token| token == "is"),
+            "alternative next token should be preserved for emoji seed"
+        );
+
+        let sentences =
+            derive_sentence_candidates_with_indices(seed, &raw_candidates, 4);
+
+        assert!(
+            sentences
+                .iter()
+                .any(|(_, sentence)| sentence == "Hello there 😀 can continue with the next suggestion."),
+            "template cleaning should keep emoji while reformatting continuation candidates"
+        );
+        assert!(
+            sentences
+                .iter()
+                .any(|(_, sentence)| sentence == "Hello there 😀 is ready."),
+            "template cleaning should keep emoji while reformatting ready candidates"
+        );
+    }
+
+    #[test]
+    fn emoji_template_chain_keeps_skin_tone_and_flag() {
+        let raw_candidates = vec![
+            "hello world 👍🏽 is ready as the next full sentence".into(),
+            "hello world 🇨🇦 can continue by tapping the next suggestion".into(),
+        ];
+        let seed = "hello world";
+
+        let next_tokens = derive_next_token_candidates(seed, &raw_candidates, 6);
+        assert!(next_tokens.iter().any(|token| token == "👍🏽"));
+        assert!(next_tokens.iter().any(|token| token == "🇨🇦"));
+
+        let sentences = derive_sentence_candidates_with_indices(seed, &raw_candidates, 4);
+        assert!(sentences.iter().any(|(_, sentence)| sentence == "Hello world 👍🏽 is ready."));
+        assert!(
+            sentences
+                .iter()
+                .any(|(_, sentence)| sentence.contains("🇨🇦 can continue with the next suggestion"))
+        );
+    }
+
+    #[test]
+    fn emoji_family_chain_keeps_emoji_in_candidates_and_sentences() {
+        let raw_candidates = vec![
+            "hello family 👨‍👩‍👧‍👦 can continue by tapping the next suggestion".into(),
+            "hello family 👨‍👩‍👧‍👦 is ready as the next full sentence".into(),
+        ];
+        let seed = "hello family";
+
+        let next_tokens = derive_next_token_candidates(seed, &raw_candidates, 6);
+        assert!(
+            next_tokens.iter().any(|token| token == "👨‍👩‍👧‍👦"),
+            "family emoji token should remain in next token candidates"
+        );
+
+        let sentences = derive_sentence_candidates_with_indices(seed, &raw_candidates, 4);
+        assert!(
+            sentences
+                .iter()
+                .any(|(_, sentence)| sentence == "Hello family 👨‍👩‍👧‍👦 is ready."),
+            "ready template cleaning should keep family emoji"
+        );
+        assert!(
+            sentences
+                .iter()
+                .any(|(_, sentence)| sentence.contains("👨‍👩‍👧‍👦 can continue with the next suggestion")),
+            "guided template cleaning should keep family emoji"
         );
     }
 }

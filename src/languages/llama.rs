@@ -173,7 +173,11 @@ fn parse_chat_completion_candidates(body: &str) -> Vec<String> {
 }
 
 fn normalize_model_lines(content: &str) -> Vec<String> {
-    content
+    let normalized = content
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\t", "\t");
+    normalized
         .lines()
         .map(|line| {
             line.trim()
@@ -227,7 +231,7 @@ fn escape_json_string(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};
-    use std::net::{TcpListener, TcpStream};
+    use std::net::TcpListener;
     use std::thread;
 
     use super::*;
@@ -368,8 +372,12 @@ mod tests {
         assert!(prompt.contains("Handwriting trace summary: trace summary"));
 
         let body = provider.request_body(&request);
-        assert!(body.contains(r#"\"model\":\"llama3.2:3b\""#));
-        assert!(body.contains(r#"\"seed\":\"hello\\nworld\"".replace("seed", "Seed"))
+        assert!(body.contains(r#""model":"llama3.2:3b""#));
+        assert!(
+            body.contains(
+                r#""Seed: hello\nworld\nConfidence: 0.92\nDegraded: no\nHandwriting trace summary: trace summary"#
+            )
+        );
     }
 
     #[test]
@@ -444,7 +452,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").expect("listen");
         let response_body =
             r#"{"choices":[{"message":{"role":"assistant","content":"1. one\n2. two\n3. three"}}]}"#.to_string();
-        let expected_request_body = "\"seed\": \"Seed: canary\"";
+        let expected_request_body = "Seed: canary";
         let address = listener.local_addr().expect("listen address");
 
         serve_local_llama_response(

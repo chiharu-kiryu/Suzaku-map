@@ -169,7 +169,7 @@
                         TextBlock {
                             text: transcript,
                             origin: [voice_content_x, voice_transcript_y],
-                            max_width: drawer_rect[2] - 24.0 * responsive_scale * voice_scale,
+                            max_width: (drawer_rect[2] - 24.0 * responsive_scale * voice_scale).max(0.0),
                             pixel_size: if chrome.voice_transcript.is_empty() {
                                 input_value_px * 0.58 * voice_scale
                             } else {
@@ -404,7 +404,7 @@
                                 visual_rect[0] + 7.2 * responsive_scale * voice_scale,
                                 visual_rect[1] + 5.8 * responsive_scale * voice_scale,
                             ],
-                            max_width: visual_rect[2] - 15.0 * responsive_scale * voice_scale,
+                                    max_width: (visual_rect[2] - 15.0 * responsive_scale * voice_scale).max(0.0),
                                     pixel_size: 2.0 * voice_scale,
                                     letter_spacing: ui_tracking * voice_scale,
                                     line_gap: base_line_gap * voice_scale,

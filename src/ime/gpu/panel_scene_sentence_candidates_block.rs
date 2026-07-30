@@ -5,48 +5,62 @@
     };
     let sentence_y = suggestions_y + metrics.chip_section_h + metrics.sentence_section_gap;
     let available_sentence_area = (candidate_area_bottom - sentence_y).max(0.0);
+    let panel_right = panel_x + panel_width;
     let candidate_columns = metrics.candidate_columns;
-let candidate_gap_x = if collapsed_daily_mode {
-    4.3 * responsive_scale
-} else {
-    6.6 * responsive_scale
-};
-let collapsed_primary_w = if collapsed_daily_mode {
-    let trailing_count = visible_sentence_candidates.len().saturating_sub(1);
-    if trailing_count == 0 {
-        panel_width
+    let candidate_gap_x = if collapsed_daily_mode {
+        4.3 * responsive_scale
     } else {
-    let min_trailing_w = 50.0 * responsive_scale;
-    let trailing_total_gap = candidate_gap_x * trailing_count as f32;
-    let min_primary = 170.0 * responsive_scale;
-    let available_for_primary = if trailing_count == 0 {
-        panel_width
-    } else {
-        (panel_width
-            - (trailing_count as f32 * min_trailing_w)
-            - trailing_total_gap)
-            .max(min_primary)
+        6.6 * responsive_scale
     };
-    (panel_width * 0.68).clamp(min_primary, available_for_primary)
-    }
-} else if candidate_columns == 2 {
-    0.0
-} else {
-    0.0
-};
-let candidate_card_w = if collapsed_daily_mode {
-    let trailing_count = visible_sentence_candidates.len().saturating_sub(1);
-    if trailing_count == 0 {
-        panel_width
+    let candidate_count = visible_sentence_candidates.len();
+    let candidate_count_f = candidate_count as f32;
+    let min_candidate_w = 40.0 * responsive_scale;
+    let collapsed_fallback_card_w = {
+        let gap_count = (candidate_count_f - 1.0).max(0.0);
+        ((panel_width - candidate_gap_x * gap_count).max(0.0) / candidate_count_f.max(1.0))
+            .max(min_candidate_w)
+    };
+    let (collapsed_primary_w, collapsed_primary_uses_equal_width) = if collapsed_daily_mode {
+        let trailing_count = candidate_count.saturating_sub(1);
+        if trailing_count == 0 {
+            (panel_width, false)
+        } else {
+            let trailing_gap = candidate_gap_x * trailing_count as f32;
+            let preferred_primary = (panel_width * 0.68).max(min_candidate_w);
+            let trailing_width_guess =
+                ((panel_width - preferred_primary - trailing_gap) / trailing_count as f32)
+                    .max(min_candidate_w);
+            let required_width =
+                preferred_primary + trailing_gap + trailing_width_guess * trailing_count as f32;
+            if required_width <= panel_width {
+                (preferred_primary, false)
+            } else {
+                (collapsed_fallback_card_w, true)
+            }
+        }
+    } else if candidate_columns == 2 {
+        (0.0, false)
     } else {
-        let remaining = panel_width - collapsed_primary_w - candidate_gap_x * trailing_count as f32;
-        (remaining / trailing_count as f32).max(46.0 * responsive_scale)
-    }
-} else if candidate_columns == 2 {
-    (panel_width - candidate_gap_x) / 2.0
-} else {
-    panel_width
-};
+        (0.0, false)
+    };
+    let candidate_card_w = if collapsed_daily_mode {
+        let trailing_count = candidate_count.saturating_sub(1);
+        if trailing_count == 0 {
+            panel_width
+        } else {
+            let remaining = panel_width - collapsed_primary_w - candidate_gap_x * trailing_count as f32;
+            let normal = (remaining / trailing_count as f32).max(min_candidate_w);
+            if collapsed_primary_uses_equal_width {
+                collapsed_fallback_card_w
+            } else {
+                normal
+            }
+        }
+    } else if candidate_columns == 2 {
+        (panel_width - candidate_gap_x) / 2.0
+    } else {
+        panel_width
+    };
 let hero_card_height = if collapsed_daily_mode {
     32.0 * responsive_scale
 } else {
@@ -102,7 +116,7 @@ let hero_card_height = if collapsed_daily_mode {
     for (display_index, (source_index, label)) in visible_sentence_candidates.iter().enumerate() {
         let is_hero = !collapsed_daily_mode && hero_cards_enabled && display_index == 0;
         let style_label = crate::panel_support::sentence_candidate_style_label(label, is_hero);
-        let (x, y, card_width, card_height) = if is_hero {
+        let (x, y, mut card_width, card_height) = if is_hero {
             (panel_x, sentence_y, panel_width, hero_card_height)
     } else if collapsed_daily_mode {
         let trailing_index = display_index.saturating_sub(1);
@@ -134,6 +148,12 @@ let hero_card_height = if collapsed_daily_mode {
                 metrics.item_height,
             )
         };
+        if x + card_width > panel_right {
+            card_width = (panel_right - x).max(0.0);
+        }
+        if card_width <= 0.0 {
+            continue;
+        }
         if y + card_height > candidate_area_bottom {
             break;
         }
@@ -226,16 +246,22 @@ let hero_card_height = if collapsed_daily_mode {
         );
     }
     if is_hero {
-        let badge_rect = [
-            visual_rect[0] + visual_rect[2] - 88.0 * responsive_scale,
-            visual_rect[1] + 9.2 * responsive_scale,
-            66.0 * responsive_scale,
-            17.0 * responsive_scale,
-        ];
-        quads.push(CandidateQuad {
-            rect: badge_rect,
-            color: badge_fill,
-        });
+        let available_badge_width = (visual_rect[2] - 6.0 * responsive_scale).max(0.0);
+        if available_badge_width > 0.0 {
+            let badge_width = (66.0 * responsive_scale).min(available_badge_width);
+            if badge_width > 0.0 {
+                let badge_rect = [
+                    visual_rect[0] + visual_rect[2] - badge_width,
+                    visual_rect[1] + 9.2 * responsive_scale,
+                    badge_width,
+                    17.0 * responsive_scale,
+                ];
+                quads.push(CandidateQuad {
+                    rect: badge_rect,
+                    color: badge_fill,
+                });
+            }
+        }
     }
     hit_targets.push(HitTarget {
         index: *source_index,
@@ -269,12 +295,13 @@ let hero_card_height = if collapsed_daily_mode {
                     16.0 * responsive_scale
                 },
         ],
-        max_width: visual_rect[2]
+        max_width: (visual_rect[2]
             - if collapsed_daily_mode {
                 20.0 * responsive_scale
             } else {
                 36.0 * responsive_scale
-            },
+            })
+            .max(4.0 * responsive_scale),
         pixel_size: if is_hero {
             hero_px
         } else if collapsed_daily_mode {
@@ -319,7 +346,7 @@ let hero_card_height = if collapsed_daily_mode {
                     format!("sentence {style_label} phrase · tap to commit")
                 },
                 origin: [visual_rect[0] + 18.0 * responsive_scale, meta_y],
-                max_width: visual_rect[2] - 36.0 * responsive_scale,
+                max_width: (visual_rect[2] - 36.0 * responsive_scale).max(4.0 * responsive_scale),
                 pixel_size: helper_px,
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,
@@ -344,15 +371,18 @@ let hero_card_height = if collapsed_daily_mode {
         layouts: candidate_layouts,
     });
     if is_hero {
+        let available_badge_width = (visual_rect[2] - 6.0 * responsive_scale).max(0.0);
+        let badge_width = (66.0 * responsive_scale).min(available_badge_width);
         let badge_layout = TextBlock {
             text: style_label.to_string(),
             origin: [
                 visual_rect[0]
                     + visual_rect[2]
-                    - 80.0 * responsive_scale,
+                    - badge_width
+                    + 8.0 * responsive_scale,
                 visual_rect[1] + 10.0 * responsive_scale,
             ],
-            max_width: 68.0 * responsive_scale - 16.0 * responsive_scale,
+            max_width: (badge_width - 16.0 * responsive_scale).max(0.0),
             pixel_size: 1.7 * responsive_scale,
             letter_spacing: ui_tracking * 0.7,
             line_gap: base_line_gap,

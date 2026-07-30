@@ -42,7 +42,7 @@
                         panel_x + 6.0 * responsive_scale,
                         chip_section_y + 5.0 * responsive_scale,
                     ],
-                    max_width: panel_width - 96.0 * responsive_scale,
+                    max_width: (panel_width - 96.0 * responsive_scale).max(0.0),
                     pixel_size: title_px,
                     letter_spacing: heading_tracking,
                     line_gap: base_line_gap,
@@ -123,7 +123,7 @@
                     visual_back_rect[0] + 6.8 * responsive_scale,
                     visual_back_rect[1] + 5.2 * responsive_scale,
                 ],
-                max_width: visual_back_rect[2] - 16.0 * responsive_scale,
+                max_width: (visual_back_rect[2] - 16.0 * responsive_scale).max(0.0),
                 pixel_size: 2.0 * responsive_scale,
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,
@@ -198,9 +198,20 @@
             if row >= max_rows {
                 break;
             }
+            let mut available_chip_w = chip_inner_right - chip_x;
+            while available_chip_w <= 0.0 && row + 1 < max_rows {
+                row += 1;
+                chip_x = chip_inner_x;
+                available_chip_w = chip_inner_right - chip_x;
+            }
+            if row >= max_rows || available_chip_w <= 0.0 {
+                break;
+            }
 
-                    let available_chip_w = (chip_inner_right - chip_x).max(27.0 * responsive_scale);
-                    let chip_w = base_chip_w.min(available_chip_w);
+            let chip_w = base_chip_w.min(available_chip_w);
+            if chip_w <= 0.0 {
+                continue;
+            }
             let rect = [
                 chip_x,
                 chip_y + row as f32 * row_gap,
@@ -247,7 +258,7 @@
                     visual_rect[0] + 7.2 * responsive_scale,
                     visual_rect[1] + 5.8 * responsive_scale,
                 ],
-                max_width: visual_rect[2] - 14.0 * responsive_scale,
+                max_width: (visual_rect[2] - 14.0 * responsive_scale).max(0.0),
                 pixel_size: if collapsed_daily_mode { chip_px * 0.95 } else { chip_px },
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,

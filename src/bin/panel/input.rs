@@ -1,5 +1,5 @@
 use super::{PanelState, PanelWindowKind};
-use suzaku_map::ime::gpu::{InputMode, InteractionKind, VoiceCaptureState};
+use suzaku_map::ime::gpu::{InputMode, VoiceCaptureState};
 use suzaku_map::ime::{CommitOptions, SignalState};
 use wgpu::SurfaceError;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
@@ -55,7 +55,7 @@ pub(super) fn handle_panel_window_event(
                         state.record_compact_drag_motion(x, y);
                     }
                     state.update_compact_hover();
-                } else if state.scale_dragging {
+                } else if state.interaction.scale_dragging {
                     state.update_window_scale_drag(position.x as f32);
                 } else if state.kind == PanelWindowKind::Main {
                     state.extend_handwriting_stroke();
@@ -67,48 +67,15 @@ pub(super) fn handle_panel_window_event(
                 state.modifiers = modifiers.state();
             }
             WindowEvent::Touch(touch) => {
+                state.interaction.last_input_was_touch = true;
                 state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
                 state.update_hovered_interaction();
                 if state.kind == PanelWindowKind::Main {
                     match touch.phase {
-                        TouchPhase::Started => {
-                            state.update_pressed_interaction();
-                            state.touch_start_position = state.cursor_position;
-                            state.touch_tap_pending = !state.try_begin_handwriting_stroke();
-                        }
-                        TouchPhase::Moved => {
-                            if state.handwriting_dragging {
-                                state.extend_handwriting_stroke();
-                            } else if let (Some((start_x, start_y)), Some((x, y))) =
-                                (state.touch_start_position, state.cursor_position)
-                            {
-                                let tap_slop = (state.chrome.pointer_tap_slop_tenths as f32) / 10.0;
-                                if (x - start_x).abs() > tap_slop || (y - start_y).abs() > tap_slop
-                                {
-                                    state.touch_tap_pending = false;
-                                }
-                            }
-                        }
-                        TouchPhase::Ended => {
-                            if state.handwriting_dragging {
-                                state.finish_handwriting_stroke();
-                            } else if state.touch_tap_pending {
-                                if let Some(target) = state.pressed_interaction {
-                                    if state.press_target_is_stable(target) {
-                                        state.select_at_cursor();
-                                    }
-                                }
-                            }
-                            state.clear_pressed_interaction();
-                            state.touch_tap_pending = false;
-                            state.touch_start_position = None;
-                        }
-                        TouchPhase::Cancelled => {
-                            state.finish_handwriting_stroke();
-                            state.clear_pressed_interaction();
-                            state.touch_tap_pending = false;
-                            state.touch_start_position = None;
-                        }
+                        TouchPhase::Started => state.begin_primary_press(true),
+                        TouchPhase::Moved => state.update_touch_move_stability(),
+                        TouchPhase::Ended => state.complete_primary_release(true),
+                        TouchPhase::Cancelled => state.cancel_primary_interaction(),
                     }
                 }
                 state.window.request_redraw();
@@ -118,16 +85,8 @@ pub(super) fn handle_panel_window_event(
                 button: MouseButton::Left,
                 ..
             } => {
-                state.update_pressed_interaction();
-                if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                    if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
-                        state.begin_compact_drag();
-                    }
-                } else if state.pressed_interaction == Some(InteractionKind::DragWindowScale) {
-                    state.begin_window_scale_drag();
-                } else if state.kind == PanelWindowKind::Main {
-                    let _ = state.try_begin_handwriting_stroke();
-                }
+                state.interaction.last_input_was_touch = false;
+                state.begin_primary_press(false);
                 state.window.request_redraw();
             }
             WindowEvent::MouseInput {
@@ -135,34 +94,8 @@ pub(super) fn handle_panel_window_event(
                 button: MouseButton::Left,
                 ..
             } => {
-                if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                    if state.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
-                        if !state.end_compact_drag()
-                            && state
-                                .pressed_interaction
-                                .is_some_and(|target| state.press_target_is_stable(target))
-                        {
-                            state.select_at_cursor();
-                        }
-                    } else if state
-                        .pressed_interaction
-                        .is_some_and(|target| state.press_target_is_stable(target))
-                    {
-                        state.select_at_cursor();
-                    }
-                } else if state.scale_dragging {
-                    state.end_window_scale_drag();
-                } else {
-                    if let Some(target) = state.pressed_interaction {
-                        if state.press_target_is_stable(target)
-                            && (state.kind != PanelWindowKind::Main || !state.handwriting_dragging)
-                        {
-                            state.select_at_cursor();
-                        }
-                    }
-                    state.finish_handwriting_stroke();
-                }
-                state.clear_pressed_interaction();
+                state.interaction.last_input_was_touch = false;
+                state.complete_primary_release(false);
                 state.update_hovered_interaction();
                 state.window.request_redraw();
             }

@@ -15,6 +15,8 @@ const MIN_POINTER_TAP_MAX_MS: u16 = 120;
 const MAX_POINTER_TAP_MAX_MS: u16 = 1200;
 const MIN_POINTER_TARGET_SLOP_TENTHS: u16 = 10;
 const MAX_POINTER_TARGET_SLOP_TENTHS: u16 = 120;
+pub(crate) const DEFAULT_WINDOW_SCALE: f32 = 1.3;
+pub(crate) const FIRST_LAUNCH_WINDOW_SCALE: f32 = 1.35;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PersistedDisplaySettings {
@@ -153,11 +155,11 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         llm_enabled: false,
         llm_model: LlmModelPreset::Llama32_3b,
         llm_temperature: LlmTemperaturePreset::Balanced,
-        pointer_tap_slop_tenths: 75,
-        pointer_tap_max_ms: 320,
-        pointer_target_slop_tenths: 35,
-        window_scale: 1.0,
-    };
+            pointer_tap_slop_tenths: 100,
+            pointer_tap_max_ms: 420,
+            pointer_target_slop_tenths: 50,
+            window_scale: DEFAULT_WINDOW_SCALE,
+        };
 
     for line in contents.lines() {
         let Some((key, value)) = line.split_once('=') else {
@@ -509,9 +511,9 @@ mod tests {
             llm_enabled: true,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
-            pointer_tap_slop_tenths: 75,
-            pointer_tap_max_ms: 320,
-            pointer_target_slop_tenths: 35,
+            pointer_tap_slop_tenths: 100,
+            pointer_tap_max_ms: 420,
+            pointer_target_slop_tenths: 50,
             window_scale: 1.0,
         };
 

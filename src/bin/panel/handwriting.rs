@@ -3,6 +3,85 @@ use crate::helpers::point_in_rect;
 use suzaku_map::ime::gpu::{InputMode, InteractionKind};
 use suzaku_map::panel_support::{recognize_handwriting_candidates, summarize_handwriting_strokes};
 
+const HANDWRITING_EDGE_PADDING: f32 = 4.0;
+const HANDWRITING_MIN_POINT_DISTANCE: f32 = 1.2;
+const HANDWRITING_INTERPOLATION_STEP: f32 = 3.2;
+const HANDWRITING_SMOOTH_ALPHA: f32 = 0.22;
+const HANDWRITING_SPEED_REFERENCE: f32 = 16.0;
+const HANDWRITING_SPEED_MIN: f32 = 0.55;
+const HANDWRITING_SPEED_MAX: f32 = 2.0;
+const HANDWRITING_INTERPOLATION_STEP_MIN: f32 = 2.0;
+const HANDWRITING_INTERPOLATION_STEP_MAX: f32 = 6.8;
+const HANDWRITING_MIN_DISTANCE_MIN: f32 = 0.78;
+const HANDWRITING_MIN_DISTANCE_MAX: f32 = 2.0;
+const HANDWRITING_SMOOTH_ALPHA_MIN: f32 = 0.14;
+const HANDWRITING_SMOOTH_ALPHA_MAX: f32 = 0.34;
+
+fn clamp_handwriting_point(point: [f32; 2], rect: [f32; 4]) -> [f32; 2] {
+    [
+        point[0].clamp(rect[0] + HANDWRITING_EDGE_PADDING, rect[0] + rect[2] - HANDWRITING_EDGE_PADDING),
+        point[1].clamp(rect[1] + HANDWRITING_EDGE_PADDING, rect[1] + rect[3] - HANDWRITING_EDGE_PADDING),
+    ]
+}
+
+fn handwriting_speed_profile(distance: f32, previous_distance: f32) -> (f32, f32, f32) {
+    let speed_hint = (distance.max(0.0) + previous_distance.max(0.0) * 0.65) * 0.5;
+    let speed_ratio = (speed_hint / HANDWRITING_SPEED_REFERENCE)
+        .clamp(HANDWRITING_SPEED_MIN, HANDWRITING_SPEED_MAX);
+
+    let interpolation_step = (HANDWRITING_INTERPOLATION_STEP / speed_ratio)
+        .clamp(HANDWRITING_INTERPOLATION_STEP_MIN, HANDWRITING_INTERPOLATION_STEP_MAX);
+    let min_point_distance = (HANDWRITING_MIN_POINT_DISTANCE / speed_ratio)
+        .clamp(HANDWRITING_MIN_DISTANCE_MIN, HANDWRITING_MIN_DISTANCE_MAX);
+    let smooth_alpha = (HANDWRITING_SMOOTH_ALPHA * speed_ratio.sqrt())
+        .clamp(HANDWRITING_SMOOTH_ALPHA_MIN, HANDWRITING_SMOOTH_ALPHA_MAX);
+
+    (min_point_distance, interpolation_step, smooth_alpha)
+}
+
+fn append_handwriting_segment(stroke: &mut Vec<[f32; 2]>, next: [f32; 2]) {
+    let Some(last) = stroke.last().copied() else {
+        stroke.push(next);
+        return;
+    };
+
+    let dx = next[0] - last[0];
+    let dy = next[1] - last[1];
+    let distance = dx.hypot(dy);
+    let previous_distance = stroke
+        .get(stroke.len().saturating_sub(2))
+        .map(|previous| (last[0] - previous[0]).hypot(last[1] - previous[1]))
+        .unwrap_or(0.0);
+
+    let (min_point_distance, interpolation_step, smooth_alpha) =
+        handwriting_speed_profile(distance, previous_distance);
+
+    if distance < min_point_distance {
+        return;
+    }
+
+    let segment_count = (distance / interpolation_step).ceil() as usize;
+    let segment_count = segment_count.max(1);
+
+    for segment in 1..=segment_count {
+        let t = segment as f32 / segment_count as f32;
+        let sampled = [last[0] + dx * t, last[1] + dy * t];
+        let point = if segment == segment_count {
+            sampled
+        } else {
+            let [prev_x, prev_y] = stroke.last().copied().unwrap_or(last);
+            [
+                prev_x + (sampled[0] - prev_x) * smooth_alpha,
+                prev_y + (sampled[1] - prev_y) * smooth_alpha,
+            ]
+        };
+        let [prev_x, prev_y] = stroke.last().copied().unwrap_or(point);
+        if (point[0] - prev_x).hypot(point[1] - prev_y) >= min_point_distance * 0.72 {
+            stroke.push(point);
+        }
+    }
+}
+
 impl PanelState {
     fn refresh_handwriting_candidates(&mut self) {
         self.last_handwriting_summary = Some(summarize_handwriting_strokes(
@@ -43,14 +122,16 @@ impl PanelState {
         }
 
         self.chrome.blur_input();
-        self.handwriting_dragging = true;
-        self.chrome.handwriting_strokes.push(vec![[x, y]]);
+        self.interaction.handwriting_dragging = true;
+        self.chrome
+            .handwriting_strokes
+            .push(vec![clamp_handwriting_point([x, y], rect)]);
         self.chrome.handwriting_hint = "Tracing… release to recognize".to_string();
         true
     }
 
     pub(super) fn extend_handwriting_stroke(&mut self) {
-        if !self.handwriting_dragging || self.chrome.active_input_mode != InputMode::Handwriting {
+        if !self.interaction.handwriting_dragging || self.chrome.active_input_mode != InputMode::Handwriting {
             return;
         }
         let Some((x, y)) = self.cursor_position else {
@@ -59,32 +140,23 @@ impl PanelState {
         let Some(rect) = self.handwriting_canvas_rect() else {
             return;
         };
-        let clamped = [
-            x.clamp(rect[0] + 4.0, rect[0] + rect[2] - 4.0),
-            y.clamp(rect[1] + 4.0, rect[1] + rect[3] - 4.0),
-        ];
+        let clamped = clamp_handwriting_point([x, y], rect);
         let Some(stroke) = self.chrome.handwriting_strokes.last_mut() else {
             return;
         };
-        if stroke
-            .last()
-            .map(|last| (last[0] - clamped[0]).hypot(last[1] - clamped[1]) >= 3.0)
-            .unwrap_or(true)
-        {
-            stroke.push(clamped);
-        }
+        append_handwriting_segment(stroke, clamped);
     }
 
     pub(super) fn finish_handwriting_stroke(&mut self) {
-        if !self.handwriting_dragging {
+        if !self.interaction.handwriting_dragging {
             return;
         }
-        self.handwriting_dragging = false;
+        self.interaction.handwriting_dragging = false;
         self.refresh_handwriting_candidates();
     }
 
     pub(super) fn undo_handwriting_stroke(&mut self) {
-        self.handwriting_dragging = false;
+        self.interaction.handwriting_dragging = false;
         if self.chrome.handwriting_strokes.pop().is_none() {
             self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
             return;
@@ -93,7 +165,7 @@ impl PanelState {
     }
 
     pub(super) fn clear_handwriting(&mut self) {
-        self.handwriting_dragging = false;
+        self.interaction.handwriting_dragging = false;
         self.chrome.handwriting_strokes.clear();
         self.chrome.handwriting_candidates.clear();
         self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();

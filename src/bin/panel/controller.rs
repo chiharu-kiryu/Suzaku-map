@@ -46,16 +46,17 @@ impl PanelState {
             self.voice_stability_ticks = 0;
             self.last_polled_voice_transcript.clear();
             self.chrome.blur_input();
-            self.touch_tap_pending = false;
-            self.touch_start_position = None;
-            self.scale_dragging = false;
-            self.scale_drag_start_cursor_x = None;
-            self.compact_dragging = false;
-            self.compact_drag_moved = false;
-            self.compact_hovered = false;
-            self.compact_drag_start_cursor = None;
-            self.compact_drag_start_window_pos = None;
-            self.compact_drag_start_instant = None;
+            self.interaction.touch_tap_pending = false;
+            self.interaction.touch_start_position = None;
+            self.interaction.scale_dragging = false;
+            self.interaction.scale_drag_start_cursor_x = None;
+            self.interaction.compact_dragging = false;
+            self.interaction.compact_drag_moved = false;
+            self.interaction.compact_hovered = false;
+            self.interaction.compact_drag_start_cursor = None;
+            self.interaction.compact_drag_start_window_pos = None;
+            self.interaction.last_input_was_touch = false;
+            self.interaction.compact_drag_start_instant = None;
             if self.chrome.voice_state == VoiceCaptureState::Listening {
                 self.stop_voice_capture();
             }
@@ -64,18 +65,18 @@ impl PanelState {
 
     fn chosen_canvas_abandon_state(&mut self) {
         self.clear_pressed_interaction();
-        self.touch_tap_pending = false;
-        self.touch_start_position = None;
-        self.scale_dragging = false;
-        self.scale_drag_start_cursor_x = None;
-        self.scale_drag_start_scale = self.window_scale;
-        self.compact_dragging = false;
-        self.compact_drag_moved = false;
-        self.compact_hovered = false;
-        self.compact_drag_start_cursor = None;
-        self.compact_drag_start_window_pos = None;
-        self.compact_drag_start_instant = None;
-        self.handwriting_dragging = false;
+        self.interaction.touch_tap_pending = false;
+        self.interaction.touch_start_position = None;
+        self.interaction.scale_dragging = false;
+        self.interaction.scale_drag_start_cursor_x = None;
+        self.interaction.scale_drag_start_scale = self.window_scale;
+        self.interaction.compact_dragging = false;
+        self.interaction.compact_drag_moved = false;
+        self.interaction.compact_hovered = false;
+        self.interaction.compact_drag_start_cursor = None;
+        self.interaction.compact_drag_start_window_pos = None;
+        self.interaction.compact_drag_start_instant = None;
+        self.interaction.handwriting_dragging = false;
         if self.chrome.active_input_mode == InputMode::Handwriting {
             self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
         }
@@ -83,6 +84,7 @@ impl PanelState {
             self.stop_voice_capture();
         }
         self.chrome.blur_input();
+        self.interaction.last_input_was_touch = false;
     }
 
     pub(super) fn commit_selected_candidate_to_host(
@@ -278,15 +280,15 @@ impl PanelState {
             PanelWindowKind::Main => {
                 let mut chrome = self.chrome.clone();
                 chrome.settings_open = false;
-                chrome.hovered_interaction = self.hovered_interaction;
-                chrome.pressed_interaction = self.pressed_interaction;
+                chrome.hovered_interaction = self.interaction.hovered_interaction;
+                chrome.pressed_interaction = self.interaction.pressed_interaction;
                 chrome.window_scale = self.window_scale;
                 if chrome.compact_mode {
                     self.renderer.build_compact_scene(
                         &self.engine.snapshot(),
                         &chrome,
-                        self.compact_hovered,
-                        self.compact_dragging,
+                        self.interaction.compact_hovered,
+                        self.interaction.compact_dragging,
                     )
                 } else {
                     self.renderer
@@ -295,8 +297,8 @@ impl PanelState {
             }
             PanelWindowKind::Settings => {
                 let mut chrome = self.chrome.clone();
-                chrome.hovered_interaction = self.hovered_interaction;
-                chrome.pressed_interaction = self.pressed_interaction;
+                chrome.hovered_interaction = self.interaction.hovered_interaction;
+                chrome.pressed_interaction = self.interaction.pressed_interaction;
                 self.renderer.build_settings_scene(&chrome)
             }
         };
@@ -660,45 +662,156 @@ impl PanelState {
 
     pub(super) fn update_hovered_interaction(&mut self) {
         let Some((x, y)) = self.cursor_position else {
-            self.hovered_interaction = None;
+            self.interaction.hovered_interaction = None;
             return;
         };
         let scene = self.current_scene();
-        self.hovered_interaction = scene.hit_interaction(x, y);
+        self.interaction.hovered_interaction = scene.hit_interaction(x, y);
     }
 
     pub(super) fn update_pressed_interaction(&mut self) {
         let Some((x, y)) = self.cursor_position else {
-            self.pressed_interaction = None;
-            self.press_target_rect = None;
-            self.press_start_cursor = None;
-            self.press_start_instant = None;
+            self.interaction.pressed_interaction = None;
+            self.interaction.press_target_rect = None;
+            self.interaction.press_start_cursor = None;
+            self.interaction.press_start_instant = None;
             return;
         };
         let scene = self.current_scene();
-        self.pressed_interaction = scene.hit_interaction(x, y);
-        self.press_target_rect = self.pressed_interaction.and_then(|target| {
+        self.interaction.pressed_interaction = scene.hit_interaction(x, y);
+        self.interaction.press_target_rect = self.interaction.pressed_interaction.and_then(|target| {
             scene
                 .interactive_targets
                 .iter()
                 .find(|candidate| candidate.kind == target)
                 .map(|candidate| candidate.rect)
         });
-        self.press_start_cursor = Some((x, y));
-        self.press_start_instant = Some(Instant::now());
+        self.interaction.press_start_cursor = Some((x, y));
+        self.interaction.press_start_instant = Some(Instant::now());
+    }
+
+    pub(super) fn begin_primary_press(&mut self, is_touch: bool) {
+        self.update_pressed_interaction();
+
+        if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
+            if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
+                self.interaction.touch_tap_pending = false;
+                self.begin_compact_drag();
+                return;
+            }
+        }
+
+        if self.interaction.pressed_interaction == Some(InteractionKind::DragWindowScale) {
+            self.interaction.touch_tap_pending = false;
+            self.begin_window_scale_drag();
+            return;
+        }
+
+        if is_touch {
+            self.interaction.touch_start_position = self.cursor_position;
+            self.interaction.touch_tap_pending = !self.try_begin_handwriting_stroke();
+            return;
+        }
+
+        if self.kind == PanelWindowKind::Main {
+            let _ = self.try_begin_handwriting_stroke();
+        }
+    }
+
+    pub(super) fn update_touch_move_stability(&mut self) {
+        if self.interaction.handwriting_dragging {
+            self.extend_handwriting_stroke();
+            return;
+        }
+        if self.interaction.compact_dragging {
+            if let Some((x, y)) = self.cursor_position {
+                self.record_compact_drag_motion(x, y);
+            }
+            return;
+        }
+        if self.interaction.scale_dragging {
+            if let Some((x, _)) = self.cursor_position {
+                self.update_window_scale_drag(x);
+            }
+            return;
+        }
+
+        if let (Some((start_x, start_y)), Some((x, y))) =
+            (self.interaction.touch_start_position, self.cursor_position)
+        {
+            let tap_slop = self.effective_tap_slop_tenths() / 10.0;
+            if (x - start_x).abs() > tap_slop || (y - start_y).abs() > tap_slop {
+                self.interaction.touch_tap_pending = false;
+            }
+        }
+    }
+
+    pub(super) fn complete_primary_release(&mut self, is_touch: bool) {
+        let selected_from_pressed = self
+            .interaction
+            .pressed_interaction
+            .is_some_and(|target| self.press_target_is_stable(target));
+
+        if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
+            if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
+                if !self.end_compact_drag() && selected_from_pressed {
+                    self.select_at_cursor();
+                }
+            } else if selected_from_pressed {
+                self.select_at_cursor();
+            }
+        } else if self.interaction.scale_dragging {
+            self.end_window_scale_drag();
+        } else if is_touch {
+            if self.interaction.handwriting_dragging {
+                self.finish_handwriting_stroke();
+            } else if self.interaction.touch_tap_pending && selected_from_pressed {
+                self.select_at_cursor();
+            }
+        } else if selected_from_pressed && (self.kind != PanelWindowKind::Main || !self.interaction.handwriting_dragging)
+        {
+            self.select_at_cursor();
+            self.finish_handwriting_stroke();
+        } else {
+            self.finish_handwriting_stroke();
+        }
+
+        if is_touch {
+            self.interaction.touch_tap_pending = false;
+            self.interaction.touch_start_position = None;
+        }
+        self.clear_pressed_interaction();
+    }
+
+    pub(super) fn cancel_primary_interaction(&mut self) {
+        self.finish_handwriting_stroke();
+        if self.interaction.compact_dragging {
+            self.interaction.compact_dragging = false;
+            self.interaction.compact_drag_moved = false;
+            self.interaction.compact_drag_start_cursor = None;
+            self.interaction.compact_drag_start_window_pos = None;
+            self.interaction.compact_drag_start_instant = None;
+            self.update_compact_hover();
+        }
+        if self.interaction.scale_dragging {
+            self.end_window_scale_drag();
+        }
+        self.clear_pressed_interaction();
+        self.interaction.touch_tap_pending = false;
+        self.interaction.touch_start_position = None;
     }
 
     pub(super) fn press_target_is_stable(&self, expected: InteractionKind) -> bool {
-        if self.pressed_interaction != Some(expected) {
+        if self.interaction.pressed_interaction != Some(expected) {
             return false;
         }
-        let Some((start_x, start_y)) = self.press_start_cursor else {
+        let Some((start_x, start_y)) = self.interaction.press_start_cursor else {
             return false;
         };
-        let Some(started_at) = self.press_start_instant else {
+        let Some(started_at) = self.interaction.press_start_instant else {
             return false;
         };
-        let tap_max_ms = Duration::from_millis(self.chrome.pointer_tap_max_ms as u64);
+        let tap_max_ms = Duration::from_millis(self.effective_tap_max_ms());
         if started_at.elapsed() > tap_max_ms {
             return false;
         }
@@ -707,13 +820,13 @@ impl PanelState {
         };
         let delta_x = (x - start_x).abs();
         let delta_y = (y - start_y).abs();
-        let tap_slop = self.chrome.pointer_tap_slop_tenths as f32 / 10.0;
+        let tap_slop = self.effective_tap_slop_tenths() / 10.0;
         if delta_x > tap_slop || delta_y > tap_slop {
             return false;
         }
 
-        if let Some(rect) = self.press_target_rect {
-            let target_slop = self.chrome.pointer_target_slop_tenths as f32 / 10.0;
+        if let Some(rect) = self.interaction.press_target_rect {
+            let target_slop = self.effective_target_slop_tenths() / 10.0;
             let expanded_rect = [
                 rect[0] - target_slop,
                 rect[1] - target_slop,
@@ -728,11 +841,36 @@ impl PanelState {
         scene.hit_interaction(x, y) == Some(expected)
     }
 
+    fn effective_tap_slop_tenths(&self) -> f32 {
+        if self.interaction.last_input_was_touch {
+            (self.chrome.pointer_tap_slop_tenths as f32 * 1.45).min(120.0)
+        } else {
+            self.chrome.pointer_tap_slop_tenths as f32
+        }
+    }
+
+    fn effective_target_slop_tenths(&self) -> f32 {
+        if self.interaction.last_input_was_touch {
+            (self.chrome.pointer_target_slop_tenths as f32 * 1.6).min(120.0)
+        } else {
+            self.chrome.pointer_target_slop_tenths as f32
+        }
+    }
+
+    fn effective_tap_max_ms(&self) -> u64 {
+        if self.interaction.last_input_was_touch {
+            let boosted = (self.chrome.pointer_tap_max_ms as f32 * 1.4).round();
+            boosted.min(1200.0) as u64
+        } else {
+            self.chrome.pointer_tap_max_ms as u64
+        }
+    }
+
     pub(super) fn clear_pressed_interaction(&mut self) {
-        self.pressed_interaction = None;
-        self.press_target_rect = None;
-        self.press_start_cursor = None;
-        self.press_start_instant = None;
+        self.interaction.pressed_interaction = None;
+        self.interaction.press_target_rect = None;
+        self.interaction.press_start_cursor = None;
+        self.interaction.press_start_instant = None;
     }
 
     pub(super) fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {

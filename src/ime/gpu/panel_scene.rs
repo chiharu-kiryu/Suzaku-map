@@ -89,7 +89,7 @@ impl WgpuCandidateRenderer {
             ThemePreset::Daylight => [0.24, 0.56, 0.86, 1.0],
             ThemePreset::DeviceDark => [0.32, 0.60, 0.98, 1.0],
         };
-        let responsive_scale = self.responsive_scale();
+        let responsive_scale = (self.responsive_scale() * chrome.window_scale * 1.12).clamp(0.9, 2.0);
         let input_value_px = match chrome.text_scale {
             DisplayTextScale::Small => 2.4,
             DisplayTextScale::Medium => 3.4,
@@ -345,9 +345,9 @@ impl WgpuCandidateRenderer {
                 text: "Seed input".to_string(),
                 origin: [
                     panel_x + 16.0 * responsive_scale,
-                    input_box_y + 10.5 * responsive_scale,
+                    input_box_y + 9.0 * responsive_scale,
                 ],
-                max_width: panel_width - 58.0 * responsive_scale,
+                max_width: (panel_width - 58.0 * responsive_scale).max(0.0),
                 pixel_size: title_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -365,9 +365,9 @@ impl WgpuCandidateRenderer {
                 },
                 origin: [
                     panel_x + 16.0 * responsive_scale,
-                    input_box_y + 27.5 * responsive_scale,
+                    input_box_y + 25.6 * responsive_scale,
                 ],
-                max_width: panel_width - 58.0 * responsive_scale,
+                max_width: (panel_width - 58.0 * responsive_scale).max(0.0),
                 pixel_size: input_value_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -411,39 +411,39 @@ impl WgpuCandidateRenderer {
         }
 
         let compact_button_rect = [
-            panel_x + panel_width - 32.5 * responsive_scale,
-            input_box_y + 7.0 * responsive_scale,
-            20.0 * responsive_scale,
-            20.0 * responsive_scale,
+            panel_x + panel_width - 32.0 * responsive_scale,
+            input_box_y + 6.0 * responsive_scale,
+            19.0 * responsive_scale,
+            19.0 * responsive_scale,
         ];
-        let scale_button_size = 16.0 * responsive_scale;
-        let scale_button_spacing = 4.2 * responsive_scale;
-        let scale_label_width = 30.0 * responsive_scale;
+        let scale_button_size = 15.0 * responsive_scale;
+        let scale_button_spacing = 3.4 * responsive_scale;
+        let scale_label_width = 24.0 * responsive_scale;
         let scale_plus_rect = [
             compact_button_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
             scale_button_size,
-            20.0 * responsive_scale,
+            19.0 * responsive_scale,
         ];
         let scale_reset_rect = [
             scale_plus_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
             scale_button_size,
-            20.0 * responsive_scale,
+            19.0 * responsive_scale,
         ];
         let scale_minus_rect = [
             scale_reset_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
             scale_button_size,
-            20.0 * responsive_scale,
+            19.0 * responsive_scale,
         ];
         let scale_drag_rect = [
             scale_minus_rect[0],
             compact_button_rect[1],
             (scale_plus_rect[0] + scale_plus_rect[2] - scale_minus_rect[0]).max(scale_button_size),
-            20.0 * responsive_scale,
+            19.0 * responsive_scale,
         ];
-        let scale_text_x = (scale_minus_rect[0] - scale_label_width - 4.0 * responsive_scale)
+        let scale_text_x = (scale_minus_rect[0] - scale_label_width - 3.0 * responsive_scale)
             .max(panel_x + 8.0 * responsive_scale);
         let can_decrease_scale = chrome.can_decrease_window_scale();
         let can_increase_scale = chrome.can_increase_window_scale();
@@ -456,7 +456,7 @@ impl WgpuCandidateRenderer {
                 ),
                 origin: [
                     scale_text_x,
-                    compact_button_rect[1] + 4.2 * responsive_scale,
+                    compact_button_rect[1] + 3.8 * responsive_scale,
                 ],
                 max_width: scale_label_width,
                 pixel_size: 2.0 * responsive_scale,
@@ -523,9 +523,9 @@ impl WgpuCandidateRenderer {
             text: "".to_string(),
             origin: [
                 compact_button_rect[0] + 3.4 * responsive_scale,
-                compact_button_rect[1] + 4.4 * responsive_scale,
+                compact_button_rect[1] + 3.8 * responsive_scale,
             ],
-            max_width: compact_button_rect[2] - 7.0 * responsive_scale,
+            max_width: (compact_button_rect[2] - 7.0 * responsive_scale).max(0.0),
             pixel_size: 2.0 * responsive_scale,
             letter_spacing: ui_tracking,
             line_gap: base_line_gap,
@@ -577,7 +577,7 @@ impl WgpuCandidateRenderer {
             text: "-".to_string(),
             origin: [
                 scale_minus_rect[0] + (scale_minus_rect[2] - 3.2 * responsive_scale) / 2.0,
-                compact_button_rect[1] + 4.2 * responsive_scale,
+                compact_button_rect[1] + 3.8 * responsive_scale,
             ],
             max_width: scale_minus_rect[2].max(6.0),
             pixel_size: 2.0 * responsive_scale,
@@ -680,7 +680,7 @@ impl WgpuCandidateRenderer {
             text: "+".to_string(),
             origin: [
                 scale_plus_rect[0] + (scale_plus_rect[2] - 3.2 * responsive_scale) / 2.0,
-                compact_button_rect[1] + 4.2 * responsive_scale,
+                compact_button_rect[1] + 3.8 * responsive_scale,
             ],
             max_width: scale_plus_rect[2].max(6.0),
             pixel_size: 2.0 * responsive_scale,
@@ -733,12 +733,12 @@ impl WgpuCandidateRenderer {
                 ),
             ]);
         }
-        let toolbar_margin_x = 6.0 * responsive_scale;
+        let toolbar_margin_x = 5.0 * responsive_scale;
         let toolbar_button_count = toolbar_buttons.len() as f32;
         let toolbar_total_w =
             toolbar_button_count * toolbar_button_size + (toolbar_button_count - 1.0) * icon_gap;
         let trailing_toggle_w = if chrome.input_modes_expanded {
-            toolbar_button_size + 4.2 * responsive_scale
+            toolbar_button_size + 3.6 * responsive_scale
         } else {
             0.0
         };
@@ -812,7 +812,7 @@ impl WgpuCandidateRenderer {
         }
         {
             let toggle_rect = [
-                panel_x + panel_width - toolbar_button_size - 4.2 * responsive_scale,
+                panel_x + panel_width - toolbar_button_size - 3.8 * responsive_scale,
                 toolbar_y,
                 toolbar_button_size,
                 toolbar_button_size,
@@ -843,7 +843,7 @@ impl WgpuCandidateRenderer {
 
         let tools_panel_rect = [
             panel_x,
-            tools_y + metrics.tools_header_h + 1.9 * responsive_scale,
+            tools_y + metrics.tools_header_h + 1.2 * responsive_scale,
             panel_width,
             metrics.tools_content_h,
         ];
@@ -861,9 +861,9 @@ impl WgpuCandidateRenderer {
             );
             quads.push(CandidateQuad {
                 rect: [
-                    tools_panel_rect[0] + 10.0 * responsive_scale,
-                    tools_panel_rect[1] + 6.0 * responsive_scale,
-                    tools_panel_rect[2] - 18.0 * responsive_scale,
+                    tools_panel_rect[0] + 9.0 * responsive_scale,
+                    tools_panel_rect[1] + 5.0 * responsive_scale,
+                    tools_panel_rect[2] - 15.0 * responsive_scale,
                     1.8 * responsive_scale,
                 ],
                 color: match chrome.theme_preset {
@@ -872,10 +872,10 @@ impl WgpuCandidateRenderer {
                 },
             });
             let drawer_rect = [
-                tools_panel_rect[0] + 6.0 * responsive_scale,
-                tools_panel_rect[1] + 3.0 * responsive_scale,
-                tools_panel_rect[2] - 12.0 * responsive_scale,
-                tools_panel_rect[3] - 8.0 * responsive_scale,
+                tools_panel_rect[0] + 5.0 * responsive_scale,
+                tools_panel_rect[1] + 2.8 * responsive_scale,
+                tools_panel_rect[2] - 10.0 * responsive_scale,
+                tools_panel_rect[3] - 6.2 * responsive_scale,
             ];
             append_soft_card_quads(
                 &mut quads,

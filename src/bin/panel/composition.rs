@@ -193,13 +193,11 @@ impl PanelState {
     }
 
     pub(super) fn handle_text_input(&mut self, text: &str) {
-        if self.chrome.active_input_mode != suzaku_map::ime::gpu::InputMode::VirtualKeyboard
-            || !self.chrome.input_focused
-        {
+        if !can_process_text_input(self.chrome.active_input_mode, self.chrome.input_focused) {
             return;
         }
 
-        let accepted: String = text.chars().filter(should_accept_input_char).collect();
+        let accepted = sanitize_text_input(text);
 
         if !accepted.is_empty() {
             self.chrome.insert_text(&accepted);
@@ -230,26 +228,133 @@ fn should_accept_input_char(ch: char) -> bool {
     !ch.is_control()
 }
 
+fn sanitize_text_input(text: &str) -> String {
+    text.chars().filter(|ch| should_accept_input_char(*ch)).collect()
+}
+
+fn can_process_text_input(
+    active_input_mode: suzaku_map::ime::gpu::InputMode,
+    input_focused: bool,
+) -> bool {
+    active_input_mode == suzaku_map::ime::gpu::InputMode::VirtualKeyboard && input_focused
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use suzaku_map::ime::gpu::PanelChromeState;
 
     #[test]
     fn text_input_keeps_emoji_characters() {
-        assert_eq!(
-            "hello 😀 world"
-                .chars()
-                .filter(should_accept_input_char)
-                .collect::<String>(),
-            "hello 😀 world"
-        );
+        assert_eq!(sanitize_text_input("hello 😀 world"), "hello 😀 world");
     }
 
     #[test]
     fn text_input_removes_control_characters() {
         let input = "hello\t😀\n";
-        let output: String = input.chars().filter(should_accept_input_char).collect();
+        let output = sanitize_text_input(input);
 
         assert_eq!(output, "hello😀");
+    }
+
+    #[test]
+    fn text_input_keeps_multi_codepoint_emoji() {
+        let family = "👨‍👩‍👧‍👦";
+        assert_eq!(sanitize_text_input(family), family);
+    }
+
+    #[test]
+    fn text_input_keeps_skin_tone_and_flag_emojis() {
+        assert_eq!(
+            sanitize_text_input("👍🏽 hello 🇨🇦"),
+            "👍🏽 hello 🇨🇦"
+        );
+    }
+
+    #[test]
+    fn text_input_rejected_when_not_virtual_keyboard() {
+        assert!(!can_process_text_input(
+            suzaku_map::ime::gpu::InputMode::Handwriting,
+            true,
+        ));
+    }
+
+    #[test]
+    fn text_input_rejected_when_input_blurred() {
+        assert!(!can_process_text_input(
+            suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
+            false,
+        ));
+    }
+
+    #[test]
+    fn text_input_allowed_when_virtual_keyboard_focused() {
+        assert!(can_process_text_input(
+            suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
+            true,
+        ));
+    }
+
+    #[test]
+    fn text_input_inserts_emoji_when_allowed() {
+        let mut chrome = PanelChromeState::default();
+        chrome.seed_text = "hi".to_string();
+        chrome.caret_index = 2;
+        chrome.active_input_mode = suzaku_map::ime::gpu::InputMode::VirtualKeyboard;
+        chrome.input_focused = true;
+
+        if can_process_text_input(chrome.active_input_mode, chrome.input_focused) {
+            let accepted = sanitize_text_input(" 😀");
+            if !accepted.is_empty() {
+                chrome.insert_text(&accepted);
+            }
+        }
+
+        assert_eq!(chrome.seed_text, "hi 😀");
+        assert_eq!(chrome.caret_index, 3 + "😀".chars().count());
+    }
+
+    #[test]
+    fn text_input_does_not_mutate_seed_when_rejected_by_mode() {
+        let mut chrome = PanelChromeState::default();
+        chrome.seed_text = "hello".to_string();
+        chrome.caret_index = 5;
+
+        let expected = chrome.seed_text.clone();
+        let snapshot = chrome.caret_index;
+
+        if can_process_text_input(suzaku_map::ime::gpu::InputMode::Handwriting, chrome.input_focused) {
+            let accepted = sanitize_text_input(" 🐶");
+            if !accepted.is_empty() {
+                chrome.insert_text(&accepted);
+            }
+        }
+
+        assert_eq!(chrome.seed_text, expected);
+        assert_eq!(chrome.caret_index, snapshot);
+    }
+
+    #[test]
+    fn text_input_does_not_mutate_seed_when_rejected_by_blur() {
+        let mut chrome = PanelChromeState::default();
+        chrome.seed_text = "hello".to_string();
+        chrome.input_focused = false;
+        chrome.caret_index = 5;
+
+        let expected = chrome.seed_text.clone();
+        let snapshot = chrome.caret_index;
+
+        if can_process_text_input(
+            suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
+            chrome.input_focused,
+        ) {
+            let accepted = sanitize_text_input(" 🐶");
+            if !accepted.is_empty() {
+                chrome.insert_text(&accepted);
+            }
+        }
+
+        assert_eq!(chrome.seed_text, expected);
+        assert_eq!(chrome.caret_index, snapshot);
     }
 }

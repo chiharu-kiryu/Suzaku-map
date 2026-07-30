@@ -1,26 +1,29 @@
 {
-                    let handwriting_scale = (drawer_rect[3] / (232.0 * responsive_scale)).clamp(0.82, 1.0);
-                    let handwriting_y = drawer_rect[1] + 12.2 * responsive_scale * handwriting_scale;
-                    let handwriting_title_y = handwriting_y + 6.0 * responsive_scale * handwriting_scale;
+                    let handwriting_scale = ((drawer_rect[3] / (232.0 * responsive_scale))
+                        * (drawer_rect[2] / (340.0 * responsive_scale)).powf(0.35))
+                        .clamp(0.72, 1.35);
+                    let handwriting_title_px = (title_px * handwriting_scale).max(2.4 * responsive_scale);
+                    let handwriting_hint_px = (helper_px * 0.9).max(2.2 * responsive_scale);
+                    let handwriting_title_y = drawer_rect[1] + 6.0 * responsive_scale * handwriting_scale;
                     let handwriting_status_y = handwriting_title_y;
-                    let handwriting_hint_y = handwriting_y + 25.0 * responsive_scale * handwriting_scale;
-                    let handwriting_padding_x = 8.5 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_row_h = 19.6 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_gap_x = 5.6 * responsive_scale * handwriting_scale;
-                    let handwriting_footer_gap_y = 5.1 * responsive_scale * handwriting_scale;
-                    let base_action_w = (70.0 * handwriting_scale).max(58.0 * responsive_scale * handwriting_scale);
-                    let candidate_text_max = 3usize;
-                    let max_candidate_rows = 2usize;
+                    let handwriting_hint_y = handwriting_title_y + handwriting_title_px + 1.8 * responsive_scale * handwriting_scale;
+                    let handwriting_hint_block_h = handwriting_hint_px * 2.0 + base_line_gap * 0.85 * handwriting_scale;
+                    let handwriting_padding_x = 4.5 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_row_h = 15.0 * responsive_scale * handwriting_scale;
+                    let handwriting_footer_gap_x = 3.8 * responsive_scale * handwriting_scale;
+                    let _handwriting_footer_gap_y = 2.8 * responsive_scale * handwriting_scale;
+                    let base_action_w = (56.0 * handwriting_scale).max(44.0 * responsive_scale * handwriting_scale);
+                    let candidate_text_max = 2usize;
 
                     let footer_left = drawer_rect[0] + handwriting_padding_x;
                     let footer_right = drawer_rect[0] + drawer_rect[2] - handwriting_padding_x;
                     let footer_width = (footer_right - footer_left).max(112.0);
 
-                    let available_action_width = (footer_width * 0.39)
-                        .clamp(base_action_w * 2.0 + handwriting_footer_gap_x, 190.0 * handwriting_scale);
+                    let available_action_width = (footer_width * 0.37)
+                        .clamp(base_action_w * 2.0 + handwriting_footer_gap_x, 170.0 * handwriting_scale);
+                    let candidate_area_min = 52.0 * responsive_scale * handwriting_scale;
+                    let can_show_candidates = footer_width > available_action_width + candidate_area_min + handwriting_footer_gap_x;
                     let action_w = {
-                        let candidate_area_min = 76.0 * responsive_scale * handwriting_scale;
-                        let can_show_candidates = footer_width > available_action_width + candidate_area_min + handwriting_footer_gap_x;
                         let total_action = if can_show_candidates {
                             available_action_width.min(footer_width - handwriting_footer_gap_x - candidate_area_min)
                         } else {
@@ -31,75 +34,71 @@
                         let undo_width = (total_action * 0.46).max(base_action_w);
                         let clear_width = (total_action - undo_width - handwriting_footer_gap_x).max(base_action_w * 0.8);
                         let candidate_area_x = footer_left + undo_width + clear_width + handwriting_footer_gap_x * 1.4;
-                        if can_show_candidates && candidate_area_x + 56.0 * responsive_scale * handwriting_scale <= footer_right {
+                        if can_show_candidates && candidate_area_x + 50.0 * responsive_scale * handwriting_scale <= footer_right {
                             undo_width
                         } else {
                             footer_width * 0.5
                         }
                     };
                     let clear_w = (action_w * 1.0).max(base_action_w * 0.95);
-                    let candidate_area_start = if action_w + clear_w + handwriting_footer_gap_x <= footer_width {
+                    let candidate_area_start = if can_show_candidates
+                        && action_w + clear_w + handwriting_footer_gap_x <= footer_width
+                    {
                         footer_left + action_w + clear_w + handwriting_footer_gap_x * 1.4
                     } else {
                         footer_left
                     };
-                    let candidate_area_right = footer_right - 6.0 * responsive_scale * handwriting_scale;
+                    let candidate_area_right =
+                        if can_show_candidates && action_w + clear_w + handwriting_footer_gap_x <= footer_width {
+                            footer_right - 2.0 * responsive_scale * handwriting_scale
+                        } else {
+                            candidate_area_start
+                        };
                     let _candidate_area_width = (candidate_area_right - candidate_area_start).max(0.0);
 
                     let candidate_width = |text: &str, max_width: f32| {
                         let raw = (text.chars().count() as f32 * 8.3 + 16.0)
                             .max(48.0)
                             * handwriting_scale;
-                        raw.min(max_width).max(44.0 * handwriting_scale)
+                        raw.min(max_width).max(40.0 * handwriting_scale)
                     };
 
-                    let mut candidate_rows = 1usize;
+                    let mut visible_candidate_count = 0usize;
                     let mut candidate_x_cursor = candidate_area_start;
-                    let mut candidate_widths = Vec::with_capacity(candidate_text_max);
-                    for candidate in chrome.handwriting_candidates.iter().take(candidate_text_max) {
-                        if candidate_area_start >= candidate_area_right {
+                    for candidate in chrome
+                        .handwriting_candidates
+                        .iter()
+                        .take(candidate_text_max)
+                    {
+                        let max_chip_w = candidate_area_right - candidate_x_cursor;
+                        if max_chip_w <= 0.0 {
                             break;
                         }
-
-                        let max_chip_w = candidate_area_right - candidate_area_start;
                         let w = candidate_width(candidate, max_chip_w);
-                        let need_wrap = candidate_x_cursor + w > candidate_area_right && candidate_rows < max_candidate_rows;
-                        if need_wrap {
-                            candidate_rows += 1;
-                            if candidate_rows > max_candidate_rows {
-                                break;
-                            }
-                            candidate_x_cursor = candidate_area_start;
-                        }
-
-                        if candidate_rows > max_candidate_rows {
+                        if candidate_x_cursor + w > candidate_area_right {
                             break;
                         }
-
-                        candidate_widths.push(w);
                         candidate_x_cursor = (candidate_x_cursor + w + handwriting_footer_gap_x).max(candidate_area_start + w);
-                    }
-                    if candidate_widths.is_empty() {
-                        candidate_rows = 1;
+                        visible_candidate_count += 1;
                     }
 
-                    let handwriting_footer_rows = candidate_rows as f32;
+                    let handwriting_footer_rows = if visible_candidate_count > 0 { 1.0 } else { 0.0 };
                     let handwriting_footer_rect = [
                         footer_left,
                         drawer_rect[1] + drawer_rect[3]
-                            - (handwriting_footer_rows * (handwriting_footer_row_h + handwriting_footer_gap_y)
-                                + 8.0 * responsive_scale * handwriting_scale),
+                            - (handwriting_footer_rows * handwriting_footer_row_h
+                                + 2.5 * responsive_scale * handwriting_scale),
                         footer_width,
-                        handwriting_footer_rows * (handwriting_footer_row_h + handwriting_footer_gap_y)
-                            + 8.0 * responsive_scale * handwriting_scale,
+                        handwriting_footer_rows * handwriting_footer_row_h
+                            + 2.5 * responsive_scale * handwriting_scale,
                     ];
-                    let canvas_top = handwriting_y + 46.0 * responsive_scale * handwriting_scale;
+                    let canvas_top = handwriting_hint_y + handwriting_hint_block_h + 0.8 * responsive_scale * handwriting_scale;
                     let canvas_rect = [
                         drawer_rect[0],
                         canvas_top,
                         drawer_rect[2],
-                        (handwriting_footer_rect[1] - 7.0 * responsive_scale * handwriting_scale - canvas_top)
-                            .max(102.0 * responsive_scale * handwriting_scale),
+                        (handwriting_footer_rect[1] - canvas_top - 2.0 * responsive_scale * handwriting_scale)
+                            .max(0.0),
                     ];
 
                     append_soft_card_quads(
@@ -120,10 +119,10 @@
                         for point in sample_stroke_points(stroke) {
                             quads.push(CandidateQuad {
                                 rect: [
-                                    point[0] - 2.5 * handwriting_scale,
-                                    point[1] - 2.5 * handwriting_scale,
-                                    5.0 * handwriting_scale,
-                                    5.0 * handwriting_scale,
+                                    point[0] - 2.5 * responsive_scale * handwriting_scale,
+                                    point[1] - 2.5 * responsive_scale * handwriting_scale,
+                                    5.0 * responsive_scale * handwriting_scale,
+                                    5.0 * responsive_scale * handwriting_scale,
                                 ],
                                 color: accent,
                             });
@@ -133,9 +132,9 @@
                     let handwriting_layouts = vec![
                         TextBlock {
                             text: "Handwrite input".to_string(),
-                            origin: [drawer_rect[0] + 14.0 * responsive_scale * handwriting_scale, handwriting_title_y],
-                            max_width: (drawer_rect[2] - 160.0 * responsive_scale * handwriting_scale).max(108.0),
-                            pixel_size: title_px * handwriting_scale,
+                            origin: [drawer_rect[0] + 11.0 * responsive_scale * handwriting_scale, handwriting_title_y],
+                            max_width: (drawer_rect[2] - 145.0 * responsive_scale * handwriting_scale).max(94.0),
+                            pixel_size: handwriting_title_px,
                             letter_spacing: heading_tracking * handwriting_scale,
                             line_gap: base_line_gap * handwriting_scale,
                             max_lines: 1,
@@ -148,11 +147,11 @@
                             text: "Trace on canvas".to_string(),
                             origin: [
                                 drawer_rect[0] + drawer_rect[2]
-                                    - 118.0 * responsive_scale * handwriting_scale,
+                                    - 110.0 * responsive_scale * handwriting_scale,
                                 handwriting_status_y,
                             ],
-                            max_width: 108.0 * responsive_scale * handwriting_scale,
-                            pixel_size: helper_px * handwriting_scale,
+                            max_width: 100.0 * responsive_scale * handwriting_scale,
+                            pixel_size: handwriting_hint_px,
                             letter_spacing: ui_tracking * handwriting_scale,
                             line_gap: base_line_gap * handwriting_scale,
                             max_lines: 1,
@@ -163,9 +162,9 @@
                         .layout(),
                         TextBlock {
                             text: chrome.handwriting_hint.clone(),
-                            origin: [drawer_rect[0] + 14.0 * responsive_scale * handwriting_scale, handwriting_hint_y],
-                            max_width: drawer_rect[2] - 28.0 * responsive_scale * handwriting_scale,
-                            pixel_size: helper_px * handwriting_scale,
+                            origin: [drawer_rect[0] + 11.0 * responsive_scale * handwriting_scale, handwriting_hint_y],
+                            max_width: (drawer_rect[2] - 24.0 * responsive_scale * handwriting_scale).max(0.0),
+                            pixel_size: handwriting_hint_px,
                             letter_spacing: ui_tracking * handwriting_scale,
                             line_gap: base_line_gap * handwriting_scale,
                             max_lines: 2,
@@ -195,8 +194,8 @@
                     );
 
                     let undo_rect = [
-                        handwriting_footer_rect[0] + 6.0 * responsive_scale * handwriting_scale,
-                        handwriting_footer_rect[1] + 2.0 * responsive_scale * handwriting_scale,
+                        handwriting_footer_rect[0] + 5.0 * responsive_scale * handwriting_scale,
+                        handwriting_footer_rect[1] + 1.4 * responsive_scale * handwriting_scale,
                         action_w.min(handwriting_footer_rect[2] * 0.5),
                         handwriting_footer_row_h,
                     ];
@@ -230,7 +229,7 @@
                         undo_rect[0]
                             + undo_rect[2]
                             + handwriting_footer_gap_x,
-                        handwriting_footer_rect[1] + 2.0 * responsive_scale * handwriting_scale,
+                        handwriting_footer_rect[1] + 1.4 * responsive_scale * handwriting_scale,
                         clear_w.min(undo_rect[2] * 1.02),
                         handwriting_footer_row_h,
                     ];
@@ -240,7 +239,7 @@
                     } else {
                         [
                             handwriting_footer_rect[0] + handwriting_footer_rect[2] * 0.5 + handwriting_footer_gap_x,
-                            handwriting_footer_rect[1] + 2.0 * responsive_scale * handwriting_scale,
+                            handwriting_footer_rect[1] + 1.4 * responsive_scale * handwriting_scale,
                             (handwriting_footer_rect[2] * 0.25).max(base_action_w),
                             handwriting_footer_row_h,
                         ]
@@ -281,7 +280,6 @@
                     append_trash_icon_quads(&mut quads, clear_visual_rect, text_primary);
 
                     let mut chip_x = candidate_area_start;
-                    let mut chip_row = 0usize;
                     let mut chip_index = 0usize;
                     for (index, candidate) in chrome
                         .handwriting_candidates
@@ -289,23 +287,17 @@
                         .take(candidate_text_max)
                         .enumerate()
                     {
-                        if chip_row >= max_candidate_rows {
+                        if chip_index >= visible_candidate_count {
                             break;
                         }
 
                         let max_chip_w = candidate_area_right - chip_x;
                         let chip_w = candidate_width(candidate, max_chip_w);
-                        if chip_x > candidate_area_start && chip_x + chip_w > candidate_area_right {
-                            chip_row += 1;
-                            if chip_row >= max_candidate_rows {
-                                break;
-                            }
-                            chip_x = candidate_area_start;
+                        if chip_x + chip_w > candidate_area_right {
+                            break;
                         }
-
                         let chip_y = handwriting_footer_rect[1]
-                            + 2.0 * responsive_scale * handwriting_scale
-                            + chip_row as f32 * (handwriting_footer_row_h + handwriting_footer_gap_y);
+                            + 1.2 * responsive_scale * handwriting_scale;
                         let rect = [chip_x, chip_y, chip_w, handwriting_footer_row_h];
                         let kind = InteractionKind::UseHandwritingCandidate(index);
                         let (hovered, pressed) = interaction_state(kind);
@@ -343,10 +335,10 @@
                             text: candidate.clone(),
                             origin: [
                                 visual_rect[0] + 8.0 * responsive_scale * handwriting_scale,
-                                visual_rect[1] + 6.0 * responsive_scale * handwriting_scale,
+                                visual_rect[1] + 2.8 * responsive_scale * handwriting_scale,
                             ],
                             max_width: (visual_rect[2] - 16.0 * responsive_scale * handwriting_scale).max(6.0),
-                            pixel_size: 2.0 * handwriting_scale,
+                            pixel_size: (helper_px * 0.9).max(2.2 * responsive_scale),
                             letter_spacing: ui_tracking * handwriting_scale,
                             line_gap: base_line_gap * handwriting_scale,
                             max_lines: 1,
@@ -358,43 +350,14 @@
                             align: TextAlign::Center,
                             role: TextRole::HandwritingCandidate,
                         }
-                        .layout();
+                            .layout();
                         text_quads.extend(layout.quads.iter().copied());
                         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         handwriting_action_layouts.push(layout);
                         chip_x += chip_w + handwriting_footer_gap_x;
                         chip_index += 1;
                     }
-                    if chip_index == 0 {
-                        let no_candidates = [
-                            TextBlock {
-                                text: "Write to generate".to_string(),
-                                origin: [
-                                    candidate_area_start + 6.0 * responsive_scale * handwriting_scale,
-                                    handwriting_footer_rect[1]
-                                        + 2.0 * responsive_scale * handwriting_scale,
-                                ],
-                                max_width: (candidate_area_right - candidate_area_start - 12.0 * responsive_scale * handwriting_scale)
-                                    .max(80.0),
-                                pixel_size: 2.0 * handwriting_scale,
-                                letter_spacing: ui_tracking * handwriting_scale,
-                                line_gap: base_line_gap * handwriting_scale,
-                                max_lines: 1,
-                                color: text_muted,
-                                align: TextAlign::Center,
-                                role: TextRole::HandwritingCandidate,
-                            }
-                            .layout(),
-                        ];
-                        for layout in &no_candidates {
-                            text_quads.extend(layout.quads.iter().copied());
-                            atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
-                        }
-                        text_sections.push(TextSection {
-                            role: TextRole::HandwritingButton,
-                            layouts: no_candidates.to_vec(),
-                        });
-                    } else {
+                    if !handwriting_action_layouts.is_empty() {
                         text_sections.push(TextSection {
                             role: TextRole::HandwritingButton,
                             layouts: handwriting_action_layouts,
