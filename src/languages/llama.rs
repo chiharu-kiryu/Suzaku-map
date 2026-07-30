@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -85,6 +86,9 @@ impl OpenAiCompatibleLlamaProvider {
 
     fn send_request(&self, request: &LlmCompletionRequest) -> Option<String> {
         let endpoint = self.parsed_endpoint()?;
+        if !is_loopback_host(&endpoint.host) {
+            return None;
+        }
         let body = self.request_body(request);
         let address = format!("{}:{}", endpoint.host, endpoint.port);
         let mut stream = TcpStream::connect(address).ok()?;
@@ -152,6 +156,14 @@ fn parse_http_endpoint(endpoint: &str) -> Option<ParsedHttpEndpoint> {
         (host_port.to_string(), 80)
     };
     Some(ParsedHttpEndpoint { host, port, path })
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
+        return true;
+    }
+
+    host.parse::<IpAddr>().map_or(false, |ip| ip.is_loopback())
 }
 
 fn parse_chat_completion_candidates(body: &str) -> Vec<String> {
@@ -269,6 +281,24 @@ mod tests {
     fn parse_http_endpoint_rejects_missing_scheme() {
         assert!(parse_http_endpoint("127.0.0.1:11434").is_none());
         assert!(parse_http_endpoint("https://127.0.0.1:11434").is_none());
+    }
+
+    #[test]
+    fn send_request_rejects_non_loopback_host() {
+        let provider = OpenAiCompatibleLlamaProvider::new(LlamaProviderConfig {
+            endpoint: "http://192.168.1.100:11434/v1/chat/completions".to_string(),
+            timeout_ms: 10,
+            ..LlamaProviderConfig::default()
+        });
+        let request = LlmCompletionRequest {
+            language_id: "en".to_string(),
+            seed_text: "noop".to_string(),
+            normalized_phrase: "noop".to_string(),
+            confidence: 0.1,
+            degraded: false,
+        };
+
+        assert!(provider.send_request(&request).is_none());
     }
 
     #[test]

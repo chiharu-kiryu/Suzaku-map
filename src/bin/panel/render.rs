@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::fs;
 
 use bytemuck::{Pod, Zeroable};
-use fontdue::Font;
 use suzaku_map::ime::gpu::{AtlasGlyph, CandidateQuad, FontFaceChoice, RenderScene, TextSmoothing};
-use suzaku_map::platform::gpu_host::preferred_font_paths;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -223,98 +220,17 @@ pub(crate) fn create_font_atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
-    font_face: FontFaceChoice,
+    _font_face: FontFaceChoice,
     smoothing: TextSmoothing,
     font_scale: f32,
 ) -> FontAtlas {
     let atlas_scale = font_scale.max(1.0).min(2.5);
-    if let Some((font, label)) = load_runtime_font(font_face) {
-        return create_runtime_font_atlas(
-            device,
-            queue,
-            bind_group_layout,
-            &font,
-            atlas_scale,
-            smoothing,
-            label,
-        );
-    }
     create_bitmap_font_atlas(
         device,
         queue,
         bind_group_layout,
         atlas_scale,
         smoothing,
-    )
-}
-
-fn create_runtime_font_atlas(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    font: &Font,
-    atlas_scale: f32,
-    smoothing: TextSmoothing,
-    font_label: String,
-) -> FontAtlas {
-    const GLYPH_SIZE: f32 = 28.0;
-    let glyph_size = (GLYPH_SIZE * atlas_scale).round().clamp(24.0, 64.0);
-    let glyphs = atlas_charset();
-    let mut rendered = Vec::with_capacity(glyphs.len());
-    let mut max_w = 0u32;
-    let mut max_h = 0u32;
-
-    for ch in &glyphs {
-        let (metrics, bitmap) = font.rasterize(*ch, glyph_size);
-        max_w = max_w.max(metrics.width as u32);
-        max_h = max_h.max(metrics.height as u32);
-        rendered.push((*ch, metrics, bitmap));
-    }
-
-    let cell_w = max_w.max(12) + 4;
-    let cell_h = max_h.max(16) + 4;
-    let cols = 16u32;
-    let rows = (glyphs.len() as u32).div_ceil(cols);
-    let atlas_w = cols * cell_w;
-    let atlas_h = rows * cell_h;
-    let mut bytes = vec![0u8; (atlas_w * atlas_h) as usize];
-    let mut uv_map = HashMap::new();
-
-    for (index, (ch, metrics, bitmap)) in rendered.iter().enumerate() {
-        let col = index as u32 % cols;
-        let row = index as u32 / cols;
-        let origin_x = col * cell_w + ((cell_w - metrics.width as u32) / 2);
-        let origin_y = row * cell_h + ((cell_h - metrics.height as u32) / 2);
-        for y in 0..metrics.height as u32 {
-            for x in 0..metrics.width as u32 {
-                let src = bitmap[(y * metrics.width as u32 + x) as usize];
-                let dst_x = origin_x + x;
-                let dst_y = origin_y + y;
-                bytes[(dst_y * atlas_w + dst_x) as usize] = src;
-            }
-        }
-        uv_map.insert(
-            *ch,
-            [
-                (col * cell_w) as f32 / atlas_w as f32,
-                (row * cell_h) as f32 / atlas_h as f32,
-                ((col + 1) * cell_w) as f32 / atlas_w as f32,
-                ((row + 1) * cell_h) as f32 / atlas_h as f32,
-            ],
-        );
-    }
-
-    create_font_atlas_resources(
-        device,
-        queue,
-        bind_group_layout,
-        atlas_w,
-        atlas_h,
-        bytes,
-        uv_map,
-        true,
-        smoothing,
-        font_label,
     )
 }
 
@@ -505,15 +421,4 @@ mod tests {
     fn atlas_lookup_does_not_scrub_emoji() {
         assert_eq!(atlas_lookup_char('😀'), '😀');
     }
-}
-
-fn load_runtime_font(font_face: FontFaceChoice) -> Option<(Font, String)> {
-    for (path, label) in preferred_font_paths(font_face) {
-        if let Ok(bytes) = fs::read(path) {
-            if let Ok(font) = Font::from_bytes(bytes, fontdue::FontSettings::default()) {
-                return Some((font, label.to_string()));
-            }
-        }
-    }
-    None
 }

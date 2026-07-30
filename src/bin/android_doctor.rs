@@ -1,6 +1,9 @@
 use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 const HOMEBREW_ANDROID_SDK_ROOT: &str = "/opt/homebrew/share/android-commandlinetools";
 const HOMEBREW_JAVA_HOME: &str = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
@@ -24,14 +27,53 @@ fn detect_ndk_home(sdk_root: &str) -> String {
 }
 
 fn command_exists(name: &str) -> bool {
-    env::var_os("PATH")
-        .into_iter()
-        .flat_map(|value| env::split_paths(&value).collect::<Vec<_>>())
-        .any(|dir| Path::new(&dir).join(name).is_file())
+    resolve_command_path(name).is_some()
+}
+
+fn resolve_command_path(name: &str) -> Option<PathBuf> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return None;
+    }
+
+    env::var_os("PATH").and_then(|value| {
+        env::split_paths(&value).find_map(|dir| {
+            if !dir.is_absolute() {
+                return None;
+            }
+            let candidate = dir.join(name);
+            if is_executable_file(&candidate) {
+                Some(candidate)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        let mode = std::fs::metadata(path)
+            .ok()
+            .map(|metadata| metadata.permissions().mode())
+            .unwrap_or(0);
+        mode & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn command(name: &str) -> Option<Command> {
+    resolve_command_path(name).map(Command::new)
 }
 
 fn run_and_capture(cmd: &str, args: &[&str]) -> Option<String> {
-    Command::new(cmd)
+    command(cmd)?
         .args(args)
         .output()
         .ok()

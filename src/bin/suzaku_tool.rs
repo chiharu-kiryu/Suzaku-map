@@ -2,6 +2,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, exit};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 const CONNECTION_NAME: &str = "dev.suzaku.linux.ime";
 const FCITX_CONFIG_NAME: &str = "dev_suzaku_linux_ime.conf";
@@ -50,6 +52,7 @@ fn run() -> i32 {
 fn print_help() {
     println!("Usage:");
     println!("  suzaku_tool linux-register [install|status|verify|uninstall|diag]");
+    println!("  suzaku_tool linux-register-ime [install|status|verify|uninstall|diag]");
     println!("  suzaku_tool android env");
     println!("  suzaku_tool android build-native [--release]");
     println!("  suzaku_tool android install-debug");
@@ -67,10 +70,50 @@ fn print_help() {
 }
 
 fn command_exists(name: &str) -> bool {
-    env::var_os("PATH")
-        .into_iter()
-        .flat_map(|v| env::split_paths(&v).collect::<Vec<_>>())
-        .any(|dir| dir.join(name).is_file())
+    resolve_command_path(name).is_some()
+}
+
+fn resolve_command_path(name: &str) -> Option<PathBuf> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return None;
+    }
+
+    env::var_os("PATH").and_then(|value| {
+        env::split_paths(&value).find_map(|dir| {
+            if !dir.is_absolute() {
+                return None;
+            }
+            let candidate = dir.join(name);
+            if is_executable_file(&candidate) {
+                Some(candidate)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        let mode = fs::metadata(path)
+            .ok()
+            .map(|metadata| metadata.permissions().mode())
+            .unwrap_or(0);
+        mode & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn command(name: &str) -> Option<Command> {
+    resolve_command_path(name).map(Command::new)
 }
 
 fn repo_root() -> Result<PathBuf, String> {
@@ -184,7 +227,9 @@ fn linux_install(framework: LinuxFramework) -> i32 {
                 );
                 if command_exists("ibus") {
                     println!("Attempting to restart IBus runtime...");
-                    if Command::new("ibus").arg("restart").status().is_err() {}
+                    if let Some(mut cmd) = command("ibus") {
+                        let _ = cmd.arg("restart").status();
+                    }
                 }
                 0
             }
@@ -232,7 +277,7 @@ fn linux_status(framework: LinuxFramework) -> i32 {
                 println!("IBus: marker not found at {}", marker.display());
             }
             if command_exists("ibus") {
-                match Command::new("ibus").arg("list-engine").output() {
+                match command("ibus").and_then(|mut cmd| cmd.arg("list-engine").output().ok()) {
                     Ok(response) => {
                         if response.status.success() {
                             let stdout = String::from_utf8_lossy(&response.stdout);
@@ -311,7 +356,7 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
             }
 
             let runtime_ok = if command_exists("ibus") {
-                if let Ok(output) = Command::new("ibus").arg("list-engine").output() {
+                if let Some(output) = command("ibus").and_then(|mut cmd| cmd.arg("list-engine").output().ok()) {
                     if output.status.success() {
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         let found = stdout
@@ -463,12 +508,11 @@ fn process_running(name: &str) -> bool {
     if !command_exists("pgrep") {
         return false;
     }
-    Command::new("pgrep")
-        .arg("-x")
-        .arg(name)
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    if let Some(mut cmd) = command("pgrep") {
+        cmd.arg("-x").arg(name).status().map(|status| status.success()).unwrap_or(false)
+    } else {
+        false
+    }
 }
 
 struct AndroidEnv {
@@ -649,7 +693,10 @@ fn run_android_one_target(
     let out_dir = root.join("android/app/src/main/jniLibs").join(abi);
     fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
 
-    let mut build_cmd = Command::new("cargo");
+    let mut build_cmd = match command("cargo") {
+        Some(cmd) => cmd,
+        None => return Err("cargo command not found".to_string()),
+    };
     build_cmd
         .current_dir(root)
         .arg("build")
@@ -704,24 +751,25 @@ fn android_install_debug(_args: &[String]) -> i32 {
             return 1;
         }
     };
-    let apk_path = env::var("SUZAKU_ANDROID_APK_PATH").unwrap_or_else(|_| {
-        root.join("android/app/build/outputs/apk/debug/app-debug.apk")
-            .to_string_lossy()
-            .into_owned()
-    });
-    if !Path::new(&apk_path).is_file() {
-        eprintln!("Debug APK not found: {apk_path}");
-        eprintln!("Run ./gradlew assembleDebug in android/ first.");
-        return 1;
-    }
+    let apk_path = match resolve_android_apk_path(&root) {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("{err}");
+            eprintln!("Run ./gradlew assembleDebug in android/ first.");
+            return 1;
+        }
+    };
     if !command_exists("adb") {
         eprintln!("adb command not found.");
         return 1;
     }
-    let state = Command::new("adb")
-        .arg("get-state")
-        .status()
-        .map_err(|e| format!("failed to run adb: {e}"));
+    let state = match command("adb") {
+        Some(mut cmd) => cmd
+            .arg("get-state")
+            .status()
+            .map_err(|e| format!("failed to run adb: {e}")),
+        None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "adb command not found")),
+    };
     if let Ok(status) = state {
         if !status.success() {
             eprintln!("No Android device or emulator is online.");
@@ -731,12 +779,38 @@ fn android_install_debug(_args: &[String]) -> i32 {
         eprintln!("No Android device or emulator is online.");
         return 1;
     }
-    if let Err(err) = run_status(Command::new("adb").arg("install").arg("-r").arg(apk_path.clone())) {
-        eprintln!("{err}");
+
+    if let Some(mut cmd) = command("adb") {
+        if let Err(err) = run_status(cmd.arg("install").arg("-r").arg(apk_path.clone())) {
+            eprintln!("{err}");
+            return 1;
+        }
+    } else {
+        eprintln!("adb command not found.");
         return 1;
     }
-    println!("Installed: {apk_path}");
+    println!("Installed: {}", apk_path.display());
     0
+}
+
+fn resolve_android_apk_path(root: &Path) -> Result<PathBuf, String> {
+    let apk_path = match env::var("SUZAKU_ANDROID_APK_PATH") {
+        Ok(path) => PathBuf::from(path),
+        Err(_) => root.join("android/app/build/outputs/apk/debug/app-debug.apk"),
+    };
+    let canonical = fs::canonicalize(&apk_path)
+        .map_err(|_| format!("Debug APK not found: {}", apk_path.display()))?;
+    if !canonical.is_file() {
+        return Err(format!("Debug APK not found: {}", canonical.display()));
+    }
+    if canonical
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_none_or(|ext| ext.to_ascii_lowercase() != "apk")
+    {
+        return Err(format!("Invalid APK path (must be *.apk): {}", canonical.display()));
+    }
+    Ok(canonical)
 }
 
 fn android_enable_ime(_args: &[String]) -> i32 {
@@ -745,10 +819,13 @@ fn android_enable_ime(_args: &[String]) -> i32 {
         eprintln!("adb command not found.");
         return 1;
     }
-    let state = Command::new("adb")
-        .arg("get-state")
-        .status()
-        .map_err(|e| format!("failed to run adb: {e}"));
+    let state = match command("adb") {
+        Some(mut cmd) => cmd
+            .arg("get-state")
+            .status()
+            .map_err(|e| format!("failed to run adb: {e}")),
+        None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "adb command not found")),
+    };
     if let Ok(status) = state {
         if !status.success() {
             eprintln!("No Android device or emulator is online.");
@@ -758,12 +835,22 @@ fn android_enable_ime(_args: &[String]) -> i32 {
         eprintln!("No Android device or emulator is online.");
         return 1;
     }
-    if let Err(err) = run_status(Command::new("adb").arg("shell").arg("ime").arg("enable").arg(IME_ID)) {
-        eprintln!("{err}");
+    if let Some(mut cmd) = command("adb") {
+        if let Err(err) = run_status(cmd.arg("shell").arg("ime").arg("enable").arg(IME_ID)) {
+            eprintln!("{err}");
+            return 1;
+        }
+    } else {
+        eprintln!("adb command not found.");
         return 1;
     }
-    if let Err(err) = run_status(Command::new("adb").arg("shell").arg("ime").arg("set").arg(IME_ID)) {
-        eprintln!("{err}");
+    if let Some(mut cmd) = command("adb") {
+        if let Err(err) = run_status(cmd.arg("shell").arg("ime").arg("set").arg(IME_ID)) {
+            eprintln!("{err}");
+            return 1;
+        }
+    } else {
+        eprintln!("adb command not found.");
         return 1;
     }
     println!("Enabled and selected IME: {IME_ID}");
@@ -832,7 +919,13 @@ fn macos_build_app_for(target: MacTarget) -> i32 {
         ),
     };
 
-    let mut build = Command::new("cargo");
+    let mut build = match command("cargo") {
+        Some(cmd) => cmd,
+        None => {
+            eprintln!("cargo command not found.");
+            return 1;
+        }
+    };
     build.current_dir(&root).arg("build").arg("--bin").arg(binary);
     if matches!(target, MacTarget::Panel) {
         build.arg("--features").arg("gpu");
@@ -907,8 +1000,13 @@ fn macos_open_app_for(target: MacTarget) -> i32 {
             return 1;
         }
     }
-    if let Err(err) = Command::new("open").arg(&app).status() {
-        eprintln!("failed to open {}: {err}", app.display());
+    if let Some(mut open_cmd) = command("open") {
+        if let Err(err) = open_cmd.arg(&app).status() {
+            eprintln!("failed to open {}: {err}", app.display());
+            return 1;
+        }
+    } else {
+        eprintln!("open command not found.");
         return 1;
     }
     println!("{}", app.display());

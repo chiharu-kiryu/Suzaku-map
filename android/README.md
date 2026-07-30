@@ -15,9 +15,10 @@ Useful commands from the repo root:
 
 - `cargo android-doctor`
 - `cargo android-ime-host`
-- `bash scripts/android-build-native.sh`
-- `bash scripts/android-install-debug.sh`
-- `bash scripts/android-enable-ime.sh`
+- `cargo android-build-native`
+- `cd android && ./gradlew assembleDebug`
+- `cargo android-install-debug`
+- `cargo android-enable-ime`
 
 Current IME id:
 

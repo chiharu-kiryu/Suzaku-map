@@ -1,6 +1,7 @@
 [alias]
 panel-macos = "run --features gpu --bin panel"
-linux-register-ime = "run --bin suzaku_tool -- linux-register-ime"
+linux-register = "run --bin suzaku_tool -- linux-register"
+linux-register-ime = "run --bin suzaku_tool -- linux-register"
 panel-app-macos = "run --features gpu --bin macos_bundle -- panel build"
 open-panel-app-macos = "run --features gpu --bin macos_bundle -- panel open"
 install-panel-app-macos = "run --features gpu --bin macos_bundle -- panel install"
