@@ -60,7 +60,9 @@ pub(super) fn handle_panel_window_event(
                 } else if state.kind == PanelWindowKind::Main {
                     state.extend_handwriting_stroke();
                 }
-                state.update_hovered_interaction();
+                if !state.interaction.handwriting_dragging {
+                    state.update_hovered_interaction();
+                }
                 state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
@@ -69,7 +71,9 @@ pub(super) fn handle_panel_window_event(
             WindowEvent::Touch(touch) => {
                 state.interaction.last_input_was_touch = true;
                 state.cursor_position = Some((touch.location.x as f32, touch.location.y as f32));
-                state.update_hovered_interaction();
+                if !state.interaction.handwriting_dragging {
+                    state.update_hovered_interaction();
+                }
                 if state.kind == PanelWindowKind::Main {
                     match touch.phase {
                         TouchPhase::Started => state.begin_primary_press(true),

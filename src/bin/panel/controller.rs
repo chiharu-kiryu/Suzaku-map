@@ -60,6 +60,8 @@ impl PanelState {
             if self.chrome.voice_state == VoiceCaptureState::Listening {
                 self.stop_voice_capture();
             }
+            self.interaction.handwriting_last_sample = None;
+            self.interaction.handwriting_last_sample_position = None;
         }
     }
 
@@ -85,6 +87,8 @@ impl PanelState {
         }
         self.chrome.blur_input();
         self.interaction.last_input_was_touch = false;
+        self.interaction.handwriting_last_sample = None;
+        self.interaction.handwriting_last_sample_position = None;
     }
 
     pub(super) fn commit_selected_candidate_to_host(
@@ -871,6 +875,10 @@ impl PanelState {
         self.interaction.press_target_rect = None;
         self.interaction.press_start_cursor = None;
         self.interaction.press_start_instant = None;
+        if !self.interaction.handwriting_dragging {
+            self.interaction.handwriting_last_sample_position = None;
+            self.interaction.handwriting_last_sample = None;
+        }
     }
 
     pub(super) fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {

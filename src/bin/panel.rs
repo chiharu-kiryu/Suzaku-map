@@ -207,6 +207,8 @@ struct PanelInteractionState {
     scale_drag_start_cursor_x: Option<f32>,
     scale_drag_start_scale: f32,
     last_input_was_touch: bool,
+    handwriting_last_sample: Option<Instant>,
+    handwriting_last_sample_position: Option<[f32; 2]>,
 }
 
 impl ApplicationHandler for PanelApp {
