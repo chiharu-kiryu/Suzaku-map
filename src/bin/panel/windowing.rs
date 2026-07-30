@@ -308,6 +308,7 @@ impl PanelState {
             self.interaction.scale_dragging = false;
             self.interaction.scale_drag_start_cursor_x = None;
             self.interaction.scale_drag_start_scale = self.window_scale;
+            self.rebuild_font_atlas();
         }
     }
 
@@ -351,6 +352,9 @@ impl PanelState {
         self.window_scale = target_scale;
         self.expanded_window_base_size = Some(base);
         self.persist_display_settings();
+        if quantize {
+            self.rebuild_font_atlas();
+        }
     }
 
     pub(super) fn reset_window_scale(&mut self) {

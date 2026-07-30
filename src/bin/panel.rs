@@ -564,6 +564,7 @@ impl PanelState {
             &text_bind_group_layout,
             chrome.font_face,
             chrome.text_smoothing,
+            chrome.window_scale,
         );
         let text_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("suzaku-panel-text-layout"),

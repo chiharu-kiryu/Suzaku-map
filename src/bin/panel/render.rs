@@ -225,18 +225,27 @@ pub(crate) fn create_font_atlas(
     bind_group_layout: &wgpu::BindGroupLayout,
     font_face: FontFaceChoice,
     smoothing: TextSmoothing,
+    font_scale: f32,
 ) -> FontAtlas {
+    let atlas_scale = font_scale.max(1.0).min(2.5);
     if let Some((font, label)) = load_runtime_font(font_face) {
         return create_runtime_font_atlas(
             device,
             queue,
             bind_group_layout,
             &font,
+            atlas_scale,
             smoothing,
             label,
         );
     }
-    create_bitmap_font_atlas(device, queue, bind_group_layout, smoothing)
+    create_bitmap_font_atlas(
+        device,
+        queue,
+        bind_group_layout,
+        atlas_scale,
+        smoothing,
+    )
 }
 
 fn create_runtime_font_atlas(
@@ -244,17 +253,19 @@ fn create_runtime_font_atlas(
     queue: &wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
     font: &Font,
+    atlas_scale: f32,
     smoothing: TextSmoothing,
     font_label: String,
 ) -> FontAtlas {
     const GLYPH_SIZE: f32 = 28.0;
+    let glyph_size = (GLYPH_SIZE * atlas_scale).round().clamp(24.0, 64.0);
     let glyphs = atlas_charset();
     let mut rendered = Vec::with_capacity(glyphs.len());
     let mut max_w = 0u32;
     let mut max_h = 0u32;
 
     for ch in &glyphs {
-        let (metrics, bitmap) = font.rasterize(*ch, GLYPH_SIZE);
+        let (metrics, bitmap) = font.rasterize(*ch, glyph_size);
         max_w = max_w.max(metrics.width as u32);
         max_h = max_h.max(metrics.height as u32);
         rendered.push((*ch, metrics, bitmap));
@@ -311,23 +322,33 @@ fn create_bitmap_font_atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     bind_group_layout: &wgpu::BindGroupLayout,
+    atlas_scale: f32,
     smoothing: TextSmoothing,
 ) -> FontAtlas {
-    const CELL_W: u32 = 8;
-    const CELL_H: u32 = 10;
+    let scale = atlas_scale.clamp(1.0, 2.0);
+    let cell_w = ((8.0 * scale).round() as u32).max(8);
+    let cell_h = ((10.0 * scale).round() as u32).max(10);
     const COLS: u32 = 16;
     let glyphs = atlas_charset();
     let rows = (glyphs.len() as u32).div_ceil(COLS);
-    let atlas_w = COLS * CELL_W;
-    let atlas_h = rows * CELL_H;
+    let atlas_w = COLS * cell_w;
+    let atlas_h = rows * cell_h;
     let mut bytes = vec![0u8; (atlas_w * atlas_h) as usize];
     let mut uv_map = HashMap::new();
 
     for (index, ch) in glyphs.iter().enumerate() {
         let col = index as u32 % COLS;
         let row = index as u32 / COLS;
-        let origin_x = col * CELL_W + 1;
-        let origin_y = row * CELL_H + 1;
+        let mut origin_x = col * cell_w + 1;
+        let mut origin_y = row * cell_h + 1;
+        if scale > 1.25 {
+            let x_pad = (cell_w as i32 - 8) / 2;
+            let y_pad = (cell_h as i32 - 10) / 2;
+            if x_pad > 0 && y_pad > 0 {
+                origin_x = col * cell_w + x_pad as u32;
+                origin_y = row * cell_h + y_pad as u32;
+            }
+        }
         for (bitmap_row, pattern) in suzaku_map::ime::gpu::glyph_bitmap(*ch).iter().enumerate() {
             for bitmap_col in 0..5 {
                 if (pattern >> (4 - bitmap_col)) & 1 == 1 {
@@ -340,10 +361,10 @@ fn create_bitmap_font_atlas(
         uv_map.insert(
             *ch,
             [
-                (col * CELL_W) as f32 / atlas_w as f32,
-                (row * CELL_H) as f32 / atlas_h as f32,
-                ((col + 1) * CELL_W) as f32 / atlas_w as f32,
-                ((row + 1) * CELL_H) as f32 / atlas_h as f32,
+                (col * cell_w) as f32 / atlas_w as f32,
+                (row * cell_h) as f32 / atlas_h as f32,
+                ((col + 1) * cell_w) as f32 / atlas_w as f32,
+                ((row + 1) * cell_h) as f32 / atlas_h as f32,
             ],
         );
     }
@@ -410,7 +431,11 @@ fn create_font_atlas_resources(
         } else {
             wgpu::FilterMode::Nearest
         },
-        min_filter: wgpu::FilterMode::Nearest,
+        min_filter: if smoothing == TextSmoothing::Smooth {
+            wgpu::FilterMode::Linear
+        } else {
+            wgpu::FilterMode::Nearest
+        },
         mipmap_filter: wgpu::FilterMode::Nearest,
         ..Default::default()
     });

@@ -189,6 +189,7 @@ impl PanelState {
             &text_bind_group_layout,
             self.chrome.font_face,
             self.chrome.text_smoothing,
+            self.window_scale,
         );
     }
 

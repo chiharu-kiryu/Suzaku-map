@@ -2,6 +2,14 @@
 
 Suzaku Map is a multimodal IME project.
 
+Current release: **0.4.0**.
+
+### 0.4.0 Highlights
+
+- Scaled-aware text rendering pipeline for clearer zoomed desktop UI.
+- Performance-safe font atlas rebuild behavior on window scale changes.
+- Updated font atlas and sampling defaults to improve readability at larger scales.
+
 The repository currently contains three layers that evolve together:
 
 - a shared Rust IME core
@@ -126,6 +134,9 @@ The original system notes are still part of the repository and now serve as back
 ```bash
 cargo check --features gpu
 cargo test --features gpu
+cargo build --features gpu
+cargo build --release --features gpu
+cargo run --release --features gpu --bin suzaku-map -- --help
 cargo ime-host
 ```
 
@@ -133,6 +144,18 @@ cargo ime-host
 
 ```bash
 cargo run --features gpu --bin panel
+```
+
+### Common build note (important)
+
+The root crate is feature-gated for GPU components.  
+Builds without `--features gpu` may fail with errors about missing `winit` or `ime::gpu` items.  
+For desktop companion/scene/debug work, prefer:
+
+```bash
+cargo build --features gpu
+cargo run --features gpu --bin panel
+cargo run --release --features gpu --bin suzaku-map -- --help
 ```
 
 Shortcuts from Cargo aliases:
