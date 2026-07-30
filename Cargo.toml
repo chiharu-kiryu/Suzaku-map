@@ -50,6 +50,10 @@ path = "src/bin/android_ime_host.rs"
 required-features = ["gpu"]
 
 [[bin]]
+name = "suzaku_tool"
+path = "src/bin/suzaku_tool.rs"
+
+[[bin]]
 name = "android_doctor"
 path = "src/bin/android_doctor.rs"
 required-features = ["gpu"]

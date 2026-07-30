@@ -1,4 +1,4 @@
-use super::{TargetPlatform, linux};
+use super::TargetPlatform;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LinuxImeFramework {
@@ -39,16 +39,19 @@ pub fn recommended_connection_name() -> String {
 }
 
 pub fn bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
+    let framework = detected_framework();
+    let recommended_connection_name = recommended_connection_name();
+    let daemon_detected = framework_daemon_detected(&framework);
+    let host_registration_ready = framework_host_registered(&framework, &recommended_connection_name);
     LinuxImeBootstrap {
-        framework: detected_framework(),
+        framework,
         host_platform: platform,
-        daemon_detected: linux::linux_voice_portal_available()
-            || linux::linux_voice_pipewire_available(),
-        host_registration_ready: false,
+        daemon_detected,
+        host_registration_ready,
         marked_text_roundtrip_ready: false,
         commit_roundtrip_ready: false,
         native_candidate_window_ready: false,
-        recommended_connection_name: recommended_connection_name(),
+        recommended_connection_name,
     }
 }
 
@@ -61,6 +64,161 @@ fn detected_framework() -> LinuxImeFramework {
     } else {
         LinuxImeFramework::IBus
     }
+}
+
+fn framework_daemon_detected(framework: &LinuxImeFramework) -> bool {
+    match framework {
+        LinuxImeFramework::IBus => process_has_name("ibus-daemon")
+            || process_has_name("ibus-x11")
+            || process_has_name("ibus-portal"),
+        LinuxImeFramework::Fcitx => {
+            process_has_name("fcitx")
+                || process_has_name("fcitx5")
+                || process_has_name("fcitx5-qt")
+        }
+    }
+}
+
+fn framework_host_registered(framework: &LinuxImeFramework, connection: &str) -> bool {
+    if let Some(override_ready) = env_flag_override("SUZAKU_LINUX_IME_REGISTERED") {
+        return override_ready;
+    }
+
+    match framework {
+        LinuxImeFramework::IBus => ibus_engine_registered(connection),
+        LinuxImeFramework::Fcitx => fcitx_engine_registered(connection),
+    }
+}
+
+fn env_flag_override(key: &str) -> Option<bool> {
+    std::env::var(key).ok().map(|value| value == "1")
+}
+
+fn process_has_name(process_name: &str) -> bool {
+    std::process::Command::new("pgrep")
+        .arg("-x")
+        .arg(process_name)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn ibus_engine_registered(connection_name: &str) -> bool {
+    let output = std::process::Command::new("ibus")
+        .arg("list-engine")
+        .output();
+
+    if output
+        .as_ref()
+        .is_ok_and(|response| response.status.success())
+        && output
+            .as_ref()
+            .and_then(|response| String::from_utf8(response.stdout.clone()).ok())
+            .is_some_and(|stdout| {
+                stdout
+                    .lines()
+                    .any(|line| line.trim().split_whitespace().next().unwrap_or("") == connection_name)
+            })
+    {
+        return true;
+    }
+
+    has_ibus_component_marker(connection_name)
+}
+
+fn has_ibus_component_marker(connection_name: &str) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let base = std::path::Path::new(&home).join(".local/share/ibus/component");
+    let entries = match std::fs::read_dir(base) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        if !entry.file_type().is_ok_and(|ft| ft.is_file()) {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("xml") {
+            continue;
+        }
+        let Ok(contents) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if contents.contains(connection_name) {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[allow(clippy::unused_io_amount)]
+fn _output_contains_connection(response: std::process::Output, connection_name: &str) -> bool {
+    String::from_utf8(response.stdout)
+        .ok()
+        .is_some_and(|stdout| {
+            stdout
+                .lines()
+                .any(|line| line.trim().split_whitespace().next().unwrap_or("") == connection_name)
+        })
+}
+
+fn fcitx_engine_registered(connection_name: &str) -> bool {
+    if has_fcitx_config_containing(".local/share/fcitx5/inputmethod")
+        || has_fcitx_config_containing(".config/fcitx")
+        || has_fcitx_config_containing(".config/fcitx5/inputmethod")
+    {
+        return true;
+    }
+
+    has_fcitx_config_file_named(connection_name)
+}
+
+fn has_fcitx_config_containing(relative_path: &str) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let base = std::path::Path::new(&home).join(relative_path);
+    let entries = match std::fs::read_dir(base) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        if !entry.file_type().is_ok_and(|ft| ft.is_file()) {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("conf") {
+            continue;
+        }
+
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            if contents.contains("suzaku") || contents.contains("Suzaku") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn has_fcitx_config_file_named(connection_name: &str) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let filename = format!("{}.conf", connection_name.replace('.', "_"));
+    let paths = [
+        std::path::Path::new(&home).join(".local/share/fcitx5/inputmethod").join(filename.as_str()),
+        std::path::Path::new(&home).join(".config/fcitx").join("inputmethod").join(filename.as_str()),
+        std::path::Path::new(&home)
+            .join(".config/fcitx5/inputmethod")
+            .join(filename.as_str()),
+    ];
+
+    paths.iter().any(|path| path.exists())
 }
 
 #[cfg(test)]
@@ -82,6 +240,27 @@ mod tests {
 
             let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
             assert_eq!(bootstrap.framework, LinuxImeFramework::IBus);
+        });
+    }
+
+    #[test]
+    fn linux_ime_bootstrap_reads_registration_override() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
+
+            let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert!(bootstrap.host_registration_ready);
+        });
+    }
+
+    #[test]
+    fn linux_ime_bootstrap_reports_fcitx_when_explicit() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_IME_FRAMEWORK", "fcitx");
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "0");
+
+            let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert_eq!(bootstrap.framework, LinuxImeFramework::Fcitx);
             assert!(!bootstrap.host_registration_ready);
         });
     }

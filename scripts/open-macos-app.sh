@@ -1,11 +1,7 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-APP_DIR="${ROOT_DIR}/target/debug/Suzaku Panel.app"
+cd "$ROOT_DIR"
 
-if [ ! -d "${APP_DIR}" ]; then
-  sh "${ROOT_DIR}/scripts/build-macos-app.sh" >/dev/null
-fi
-
-open "${APP_DIR}"
+exec cargo run --bin suzaku_tool -- open-macos-app "$@"

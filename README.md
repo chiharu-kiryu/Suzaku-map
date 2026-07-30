@@ -193,6 +193,16 @@ Environment check:
 cargo android-doctor
 ```
 
+Linux registration helper:
+
+```bash
+bash scripts/linux-register-ime.sh install
+bash scripts/linux-register-ime.sh status
+bash scripts/linux-register-ime.sh uninstall
+bash scripts/linux-register-ime.sh verify
+bash scripts/linux-register-ime.sh diag
+```
+
 Rust-side host bootstrap:
 
 ```bash
@@ -200,22 +210,21 @@ cargo ime-host
 cargo android-ime-host
 ```
 
-Build native Rust libraries:
+Native helper actions (Rust-native runner):
 
 ```bash
+cargo android-env
+cargo android-build-native
+cd android && ./gradlew assembleDebug
+cargo android-install-debug
+cargo android-enable-ime
+```
+
+Legacy script entry still works:
+
+```bash
+bash scripts/android-env.sh
 bash scripts/android-build-native.sh
-```
-
-Build Android debug APK:
-
-```bash
-cd android
-./gradlew assembleDebug
-```
-
-Install and enable on device:
-
-```bash
 bash scripts/android-install-debug.sh
 bash scripts/android-enable-ime.sh
 ```
@@ -261,11 +270,35 @@ Available:
 
 ### Linux
 
-Scaffolded:
+System-host direction is moving from scaffold to registration-aware status reporting.
 
 - Ubuntu / Arch / SteamOS capability profiles
 - Linux voice backend and probe path
 - Linux IME host direction for IBus / Fcitx
+- runtime registration status for Linux IME host hooks:
+  - bootstrap reads `SUZAKU_LINUX_IME_FRAMEWORK=fcitx` to switch to Fcitx checks
+  - registration status is marked ready when `ibus list-engine` contains `dev.suzaku.linux.ime` (IBus) or Fcitx-side config references are detected
+  - quick local override for staging: `SUZAKU_LINUX_IME_REGISTERED=1`
+- quick bootstrap and local registration script:
+  - `scripts/linux-register-ime.sh install`
+  - `scripts/linux-register-ime.sh status`
+  - `scripts/linux-register-ime.sh uninstall`
+  - `scripts/linux-register-ime.sh verify`
+  - `scripts/linux-register-ime.sh diag`
+  - script is now a thin wrapper over Rust tool `cargo run --bin suzaku_tool -- linux-register`
+
+The script writes minimal host markers for the selected framework:
+
+- IBus: `~/.local/share/ibus/component/dev.suzaku.linux.ime.xml`
+- Fcitx: `~/.local/share/fcitx5/inputmethod/dev_suzaku_linux_ime.conf` and `~/.config/fcitx/inputmethod/dev_suzaku_linux_ime.conf`
+
+Framework selection is shared with bootstrap:
+
+- `SUZAKU_LINUX_IME_FRAMEWORK=fcitx` to register and check Fcitx layout
+- default remains IBus when not set
+
+Production path target is still pending:
+- packaging and installer integration with system policy/paths
 
 ## Refactor Policy
 
