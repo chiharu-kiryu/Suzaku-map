@@ -53,7 +53,7 @@ impl WgpuCandidateRenderer {
             input_modes_expanded: true,
             ..PanelChromeState::default()
         };
-        self.build_panel_scene(snapshot, &chrome)
+        self.build_panel_scene(snapshot, &chrome, None, None, None)
     }
 
     pub fn build_compact_scene(
@@ -91,7 +91,9 @@ impl WgpuCandidateRenderer {
         };
         let shell_shadow = match chrome.theme_preset {
             ThemePreset::Daylight => [0.19, 0.28, 0.41, 0.24],
+            ThemePreset::Solarized => [0.31, 0.22, 0.12, 0.24],
             ThemePreset::DeviceDark => [0.01, 0.03, 0.07, 0.42],
+            ThemePreset::HighContrast => [0.00, 0.00, 0.00, 0.52],
         };
         let glass_ring = if pressed {
             [0.90, 0.95, 1.0, 0.22]
@@ -102,7 +104,9 @@ impl WgpuCandidateRenderer {
         };
         let contact_shadow = match chrome.theme_preset {
             ThemePreset::Daylight => [0.15, 0.23, 0.35, 0.16],
+            ThemePreset::Solarized => [0.24, 0.16, 0.09, 0.16],
             ThemePreset::DeviceDark => [0.01, 0.02, 0.05, 0.28],
+            ThemePreset::HighContrast => [0.06, 0.06, 0.06, 0.38],
         };
         let bird_primary = if pressed {
             [0.77, 0.16, 0.16, 1.0]
@@ -272,6 +276,9 @@ impl WgpuCandidateRenderer {
             hit_targets,
             interactive_targets: std::mem::take(&mut targets),
             labels: snapshot.candidate_labels.clone(),
+            sentence_candidate_truncated: Vec::new(),
+            next_token_candidate_truncated: Vec::new(),
+            handwriting_candidate_truncated: Vec::new(),
             selected_label: snapshot
                 .candidate_labels
                 .get(snapshot.selected_index)

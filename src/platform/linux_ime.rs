@@ -107,19 +107,17 @@ fn ibus_engine_registered(connection_name: &str) -> bool {
         .arg("list-engine")
         .output();
 
-    if output
-        .as_ref()
-        .is_ok_and(|response| response.status.success())
-        && output
-            .as_ref()
-            .and_then(|response| String::from_utf8(response.stdout.clone()).ok())
-            .is_some_and(|stdout| {
-                stdout
-                    .lines()
-                    .any(|line| line.trim().split_whitespace().next().unwrap_or("") == connection_name)
-            })
+    if let Ok(response) = &output
+        && response.status.success()
     {
-        return true;
+        if let Ok(stdout) = String::from_utf8(response.stdout.clone()) {
+            if stdout
+                .lines()
+                .any(|line| line.trim().split_whitespace().next().unwrap_or("") == connection_name)
+            {
+                return true;
+            }
+        }
     }
 
     has_ibus_component_marker(connection_name)

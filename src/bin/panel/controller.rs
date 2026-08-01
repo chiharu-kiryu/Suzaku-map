@@ -43,6 +43,7 @@ impl PanelState {
             } else {
                 self.clear_pressed_interaction();
             }
+            self.clear_sentence_candidate_scroll();
             self.voice_stability_ticks = 0;
             self.last_polled_voice_transcript.clear();
             self.chrome.blur_input();
@@ -67,6 +68,7 @@ impl PanelState {
 
     fn chosen_canvas_abandon_state(&mut self) {
         self.clear_pressed_interaction();
+        self.clear_sentence_candidate_scroll();
         self.interaction.touch_tap_pending = false;
         self.interaction.touch_start_position = None;
         self.interaction.scale_dragging = false;
@@ -128,6 +130,7 @@ impl PanelState {
         } else {
             40
         };
+        self.clear_sentence_candidate_scroll();
         self.reset_after_commit(&committed_text);
         true
     }
@@ -178,6 +181,7 @@ impl PanelState {
         } else {
             40
         };
+        self.clear_sentence_candidate_scroll();
         self.reset_after_commit(&committed_text);
         true
     }
@@ -287,6 +291,33 @@ impl PanelState {
                 chrome.hovered_interaction = self.interaction.hovered_interaction;
                 chrome.pressed_interaction = self.interaction.pressed_interaction;
                 chrome.window_scale = self.window_scale;
+                let sentence_candidate_scroll = self
+                    .interaction
+                    .sentence_candidate_scroll_index
+                    .and_then(|index| {
+                        self.interaction
+                            .sentence_candidate_scroll_started_at
+                            .as_ref()
+                            .map(|started_at| (index, *started_at))
+                    });
+                let next_token_candidate_scroll = self
+                    .interaction
+                    .next_token_candidate_scroll_index
+                    .and_then(|index| {
+                        self.interaction
+                            .next_token_candidate_scroll_started_at
+                            .as_ref()
+                            .map(|started_at| (index, *started_at))
+                    });
+                let handwriting_candidate_scroll = self
+                    .interaction
+                    .handwriting_candidate_scroll_index
+                    .and_then(|index| {
+                        self.interaction
+                            .handwriting_candidate_scroll_started_at
+                            .as_ref()
+                            .map(|started_at| (index, *started_at))
+                    });
                 if chrome.compact_mode {
                     self.renderer.build_compact_scene(
                         &self.engine.snapshot(),
@@ -295,8 +326,13 @@ impl PanelState {
                         self.interaction.compact_dragging,
                     )
                 } else {
-                    self.renderer
-                        .build_panel_scene(&self.engine.snapshot(), &chrome)
+                    self.renderer.build_panel_scene(
+                        &self.engine.snapshot(),
+                        &chrome,
+                        sentence_candidate_scroll,
+                        next_token_candidate_scroll,
+                        handwriting_candidate_scroll,
+                    )
                 }
             }
             PanelWindowKind::Settings => {
@@ -402,6 +438,18 @@ impl PanelState {
                 b: 0.89,
                 a: 1.0,
             },
+            (suzaku_map::ime::gpu::ThemePreset::Solarized, true) => wgpu::Color {
+                r: 0.80,
+                g: 0.74,
+                b: 0.63,
+                a: 1.0,
+            },
+            (suzaku_map::ime::gpu::ThemePreset::Solarized, false) => wgpu::Color {
+                r: 0.86,
+                g: 0.80,
+                b: 0.67,
+                a: 1.0,
+            },
             (suzaku_map::ime::gpu::ThemePreset::DeviceDark, true) => wgpu::Color {
                 r: 0.12,
                 g: 0.15,
@@ -412,6 +460,18 @@ impl PanelState {
                 r: 0.15,
                 g: 0.18,
                 b: 0.24,
+                a: 1.0,
+            },
+            (suzaku_map::ime::gpu::ThemePreset::HighContrast, true) => wgpu::Color {
+                r: 0.03,
+                g: 0.04,
+                b: 0.07,
+                a: 1.0,
+            },
+            (suzaku_map::ime::gpu::ThemePreset::HighContrast, false) => wgpu::Color {
+                r: 0.04,
+                g: 0.05,
+                b: 0.08,
                 a: 1.0,
             },
         };
@@ -550,6 +610,13 @@ impl PanelState {
                 }
                 InteractionKind::SetThemePreset(theme) => {
                     self.chrome.theme_preset = theme;
+                    if theme == suzaku_map::ime::gpu::ThemePreset::HighContrast
+                        && self.chrome.text_smoothing
+                            != suzaku_map::ime::gpu::TextSmoothing::Sharp
+                    {
+                        self.chrome.text_smoothing = suzaku_map::ime::gpu::TextSmoothing::Sharp;
+                        self.rebuild_font_atlas();
+                    }
                     self.persist_display_settings();
                 }
                 InteractionKind::SetLlmEnabled(enabled) => {
@@ -586,7 +653,27 @@ impl PanelState {
                     self.reconfigure_llama_plugin();
                     self.persist_display_settings();
                 }
-                InteractionKind::SelectNextToken(index) => self.select_next_token(index),
+                InteractionKind::SelectNextToken(index) => {
+                    let action = InteractionKind::SelectNextToken(index);
+                    let is_truncated = scene.next_token_candidate_truncated.contains(&index);
+                    let is_scrolling = self.interaction.next_token_candidate_scroll_index
+                        == Some(index)
+                        && self.interaction.next_token_candidate_scroll_started_at.is_some();
+
+                    if is_truncated && !is_scrolling {
+                        self.interaction.next_token_candidate_scroll_index = Some(index);
+                        self.interaction.next_token_candidate_scroll_started_at =
+                            Some(Instant::now());
+                        return;
+                    }
+
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
+                    self.select_next_token(index);
+                }
                 InteractionKind::RewindNextToken => self.rewind_next_token(),
                 InteractionKind::ToggleVoiceCapture => {
                     if matches!(
@@ -630,6 +717,24 @@ impl PanelState {
                 }
                 InteractionKind::ClearHandwriting => self.clear_handwriting(),
                 InteractionKind::UseHandwritingCandidate(index) => {
+                    let action = InteractionKind::UseHandwritingCandidate(index);
+                    let is_truncated = scene.handwriting_candidate_truncated.contains(&index);
+                    let is_scrolling = self.interaction.handwriting_candidate_scroll_index
+                        == Some(index)
+                        && self.interaction.handwriting_candidate_scroll_started_at.is_some();
+
+                    if is_truncated && !is_scrolling {
+                        self.interaction.handwriting_candidate_scroll_index = Some(index);
+                        self.interaction.handwriting_candidate_scroll_started_at =
+                            Some(Instant::now());
+                        return;
+                    }
+
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.insert_handwriting_candidate(index);
                 }
                 InteractionKind::VirtualKeyboardKey(key) => {
@@ -654,6 +759,18 @@ impl PanelState {
                 }
                 InteractionKind::Candidate(index) => {
                     let action = InteractionKind::Candidate(index);
+                    let is_truncated = scene.sentence_candidate_truncated.contains(&index);
+                    let is_scrolling = self.interaction.sentence_candidate_scroll_index
+                        == Some(index)
+                        && self.interaction.sentence_candidate_scroll_started_at.is_some();
+
+                    if is_truncated && !is_scrolling {
+                        self.interaction.sentence_candidate_scroll_index = Some(index);
+                        self.interaction.sentence_candidate_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+
+                    self.clear_sentence_candidate_scroll();
                     if self.is_repeating_interaction(action) {
                         return;
                     }
@@ -696,6 +813,14 @@ impl PanelState {
 
     pub(super) fn begin_primary_press(&mut self, is_touch: bool) {
         self.update_pressed_interaction();
+        if !matches!(
+            self.interaction.pressed_interaction,
+            Some(InteractionKind::Candidate(_)
+                | InteractionKind::SelectNextToken(_)
+                | InteractionKind::UseHandwritingCandidate(_))
+        ) {
+            self.clear_sentence_candidate_scroll();
+        }
 
         if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
@@ -751,6 +876,7 @@ impl PanelState {
     }
 
     pub(super) fn complete_primary_release(&mut self, is_touch: bool) {
+        let pressed_interaction = self.interaction.pressed_interaction;
         let selected_from_pressed = self
             .interaction
             .pressed_interaction
@@ -784,6 +910,15 @@ impl PanelState {
             self.interaction.touch_tap_pending = false;
             self.interaction.touch_start_position = None;
         }
+        if !matches!(
+            pressed_interaction,
+            Some(InteractionKind::Candidate(_)
+                | InteractionKind::SelectNextToken(_)
+                | InteractionKind::UseHandwritingCandidate(_))
+        ) || !selected_from_pressed
+        {
+            self.clear_sentence_candidate_scroll();
+        }
         self.clear_pressed_interaction();
     }
 
@@ -800,6 +935,7 @@ impl PanelState {
         if self.interaction.scale_dragging {
             self.end_window_scale_drag();
         }
+        self.clear_sentence_candidate_scroll();
         self.clear_pressed_interaction();
         self.interaction.touch_tap_pending = false;
         self.interaction.touch_start_position = None;
@@ -879,6 +1015,15 @@ impl PanelState {
             self.interaction.handwriting_last_sample_position = None;
             self.interaction.handwriting_last_sample = None;
         }
+    }
+
+    fn clear_sentence_candidate_scroll(&mut self) {
+        self.interaction.sentence_candidate_scroll_index = None;
+        self.interaction.sentence_candidate_scroll_started_at = None;
+        self.interaction.next_token_candidate_scroll_index = None;
+        self.interaction.next_token_candidate_scroll_started_at = None;
+        self.interaction.handwriting_candidate_scroll_index = None;
+        self.interaction.handwriting_candidate_scroll_started_at = None;
     }
 
     pub(super) fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {

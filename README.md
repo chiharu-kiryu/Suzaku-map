@@ -10,6 +10,16 @@ Current release: **0.4.0**.
 - Performance-safe font atlas rebuild behavior on window scale changes.
 - Updated font atlas and sampling defaults to improve readability at larger scales.
 - Tunable handwritten-stroke sampling and smoothing via environment variables, enabling faster on-device touch calibration for 0.4.0.
+- Added theme presets for desktop panel visuals.
+  - Supported values in `panel-settings.toml` (`theme_preset`):
+    - `daylight`
+    - `device_dark`
+    - `solarized`
+    - `high_contrast`
+  - Default config paths:
+    - Linux: `~/.config/suzaku-panel/panel-settings.toml` (or `$XDG_CONFIG_HOME/suzaku-panel/panel-settings.toml`)
+    - macOS: `~/Library/Application Support/SuzakuPanel/panel-settings.toml`
+    - Windows: `%APPDATA%/SuzakuPanel/panel-settings.toml`
 
 The repository currently contains three layers that evolve together:
 

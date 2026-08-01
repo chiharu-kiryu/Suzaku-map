@@ -296,6 +296,8 @@ pub(super) fn theme_preset_label(value: suzaku_map::ime::gpu::ThemePreset) -> &'
     match value {
         suzaku_map::ime::gpu::ThemePreset::Daylight => "Daylight",
         suzaku_map::ime::gpu::ThemePreset::DeviceDark => "Device Dark",
+        suzaku_map::ime::gpu::ThemePreset::HighContrast => "High Contrast",
+        suzaku_map::ime::gpu::ThemePreset::Solarized => "Solarized",
     }
 }
 

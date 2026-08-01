@@ -207,6 +207,12 @@ struct PanelInteractionState {
     scale_drag_start_cursor_x: Option<f32>,
     scale_drag_start_scale: f32,
     last_input_was_touch: bool,
+    sentence_candidate_scroll_index: Option<usize>,
+    sentence_candidate_scroll_started_at: Option<Instant>,
+    next_token_candidate_scroll_index: Option<usize>,
+    next_token_candidate_scroll_started_at: Option<Instant>,
+    handwriting_candidate_scroll_index: Option<usize>,
+    handwriting_candidate_scroll_started_at: Option<Instant>,
     handwriting_last_sample: Option<Instant>,
     handwriting_last_sample_position: Option<[f32; 2]>,
 }

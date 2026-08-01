@@ -173,8 +173,7 @@ fn linux_register(args: &[String]) -> i32 {
         "verify" => linux_verify(framework),
         "uninstall" => linux_uninstall(framework),
         "diag" => {
-            if let Err(err) = linux_install(framework) {
-                eprintln!("{err}");
+            if linux_install(framework) != 0 {
                 1
             } else {
                 println!();
@@ -276,30 +275,33 @@ fn linux_status(framework: LinuxFramework) -> i32 {
             } else {
                 println!("IBus: marker not found at {}", marker.display());
             }
-            if command_exists("ibus") {
-                match command("ibus").and_then(|mut cmd| cmd.arg("list-engine").output().ok()) {
-                    Ok(response) => {
-                        if response.status.success() {
-                            let stdout = String::from_utf8_lossy(&response.stdout);
-                            if stdout
-                                .lines()
-                                .any(|line| line.trim().split_whitespace().next() == Some(CONNECTION_NAME))
-                            {
-                                println!("IBus runtime list contains {CONNECTION_NAME}.");
+        if command_exists("ibus") {
+                match command("ibus") {
+                    Some(mut cmd) => match cmd.arg("list-engine").output() {
+                        Ok(response) => {
+                            if response.status.success() {
+                                let stdout = String::from_utf8_lossy(&response.stdout);
+                                if stdout
+                                    .lines()
+                                    .any(|line| line.trim().split_whitespace().next() == Some(CONNECTION_NAME))
+                                {
+                                    println!("IBus runtime list contains {CONNECTION_NAME}.");
+                                } else {
+                                    println!(
+                                        "IBus runtime list does not include {CONNECTION_NAME} yet (file marker may still be enough)."
+                                    );
+                                }
                             } else {
-                                println!(
-                                    "IBus runtime list does not include {CONNECTION_NAME} yet (file marker may still be enough)."
-                                );
+                                println!("ibus list-engine returned non-zero exit.");
                             }
-                        } else {
-                            println!("ibus list-engine returned non-zero exit.");
                         }
-                    }
-                    Err(_) => println!("Failed to run ibus list-engine."),
+                        Err(_) => println!("Failed to run ibus list-engine."),
+                    },
+                    None => println!("ibus command unavailable; skipped runtime list check."),
                 }
-            } else {
-                println!("ibus command unavailable; skipped runtime list check.");
-            }
+        } else {
+            println!("ibus command unavailable; skipped runtime list check.");
+        }
         }
         LinuxFramework::Fcitx => {
             let mut found = false;
@@ -675,10 +677,6 @@ fn run_android_build_native_with_flags(release_flag: bool) -> i32 {
     0
 }
 
-fn run_android_build_native(profile: Option<&str>) -> i32 {
-    run_android_build_native_with_flags(profile == Some("release"))
-}
-
 fn run_android_one_target(
     root: &Path,
     env: &AndroidEnv,
@@ -708,7 +706,7 @@ fn run_android_one_target(
         build_cmd.arg("--release");
     }
     let linker = env.suzaku_android_ndk_bin.join(clang);
-    let mut status_cmd = build_cmd
+    let status_cmd = build_cmd
         .env(linker_var, linker)
         .status()
         .map_err(|e| format!("cargo build failed for {rust_target}: {e}"))?;
@@ -768,7 +766,7 @@ fn android_install_debug(_args: &[String]) -> i32 {
             .arg("get-state")
             .status()
             .map_err(|e| format!("failed to run adb: {e}")),
-        None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "adb command not found")),
+        None => Err("adb command not found".to_string()),
     };
     if let Ok(status) = state {
         if !status.success() {
@@ -781,7 +779,8 @@ fn android_install_debug(_args: &[String]) -> i32 {
     }
 
     if let Some(mut cmd) = command("adb") {
-        if let Err(err) = run_status(cmd.arg("install").arg("-r").arg(apk_path.clone())) {
+        cmd.arg("install").arg("-r").arg(apk_path.clone());
+        if let Err(err) = run_status(cmd) {
             eprintln!("{err}");
             return 1;
         }
@@ -824,7 +823,7 @@ fn android_enable_ime(_args: &[String]) -> i32 {
             .arg("get-state")
             .status()
             .map_err(|e| format!("failed to run adb: {e}")),
-        None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "adb command not found")),
+        None => Err("adb command not found".to_string()),
     };
     if let Ok(status) = state {
         if !status.success() {
@@ -836,7 +835,8 @@ fn android_enable_ime(_args: &[String]) -> i32 {
         return 1;
     }
     if let Some(mut cmd) = command("adb") {
-        if let Err(err) = run_status(cmd.arg("shell").arg("ime").arg("enable").arg(IME_ID)) {
+        cmd.arg("shell").arg("ime").arg("enable").arg(IME_ID);
+        if let Err(err) = run_status(cmd) {
             eprintln!("{err}");
             return 1;
         }
@@ -845,7 +845,8 @@ fn android_enable_ime(_args: &[String]) -> i32 {
         return 1;
     }
     if let Some(mut cmd) = command("adb") {
-        if let Err(err) = run_status(cmd.arg("shell").arg("ime").arg("set").arg(IME_ID)) {
+        cmd.arg("shell").arg("ime").arg("set").arg(IME_ID);
+        if let Err(err) = run_status(cmd) {
             eprintln!("{err}");
             return 1;
         }

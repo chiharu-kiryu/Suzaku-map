@@ -395,6 +395,8 @@ pub(crate) fn encode_theme_preset(value: ThemePreset) -> &'static str {
     match value {
         ThemePreset::Daylight => "daylight",
         ThemePreset::DeviceDark => "device_dark",
+        ThemePreset::HighContrast => "high_contrast",
+        ThemePreset::Solarized => "solarized",
     }
 }
 
@@ -402,6 +404,8 @@ pub(crate) fn decode_theme_preset(value: &str) -> Option<ThemePreset> {
     match value {
         "daylight" => Some(ThemePreset::Daylight),
         "device_dark" => Some(ThemePreset::DeviceDark),
+        "high_contrast" => Some(ThemePreset::HighContrast),
+        "solarized" => Some(ThemePreset::Solarized),
         _ => None,
     }
 }

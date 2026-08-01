@@ -25,24 +25,44 @@ impl PanelTheme {
     pub(super) fn for_preset(preset: ThemePreset) -> Self {
         match preset {
             ThemePreset::Daylight => Self {
-                page_bg: [0.72, 0.78, 0.87, 1.0],
-                shell: [0.83, 0.88, 0.95, 1.0],
-                shell_border: [0.49, 0.58, 0.71, 1.0],
-                surface: [0.89, 0.93, 0.98, 1.0],
-                surface_alt: [0.81, 0.87, 0.95, 1.0],
-                surface_muted: [0.73, 0.79, 0.88, 1.0],
-                keyboard_surface: [0.90, 0.94, 0.99, 1.0],
-                keyboard_special_surface: [0.74, 0.80, 0.89, 1.0],
-                keyboard_text: [0.06, 0.09, 0.14, 1.0],
-                keyboard_secondary_text: [0.08, 0.12, 0.18, 1.0],
-                accent: [0.13, 0.44, 0.82, 1.0],
-                accent_soft: [0.63, 0.81, 1.0, 1.0],
-                accent_text: [0.04, 0.13, 0.26, 1.0],
-                text_primary: [0.06, 0.10, 0.16, 1.0],
-                text_secondary: [0.10, 0.15, 0.22, 1.0],
-                text_muted: [0.18, 0.25, 0.34, 1.0],
-                border_dark: [0.45, 0.55, 0.68, 1.0],
-                soft_shadow: [0.22, 0.30, 0.43, 0.16],
+                page_bg: [0.90, 0.93, 0.99, 1.0],
+                shell: [0.97, 0.99, 1.0, 1.0],
+                shell_border: [0.74, 0.84, 1.0, 1.0],
+                surface: [0.98, 0.99, 1.0, 1.0],
+                surface_alt: [0.94, 0.97, 1.0, 1.0],
+                surface_muted: [0.90, 0.93, 0.98, 1.0],
+                keyboard_surface: [0.98, 0.99, 1.0, 1.0],
+                keyboard_special_surface: [0.85, 0.89, 0.96, 1.0],
+                keyboard_text: [0.04, 0.07, 0.11, 1.0],
+                keyboard_secondary_text: [0.16, 0.20, 0.27, 1.0],
+                accent: [0.22, 0.49, 1.0, 1.0],
+                accent_soft: [0.80, 0.89, 1.0, 1.0],
+                accent_text: [0.10, 0.30, 0.70, 1.0],
+                text_primary: [0.07, 0.10, 0.17, 1.0],
+                text_secondary: [0.20, 0.27, 0.38, 1.0],
+                text_muted: [0.34, 0.42, 0.55, 1.0],
+                border_dark: [0.76, 0.84, 0.95, 1.0],
+                soft_shadow: [0.22, 0.32, 0.50, 0.14],
+            },
+            ThemePreset::Solarized => Self {
+                page_bg: [0.96, 0.93, 0.84, 1.0],
+                shell: [0.98, 0.95, 0.87, 1.0],
+                shell_border: [0.73, 0.63, 0.50, 1.0],
+                surface: [0.97, 0.93, 0.84, 1.0],
+                surface_alt: [0.93, 0.87, 0.78, 1.0],
+                surface_muted: [0.89, 0.82, 0.71, 1.0],
+                keyboard_surface: [0.98, 0.94, 0.84, 1.0],
+                keyboard_special_surface: [0.93, 0.86, 0.74, 1.0],
+                keyboard_text: [0.18, 0.16, 0.12, 1.0],
+                keyboard_secondary_text: [0.34, 0.28, 0.20, 1.0],
+                accent: [0.56, 0.44, 0.18, 1.0],
+                accent_soft: [0.84, 0.76, 0.58, 1.0],
+                accent_text: [0.31, 0.23, 0.12, 1.0],
+                text_primary: [0.18, 0.16, 0.14, 1.0],
+                text_secondary: [0.35, 0.28, 0.20, 1.0],
+                text_muted: [0.57, 0.50, 0.40, 1.0],
+                border_dark: [0.71, 0.56, 0.41, 1.0],
+                soft_shadow: [0.40, 0.30, 0.19, 0.22],
             },
             ThemePreset::DeviceDark => Self {
                 page_bg: [0.15, 0.18, 0.24, 1.0],
@@ -63,6 +83,26 @@ impl PanelTheme {
                 text_muted: [0.68, 0.76, 0.86, 1.0],
                 border_dark: [0.37, 0.46, 0.59, 1.0],
                 soft_shadow: [0.03, 0.05, 0.09, 0.34],
+            },
+            ThemePreset::HighContrast => Self {
+                page_bg: [0.03, 0.04, 0.07, 1.0],
+                shell: [0.08, 0.11, 0.17, 1.0],
+                shell_border: [0.42, 0.52, 0.84, 1.0],
+                surface: [0.16, 0.21, 0.32, 1.0],
+                surface_alt: [0.19, 0.25, 0.37, 1.0],
+                surface_muted: [0.22, 0.29, 0.42, 1.0],
+                keyboard_surface: [0.09, 0.13, 0.20, 1.0],
+                keyboard_special_surface: [0.14, 0.20, 0.31, 1.0],
+                keyboard_text: [1.0, 1.0, 1.0, 1.0],
+                keyboard_secondary_text: [0.90, 0.94, 1.0, 1.0],
+                accent: [0.15, 0.86, 1.0, 1.0],
+                accent_soft: [0.20, 0.70, 1.0, 1.0],
+                accent_text: [0.98, 0.99, 1.0, 1.0],
+                text_primary: [1.0, 1.0, 1.0, 1.0],
+                text_secondary: [0.92, 0.96, 1.0, 1.0],
+                text_muted: [0.72, 0.82, 0.96, 1.0],
+                border_dark: [0.84, 0.90, 1.0, 1.0],
+                soft_shadow: [0.00, 0.00, 0.00, 0.76],
             },
         }
     }
@@ -98,37 +138,37 @@ impl PanelSceneMetrics {
         sentence_count: usize,
     ) -> Self {
         let collapsed_daily_mode = !chrome.input_modes_expanded;
-        let scene_margin = (3.2 * responsive_scale).max(2.2);
+        let scene_margin = (4.2 * responsive_scale).max(3.0);
         let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0).min(940.0);
         let min_panel_width = (max_panel_width * 0.78)
             .clamp(190.0, 310.0)
             .min(max_panel_width);
-        let desired_panel_width = (scene_width * 0.91).clamp(190.0, 940.0);
+        let desired_panel_width = (scene_width * 0.95).clamp(190.0, 940.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);
 
         let spacing_scale = if chrome.candidate_density == CandidateDensity::Compact {
-            0.93
+            0.97
         } else {
-            0.98
+            1.0
         };
 
-        let input_box_h = 44.0 * responsive_scale * spacing_scale;
+        let input_box_h = 46.0 * responsive_scale * spacing_scale;
         let tools_header_h = if collapsed_daily_mode {
-            20.0 * responsive_scale
+            21.0 * responsive_scale
         } else {
-            17.2 * responsive_scale
+            19.0 * responsive_scale
         };
-        let tool_button_h = 15.6 * responsive_scale * spacing_scale;
-        let tool_gap = 2.2 * responsive_scale * spacing_scale;
-        let section_gap = 2.4 * responsive_scale * spacing_scale;
+        let tool_button_h = 16.2 * responsive_scale * spacing_scale;
+        let tool_gap = 2.8 * responsive_scale * spacing_scale;
+        let section_gap = 2.9 * responsive_scale * spacing_scale;
 
         let expanded_input_panel_h = if chrome.input_modes_expanded {
             match chrome.active_input_mode {
-                crate::ime::gpu::InputMode::VirtualKeyboard => 152.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Dictation => 165.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Handwriting => 168.0 * responsive_scale,
+                crate::ime::gpu::InputMode::VirtualKeyboard => 156.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Dictation => 170.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Handwriting => 173.0 * responsive_scale,
             }
         } else {
             0.0
@@ -137,17 +177,17 @@ impl PanelSceneMetrics {
         let stack_cap = (scene_height - scene_margin * 2.0).max(0.0);
         let mut tools_content_h = expanded_input_panel_h;
         let mut item_height = match (chrome.candidate_density, chrome.preview_style) {
-            (CandidateDensity::Compact, PreviewStyle::Compact) => 47.0,
-            (CandidateDensity::Compact, PreviewStyle::Full) => 58.0,
-            (CandidateDensity::Cozy, PreviewStyle::Compact) => 53.0,
-            (CandidateDensity::Cozy, PreviewStyle::Full) => 69.0,
+            (CandidateDensity::Compact, PreviewStyle::Compact) => 48.0,
+            (CandidateDensity::Compact, PreviewStyle::Full) => 60.0,
+            (CandidateDensity::Cozy, PreviewStyle::Compact) => 54.0,
+            (CandidateDensity::Cozy, PreviewStyle::Full) => 71.0,
         } * responsive_scale;
 
-        let mut hero_item_height = item_height + 8.0 * responsive_scale;
+        let mut hero_item_height = item_height + 10.0 * responsive_scale;
         let mut item_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            2.2
+            2.6
         } else {
-            2.7
+            3.0
         } * responsive_scale;
 
         let stacked_token_header = !collapsed_daily_mode
@@ -157,9 +197,9 @@ impl PanelSceneMetrics {
         let chip_section_h = if chrome.next_token_candidates.is_empty() {
             0.0
         } else if collapsed_daily_mode {
-            31.5 * responsive_scale
+            32.5 * responsive_scale
         } else {
-            (if stacked_token_header { 44.0 } else { 34.0 }) * responsive_scale
+            (if stacked_token_header { 45.0 } else { 34.5 }) * responsive_scale
         };
 
         let sentence_columns = if collapsed_daily_mode {
@@ -205,7 +245,7 @@ impl PanelSceneMetrics {
             + chip_section_h
             + if chip_section_h > 0.0 && sentence_count > 0 {
                 if collapsed_daily_mode {
-                    2.4 * responsive_scale
+                    2.8 * responsive_scale
                 } else {
                     3.2 * responsive_scale
                 }
@@ -221,7 +261,7 @@ impl PanelSceneMetrics {
                 + chip_section_h
                 + if chip_section_h > 0.0 && sentence_count > 0 {
                     if collapsed_daily_mode {
-                        2.4 * responsive_scale
+                        2.8 * responsive_scale
                     } else {
                         3.2 * responsive_scale
                     }
@@ -241,7 +281,7 @@ impl PanelSceneMetrics {
                 if collapsed_daily_mode {
                     3.2 * responsive_scale
                 } else {
-                    4.0 * responsive_scale
+                    4.6 * responsive_scale
                 }
             } else {
                 0.0
@@ -305,9 +345,9 @@ impl PanelSceneMetrics {
             chip_section_h,
             sentence_section_gap: if chip_section_h > 0.0 && sentence_count > 0 {
                 if collapsed_daily_mode {
-                    2.4 * responsive_scale
+                    2.8 * responsive_scale
                 } else {
-                    4.0 * responsive_scale
+                    4.6 * responsive_scale
                 }
             } else {
                 0.0

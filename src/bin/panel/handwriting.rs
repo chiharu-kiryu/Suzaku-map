@@ -337,19 +337,19 @@ impl PanelState {
         self.refresh_handwriting_candidates();
     }
 
-    fn append_handwriting_point(&mut self, stroke: &mut Vec<[f32; 2]>, point: [f32; 2]) {
-        if !self.should_sample_handwriting_point(point) {
-            return;
-        }
-        append_handwriting_segment(stroke, point, self.interaction.last_input_was_touch);
-    }
-
     fn refresh_handwriting_candidates(&mut self) {
         self.last_handwriting_summary = Some(summarize_handwriting_strokes(
             &self.chrome.handwriting_strokes,
         ));
         self.chrome.handwriting_candidates =
             recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
+        let handwriting_scroll_index = self.interaction.handwriting_candidate_scroll_index;
+        if !handwriting_scroll_index
+            .is_none_or(|index| index < self.chrome.handwriting_candidates.len())
+        {
+            self.interaction.handwriting_candidate_scroll_index = None;
+            self.interaction.handwriting_candidate_scroll_started_at = None;
+        }
         self.reconfigure_llama_plugin();
         self.chrome.handwriting_hint = if self.chrome.handwriting_strokes.is_empty() {
             "Draw a seed word with mouse or touch.".to_string()
@@ -402,10 +402,12 @@ impl PanelState {
             return;
         };
         let clamped = clamp_handwriting_point([x, y], rect);
-        let Some(stroke) = self.chrome.handwriting_strokes.last_mut() else {
+        if !self.should_sample_handwriting_point(clamped) {
             return;
-        };
-        self.append_handwriting_point(stroke, clamped);
+        }
+        if let Some(stroke) = self.chrome.handwriting_strokes.last_mut() {
+            append_handwriting_segment(stroke, clamped, self.interaction.last_input_was_touch);
+        }
     }
 
     pub(super) fn finish_handwriting_stroke(&mut self) {
@@ -427,6 +429,8 @@ impl PanelState {
         self.reset_handwriting_sample_state();
         self.chrome.handwriting_strokes.clear();
         self.chrome.handwriting_candidates.clear();
+        self.interaction.handwriting_candidate_scroll_index = None;
+        self.interaction.handwriting_candidate_scroll_started_at = None;
         self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
         self.last_handwriting_summary = None;
         self.reconfigure_llama_plugin();

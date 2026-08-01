@@ -68,18 +68,26 @@ pub(crate) fn append_soft_card_quads(
     radius: f32,
 ) {
     let [x, y, w, h] = rect;
-    let radius = radius.min(w * 0.22).min(h * 0.35).max(3.0);
-    let border = 1.5_f32.min(w * 0.04).min(h * 0.10).max(1.0);
+    let radius = radius.min(w * 0.22).min(h * 0.35).max(5.0);
+    let border = 1.2_f32
+        .min(w * 0.045)
+        .min(h * 0.13)
+        .max(1.0);
 
-    let deep_shadow = [shadow[0], shadow[1], shadow[2], shadow[3] * 0.78];
-    let ambient_shadow = [shadow[0], shadow[1], shadow[2], shadow[3] * 0.38];
+    let deep_shadow = [shadow[0], shadow[1], shadow[2], (shadow[3] * 0.58).min(1.0)];
+    let ambient_shadow = [shadow[0], shadow[1], shadow[2], (shadow[3] * 0.28).min(1.0)];
     append_rounded_rect_quads(
         quads,
-        [x + 1.0, y + 2.0, w, h],
+        [x + 0.8, y + 1.4, w, h],
         ambient_shadow,
         radius + 2.0,
     );
-    append_rounded_rect_quads(quads, [x + 3.0, y + 6.0, w, h], deep_shadow, radius + 1.5);
+    append_rounded_rect_quads(
+        quads,
+        [x + 1.6, y + 3.0, w, h],
+        deep_shadow,
+        radius + 1.1,
+    );
     append_rounded_rect_quads(quads, rect, outline, radius);
     append_rounded_rect_quads(
         quads,
@@ -94,7 +102,7 @@ pub(crate) fn append_soft_card_quads(
             w - border * 3.0,
             (h * 0.16).max(5.0),
         ],
-        color: [0.12, 0.18, 0.28, 0.035],
+        color: [0.12, 0.18, 0.28, 0.026],
     });
     quads.push(gpu::CandidateQuad {
         rect: [
@@ -103,7 +111,7 @@ pub(crate) fn append_soft_card_quads(
             w - border * 4.0,
             (h * 0.14).max(4.0),
         ],
-        color: [1.0, 1.0, 1.0, 0.11],
+        color: [1.0, 1.0, 1.0, 0.075],
     });
     quads.push(gpu::CandidateQuad {
         rect: [
@@ -112,7 +120,7 @@ pub(crate) fn append_soft_card_quads(
             w - border * 4.4,
             border.max(1.0),
         ],
-        color: [1.0, 1.0, 1.0, 0.15],
+        color: [1.0, 1.0, 1.0, 0.09],
     });
     let cut = radius * 0.18;
     append_rounded_rect_quads(quads, [x + border, y + border, cut, cut], fill, cut * 0.6);

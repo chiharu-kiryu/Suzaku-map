@@ -110,6 +110,8 @@ pub enum TextSmoothing {
 pub enum ThemePreset {
     Daylight,
     DeviceDark,
+    HighContrast,
+    Solarized,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -396,6 +398,9 @@ pub struct RenderScene {
     pub text_sections: Vec<TextSection>,
     pub hit_targets: Vec<HitTarget>,
     pub interactive_targets: Vec<InteractiveTarget>,
+    pub sentence_candidate_truncated: Vec<usize>,
+    pub next_token_candidate_truncated: Vec<usize>,
+    pub handwriting_candidate_truncated: Vec<usize>,
     pub labels: Vec<String>,
     pub selected_label: Option<String>,
     pub draft_text: String,

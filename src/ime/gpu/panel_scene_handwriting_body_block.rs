@@ -1,4 +1,47 @@
 {
+                    let scroll_text_for_candidate = |text: &str,
+                                                    started_at: Instant,
+                                                    pixel_size: f32,
+                                                    letter_spacing: f32,
+                                                    max_width: f32| {
+                        let chars: Vec<char> = text.chars().collect();
+                        if chars.is_empty() || max_width <= 0.0 {
+                            return "…".to_string();
+                        }
+
+                        let glyph_advance = (pixel_size * 6.5 + letter_spacing).max(pixel_size * 4.0);
+                        let width_for_char = |ch: char| {
+                            if ch == ' ' {
+                                pixel_size * 4.0
+                            } else {
+                                glyph_advance
+                            }
+                        };
+
+                        let doubled: Vec<char> = chars.iter().chain(chars.iter()).cloned().collect();
+                        let cycle_step = (started_at.elapsed().as_millis() as f32 / 220.0).floor() as usize;
+                        let start = cycle_step % chars.len();
+                        let viewport_capacity = ((max_width / glyph_advance).floor() as usize).max(1);
+
+                        let mut text = String::new();
+                        let mut width = 0.0_f32;
+
+                        for (offset, ch) in doubled.iter().skip(start).take(chars.len()).enumerate() {
+                            if width_for_char(*ch) + width > max_width && !text.is_empty() {
+                                break;
+                            }
+                            if text.is_empty() {
+                                text.push(*ch);
+                                width = width_for_char(*ch);
+                            } else if offset < viewport_capacity {
+                                text.push(*ch);
+                                width += width_for_char(*ch);
+                            }
+                        }
+
+                        text
+                    };
+
                     let handwriting_scale = ((drawer_rect[3] / (232.0 * responsive_scale))
                         * (drawer_rect[2] / (340.0 * responsive_scale)).powf(0.35))
                         .clamp(0.72, 1.35);
@@ -167,7 +210,7 @@
                             pixel_size: handwriting_hint_px,
                             letter_spacing: ui_tracking * handwriting_scale,
                             line_gap: base_line_gap * handwriting_scale,
-                            max_lines: 2,
+                            max_lines: 1,
                             color: text_secondary,
                             align: TextAlign::Left,
                             role: TextRole::HandwritingLabel,
@@ -350,7 +393,45 @@
                             align: TextAlign::Center,
                             role: TextRole::HandwritingCandidate,
                         }
-                            .layout();
+                        .layout();
+                        let mut final_text = candidate.clone();
+                        if layout.truncated || layout.lines.len() > 1 {
+                            handwriting_candidate_truncated.push(index);
+                            if let Some(&(scroll_index, started_at)) = handwriting_candidate_scroll {
+                                if scroll_index == index && layout.truncated {
+                                    final_text = scroll_text_for_candidate(
+                                        &final_text,
+                                        started_at,
+                                        (helper_px * 0.9).max(2.2 * responsive_scale),
+                                        ui_tracking * handwriting_scale,
+                                        (visual_rect[2] - 16.0 * responsive_scale * handwriting_scale)
+                                            .max(6.0),
+                                    );
+                                }
+                            }
+                        }
+
+                        let layout = TextBlock {
+                            text: final_text,
+                            origin: [
+                                visual_rect[0] + 8.0 * responsive_scale * handwriting_scale,
+                                visual_rect[1] + 2.8 * responsive_scale * handwriting_scale,
+                            ],
+                            max_width: (visual_rect[2] - 16.0 * responsive_scale * handwriting_scale)
+                                .max(6.0),
+                            pixel_size: (helper_px * 0.9).max(2.2 * responsive_scale),
+                            letter_spacing: ui_tracking * handwriting_scale,
+                            line_gap: base_line_gap * handwriting_scale,
+                            max_lines: 1,
+                            color: if index == 0 {
+                                accent_text
+                            } else {
+                                text_primary
+                            },
+                            align: TextAlign::Center,
+                            role: TextRole::HandwritingCandidate,
+                        }
+                        .layout();
                         text_quads.extend(layout.quads.iter().copied());
                         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         handwriting_action_layouts.push(layout);

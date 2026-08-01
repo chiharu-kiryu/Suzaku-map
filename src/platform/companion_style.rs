@@ -46,6 +46,24 @@ pub fn detached_candidate_companion_style_for_preset(
             accent: 0x3D8EEBFF,
             border: 0x8CA4C2FF,
         },
+        ThemePreset::Solarized => CandidateCompanionStyle {
+            window_title: "Suzaku Candidates",
+            header_title: "Suzaku Candidates",
+            show_header: false,
+            min_width: 220,
+            max_width: 420,
+            row_height: 22,
+            max_text_lines: 2,
+            horizontal_padding: 12,
+            vertical_padding: 10,
+            panel_background: 0xF3EBDDFF,
+            title_text: 0x2F2920FF,
+            row_normal_text: 0x4E4438FF,
+            row_hover_text: 0x392D1EFF,
+            row_selected_text: 0x20140AFF,
+            accent: 0x8A6F38FF,
+            border: 0xB39A70FF,
+        },
         ThemePreset::DeviceDark => CandidateCompanionStyle {
             window_title: "Suzaku Candidates",
             header_title: "Suzaku Candidates",
@@ -64,6 +82,24 @@ pub fn detached_candidate_companion_style_for_preset(
             accent: 0x4FA3F5FF,
             border: 0x5E7594FF,
         },
+        ThemePreset::HighContrast => CandidateCompanionStyle {
+            window_title: "Suzaku Candidates",
+            header_title: "Suzaku Candidates",
+            show_header: false,
+            min_width: 220,
+            max_width: 420,
+            row_height: 22,
+            max_text_lines: 2,
+            horizontal_padding: 12,
+            vertical_padding: 10,
+            panel_background: 0x111726FF,
+            title_text: 0xEDF5FFFF,
+            row_normal_text: 0xDDE8F7FF,
+            row_hover_text: 0xD7F2FFFF,
+            row_selected_text: 0x7EE4FFFF,
+            accent: 0x39B9EFFF,
+            border: 0x6B88AFFF,
+        },
     }
 }
 
@@ -80,7 +116,9 @@ pub fn current_companion_theme_preset() -> ThemePreset {
             continue;
         }
         return match value.trim() {
+            "solarized" => ThemePreset::Solarized,
             "device_dark" => ThemePreset::DeviceDark,
+            "high_contrast" => ThemePreset::HighContrast,
             _ => ThemePreset::Daylight,
         };
     }
@@ -293,7 +331,10 @@ mod tests {
     fn current_companion_theme_preset_defaults_to_known_theme() {
         assert!(matches!(
             current_companion_theme_preset(),
-            ThemePreset::Daylight | ThemePreset::DeviceDark
+            ThemePreset::Daylight
+                | ThemePreset::DeviceDark
+                | ThemePreset::HighContrast
+                | ThemePreset::Solarized
         ));
     }
 

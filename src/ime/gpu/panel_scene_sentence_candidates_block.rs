@@ -1,16 +1,63 @@
 {
-    let separator_divider = match chrome.theme_preset {
-        ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.08],
-        ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.05],
+        let separator_divider = compact_divider;
+
+    let scroll_text_for_candidate = |text: &str,
+                                    started_at: Instant,
+                                    pixel_size: f32,
+                                    letter_spacing: f32,
+                                    max_width: f32| {
+        let chars: Vec<char> = text.chars().collect();
+        if chars.is_empty() || max_width <= 0.0 {
+            return "…".to_string();
+        }
+
+        let glyph_advance = (pixel_size * 6.5 + letter_spacing).max(pixel_size * 4.0);
+        let width_for_char = |ch: char| {
+            if ch == ' ' {
+                pixel_size * 4.0
+            } else {
+                glyph_advance
+            }
+        };
+
+        let doubled: Vec<char> = chars.iter().chain(chars.iter()).cloned().collect();
+        let cycle_step = (started_at.elapsed().as_millis() as f32 / 220.0).floor() as usize;
+        let start = cycle_step % chars.len();
+        let viewport_capacity = ((max_width / glyph_advance).floor() as usize).max(1);
+
+        let mut text = String::new();
+        let mut width = 0.0_f32;
+
+        for (offset, ch) in doubled.iter().skip(start).take(chars.len()).enumerate() {
+            if width_for_char(*ch) + width > max_width && !text.is_empty() {
+                break;
+            }
+            if text.is_empty() {
+                text.push(*ch);
+                width = width_for_char(*ch);
+            } else if offset < viewport_capacity {
+                text.push(*ch);
+                width += width_for_char(*ch);
+            }
+        }
+
+        text
     };
-    let sentence_y = suggestions_y + metrics.chip_section_h + metrics.sentence_section_gap;
+
+    let actual_chip_section_h = if chrome.next_token_candidates.is_empty() {
+        0.0
+    } else {
+        ((candidate_area_bottom - suggestions_y - 4.0 * responsive_scale).max(0.0))
+            .min(metrics.chip_section_h)
+    };
+    let sentence_y = suggestions_y + actual_chip_section_h + metrics.sentence_section_gap;
     let available_sentence_area = (candidate_area_bottom - sentence_y).max(0.0);
     let panel_right = panel_x + panel_width;
     let candidate_columns = metrics.candidate_columns;
     let candidate_gap_x = if collapsed_daily_mode {
-        4.3 * responsive_scale
+        4.8 * responsive_scale
     } else {
-        6.6 * responsive_scale
+        7.0 * responsive_scale
     };
     let candidate_count = visible_sentence_candidates.len();
     let candidate_count_f = candidate_count as f32;
@@ -61,8 +108,8 @@
     } else {
         panel_width
     };
-let hero_card_height = if collapsed_daily_mode {
-    32.0 * responsive_scale
+    let hero_card_height = if collapsed_daily_mode {
+        33.0 * responsive_scale
 } else {
     metrics.hero_item_height
 };
@@ -93,7 +140,12 @@ let hero_card_height = if collapsed_daily_mode {
         };
         let sentence_section_h = sentence_section_h.min(available_sentence_area);
         let sentence_section_top = sentence_y;
+        let sentence_interaction_hovered =
+            matches!(chrome.hovered_interaction, Some(InteractionKind::Candidate(_)));
+        let sentence_interaction_pressed =
+            matches!(chrome.pressed_interaction, Some(InteractionKind::Candidate(_)));
         if sentence_section_h > 0.0 {
+            let section_radius = (10.8 * responsive_scale).max(6.0);
             append_soft_card_quads(
                 &mut quads,
                 [panel_x, sentence_section_top, panel_width, sentence_section_h],
@@ -105,13 +157,37 @@ let hero_card_height = if collapsed_daily_mode {
                 border_dark,
                 soft_shadow,
                 shell,
-                if collapsed_daily_mode {
-                    9.0 * responsive_scale
-                } else {
-                    10.0 * responsive_scale
-                },
+                section_radius,
             );
-        }
+                quads.push(CandidateQuad {
+                    rect: [
+                        panel_x + 8.0 * responsive_scale,
+                        sentence_section_top + 4.0 * responsive_scale,
+                        panel_width - 16.0 * responsive_scale,
+                        1.8 * responsive_scale,
+                    ],
+                    color: panel_glass_layer_color(
+                        sentence_interaction_hovered,
+                        chrome.input_focused,
+                        sentence_interaction_pressed,
+                    ),
+                });
+                if !collapsed_daily_mode && hero_cards_enabled {
+                    quads.push(CandidateQuad {
+                        rect: [
+                            panel_x + 14.0 * responsive_scale,
+                            sentence_section_top + hero_card_height + 2.4 * responsive_scale,
+                            panel_width - 28.0 * responsive_scale,
+                            1.6 * responsive_scale,
+                        ],
+                        color: panel_glass_layer_color(
+                            sentence_interaction_hovered,
+                            chrome.input_focused,
+                            sentence_interaction_pressed,
+                        ),
+                    });
+                }
+            }
     }
     for (display_index, (source_index, label)) in visible_sentence_candidates.iter().enumerate() {
         let is_hero = !collapsed_daily_mode && hero_cards_enabled && display_index == 0;
@@ -184,8 +260,8 @@ let hero_card_height = if collapsed_daily_mode {
         } else {
             surface
         },
-        if pressed {
-            [0.08, 0.35, 0.68, 1.0]
+            if pressed {
+                accent
         } else if collapsed_primary || selected || is_hero {
             accent
         } else if hovered {
@@ -195,13 +271,7 @@ let hero_card_height = if collapsed_daily_mode {
         },
         animated_shadow(soft_shadow, hovered, pressed),
         surface,
-                if is_hero {
-            9.0 * responsive_scale
-        } else if collapsed_daily_mode {
-            9.0 * responsive_scale
-        } else {
-            9.0 * responsive_scale
-        },
+            (10.2 * responsive_scale).max(6.0),
     );
     if collapsed_primary {
         append_rounded_rect_quads(
@@ -213,7 +283,7 @@ let hero_card_height = if collapsed_daily_mode {
                 visual_rect[3] - 6.0 * responsive_scale,
             ],
             separator_divider,
-            8.0 * responsive_scale,
+            9.0 * responsive_scale,
         );
     } else if collapsed_daily_mode && display_index > 0 {
         quads.push(CandidateQuad {
@@ -223,45 +293,21 @@ let hero_card_height = if collapsed_daily_mode {
                 1.0,
                 visual_rect[3] - 14.0 * responsive_scale,
             ],
-            color: match chrome.theme_preset {
-                ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.10],
-                ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.06],
-            },
+            color: compact_divider,
         });
     }
     if is_hero {
-        append_rounded_rect_quads(
-            &mut quads,
-            [
-                visual_rect[0] + 4.0 * responsive_scale,
-                visual_rect[1] + 4.0 * responsive_scale,
-                visual_rect[2] - 8.0 * responsive_scale,
-                visual_rect[3] - 8.0 * responsive_scale,
-            ],
-            match chrome.theme_preset {
-                ThemePreset::Daylight => [1.0, 1.0, 1.0, 0.08],
-                ThemePreset::DeviceDark => [1.0, 1.0, 1.0, 0.05],
-            },
-            9.0 * responsive_scale,
-        );
-    }
-    if is_hero {
-        let available_badge_width = (visual_rect[2] - 6.0 * responsive_scale).max(0.0);
-        if available_badge_width > 0.0 {
-            let badge_width = (66.0 * responsive_scale).min(available_badge_width);
-            if badge_width > 0.0 {
-                let badge_rect = [
-                    visual_rect[0] + visual_rect[2] - badge_width,
-                    visual_rect[1] + 9.2 * responsive_scale,
-                    badge_width,
-                    17.0 * responsive_scale,
-                ];
-                quads.push(CandidateQuad {
-                    rect: badge_rect,
-                    color: badge_fill,
-                });
-            }
-        }
+            append_rounded_rect_quads(
+                &mut quads,
+                [
+                    visual_rect[0] + 4.0 * responsive_scale,
+                    visual_rect[1] + 4.0 * responsive_scale,
+                    visual_rect[2] - 8.0 * responsive_scale,
+                    visual_rect[3] - 8.0 * responsive_scale,
+                ],
+                panel_glass_layer_color(hovered, chrome.input_focused, pressed),
+                9.8 * responsive_scale,
+            );
     }
     hit_targets.push(HitTarget {
         index: *source_index,
@@ -271,97 +317,209 @@ let hero_card_height = if collapsed_daily_mode {
         kind,
         rect: interaction_hit_rect(quad.rect),
     });
-    let primary_layout = TextBlock {
-        text: if collapsed_daily_mode {
-            if display_index == 0 {
-                format!("{}  {}", display_index + 1, label)
+    let primary_pixel_size = if is_hero {
+        hero_px
+    } else if collapsed_daily_mode {
+        chip_px * 1.02
+    } else {
+        input_value_px * 1.02
+    };
+    let mut primary_text = if collapsed_daily_mode {
+        if display_index == 0 {
+            format!("{}  {}", display_index + 1, label)
+        } else {
+            format!("{} {}", display_index + 1, label)
+        }
+    } else {
+        label.clone()
+    };
+    let primary_max_width = (visual_rect[2]
+        - if collapsed_daily_mode {
+            20.0 * responsive_scale
+        } else {
+            36.0 * responsive_scale
+        })
+        .max(4.0 * responsive_scale);
+    let primary_origin = [
+        visual_rect[0]
+            + if collapsed_daily_mode {
+                10.0 * responsive_scale
             } else {
-                format!("{} {}", display_index + 1, label)
-            }
-        } else {
-            label.clone()
-        },
-        origin: [
-            visual_rect[0]
-                + if collapsed_daily_mode {
-                    10.0 * responsive_scale
-                } else {
-                    18.0 * responsive_scale
-                },
-            visual_rect[1]
-                + if collapsed_daily_mode {
-                    9.0 * responsive_scale
-                } else {
-                    16.0 * responsive_scale
-                },
-        ],
-        max_width: (visual_rect[2]
-            - if collapsed_daily_mode {
-                20.0 * responsive_scale
+                18.0 * responsive_scale
+            },
+        visual_rect[1]
+            + if collapsed_daily_mode {
+                9.0 * responsive_scale
             } else {
-                36.0 * responsive_scale
-            })
-            .max(4.0 * responsive_scale),
-        pixel_size: if is_hero {
-            hero_px
-        } else if collapsed_daily_mode {
-            chip_px * 1.02
-        } else {
-            input_value_px * 1.02
-        },
-        letter_spacing: heading_tracking,
-        line_gap: base_line_gap,
-        max_lines: if collapsed_daily_mode {
-            1
-        } else if is_hero || chrome.preview_style == PreviewStyle::Full {
-            2
-        } else {
-            2
-        },
-        color: if collapsed_primary || selected {
-            accent_text
-        } else {
-            text_primary
-        },
-        align: TextAlign::Left,
-        role: TextRole::CandidatePrimary,
+                16.0 * responsive_scale
+            },
+    ];
+    let primary_color = if collapsed_primary || selected {
+        accent_text
+    } else {
+        text_primary
+    };
+    let primary_max_lines = {
+        let raw_primary_max_lines = if collapsed_daily_mode { 1 } else { 2 };
+        let max_height_for_text =
+            (visual_rect[3] - (if collapsed_daily_mode { 17.0 } else { 31.0 } * responsive_scale))
+                .max(0.0);
+        let primary_line_height = primary_pixel_size * 7.0 + base_line_gap;
+        let dynamic_max_lines = (max_height_for_text / primary_line_height).floor() as usize;
+        raw_primary_max_lines.min(dynamic_max_lines).max(1)
+    };
+    let build_primary_layout = |text: &str, max_lines: usize| {
+        TextBlock {
+            text: text.to_string(),
+            origin: primary_origin,
+            max_width: primary_max_width,
+            pixel_size: primary_pixel_size,
+            letter_spacing: heading_tracking,
+            line_gap: base_line_gap,
+            max_lines,
+            color: primary_color,
+            align: TextAlign::Left,
+            role: TextRole::CandidatePrimary,
+        }
+        .layout()
+    };
+    let mut primary_layout = build_primary_layout(&primary_text, primary_max_lines);
+    let is_primary_wrapped = primary_layout.lines.len() > 1;
+    let needs_single_line_truncate = primary_layout.truncated || is_primary_wrapped;
+    if needs_single_line_truncate {
+        primary_layout = build_primary_layout(&primary_text, 1);
+        if primary_layout.lines.is_empty() {
+            primary_layout = build_primary_layout("", 1);
+        }
     }
-    .layout();
-                let candidate_layouts = if collapsed_daily_mode {
-                vec![primary_layout]
-            } else {
-                let meta_y =
-                    (primary_layout.bounds[1] + primary_layout.bounds[3] + 8.0 * responsive_scale)
-                        .max(visual_rect[1] + 48.0 * responsive_scale);
-                vec![
-                    primary_layout,
-                    TextBlock {
-                text: if selected && is_hero {
-                    "primary sentence selected".to_string()
-                } else if selected {
-                    "alternate sentence selected".to_string()
-                } else if is_hero {
-                    "sentence best match · tap to commit".to_string()
-                } else {
-                    format!("sentence {style_label} phrase · tap to commit")
-                },
-                origin: [visual_rect[0] + 18.0 * responsive_scale, meta_y],
-                max_width: (visual_rect[2] - 36.0 * responsive_scale).max(4.0 * responsive_scale),
-                pixel_size: helper_px,
-                letter_spacing: ui_tracking,
+    if needs_single_line_truncate {
+        sentence_candidate_truncated.push(*source_index);
+    }
+
+    if let Some(&(scroll_index, started_at)) = sentence_candidate_scroll {
+        if scroll_index == *source_index && primary_layout.truncated {
+            let scrolled = scroll_text_for_candidate(
+                &primary_text,
+                started_at,
+                primary_pixel_size,
+                heading_tracking,
+                (visual_rect[2]
+                    - if collapsed_daily_mode {
+                        20.0 * responsive_scale
+                    } else {
+                        36.0 * responsive_scale
+                    })
+                    .max(4.0 * responsive_scale),
+            );
+            primary_text = scrolled;
+            primary_layout = TextBlock {
+                text: primary_text,
+                origin: [
+                    visual_rect[0]
+                        + if collapsed_daily_mode {
+                            10.0 * responsive_scale
+                        } else {
+                            18.0 * responsive_scale
+                        },
+                    visual_rect[1]
+                        + if collapsed_daily_mode {
+                            9.0 * responsive_scale
+                        } else {
+                            16.0 * responsive_scale
+                        },
+                ],
+                max_width: (visual_rect[2]
+                    - if collapsed_daily_mode {
+                        20.0 * responsive_scale
+                    } else {
+                        36.0 * responsive_scale
+                    })
+                    .max(4.0 * responsive_scale),
+                pixel_size: primary_pixel_size,
+                letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
-                max_lines: 2,
-                color: if selected {
-                    selected_meta_text
+                max_lines: 1,
+                color: if collapsed_primary || selected {
+                    accent_text
                 } else {
-                    text_secondary
+                    text_primary
                 },
                 align: TextAlign::Left,
-                role: TextRole::CandidateMeta,
+                role: TextRole::CandidatePrimary,
             }
-            .layout(),
-        ]
-    };
+            .layout();
+        }
+    }
+    let mut candidate_layouts = Vec::new();
+    let primary_bottom = primary_layout.bounds[1] + primary_layout.bounds[3];
+    candidate_layouts.push(primary_layout);
+
+    if !collapsed_daily_mode {
+        let meta_label = if selected && is_hero {
+            "primary sentence selected".to_string()
+        } else if selected {
+            "alternate sentence selected".to_string()
+        } else if is_hero {
+            "sentence best match · tap to commit".to_string()
+        } else {
+            format!("sentence {style_label} phrase · tap to commit")
+        };
+
+        let preferred_meta_y = (primary_bottom + 8.0 * responsive_scale)
+            .max(visual_rect[1] + 46.0 * responsive_scale);
+        let meta_line_height = helper_px * 7.0 + base_line_gap;
+        let meta_available_h =
+            (visual_rect[1] + visual_rect[3] - preferred_meta_y - 3.0 * responsive_scale).max(0.0);
+        let meta_max_lines = if meta_available_h >= meta_line_height * 0.85 {
+            1
+        } else {
+            0
+        };
+
+        if meta_max_lines > 0 {
+            candidate_layouts.push(
+                TextBlock {
+                    text: meta_label,
+                    origin: [visual_rect[0] + 18.0 * responsive_scale, preferred_meta_y],
+                    max_width: (visual_rect[2] - 36.0 * responsive_scale)
+                        .max(4.0 * responsive_scale),
+                    pixel_size: helper_px,
+                    letter_spacing: ui_tracking,
+                    line_gap: base_line_gap,
+                    max_lines: 1,
+                    color: if selected {
+                        selected_meta_text
+                    } else {
+                        text_secondary
+                    },
+                    align: TextAlign::Left,
+                    role: TextRole::CandidateMeta,
+                }
+                .layout(),
+            );
+        }
+    }
+
+    if is_hero {
+        if collapsed_daily_mode {
+            let available_badge_width = (visual_rect[2] - 6.0 * responsive_scale).max(0.0);
+            if available_badge_width > 0.0 {
+                let badge_width = (66.0 * responsive_scale).min(available_badge_width);
+                if badge_width > 0.0 {
+                    let badge_rect = [
+                        visual_rect[0] + visual_rect[2] - badge_width,
+                        visual_rect[1] + 9.2 * responsive_scale,
+                        badge_width,
+                        17.0 * responsive_scale,
+                    ];
+                    quads.push(CandidateQuad {
+                        rect: badge_rect,
+                        color: badge_fill,
+                    });
+                }
+            }
+        }
+    }
     for layout in &candidate_layouts {
         text_quads.extend(layout.quads.iter().copied());
         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());

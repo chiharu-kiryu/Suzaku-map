@@ -49,6 +49,16 @@
                                 "Device Dark",
                                 chrome.theme_preset == ThemePreset::DeviceDark,
                             ),
+                            (
+                                InteractionKind::SetThemePreset(ThemePreset::Solarized),
+                                "Solarized",
+                                chrome.theme_preset == ThemePreset::Solarized,
+                            ),
+                            (
+                                InteractionKind::SetThemePreset(ThemePreset::HighContrast),
+                                "High Contrast",
+                                chrome.theme_preset == ThemePreset::HighContrast,
+                            ),
                         ]
                         .to_vec(),
                     ),
@@ -228,26 +238,31 @@
                     ),
                 ];
 
-                let row_gap = 4.2 * responsive_scale;
-                let chip_height = 20.8 * responsive_scale;
-                let chip_corner_radius = 6.8 * responsive_scale;
-                let chip_x_gap = 6.0 * responsive_scale;
-                let label_y_pad = 2.4 * responsive_scale;
-                let label_row_h = 20.6 * responsive_scale;
+                let row_gap = 5.4 * responsive_scale;
+                let chip_height = 22.2 * responsive_scale;
+                let chip_corner_radius = 9.0 * responsive_scale;
+                let section_card_radius = 9.4 * responsive_scale;
+                let chip_x_gap = 6.8 * responsive_scale;
+                let label_y_pad = 3.0 * responsive_scale;
+                let label_row_h = 21.8 * responsive_scale;
                 let section_row_step = chip_height + row_gap;
                 let settings_content_bottom = settings_rect[1] + settings_rect[3] - 2.0;
                 let mut row_y = settings_rect[1] + 11.0 * responsive_scale;
                 let chip_start_x = panel_x + 84.0 * responsive_scale;
                 let chip_max_x = settings_rect[0] + settings_rect[2] - 10.0;
                 let available_chip_width = (chip_max_x - chip_start_x).max(24.0 * responsive_scale);
-                let section_card_fill = match chrome.theme_preset {
-                    ThemePreset::Daylight => [0.95, 0.98, 1.0, 0.32],
-                    ThemePreset::DeviceDark => [0.33, 0.44, 0.56, 0.22],
-                };
-                let section_card_border = match chrome.theme_preset {
-                    ThemePreset::Daylight => [0.70, 0.82, 0.95, 0.24],
-                    ThemePreset::DeviceDark => [0.55, 0.73, 0.97, 0.22],
-                };
+                let section_card_fill = [
+                    (surface[0] + (1.0 - surface[0]) * 0.04).min(1.0),
+                    (surface[1] + (1.0 - surface[1]) * 0.03).min(1.0),
+                    (surface[2] + (1.0 - surface[2]) * 0.01).min(1.0),
+                    0.30,
+                ];
+                let section_card_border = [
+                        (surface[0] * 0.92 + surface_muted[0] * 0.08),
+                        (surface[1] * 0.92 + surface_muted[1] * 0.08),
+                        (surface[2] * 0.92 + surface_muted[2] * 0.08),
+                        0.30,
+                    ];
                 'section_loop: for (label, options) in sections.iter() {
                     if row_y + label_row_h > settings_content_bottom {
                         break 'section_loop;
@@ -356,7 +371,7 @@
                             section_card_border,
                             soft_shadow,
                             surface,
-                            7.4 * responsive_scale,
+                            section_card_radius,
                         );
                     }
 

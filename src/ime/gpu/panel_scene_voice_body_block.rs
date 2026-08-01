@@ -151,7 +151,7 @@
                             pixel_size: helper_px * voice_scale,
                             letter_spacing: ui_tracking * voice_scale,
                             line_gap: base_line_gap * voice_scale,
-                            max_lines: 2,
+                            max_lines: 1,
                             color: if chrome.voice_state == VoiceCaptureState::Listening {
                                 voice_success_text
                             } else if matches!(

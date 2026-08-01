@@ -24,27 +24,31 @@ impl WgpuCandidateRenderer {
         let ui_tracking = tracking * 0.08 - 0.03;
         let heading_tracking = tracking * 0.04 - 0.02;
         let base_line_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            4.7
+            5.0
         } else {
-            6.0
+            6.4
         };
         let ui_scale = (self.scene_width / 640.0).clamp(0.86, 1.08);
         let title_px = 3.82 * ui_scale;
         let section_px = 2.52 * ui_scale;
         let chip_px = 2.34 * ui_scale;
-        let panel_width = (self.scene_width * 0.92).clamp(390.0, 740.0);
+        let panel_width = (self.scene_width * 0.96).clamp(420.0, 760.0);
         let panel_x = ((self.scene_width - panel_width) / 2.0).max(5.0);
-        let row_height = 24.0 * ui_scale;
-        let section_gap_y = 4.0 * ui_scale;
-        let chip_start_x = panel_x + 112.0 * ui_scale;
+        let row_height = 24.8 * ui_scale;
+        let section_gap_y = 4.8 * ui_scale;
+        let chip_start_x = panel_x + 118.0 * ui_scale;
         let chip_max_x = panel_x + panel_width - 18.0;
-        let chip_gap_x = 5.2 * ui_scale;
-        let chip_gap_y = 4.4 * ui_scale;
+        let chip_gap_x = 5.8 * ui_scale;
+        let chip_gap_y = 4.8 * ui_scale;
         let label_col_x = panel_x + 17.0 * ui_scale;
         let label_max_width = (chip_start_x - label_col_x - 8.0).max(94.0);
-        let row_label_height = 21.8 * ui_scale;
+        let row_label_height = 22.4 * ui_scale;
         let section_label_height = row_label_height;
-        let section_margin = 2.0 * ui_scale;
+        let section_margin = 2.4 * ui_scale;
+        let settings_panel_radius = 13.0 * ui_scale;
+        let settings_section_radius = 10.0 * ui_scale;
+        let settings_close_radius = 8.8 * ui_scale;
+        let settings_chip_radius = 8.4 * ui_scale;
         let interaction_hit_rect = |rect: [f32; 4]| {
             self.interaction_hit_rect(
                 rect,
@@ -93,6 +97,16 @@ impl WgpuCandidateRenderer {
                         InteractionKind::SetThemePreset(ThemePreset::DeviceDark),
                         "Device Dark",
                         chrome.theme_preset == ThemePreset::DeviceDark,
+                    ),
+                    (
+                        InteractionKind::SetThemePreset(ThemePreset::Solarized),
+                        "Solarized",
+                        chrome.theme_preset == ThemePreset::Solarized,
+                    ),
+                    (
+                        InteractionKind::SetThemePreset(ThemePreset::HighContrast),
+                        "High Contrast",
+                        chrome.theme_preset == ThemePreset::HighContrast,
                     ),
                 ]
                 .to_vec(),
@@ -424,15 +438,47 @@ impl WgpuCandidateRenderer {
             shell_border,
             soft_shadow,
             page_bg,
-            12.0,
+            settings_panel_radius,
         );
+        let settings_divider = [
+            (text_primary[0] * 0.84 + text_secondary[0] * 0.16),
+            (text_primary[1] * 0.84 + text_secondary[1] * 0.16),
+            (text_primary[2] * 0.84 + text_secondary[2] * 0.16),
+            0.14,
+        ];
+        let settings_hover_surface = [
+            (surface[0] + (1.0 - surface[0]) * 0.02).min(1.0),
+            (surface[1] + (1.0 - surface[1]) * 0.02).min(1.0),
+            (surface[2] + (1.0 - surface[2]) * 0.02).min(1.0),
+            1.0,
+        ];
+        let settings_press_surface = [
+            (surface[0] * 0.78 + accent[0] * 0.22),
+            (surface[1] * 0.82 + accent[1] * 0.18),
+            (surface[2] * 0.88 + accent[2] * 0.12),
+            1.0,
+        ];
+        let settings_hover_border = [
+            (shell_border[0] * 0.34 + accent[0] * 0.66),
+            (shell_border[1] * 0.34 + accent[1] * 0.66),
+            (shell_border[2] * 0.34 + accent[2] * 0.66),
+            1.0,
+        ];
+        let settings_section_fill = [
+            (surface[0] * 0.91 + surface_muted[0] * 0.09),
+            (surface[1] * 0.91 + surface_muted[1] * 0.09),
+            (surface[2] * 0.91 + surface_muted[2] * 0.09),
+            0.30,
+        ];
+        let settings_section_border = [
+            (surface[0] * 0.92 + border_dark[0] * 0.08),
+            (surface[1] * 0.92 + border_dark[1] * 0.08),
+            (surface[2] * 0.92 + border_dark[2] * 0.08),
+            0.34,
+        ];
         quads.push(CandidateQuad {
             rect: [panel_x + 10.0, panel_y + 7.0, panel_width - 20.0, 1.6],
-            color: if chrome.theme_preset == ThemePreset::DeviceDark {
-                [1.0, 1.0, 1.0, 0.06]
-            } else {
-                [1.0, 1.0, 1.0, 0.16]
-            },
+            color: settings_divider,
         });
 
         let close_rect = [panel_x + panel_width - 34.0, panel_y + 7.0, 20.0, 20.0];
@@ -442,22 +488,22 @@ impl WgpuCandidateRenderer {
             &mut quads,
             close_visual_rect,
             if close_pressed {
-                [0.67, 0.82, 0.97, 1.0]
+                settings_press_surface
             } else if close_hovered {
-                [0.93, 0.96, 1.0, 1.0]
+                settings_hover_surface
             } else {
                 surface_alt
             },
             if close_pressed {
-                [0.08, 0.35, 0.68, 1.0]
+                accent
             } else if close_hovered {
-                [0.46, 0.62, 0.82, 1.0]
+                settings_hover_border
             } else {
                 shell_border
             },
             animated_shadow(soft_shadow, close_hovered, close_pressed),
             shell,
-            8.0,
+            settings_close_radius,
         );
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::SettingsToggle,
@@ -509,8 +555,8 @@ impl WgpuCandidateRenderer {
                     panel_width - 16.0,
                     section_height,
                 ],
-                surface,
-                [border_dark[0], border_dark[1], border_dark[2], 0.42],
+                settings_section_fill,
+                settings_section_border,
                 [
                     soft_shadow[0],
                     soft_shadow[1],
@@ -518,7 +564,7 @@ impl WgpuCandidateRenderer {
                     soft_shadow[3] * 0.45,
                 ],
                 surface_muted,
-                10.0,
+                settings_section_radius,
             );
             quads.push(CandidateQuad {
                 rect: [
@@ -527,11 +573,7 @@ impl WgpuCandidateRenderer {
                     panel_width - 40.0,
                     1.0,
                 ],
-                color: if chrome.theme_preset == ThemePreset::DeviceDark {
-                    [1.0, 1.0, 1.0, 0.06]
-                } else {
-                    [1.0, 1.0, 1.0, 0.08]
-                },
+                color: settings_divider,
             });
 
             let mut chip_x = chip_start_x;
@@ -553,26 +595,26 @@ impl WgpuCandidateRenderer {
                     &mut quads,
                     visual_rect,
                     if pressed {
-                        [0.67, 0.82, 0.97, 1.0]
+                        settings_press_surface
                     } else if *selected {
                         accent_soft
                     } else if hovered {
-                        [0.93, 0.96, 1.0, 1.0]
+                        settings_hover_surface
                     } else {
                         surface
                     },
                     if pressed {
-                        [0.08, 0.35, 0.68, 1.0]
+                        accent
                     } else if *selected {
                         accent
                     } else if hovered {
-                        [0.46, 0.62, 0.82, 1.0]
+                        settings_hover_border
                     } else {
                         shell_border
                     },
                     animated_shadow(soft_shadow, hovered, pressed),
                     shell,
-                    8.0,
+                    settings_chip_radius,
                 );
                 interactive_targets.push(InteractiveTarget {
                     kind: *kind,
@@ -638,6 +680,9 @@ impl WgpuCandidateRenderer {
             text_sections,
             hit_targets,
             interactive_targets,
+            sentence_candidate_truncated: Vec::new(),
+            next_token_candidate_truncated: Vec::new(),
+            handwriting_candidate_truncated: Vec::new(),
             labels: Vec::new(),
             selected_label: None,
             draft_text: String::new(),

@@ -139,6 +139,30 @@ impl PanelState {
             self.chrome.sentence_candidate_source_indices.clear();
             self.chrome.sentence_candidates.clear();
         }
+
+        let scroll_index = self.interaction.sentence_candidate_scroll_index;
+        if !scroll_index.is_none_or(|index| {
+            self.chrome
+                .sentence_candidate_source_indices
+                .contains(&index)
+        }) {
+            self.interaction.sentence_candidate_scroll_index = None;
+            self.interaction.sentence_candidate_scroll_started_at = None;
+        }
+
+        let next_token_scroll_index = self.interaction.next_token_candidate_scroll_index;
+        if !next_token_scroll_index.is_none_or(|index| index < self.chrome.next_token_candidates.len()) {
+            self.interaction.next_token_candidate_scroll_index = None;
+            self.interaction.next_token_candidate_scroll_started_at = None;
+        }
+
+        let handwriting_scroll_index = self.interaction.handwriting_candidate_scroll_index;
+        if !handwriting_scroll_index
+            .is_none_or(|index| index < self.chrome.handwriting_candidates.len())
+        {
+            self.interaction.handwriting_candidate_scroll_index = None;
+            self.interaction.handwriting_candidate_scroll_started_at = None;
+        }
     }
 
     pub(super) fn select_next_token(&mut self, index: usize) {
