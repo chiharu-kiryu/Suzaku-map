@@ -167,7 +167,7 @@
                     visual_back_rect[1] + 5.2 * responsive_scale,
                 ],
                 max_width: (visual_back_rect[2] - 16.0 * responsive_scale).max(0.0),
-                pixel_size: 2.0 * responsive_scale,
+                pixel_size: micro_px,
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,
                 max_lines: 1,

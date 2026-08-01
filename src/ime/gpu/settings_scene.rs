@@ -16,22 +16,27 @@ impl WgpuCandidateRenderer {
         let text_secondary = theme.text_secondary;
         let border_dark = theme.border_dark;
         let soft_shadow = theme.soft_shadow;
-        let tracking = match chrome.text_spacing {
-            TextSpacing::Tight => -0.45,
-            TextSpacing::Normal => -0.15,
-            TextSpacing::Relaxed => 0.24,
-        };
-        let ui_tracking = tracking * 0.08 - 0.03;
-        let heading_tracking = tracking * 0.04 - 0.02;
-        let base_line_gap = if chrome.candidate_density == CandidateDensity::Compact {
-            5.0
-        } else {
-            6.4
-        };
         let ui_scale = (self.scene_width / 640.0).clamp(0.86, 1.08);
-        let title_px = 3.82 * ui_scale;
-        let section_px = 2.52 * ui_scale;
-        let chip_px = 2.34 * ui_scale;
+        let tracking = match chrome.text_spacing {
+            TextSpacing::Tight => -0.41,
+            TextSpacing::Normal => -0.32,
+            TextSpacing::Relaxed => 0.08,
+        };
+        let ui_tracking = tracking * 0.16 - 0.02 * ui_scale;
+        let heading_tracking = tracking * 0.10 - 0.01 * ui_scale;
+        let label_px = match chrome.text_scale {
+            DisplayTextScale::Small => 2.2,
+            DisplayTextScale::Medium => 2.45,
+            DisplayTextScale::Large => 3.12,
+        } * ui_scale;
+        let base_line_gap = if chrome.candidate_density == CandidateDensity::Compact {
+            5.2 * ui_scale
+        } else {
+            6.4 * ui_scale
+        };
+        let title_px = (label_px * 1.52_f32).max(2.8_f32 * ui_scale);
+        let section_px = (label_px * 1.01_f32).max(2.0_f32 * ui_scale);
+        let chip_px = (label_px * 0.94_f32).max(1.88_f32 * ui_scale);
         let panel_width = (self.scene_width * 0.96).clamp(420.0, 760.0);
         let panel_x = ((self.scene_width - panel_width) / 2.0).max(5.0);
         let row_height = 24.8 * ui_scale;

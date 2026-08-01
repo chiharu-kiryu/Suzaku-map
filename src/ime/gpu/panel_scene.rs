@@ -119,7 +119,7 @@ impl WgpuCandidateRenderer {
             ThemePreset::DeviceDark => [0.32, 0.60, 0.98, 1.0],
             ThemePreset::HighContrast => [0.14, 0.82, 1.0, 1.0],
         };
-        let responsive_scale = (self.responsive_scale() * chrome.window_scale * 1.12).clamp(0.9, 2.0);
+        let responsive_scale = (self.responsive_scale() * chrome.window_scale * 1.12).clamp(0.9, 2.4);
         let input_value_px = match chrome.text_scale {
             DisplayTextScale::Small => 2.4,
             DisplayTextScale::Medium => 3.4,
@@ -257,6 +257,8 @@ impl WgpuCandidateRenderer {
         let title_px = (label_px * 1.24_f32).max(2.35_f32 * responsive_scale);
         let helper_px = (label_px * 1.02_f32).max(2.0_f32 * responsive_scale);
         let chip_px = (label_px * 1.08_f32).max(2.05_f32 * responsive_scale);
+        let micro_px = (label_px * 0.82_f32).max(1.70_f32 * responsive_scale);
+        let badge_meta_px = (micro_px * 0.92_f32).max(1.65_f32 * responsive_scale);
         let hero_px = input_value_px * 1.10;
         let panel_width = metrics.panel_width;
         let panel_x = metrics.panel_x;
@@ -570,7 +572,7 @@ impl WgpuCandidateRenderer {
                     compact_button_rect[1] + 3.8 * responsive_scale,
                 ],
                 max_width: scale_label_width,
-                pixel_size: 2.0 * responsive_scale,
+                pixel_size: micro_px,
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,
                 max_lines: 1,
@@ -637,7 +639,7 @@ impl WgpuCandidateRenderer {
                 compact_button_rect[1] + 3.8 * responsive_scale,
             ],
             max_width: (compact_button_rect[2] - 7.0 * responsive_scale).max(0.0),
-            pixel_size: 2.0 * responsive_scale,
+            pixel_size: micro_px,
             letter_spacing: ui_tracking,
             line_gap: base_line_gap,
             max_lines: 1,
@@ -691,7 +693,7 @@ impl WgpuCandidateRenderer {
                 compact_button_rect[1] + 3.8 * responsive_scale,
             ],
             max_width: scale_minus_rect[2].max(6.0),
-            pixel_size: 2.0 * responsive_scale,
+            pixel_size: micro_px,
             letter_spacing: ui_tracking,
             line_gap: base_line_gap,
             max_lines: 1,
@@ -794,7 +796,7 @@ impl WgpuCandidateRenderer {
                 compact_button_rect[1] + 3.8 * responsive_scale,
             ],
             max_width: scale_plus_rect[2].max(6.0),
-            pixel_size: 2.0 * responsive_scale,
+            pixel_size: micro_px,
             letter_spacing: ui_tracking,
             line_gap: base_line_gap,
             max_lines: 1,

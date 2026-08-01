@@ -58,6 +58,8 @@ const DEFAULT_PANEL_INNER_WIDTH: f64 = 900.0;
 const DEFAULT_PANEL_INNER_HEIGHT: f64 = 520.0;
 const MIN_PANEL_INNER_WIDTH: f64 = 420.0;
 const MIN_PANEL_INNER_HEIGHT: f64 = 300.0;
+const MAX_PANEL_INNER_WIDTH: f64 = 1395.0;
+const MAX_PANEL_INNER_HEIGHT: f64 = 806.0;
 const COMPACT_PANEL_INNER_WIDTH: f64 = 92.0;
 const COMPACT_PANEL_INNER_HEIGHT: f64 = 92.0;
 
@@ -143,6 +145,10 @@ fn panel_window_attributes() -> WindowAttributes {
         .with_inner_size(LogicalSize::new(
             DEFAULT_PANEL_INNER_WIDTH * scale as f64,
             DEFAULT_PANEL_INNER_HEIGHT * scale as f64,
+        ))
+        .with_max_inner_size(LogicalSize::new(
+            MAX_PANEL_INNER_WIDTH,
+            MAX_PANEL_INNER_HEIGHT,
         ))
         .with_min_inner_size(LogicalSize::new(
             MIN_PANEL_INNER_WIDTH,
@@ -392,7 +398,11 @@ impl PanelState {
             1.0
         };
         let initial_base_size = if kind == PanelWindowKind::Main {
-            Some(size.to_logical::<f64>(window.scale_factor()))
+            let logical_size = size.to_logical::<f64>(window.scale_factor());
+            Some(LogicalSize::new(
+                logical_size.width / initial_window_scale as f64,
+                logical_size.height / initial_window_scale as f64,
+            ))
         } else {
             None
         };

@@ -139,11 +139,11 @@ impl PanelSceneMetrics {
     ) -> Self {
         let collapsed_daily_mode = !chrome.input_modes_expanded;
         let scene_margin = (4.2 * responsive_scale).max(3.0);
-        let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0).min(940.0);
+        let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0);
         let min_panel_width = (max_panel_width * 0.78)
             .clamp(190.0, 310.0)
             .min(max_panel_width);
-        let desired_panel_width = (scene_width * 0.95).clamp(190.0, 940.0);
+        let desired_panel_width = (scene_width * 0.95).max(190.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);

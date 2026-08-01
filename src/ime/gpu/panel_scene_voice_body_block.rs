@@ -1,5 +1,6 @@
 {
                     let voice_scale = (drawer_rect[3] / (230.0 * responsive_scale)).clamp(0.76, 1.0);
+                    let voice_button_label_px = (helper_px * 0.84).max(1.85 * responsive_scale) * voice_scale;
                     let voice_content_x_pad = 8.6 * responsive_scale * voice_scale;
                     let voice_y = drawer_rect[1] + 10.5 * responsive_scale * voice_scale;
                     let voice_rect = [
@@ -405,7 +406,7 @@
                                 visual_rect[1] + 5.8 * responsive_scale * voice_scale,
                             ],
                                     max_width: (visual_rect[2] - 15.0 * responsive_scale * voice_scale).max(0.0),
-                                    pixel_size: 2.0 * voice_scale,
+                                    pixel_size: voice_button_label_px,
                                     letter_spacing: ui_tracking * voice_scale,
                                     line_gap: base_line_gap * voice_scale,
                                     max_lines: 1,

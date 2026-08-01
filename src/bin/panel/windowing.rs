@@ -1,7 +1,7 @@
 use super::{
-    COMPACT_PANEL_INNER_HEIGHT, COMPACT_PANEL_INNER_WIDTH, DockEdge, MIN_PANEL_INNER_HEIGHT,
-    MIN_PANEL_INNER_WIDTH, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelState,
-    PanelWindowKind,
+    COMPACT_PANEL_INNER_HEIGHT, COMPACT_PANEL_INNER_WIDTH, DockEdge, MAX_PANEL_INNER_HEIGHT,
+    MAX_PANEL_INNER_WIDTH, MIN_PANEL_INNER_HEIGHT, MIN_PANEL_INNER_WIDTH, PANEL_SCALE_MAX,
+    PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelState, PanelWindowKind,
 };
 use std::time::Duration;
 use winit::dpi::{LogicalSize, PhysicalPosition};
@@ -335,9 +335,13 @@ impl PanelState {
         let min_scale_for_base = ((MIN_PANEL_INNER_WIDTH / base.width)
             .max(MIN_PANEL_INNER_HEIGHT / base.height))
         .max(PANEL_SCALE_MIN as f64);
+        let max_scale_for_base = ((MAX_PANEL_INNER_WIDTH / base.width)
+            .min(MAX_PANEL_INNER_HEIGHT / base.height))
+        .min(PANEL_SCALE_MAX as f64)
+        .max(PANEL_SCALE_MIN as f64);
         let target_scale = requested_scale.clamp(
             (min_scale_for_base as f32).max(PANEL_SCALE_MIN),
-            PANEL_SCALE_MAX,
+            max_scale_for_base as f32,
         );
         if (target_scale - self.window_scale).abs() < MIN_SCALE_DRAG_EPSILON {
             return;

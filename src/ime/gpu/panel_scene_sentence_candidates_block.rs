@@ -541,7 +541,7 @@
                 visual_rect[1] + 10.0 * responsive_scale,
             ],
             max_width: (badge_width - 16.0 * responsive_scale).max(0.0),
-            pixel_size: 1.7 * responsive_scale,
+            pixel_size: badge_meta_px,
             letter_spacing: ui_tracking * 0.7,
             line_gap: base_line_gap,
             max_lines: 1,

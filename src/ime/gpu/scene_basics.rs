@@ -11,7 +11,7 @@ impl WgpuCandidateRenderer {
     pub(super) fn responsive_scale(&self) -> f32 {
         let width_factor = self.scene_width / 900.0;
         let height_factor = self.scene_height / 780.0;
-        (width_factor * 0.65 + height_factor * 0.35).clamp(0.8, 1.28)
+        (width_factor * 0.65 + height_factor * 0.35).clamp(0.8, 1.8)
     }
 
     pub(super) fn interaction_hit_rect(
