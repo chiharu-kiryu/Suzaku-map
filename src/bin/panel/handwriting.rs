@@ -360,7 +360,7 @@ impl PanelState {
         };
     }
 
-    fn handwriting_canvas_rect(&self) -> Option<[f32; 4]> {
+    fn handwriting_canvas_rect(&mut self) -> Option<[f32; 4]> {
         self.current_scene()
             .interactive_targets
             .iter()

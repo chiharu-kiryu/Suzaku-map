@@ -352,7 +352,6 @@ pub enum InteractionKind {
     SettingsSearchInput,
     SettingsSearchClear,
     ToggleSettingsSection(usize),
-    SettingsOptionTextScroll(InteractionKind),
     SelectNextToken(usize),
     RewindNextToken,
     ToggleVoiceCapture,

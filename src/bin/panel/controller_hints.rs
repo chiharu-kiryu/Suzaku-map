@@ -196,10 +196,9 @@ impl PanelState {
             InteractionKind::ToggleSettingsSection(section_index) => Some(format!(
                 "Toggle settings section {section_index}"
             )),
-            InteractionKind::SettingsOptionTextScroll(kind) => Some(format!(
-                "Scroll option: {}",
-                self.interaction_hint(*kind).unwrap_or_else(|| "Setting option".to_string())
-            )),
+            InteractionKind::SettingsScrollTrack | InteractionKind::SettingsScrollHandle => {
+                Some("Scroll settings".to_string())
+            }
             InteractionKind::SelectNextToken(index) => {
                 self.chrome.next_token_candidates.get(index).cloned()
             }

@@ -1397,7 +1397,7 @@ impl PanelState {
         self.interaction.touch_start_position = None;
     }
 
-    pub(super) fn press_target_is_stable(&self, expected: InteractionKind) -> bool {
+    pub(super) fn press_target_is_stable(&mut self, expected: InteractionKind) -> bool {
         if self.interaction.pressed_interaction != Some(expected) {
             return false;
         }

@@ -71,6 +71,14 @@ const KAO_MOJI_COMMON: &[&str] = &[
     "(◕︿◕)",
     "(^_−)",
     "(╰_╯)",
+    "（╯°□°）╯︵┻━┻",
+    "(╯°□°)╯︵┻━┻",
+    "(╯°╰°)╯︵┻━┻",
+    "ლ(ಠ益ಠ)ლ",
+    "ᕕ(ಠ‿ಠ)ᕗ",
+    "ᕕ(ᐛ)ᕗ",
+    "ʘ_ʘ",
+    "(ᵔᴗᵔ)",
 ];
 const NEXT_TOKEN_KAOMOJI_PRIORITY_BONUS: i32 = 240;
 const NEXT_TOKEN_EMOJI_PRIORITY_BONUS: i32 = 280;
@@ -767,7 +775,35 @@ fn is_kaomoji_face_like_char(ch: char) -> bool {
         ch,
         '^' | 'o' | 'O' | 'T' | 'x' | 'X' | 'V' | 'v' | 'w' | 'W' | 'ω' | '°' | '•'
             | '◉' | '◕' | '◔' | '◯' | '◠' | '◡' | 'ツ' | 'ಠ' | 'ಥ' | 'ʖ' | 'ᴗ' | '0'
-            | '3' | '7' | '9' | '_' | '¬' | '₍' | '╯' | '╰' | '╭' | '╮' | '□' | '・' | '⊂'
+        | '3'
+        | '7'
+        | '9'
+        | '_'
+        | '‿'
+        | '¬'
+        | 'ᕕ'
+        | 'ᕗ'
+        | 'ᐛ'
+        | 'ʘ'
+        | '◴'
+        | '◷'
+        | '◶'
+        | '◵'
+        | '┌'
+        | '┐'
+        | '└'
+        | '┘'
+        | '₍'
+        | '╯'
+        | '╰'
+        | '╭'
+        | '╮'
+        | '□'
+        | '・'
+        | '⊂'
+        | 'ヽ'
+        | 'ノ'
+        | '￣'
     )
 }
 
@@ -775,7 +811,8 @@ fn is_kaomoji_connector(ch: char) -> bool {
     matches!(
         ch,
         ':' | ';' | '=' | '-' | '_' | '.' | '/' | '\\' | '(' | ')' | '[' | ']' | '<' | '>' | '{'
-            | '}' | 'ノ' | '◡' | '︿' | '╲' | '╱' | '┐' | '┘' | '└' | '┌'
+            | '}' | 'ノ' | '◡' | '︿' | '╲' | '╱' | '┐' | '┘' | '└' | '┌' | '◍' | '◉'
+            | 'ᕕ' | 'ᕗ' | '╭' | '╮' | '╰' | '╯' | '┻' | '┳' | '━' | '╯' | '╰'
     )
 }
 
@@ -866,6 +903,23 @@ fn has_kaomoji_enclosure(token: &str) -> bool {
         || (token.starts_with('「') && token.ends_with('」'))
 }
 
+fn has_table_flip_mark(token: &str) -> bool {
+    token.contains('┬')
+        || token.contains('┴')
+        || token.contains('┻')
+        || token.contains('┳')
+        || token.contains('┐')
+        || token.contains('┘')
+        || token.contains('└')
+        || token.contains('┌')
+        || token.contains('︵')
+        || token.contains('︶')
+        || token.contains('┗')
+        || token.contains('┛')
+        || token.contains('┏')
+        || token.contains('┓')
+}
+
 fn looks_like_kaomoji_token(raw: &str) -> bool {
     let token = raw.trim();
     if token.is_empty()
@@ -910,7 +964,7 @@ fn looks_like_kaomoji_token(raw: &str) -> bool {
     let has_kaomoji_bridge = connector_count > 0;
     let has_repeated_marks = face_like_count >= 2;
     let has_pairing_delimiter = has_kaomoji_enclosure(token);
-    let has_table_flip_marks = token.contains('┬') || token.contains('┴') || token.contains('┌');
+    let has_table_flip_marks = has_table_flip_mark(token);
 
     let structural_match =
         has_face_like_char && (has_kaomoji_bridge || has_pairing_delimiter) && non_alpha_count > 0;
@@ -2006,6 +2060,15 @@ mod tests {
         assert_eq!(normalize_candidate_token("(￣﹏￣)").as_deref(), Some("(￣﹏￣)"));
         assert_eq!(normalize_candidate_token("(^◡^)").as_deref(), Some("(^◡^)"));
         assert_eq!(normalize_candidate_token("(^_^)!!").as_deref(), Some("(^_^)!!"));
+        assert_eq!(
+            normalize_candidate_token("(╯°□°)╯︵┻━┻").as_deref(),
+            Some("(╯°□°)╯︵┻━┻")
+        );
+        assert_eq!(
+            normalize_candidate_token("ლ(ಠ益ಠ)ლ").as_deref(),
+            Some("ლ(ಠ益ಠ)ლ")
+        );
+        assert_eq!(normalize_candidate_token("ᕕ(ಠ‿ಠ)ᕗ").as_deref(), Some("ᕕ(ಠ‿ಠ)ᕗ"));
     }
 
     #[test]

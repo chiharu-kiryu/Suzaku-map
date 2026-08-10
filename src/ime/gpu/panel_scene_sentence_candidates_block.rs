@@ -230,7 +230,7 @@
         if card_width <= 0.0 {
             continue;
         }
-        if y + card_height > candidate_area_bottom {
+        if y + card_height > candidate_area_bottom + 0.01 {
             break;
         }
         let selected = *source_index == snapshot.selected_index;

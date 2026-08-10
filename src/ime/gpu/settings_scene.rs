@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Instant;
 
 impl WgpuCandidateRenderer {
     pub fn build_settings_scene(
@@ -820,7 +821,7 @@ impl WgpuCandidateRenderer {
             let (scroll_hovered_track, _) = interaction_state(InteractionKind::SettingsScrollTrack);
             let (scroll_hovered_handle, _) = interaction_state(InteractionKind::SettingsScrollHandle);
             let handle_hovered = scroll_hovered_track || scroll_hovered_handle;
-            let handle_color = if self.chrome.settings_open && handle_hovered {
+            let handle_color = if handle_hovered {
                 [text_primary[0], text_primary[1], text_primary[2], 0.44]
             } else {
                 [text_primary[0], text_primary[1], text_primary[2], 0.34]
@@ -906,15 +907,19 @@ impl WgpuCandidateRenderer {
                 text_quads.extend(label_toggle_layout.quads.iter().copied());
                 atlas_glyphs.extend(label_toggle_layout.atlas_glyphs.iter().cloned());
                 option_layouts.push(label_toggle_layout);
-                    interactive_targets.push(InteractiveTarget {
-                        kind: InteractionKind::ToggleSettingsSection(*section_index),
-                        rect: interaction_hit_rect([
-                            panel_x + 8.0 * ui_scale,
-                            section_top,
-                            panel_width - 16.0 * ui_scale,
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::ToggleSettingsSection(*section_index),
+                rect: {
+                    let toggle_area_w = 16.0 * ui_scale;
+                    let toggle_area_x = panel_x + panel_width - toggle_area_w - 6.0 * ui_scale;
+                    interaction_hit_rect([
+                        toggle_area_x,
+                        section_top,
+                        toggle_area_w,
                         section_label_height,
-                    ]),
-                });
+                    ])
+                },
+            });
             }
 
             let mut chip_x = chip_start_x;
@@ -952,8 +957,7 @@ impl WgpuCandidateRenderer {
                         }
                         .layout();
                         if base_layout.truncated || base_layout.lines.len() > 1 {
-                            settings_option_truncated
-                                .push(InteractionKind::SettingsOptionTextScroll(*kind));
+                            settings_option_truncated.push(*kind);
                         }
 
                         if let Some((scroll_kind, started_at)) =

@@ -50,7 +50,7 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     assert!(scene.interactive_targets.iter().any(|target| target.kind
@@ -111,7 +111,7 @@ fn render_scene_exposes_display_settings_when_open() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     assert!(
@@ -191,11 +191,12 @@ fn settings_scene_exposes_settings_controls_in_a_standalone_window() {
     };
 
     let renderer = WgpuCandidateRenderer::new(520.0, 340.0);
-    let scene = renderer.build_settings_scene(&PanelChromeState {
+    let scene = renderer.build_settings_scene(
+        &PanelChromeState {
         settings_open: true,
         text_scale: DisplayTextScale::Large,
         ..PanelChromeState::default()
-    });
+    }, None);
 
     assert!(
         scene
@@ -219,14 +220,16 @@ fn settings_scene_target_slop_expands_interactive_hit_area() {
     };
 
     let renderer = WgpuCandidateRenderer::new(520.0, 340.0);
-    let base_scene = renderer.build_settings_scene(&PanelChromeState {
+    let base_scene = renderer.build_settings_scene(
+        &PanelChromeState {
         pointer_target_slop_tenths: 20,
         ..PanelChromeState::default()
-    });
-    let expanded_scene = renderer.build_settings_scene(&PanelChromeState {
+    }, None);
+    let expanded_scene = renderer.build_settings_scene(
+        &PanelChromeState {
         pointer_target_slop_tenths: 80,
         ..PanelChromeState::default()
-    });
+    }, None);
 
     let target = InteractionKind::SetTextScale(DisplayTextScale::Large);
     let base_target = base_scene
@@ -270,7 +273,7 @@ fn render_scene_switches_to_compact_floating_bubble_mode() {
             seed_text: "ni hao".into(),
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     assert!(
@@ -340,7 +343,7 @@ fn render_scene_allows_wrapped_candidate_preview_in_full_mode() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     assert!(
@@ -373,7 +376,7 @@ fn render_scene_shows_full_strings_without_compacting_to_ellipsis() {
             ],
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     let input_value = scene
@@ -426,7 +429,7 @@ fn render_scene_sentence_cards_show_full_sentence_not_continuation_fragment() {
             sentence_candidates: vec!["Apple can continue with the next suggestion.".into()],
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     let candidate_primary = scene
@@ -468,7 +471,7 @@ fn render_scene_uses_full_width_primary_sentence_card() {
             sentence_candidate_source_indices: vec![0, 1, 2],
             ..PanelChromeState::default()
         },
-            None, None, None,
+            None, None, None, None,
     );
 
     let candidate_targets: Vec<_> = scene

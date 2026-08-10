@@ -688,7 +688,10 @@
                 atlas_glyphs.extend(empty_layout.atlas_glyphs.iter().cloned());
             } else {
                 for (_visible, label, options, is_collapsed) in visible_sections.iter() {
-                    let section_index = sections.iter().position(|(name, _)| name == *label).unwrap_or(0);
+                    let section_index = sections
+                        .iter()
+                        .position(|(name, _)| *name == *label)
+                        .unwrap_or(0);
                     let section_effectively_collapsed = is_searching || *is_collapsed;
                     let section_rows = if section_effectively_collapsed || options.is_empty() {
                         1.0
@@ -828,7 +831,7 @@
                                 }
                                 .layout();
                                 if base_layout.truncated || base_layout.lines.len() > 1 {
-                                    settings_option_truncated.push(InteractionKind::SettingsOptionTextScroll(*kind));
+                                    settings_option_truncated.push(*kind);
                                 }
                                 if let Some((scroll_kind, started_at)) = settings_option_text_scroll {
                                     if *scroll_kind == *kind && base_layout.truncated {
@@ -890,7 +893,10 @@
                                 atlas_glyphs.extend(final_layout.atlas_glyphs.iter().cloned());
                                 option_layouts.push(final_layout);
                             }
-
+                            interactive_targets.push(InteractiveTarget {
+                                kind: *kind,
+                                rect: interaction_hit_rect(rect),
+                            });
                             chip_x += chip_w + chip_gap_x;
                         }
                     }
