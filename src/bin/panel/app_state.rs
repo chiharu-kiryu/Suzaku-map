@@ -456,6 +456,17 @@ pub(crate) fn decode_llm_temperature(value: &str) -> Option<LlmTemperaturePreset
 mod tests {
     use super::*;
 
+    fn assert_float_eq(actual: f32, expected: f32, case: &str) {
+        if actual.is_infinite() || expected.is_infinite() {
+            assert_eq!(actual, expected, "{case}: expected {expected}, got {actual}");
+            return;
+        }
+        assert!(
+            (actual - expected).abs() < 1e-6,
+            "{case}: expected {expected}, got {actual}"
+        );
+    }
+
     #[test]
     fn display_settings_round_trip_codec() {
         let settings = PersistedDisplaySettings {
@@ -574,37 +585,119 @@ mod tests {
         assert!(!second.is_empty());
     }
 
-    #[test]
-    fn normalize_extreme_pointer_stability_values() {
-        let mut settings = PersistedDisplaySettings {
-            text_scale: DisplayTextScale::Medium,
-            candidate_density: CandidateDensity::Cozy,
-            preview_style: PreviewStyle::Compact,
-            font_face: FontFaceChoice::Monaco,
-            text_spacing: TextSpacing::Normal,
-            text_smoothing: TextSmoothing::Sharp,
-            theme_preset: ThemePreset::Daylight,
-            voice_auto_insert: true,
-            llm_enabled: false,
-            llm_model: LlmModelPreset::Llama32_3b,
-            llm_temperature: LlmTemperaturePreset::Balanced,
-            pointer_tap_slop_tenths: 3,
-            pointer_tap_max_ms: 20,
-            pointer_target_slop_tenths: 500,
-            window_scale: 1.55,
-        };
+    struct NormalizeDisplayPointerSettingsCase {
+        name: &'static str,
+        pointer_tap_slop_tenths_input: u16,
+        pointer_tap_max_ms_input: u16,
+        pointer_target_slop_tenths_input: u16,
+        expected_tap_slop_tenths: u16,
+        expected_tap_max_ms: u16,
+        expected_target_slop_tenths: u16,
+    }
 
-        normalize_display_pointer_settings(&mut settings);
+    fn run_normalize_display_pointer_settings_cases(
+        cases: &[NormalizeDisplayPointerSettingsCase],
+    ) {
+        for case in cases {
+            let mut settings = PersistedDisplaySettings {
+                text_scale: DisplayTextScale::Medium,
+                candidate_density: CandidateDensity::Cozy,
+                preview_style: PreviewStyle::Compact,
+                font_face: FontFaceChoice::Monaco,
+                text_spacing: TextSpacing::Normal,
+                text_smoothing: TextSmoothing::Sharp,
+                theme_preset: ThemePreset::Daylight,
+                voice_auto_insert: true,
+                llm_enabled: false,
+                llm_model: LlmModelPreset::Llama32_3b,
+                llm_temperature: LlmTemperaturePreset::Balanced,
+                pointer_tap_slop_tenths: case.pointer_tap_slop_tenths_input,
+                pointer_tap_max_ms: case.pointer_tap_max_ms_input,
+                pointer_target_slop_tenths: case.pointer_target_slop_tenths_input,
+                window_scale: 1.55,
+            };
 
-        assert_eq!(settings.pointer_tap_slop_tenths, 20);
-        assert_eq!(settings.pointer_tap_max_ms, 120);
-        assert_eq!(settings.pointer_target_slop_tenths, 120);
+            normalize_display_pointer_settings(&mut settings);
+
+            assert_eq!(
+                settings.pointer_tap_slop_tenths,
+                case.expected_tap_slop_tenths,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                settings.pointer_tap_max_ms,
+                case.expected_tap_max_ms,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                settings.pointer_target_slop_tenths,
+                case.expected_target_slop_tenths,
+                "{}",
+                case.name
+            );
+        }
     }
 
     #[test]
-    fn apply_display_settings_clamps_pointer_stability() {
-        let mut chrome = PanelChromeState::default();
-        let settings = PersistedDisplaySettings {
+    fn normalize_display_pointer_settings_decision_matrix() {
+        let cases = [
+            NormalizeDisplayPointerSettingsCase {
+                name: "normalize_extreme_low_and_high_pointer_stability_values",
+                pointer_tap_slop_tenths_input: 3,
+                pointer_tap_max_ms_input: 20,
+                pointer_target_slop_tenths_input: 500,
+                expected_tap_slop_tenths: 20,
+                expected_tap_max_ms: 120,
+                expected_target_slop_tenths: 120,
+            },
+            NormalizeDisplayPointerSettingsCase {
+                name: "normalize_values_within_safe_range_are_preserved",
+                pointer_tap_slop_tenths_input: 95,
+                pointer_tap_max_ms_input: 240,
+                pointer_target_slop_tenths_input: 22,
+                expected_tap_slop_tenths: 95,
+                expected_tap_max_ms: 240,
+                expected_target_slop_tenths: 22,
+            },
+            NormalizeDisplayPointerSettingsCase {
+                name: "normalize_pointer_stability_bottom_boundaries",
+                pointer_tap_slop_tenths_input: 20,
+                pointer_tap_max_ms_input: 120,
+                pointer_target_slop_tenths_input: 10,
+                expected_tap_slop_tenths: 20,
+                expected_tap_max_ms: 120,
+                expected_target_slop_tenths: 10,
+            },
+            NormalizeDisplayPointerSettingsCase {
+                name: "normalize_pointer_stability_top_boundaries",
+                pointer_tap_slop_tenths_input: 120,
+                pointer_tap_max_ms_input: 1200,
+                pointer_target_slop_tenths_input: 120,
+                expected_tap_slop_tenths: 120,
+                expected_tap_max_ms: 1200,
+                expected_target_slop_tenths: 120,
+            },
+        ];
+
+        run_normalize_display_pointer_settings_cases(&cases);
+    }
+
+    struct ApplyDisplaySettingsPointerStabilityCase {
+        name: &'static str,
+        pointer_tap_slop_tenths_input: u16,
+        pointer_tap_max_ms_input: u16,
+        pointer_target_slop_tenths_input: u16,
+        expected_tap_slop_tenths: u16,
+        expected_tap_max_ms: u16,
+        expected_target_slop_tenths: u16,
+    }
+
+    fn run_apply_display_settings_pointer_stability_cases(
+        cases: &[ApplyDisplaySettingsPointerStabilityCase],
+    ) {
+        let base_settings = PersistedDisplaySettings {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Compact,
@@ -616,22 +709,93 @@ mod tests {
             llm_enabled: false,
             llm_model: LlmModelPreset::Llama32_3b,
             llm_temperature: LlmTemperaturePreset::Balanced,
-            pointer_tap_slop_tenths: 255,
-            pointer_tap_max_ms: 20,
-            pointer_target_slop_tenths: 4,
+            pointer_tap_slop_tenths: 100,
+            pointer_tap_max_ms: 420,
+            pointer_target_slop_tenths: 50,
             window_scale: 1.0,
         };
 
-        apply_display_settings(&mut chrome, &settings);
+        for case in cases {
+            let mut chrome = PanelChromeState::default();
+            let mut settings = base_settings.clone();
+            settings.pointer_tap_slop_tenths = case.pointer_tap_slop_tenths_input;
+            settings.pointer_tap_max_ms = case.pointer_tap_max_ms_input;
+            settings.pointer_target_slop_tenths = case.pointer_target_slop_tenths_input;
 
-        assert_eq!(chrome.pointer_tap_slop_tenths, 120);
-        assert_eq!(chrome.pointer_tap_max_ms, 120);
-        assert_eq!(chrome.pointer_target_slop_tenths, 10);
+            apply_display_settings(&mut chrome, &settings);
+
+            assert_eq!(
+                chrome.pointer_tap_slop_tenths,
+                case.expected_tap_slop_tenths,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                chrome.pointer_tap_max_ms,
+                case.expected_tap_max_ms,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                chrome.pointer_target_slop_tenths,
+                case.expected_target_slop_tenths,
+                "{}",
+                case.name
+            );
+        }
     }
 
     #[test]
-    fn apply_display_settings_clamps_window_scale_to_safe_range() {
-        let mut chrome = PanelChromeState::default();
+    fn apply_display_settings_pointer_stability_decision_matrix() {
+        let cases = [
+            ApplyDisplaySettingsPointerStabilityCase {
+                name: "apply_pointer_stability_clamps_out_of_range_values",
+                pointer_tap_slop_tenths_input: 255,
+                pointer_tap_max_ms_input: 20,
+                pointer_target_slop_tenths_input: 4,
+                expected_tap_slop_tenths: 120,
+                expected_tap_max_ms: 120,
+                expected_target_slop_tenths: 10,
+            },
+            ApplyDisplaySettingsPointerStabilityCase {
+                name: "apply_pointer_stability_preserves_valid_values",
+                pointer_tap_slop_tenths_input: 95,
+                pointer_tap_max_ms_input: 240,
+                pointer_target_slop_tenths_input: 22,
+                expected_tap_slop_tenths: 95,
+                expected_tap_max_ms: 240,
+                expected_target_slop_tenths: 22,
+            },
+            ApplyDisplaySettingsPointerStabilityCase {
+                name: "apply_pointer_stability_forces_all_minimums",
+                pointer_tap_slop_tenths_input: 0,
+                pointer_tap_max_ms_input: 0,
+                pointer_target_slop_tenths_input: 0,
+                expected_tap_slop_tenths: 20,
+                expected_tap_max_ms: 120,
+                expected_target_slop_tenths: 10,
+            },
+            ApplyDisplaySettingsPointerStabilityCase {
+                name: "apply_pointer_stability_forces_all_maximums",
+                pointer_tap_slop_tenths_input: 999,
+                pointer_tap_max_ms_input: 9999,
+                pointer_target_slop_tenths_input: 999,
+                expected_tap_slop_tenths: 120,
+                expected_tap_max_ms: 1200,
+                expected_target_slop_tenths: 120,
+            },
+        ];
+
+        run_apply_display_settings_pointer_stability_cases(&cases);
+    }
+
+    struct ApplyDisplaySettingsWindowScaleCase {
+        name: &'static str,
+        window_scale_input: f32,
+        expected_window_scale: f32,
+    }
+
+    fn run_apply_display_settings_window_scale_cases(cases: &[ApplyDisplaySettingsWindowScaleCase]) {
         let settings = PersistedDisplaySettings {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
@@ -647,28 +811,108 @@ mod tests {
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
             pointer_target_slop_tenths: 50,
-            window_scale: 0.10,
+            window_scale: 1.0,
         };
 
-        apply_display_settings(&mut chrome, &settings);
-        assert_eq!(chrome.window_scale, 0.10);
-
-        let settings = PersistedDisplaySettings {
-            window_scale: 99.9,
-            ..settings
-        };
-
-        apply_display_settings(&mut chrome, &settings);
-        assert_eq!(chrome.window_scale, 99.9);
+        for case in cases {
+            let mut chrome = PanelChromeState::default();
+            let mut test_settings = settings.clone();
+            test_settings.window_scale = case.window_scale_input;
+            apply_display_settings(&mut chrome, &test_settings);
+            assert_float_eq(chrome.window_scale, case.expected_window_scale, case.name);
+        }
     }
 
     #[test]
-    fn decode_window_scale_clamps_and_rejects_invalid_values() {
-        assert_eq!(decode_window_scale("0.01"), Some(PANEL_SCALE_MIN));
-        assert_eq!(decode_window_scale("9.0"), Some(PANEL_SCALE_MAX));
-        assert_eq!(decode_window_scale("1.3"), Some(1.3));
-        assert_eq!(decode_window_scale("NaN"), None);
-        assert_eq!(decode_window_scale("not-a-number"), None);
+    fn apply_display_settings_window_scale_decision_matrix() {
+        let cases = [
+            ApplyDisplaySettingsWindowScaleCase {
+                name: "apply_display_settings_preserves_low_window_scale",
+                window_scale_input: 0.10,
+                expected_window_scale: 0.10,
+            },
+            ApplyDisplaySettingsWindowScaleCase {
+                name: "apply_display_settings_preserves_high_window_scale",
+                window_scale_input: 99.9,
+                expected_window_scale: 99.9,
+            },
+            ApplyDisplaySettingsWindowScaleCase {
+                name: "apply_display_settings_preserves_normal_window_scale",
+                window_scale_input: 1.3,
+                expected_window_scale: 1.3,
+            },
+            ApplyDisplaySettingsWindowScaleCase {
+                name: "apply_display_settings_preserves_negative_window_scale",
+                window_scale_input: -2.0,
+                expected_window_scale: -2.0,
+            },
+            ApplyDisplaySettingsWindowScaleCase {
+                name: "apply_display_settings_preserves_unsafe_window_scale",
+                window_scale_input: f32::INFINITY,
+                expected_window_scale: f32::INFINITY,
+            },
+        ];
+
+        run_apply_display_settings_window_scale_cases(&cases);
+    }
+
+    struct DecodeWindowScaleCase {
+        name: &'static str,
+        input: &'static str,
+        expected: Option<f32>,
+    }
+
+    fn run_decode_window_scale_cases(cases: &[DecodeWindowScaleCase]) {
+        for case in cases {
+            let result = decode_window_scale(case.input);
+            match case.expected {
+                Some(expected) => assert_float_eq(result.expect(case.name), expected, case.name),
+                None => assert!(result.is_none(), "{}", case.name),
+            }
+        }
+    }
+
+    #[test]
+    fn decode_window_scale_decision_matrix() {
+        let cases = [
+            DecodeWindowScaleCase {
+                name: "below_min_is_clamped_to_global_min",
+                input: "0.01",
+                expected: Some(PANEL_SCALE_MIN),
+            },
+            DecodeWindowScaleCase {
+                name: "above_max_is_clamped_to_global_max",
+                input: "9.0",
+                expected: Some(PANEL_SCALE_MAX),
+            },
+            DecodeWindowScaleCase {
+                name: "valid_value_is_preserved",
+                input: "1.3",
+                expected: Some(1.3),
+            },
+            DecodeWindowScaleCase {
+                name: "nan_is_rejected",
+                input: "NaN",
+                expected: None,
+            },
+            DecodeWindowScaleCase {
+                name: "invalid_text_is_rejected",
+                input: "not-a-number",
+                expected: None,
+            },
+            DecodeWindowScaleCase {
+                name: "infinity_is_rejected",
+                input: "inf",
+                expected: None,
+            },
+            DecodeWindowScaleCase {
+                name: "leading_and_trailing_whitespace_is_trimmed",
+                input: "  1.3 \n",
+                expected: Some(1.3),
+            },
+        ];
+
+        run_decode_window_scale_cases(&cases);
     }
 
     #[test]
@@ -684,52 +928,469 @@ mod tests {
         assert_ne!(samples[0], samples[1]);
     }
 
-    #[test]
-    fn normalize_display_readability_forces_auto_to_monaco_and_smooth_to_sharp() {
-        let mut chrome = PanelChromeState {
-            font_face: FontFaceChoice::Auto,
-            text_smoothing: TextSmoothing::Smooth,
-            ..PanelChromeState::default()
-        };
+    struct NormalizeDisplayReadabilityCase {
+        name: &'static str,
+        font_face_input: FontFaceChoice,
+        text_smoothing_input: TextSmoothing,
+        expected_font_face: FontFaceChoice,
+        expected_text_smoothing: TextSmoothing,
+    }
 
-        normalize_display_readability(&mut chrome);
-
-        assert_eq!(chrome.font_face, FontFaceChoice::Monaco);
-        assert_eq!(chrome.text_smoothing, TextSmoothing::Sharp);
+    fn run_normalize_display_readability_cases(cases: &[NormalizeDisplayReadabilityCase]) {
+        for case in cases {
+            let mut chrome = PanelChromeState {
+                font_face: case.font_face_input,
+                text_smoothing: case.text_smoothing_input,
+                ..PanelChromeState::default()
+            };
+            normalize_display_readability(&mut chrome);
+            assert_eq!(chrome.font_face, case.expected_font_face, "{}", case.name);
+            assert_eq!(
+                chrome.text_smoothing,
+                case.expected_text_smoothing,
+                "{}",
+                case.name
+            );
+        }
     }
 
     #[test]
-    fn codec_round_trips_each_text_scalar() {
-        assert_eq!(decode_text_scale("small"), Some(DisplayTextScale::Small));
-        assert_eq!(decode_text_scale("medium"), Some(DisplayTextScale::Medium));
-        assert_eq!(decode_text_scale("large"), Some(DisplayTextScale::Large));
-        assert_eq!(decode_candidate_density("compact"), Some(CandidateDensity::Compact));
-        assert_eq!(decode_candidate_density("cozy"), Some(CandidateDensity::Cozy));
-        assert_eq!(decode_preview_style("compact"), Some(PreviewStyle::Compact));
-        assert_eq!(decode_preview_style("full"), Some(PreviewStyle::Full));
-        assert_eq!(decode_font_face("monaco"), Some(FontFaceChoice::Monaco));
-        assert_eq!(decode_font_face("arial_unicode"), Some(FontFaceChoice::ArialUnicode));
-        assert_eq!(decode_text_spacing("tight"), Some(TextSpacing::Tight));
-        assert_eq!(decode_text_spacing("relaxed"), Some(TextSpacing::Relaxed));
-        assert_eq!(decode_text_smoothing("sharp"), Some(TextSmoothing::Sharp));
-        assert_eq!(decode_text_smoothing("smooth"), Some(TextSmoothing::Smooth));
-        assert_eq!(decode_theme_preset("daylight"), Some(ThemePreset::Daylight));
-        assert_eq!(decode_theme_preset("solarized"), Some(ThemePreset::Solarized));
-        assert_eq!(decode_llm_temperature("focused"), Some(LlmTemperaturePreset::Focused));
-        assert_eq!(decode_llm_temperature("expressive"), Some(LlmTemperaturePreset::Expressive));
-        assert_eq!(decode_llm_model("llama32_3b"), Some(LlmModelPreset::Llama32_3b));
+    fn normalize_display_readability_decision_matrix() {
+        let cases = [
+            NormalizeDisplayReadabilityCase {
+                name: "auto_font_face_switches_to_monaco_and_smooth_switches_to_sharp",
+                font_face_input: FontFaceChoice::Auto,
+                text_smoothing_input: TextSmoothing::Smooth,
+                expected_font_face: FontFaceChoice::Monaco,
+                expected_text_smoothing: TextSmoothing::Sharp,
+            },
+            NormalizeDisplayReadabilityCase {
+                name: "non_auto_font_face_keeps_monaco",
+                font_face_input: FontFaceChoice::Monaco,
+                text_smoothing_input: TextSmoothing::Sharp,
+                expected_font_face: FontFaceChoice::Monaco,
+                expected_text_smoothing: TextSmoothing::Sharp,
+            },
+            NormalizeDisplayReadabilityCase {
+                name: "monaco_font_is_kept_and_smooth_is_normalized_to_sharp",
+                font_face_input: FontFaceChoice::Monaco,
+                text_smoothing_input: TextSmoothing::Smooth,
+                expected_font_face: FontFaceChoice::Monaco,
+                expected_text_smoothing: TextSmoothing::Sharp,
+            },
+            NormalizeDisplayReadabilityCase {
+                name: "auto_font_with_sharp_stays_monaco",
+                font_face_input: FontFaceChoice::Auto,
+                text_smoothing_input: TextSmoothing::Sharp,
+                expected_font_face: FontFaceChoice::Monaco,
+                expected_text_smoothing: TextSmoothing::Sharp,
+            },
+        ];
+
+        run_normalize_display_readability_cases(&cases);
+    }
+
+    enum DecodeCodecCaseValue {
+        TextScale(DisplayTextScale),
+        CandidateDensity(CandidateDensity),
+        PreviewStyle(PreviewStyle),
+        FontFace(FontFaceChoice),
+        TextSpacing(TextSpacing),
+        TextSmoothing(TextSmoothing),
+        ThemePreset(ThemePreset),
+        LlmTemperature(LlmTemperaturePreset),
+        LlmModel(LlmModelPreset),
+        U16,
+    }
+
+    struct DecodeCodecCase {
+        name: &'static str,
+        input: &'static str,
+        expected: DecodeCodecCaseValue,
+    }
+
+    fn run_decode_codec_success_cases(cases: &[DecodeCodecCase]) {
+        for case in cases {
+            match case.expected {
+                DecodeCodecCaseValue::TextScale(expected) => {
+                    assert_eq!(decode_text_scale(case.input), Some(expected), "{}", case.name);
+                }
+                DecodeCodecCaseValue::CandidateDensity(expected) => {
+                    assert_eq!(
+                        decode_candidate_density(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::PreviewStyle(expected) => {
+                    assert_eq!(
+                        decode_preview_style(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::FontFace(expected) => {
+                    assert_eq!(
+                        decode_font_face(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::TextSpacing(expected) => {
+                    assert_eq!(
+                        decode_text_spacing(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::TextSmoothing(expected) => {
+                    assert_eq!(
+                        decode_text_smoothing(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::ThemePreset(expected) => {
+                    assert_eq!(
+                        decode_theme_preset(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::LlmTemperature(expected) => {
+                    assert_eq!(
+                        decode_llm_temperature(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::LlmModel(expected) => {
+                    assert_eq!(
+                        decode_llm_model(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
+                }
+                DecodeCodecCaseValue::U16 => {
+                    panic!("{}: unexpected value kind", case.name);
+                }
+            }
+        }
+    }
+
+    struct DecodeCodecRejectCase {
+        name: &'static str,
+        input: &'static str,
+        reject_u16: bool,
+        reject_text_scale: bool,
+        reject_candidate_density: bool,
+        reject_preview_style: bool,
+        reject_font_face: bool,
+        reject_text_spacing: bool,
+        reject_theme_preset: bool,
+        reject_llm_temperature: bool,
+        reject_llm_model: bool,
+    }
+
+    fn run_decode_codec_reject_cases(cases: &[DecodeCodecRejectCase]) {
+        for case in cases {
+            if case.reject_text_scale {
+                assert!(decode_text_scale(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_candidate_density {
+                assert!(decode_candidate_density(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_preview_style {
+                assert!(decode_preview_style(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_font_face {
+                assert!(decode_font_face(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_text_spacing {
+                assert!(decode_text_spacing(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_theme_preset {
+                assert!(decode_theme_preset(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_llm_temperature {
+                assert!(decode_llm_temperature(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_llm_model {
+                assert!(decode_llm_model(case.input).is_none(), "{}", case.name);
+            }
+            if case.reject_u16 {
+                assert!(decode_u16(case.input).is_none(), "{}", case.name);
+            }
+        }
     }
 
     #[test]
-    fn codec_round_trips_are_case_sensitive_and_reject_unknown_values() {
-        assert_eq!(decode_text_scale("Small"), None);
-        assert_eq!(decode_candidate_density("COMPACT"), None);
-        assert_eq!(decode_preview_style("Compact"), None);
-        assert_eq!(decode_font_face("Monaco"), None);
-        assert_eq!(decode_text_spacing("Tight"), None);
-        assert_eq!(decode_theme_preset("DAYLIGHT"), None);
-        assert_eq!(decode_llm_temperature("Balanced "), None);
-        assert_eq!(decode_u16("-1"), None);
-        assert_eq!(decode_u16("65536"), None);
+    fn codec_round_trip_decision_matrix() {
+        let cases = [
+            DecodeCodecCase {
+                name: "decode_text_scale_small_round_trips",
+                input: "small",
+                expected: DecodeCodecCaseValue::TextScale(DisplayTextScale::Small),
+            },
+            DecodeCodecCase {
+                name: "decode_text_scale_medium_round_trips",
+                input: "medium",
+                expected: DecodeCodecCaseValue::TextScale(DisplayTextScale::Medium),
+            },
+            DecodeCodecCase {
+                name: "decode_text_scale_large_round_trips",
+                input: "large",
+                expected: DecodeCodecCaseValue::TextScale(DisplayTextScale::Large),
+            },
+            DecodeCodecCase {
+                name: "decode_candidate_density_compact_round_trips",
+                input: "compact",
+                expected: DecodeCodecCaseValue::CandidateDensity(CandidateDensity::Compact),
+            },
+            DecodeCodecCase {
+                name: "decode_candidate_density_cozy_round_trips",
+                input: "cozy",
+                expected: DecodeCodecCaseValue::CandidateDensity(CandidateDensity::Cozy),
+            },
+            DecodeCodecCase {
+                name: "decode_preview_style_compact_round_trips",
+                input: "compact",
+                expected: DecodeCodecCaseValue::PreviewStyle(PreviewStyle::Compact),
+            },
+            DecodeCodecCase {
+                name: "decode_preview_style_full_round_trips",
+                input: "full",
+                expected: DecodeCodecCaseValue::PreviewStyle(PreviewStyle::Full),
+            },
+            DecodeCodecCase {
+                name: "decode_font_face_monaco_round_trips",
+                input: "monaco",
+                expected: DecodeCodecCaseValue::FontFace(FontFaceChoice::Monaco),
+            },
+            DecodeCodecCase {
+                name: "decode_font_face_arial_unicode_round_trips",
+                input: "arial_unicode",
+                expected: DecodeCodecCaseValue::FontFace(FontFaceChoice::ArialUnicode),
+            },
+            DecodeCodecCase {
+                name: "decode_text_spacing_tight_round_trips",
+                input: "tight",
+                expected: DecodeCodecCaseValue::TextSpacing(TextSpacing::Tight),
+            },
+            DecodeCodecCase {
+                name: "decode_text_spacing_relaxed_round_trips",
+                input: "relaxed",
+                expected: DecodeCodecCaseValue::TextSpacing(TextSpacing::Relaxed),
+            },
+            DecodeCodecCase {
+                name: "decode_text_smoothing_sharp_round_trips",
+                input: "sharp",
+                expected: DecodeCodecCaseValue::TextSmoothing(TextSmoothing::Sharp),
+            },
+            DecodeCodecCase {
+                name: "decode_text_smoothing_smooth_round_trips",
+                input: "smooth",
+                expected: DecodeCodecCaseValue::TextSmoothing(TextSmoothing::Smooth),
+            },
+            DecodeCodecCase {
+                name: "decode_theme_preset_daylight_round_trips",
+                input: "daylight",
+                expected: DecodeCodecCaseValue::ThemePreset(ThemePreset::Daylight),
+            },
+            DecodeCodecCase {
+                name: "decode_theme_preset_solarized_round_trips",
+                input: "solarized",
+                expected: DecodeCodecCaseValue::ThemePreset(ThemePreset::Solarized),
+            },
+            DecodeCodecCase {
+                name: "decode_llm_temperature_focused_round_trips",
+                input: "focused",
+                expected: DecodeCodecCaseValue::LlmTemperature(LlmTemperaturePreset::Focused),
+            },
+            DecodeCodecCase {
+                name: "decode_llm_temperature_expressive_round_trips",
+                input: "expressive",
+                expected: DecodeCodecCaseValue::LlmTemperature(LlmTemperaturePreset::Expressive),
+            },
+            DecodeCodecCase {
+                name: "decode_llm_model_llama_round_trips",
+                input: "llama32_3b",
+                expected: DecodeCodecCaseValue::LlmModel(LlmModelPreset::Llama32_3b),
+            },
+        ];
+
+        run_decode_codec_success_cases(&cases);
+    }
+
+    #[test]
+    fn codec_rejects_non_matching_values_matrix() {
+        let cases = [
+            DecodeCodecRejectCase {
+                name: "reject_text_scale_title_case",
+                input: "Small",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: false,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: false,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_candidate_density_all_caps",
+                input: "COMPACT",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: false,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_preview_style_title_case",
+                input: "Compact",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: false,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_font_face_title_case",
+                input: "Monaco",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: false,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_text_spacing_title_case",
+                input: "Tight",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: false,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_theme_preset_all_caps",
+                input: "DAYLIGHT",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: false,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_llm_temperature_trailing_space",
+                input: "Balanced ",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: true,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_u16_negative",
+                input: "-1",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: true,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_u16_overflow",
+                input: "65536",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: true,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_u16_hex_like",
+                input: "0x10",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: true,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_llm_temperature_unknown",
+                input: "mild",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: true,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+            DecodeCodecRejectCase {
+                name: "reject_llm_model_unknown",
+                input: "gemini2_0",
+                reject_text_scale: true,
+                reject_candidate_density: true,
+                reject_preview_style: true,
+                reject_font_face: true,
+                reject_text_spacing: true,
+                reject_theme_preset: true,
+                reject_llm_temperature: true,
+                reject_llm_model: true,
+                reject_u16: true,
+            },
+        ];
+
+        run_decode_codec_reject_cases(&cases);
     }
 }

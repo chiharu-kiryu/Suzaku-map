@@ -529,243 +529,593 @@ mod tests {
         assert!((a - b).abs() < 1e-6);
     }
 
-    #[test]
-    fn window_scale_drag_delta_is_zero_when_cursor_static() {
-        approx_eq(scale_delta_from_drag(120.0, 120.0), 0.0);
+    struct ScaleDragDeltaCase {
+        name: &'static str,
+        start_x: f32,
+        cursor_x: f32,
+        expected: Option<f32>,
+        max_abs: Option<f32>,
+    }
+
+    fn run_scale_drag_delta_cases(cases: &[ScaleDragDeltaCase]) {
+        for case in cases {
+            let delta = scale_delta_from_drag(case.start_x, case.cursor_x);
+            if let Some(expected) = case.expected {
+                assert_eq!(delta, expected, "{}", case.name);
+            }
+            if let Some(max_abs) = case.max_abs {
+                assert!(delta.abs() < max_abs, "{}", case.name);
+            }
+        }
     }
 
     #[test]
-    fn window_scale_drag_delta_tracks_pixels_per_step() {
-        approx_eq(scale_delta_from_drag(100.0, 260.0), PANEL_SCALE_STEP);
-        approx_eq(scale_delta_from_drag(260.0, 100.0), -PANEL_SCALE_STEP);
-        assert!((scale_delta_from_drag(100.0, 180.0)).abs() < PANEL_SCALE_STEP);
+    fn window_scale_drag_delta_decision_matrix() {
+        let cases = [
+            ScaleDragDeltaCase {
+                name: "static_cursor_produces_zero_delta",
+                start_x: 120.0,
+                cursor_x: 120.0,
+                expected: Some(0.0),
+                max_abs: None,
+            },
+            ScaleDragDeltaCase {
+                name: "upward_drag_tracks_full_pixel_step",
+                start_x: 100.0,
+                cursor_x: 260.0,
+                expected: Some(PANEL_SCALE_STEP),
+                max_abs: None,
+            },
+            ScaleDragDeltaCase {
+                name: "downward_drag_tracks_full_negative_pixel_step",
+                start_x: 260.0,
+                cursor_x: 100.0,
+                expected: Some(-PANEL_SCALE_STEP),
+                max_abs: None,
+            },
+            ScaleDragDeltaCase {
+                name: "small_drag_stays_under_scale_step",
+                start_x: 100.0,
+                cursor_x: 180.0,
+                expected: None,
+                max_abs: Some(PANEL_SCALE_STEP),
+            },
+        ];
+
+        run_scale_drag_delta_cases(&cases);
+    }
+
+    struct WindowScaleLimitsCase {
+        name: &'static str,
+        base: LogicalSize<f64>,
+        expected_min: f32,
+        expected_max: f32,
+    }
+
+    fn run_window_scale_limits_cases(cases: &[WindowScaleLimitsCase]) {
+        for case in cases {
+            let (min_scale_for_base, max_scale_for_base) = window_scale_limits_for_base(case.base);
+            assert!(
+                (min_scale_for_base - case.expected_min).abs() < 1e-6,
+                "{}: expected min {}, got {}",
+                case.name,
+                case.expected_min,
+                min_scale_for_base
+            );
+            assert!(
+                (max_scale_for_base - case.expected_max).abs() < 1e-6,
+                "{}: expected max {}, got {}",
+                case.name,
+                case.expected_max,
+                max_scale_for_base
+            );
+            assert!(
+                min_scale_for_base <= max_scale_for_base,
+                "{}: min should not exceed max",
+                case.name
+            );
+            assert!(
+                min_scale_for_base >= PANEL_SCALE_MIN && max_scale_for_base >= PANEL_SCALE_MIN,
+                "{}: scales should respect global min",
+                case.name
+            );
+            assert!(
+                max_scale_for_base <= PANEL_SCALE_MAX,
+                "{}: scales should respect global max",
+                case.name
+            );
+        }
     }
 
     #[test]
-    fn compact_drag_exceeded_threshold_is_false_at_exact_limit() {
-        assert!(!compact_drag_exceeded_threshold((10.0, 20.0), (12.5, 20.0)));
+    fn window_scale_limits_for_base_decision_matrix() {
+        let cases = [
+            WindowScaleLimitsCase {
+                name: "limits_for_default_window_keep_expected_range",
+                base: LogicalSize::new(900.0, 520.0),
+                expected_min: 0.65,
+                expected_max: 1.55,
+            },
+            WindowScaleLimitsCase {
+                name: "tiny_width_promotes_min_scale",
+                base: LogicalSize::new(300.0, 520.0),
+                expected_min: 1.4,
+                expected_max: 1.55,
+            },
+            WindowScaleLimitsCase {
+                name: "very_large_base_collapses_to_global_min",
+                base: LogicalSize::new(5000.0, 5000.0),
+                expected_min: 0.65,
+                expected_max: 0.65,
+            },
+            WindowScaleLimitsCase {
+                name: "tall_aspect_limits_by_height",
+                base: LogicalSize::new(900.0, 1000.0),
+                expected_min: 0.65,
+                expected_max: 0.806,
+            },
+        ];
+
+        run_window_scale_limits_cases(&cases);
+    }
+
+    struct CompactDragThresholdCase {
+        name: &'static str,
+        start: (f32, f32),
+        current: (f32, f32),
+        expected: bool,
+    }
+
+    fn run_compact_drag_threshold_cases(cases: &[CompactDragThresholdCase]) {
+        for case in cases {
+            assert_eq!(
+                compact_drag_exceeded_threshold(case.start, case.current),
+                case.expected,
+                "{}",
+                case.name,
+            );
+        }
     }
 
     #[test]
-    fn compact_drag_exceeded_threshold_is_true_after_limit() {
-        assert!(compact_drag_exceeded_threshold((10.0, 20.0), (12.6, 20.0)));
+    fn compact_drag_exceeded_threshold_decision_matrix() {
+        let cases = [
+            CompactDragThresholdCase {
+                name: "below_or_at_threshold_x_axis_is_false",
+                start: (10.0, 20.0),
+                current: (12.5, 20.0),
+                expected: false,
+            },
+            CompactDragThresholdCase {
+                name: "above_threshold_x_axis_is_true",
+                start: (10.0, 20.0),
+                current: (12.6, 20.0),
+                expected: true,
+            },
+            CompactDragThresholdCase {
+                name: "above_threshold_on_y_axis_is_true",
+                start: (10.0, 20.0),
+                current: (10.0, 22.6),
+                expected: true,
+            },
+        ];
+
+        run_compact_drag_threshold_cases(&cases);
     }
 
     #[test]
-    fn compact_drag_exceeded_threshold_is_true_on_y_axis() {
-        assert!(compact_drag_exceeded_threshold((10.0, 20.0), (10.0, 22.6)));
+    fn compact_snap_decision_matrix() {
+        struct CompactSnapCase {
+            name: &'static str,
+            current_x: i32,
+            current_y: i32,
+            min_x: i32,
+            max_x: i32,
+            min_y: i32,
+            max_y: i32,
+            threshold: i32,
+            expected_edge: Option<DockEdge>,
+            expected_pos: winit::dpi::PhysicalPosition<i32>,
+        }
+
+        let cases = [
+            CompactSnapCase {
+                name: "snaps_to_left_edge_within_threshold",
+                current_x: 103,
+                current_y: 400,
+                min_x: 100,
+                max_x: 500,
+                min_y: 100,
+                max_y: 500,
+                threshold: 7,
+                expected_edge: Some(DockEdge::Left),
+                expected_pos: PhysicalPosition::new(100, 400),
+            },
+            CompactSnapCase {
+                name: "snaps_to_right_edge_within_threshold",
+                current_x: 494,
+                current_y: 401,
+                min_x: 100,
+                max_x: 500,
+                min_y: 100,
+                max_y: 500,
+                threshold: 7,
+                expected_edge: Some(DockEdge::Right),
+                expected_pos: PhysicalPosition::new(500, 401),
+            },
+            CompactSnapCase {
+                name: "snaps_to_top_edge_within_threshold",
+                current_x: 250,
+                current_y: 102,
+                min_x: 100,
+                max_x: 500,
+                min_y: 100,
+                max_y: 500,
+                threshold: 7,
+                expected_edge: Some(DockEdge::Top),
+                expected_pos: PhysicalPosition::new(250, 100),
+            },
+            CompactSnapCase {
+                name: "snaps_to_bottom_edge_within_threshold",
+                current_x: 250,
+                current_y: 494,
+                min_x: 100,
+                max_x: 500,
+                min_y: 100,
+                max_y: 500,
+                threshold: 7,
+                expected_edge: Some(DockEdge::Bottom),
+                expected_pos: PhysicalPosition::new(250, 500),
+            },
+            CompactSnapCase {
+                name: "does_not_snap_when_far_from_edges",
+                current_x: 250,
+                current_y: 300,
+                min_x: 100,
+                max_x: 500,
+                min_y: 100,
+                max_y: 500,
+                threshold: 7,
+                expected_edge: None,
+                expected_pos: PhysicalPosition::new(250, 300),
+            },
+        ];
+
+        for case in cases {
+            let (edge, snapped) = compact_snap_for_position(
+                case.current_x,
+                case.current_y,
+                case.min_x,
+                case.max_x,
+                case.min_y,
+                case.max_y,
+                case.threshold,
+            );
+            assert_eq!(edge, case.expected_edge, "{}", case.name);
+            assert_eq!(snapped, case.expected_pos, "{}", case.name);
+        }
+    }
+
+    struct ResolveWindowScaleRequestCase {
+        name: &'static str,
+        base: LogicalSize<f64>,
+        request: f32,
+        quantize: bool,
+        expected_scale: f32,
+    }
+
+    fn run_resolve_window_scale_request_cases(cases: &[ResolveWindowScaleRequestCase]) {
+        for case in cases {
+            let result = resolve_window_scale_request(case.request, case.base, case.quantize);
+            assert!(
+                (result - case.expected_scale).abs() < 1e-6,
+                "{}: expected {}, got {}",
+                case.name,
+                case.expected_scale,
+                result
+            );
+        }
     }
 
     #[test]
-    fn compact_snap_prefers_left_edge_when_within_threshold() {
-        let (edge, snapped) = compact_snap_for_position(103, 400, 100, 500, 100, 500, 7);
-
-        assert_eq!(edge, Some(DockEdge::Left));
-        assert_eq!(snapped, winit::dpi::PhysicalPosition::new(100, 400));
-    }
-
-    #[test]
-    fn compact_snap_prefers_right_edge_when_within_threshold() {
-        let (edge, snapped) = compact_snap_for_position(494, 401, 100, 500, 100, 500, 7);
-
-        assert_eq!(edge, Some(DockEdge::Right));
-        assert_eq!(snapped, winit::dpi::PhysicalPosition::new(500, 401));
-    }
-
-    #[test]
-    fn compact_snap_targets_top_and_bottom_edges_within_threshold() {
-        let (top_edge, top_pos) = compact_snap_for_position(250, 102, 100, 500, 100, 500, 7);
-        assert_eq!(top_edge, Some(DockEdge::Top));
-        assert_eq!(top_pos, winit::dpi::PhysicalPosition::new(250, 100));
-
-        let (bottom_edge, bottom_pos) =
-            compact_snap_for_position(250, 494, 100, 500, 100, 500, 7);
-        assert_eq!(bottom_edge, Some(DockEdge::Bottom));
-        assert_eq!(bottom_pos, winit::dpi::PhysicalPosition::new(250, 500));
-    }
-
-    #[test]
-    fn compact_snap_none_when_far_from_edges() {
-        let (edge, snapped) = compact_snap_for_position(250, 300, 100, 500, 100, 500, 7);
-
-        assert_eq!(edge, None);
-        assert_eq!(snapped, winit::dpi::PhysicalPosition::new(250, 300));
-    }
-
-    #[test]
-    fn resolve_window_scale_request_keeps_unquantized_scale_within_global_bounds() {
+    fn resolve_window_scale_request_decision_matrix() {
         let base = LogicalSize::new(900.0, 520.0);
-        let target_scale = resolve_window_scale_request(1.2, base, false);
+        let (_, base_max) = window_scale_limits_for_base(base);
+        let base_max_request = base_max + 0.5;
+        let quantized_request = 1.13;
+        let quantized_expected = (quantized_request / PANEL_SCALE_STEP).round() * PANEL_SCALE_STEP;
+        let max_scale_base = LogicalSize::new(2000.0, 2000.0);
+        let (base_min_for_large, _) = window_scale_limits_for_base(max_scale_base);
+        let base_min_request = base_min_for_large - 0.5;
 
-        assert!((target_scale - 1.2).abs() < 1e-6);
+        let cases = [
+            ResolveWindowScaleRequestCase {
+                name: "unquantized_scale_request_preserves_scale_inside_bounds",
+                base,
+                request: 1.2,
+                quantize: false,
+                expected_scale: 1.2,
+            },
+            ResolveWindowScaleRequestCase {
+                name: "quantized_scale_request_rounds_to_step",
+                base,
+                request: quantized_request,
+                quantize: true,
+                expected_scale: quantized_expected,
+            },
+            ResolveWindowScaleRequestCase {
+                name: "scale_request_above_max_is_clamped_to_base_max",
+                base,
+                request: base_max_request,
+                quantize: false,
+                expected_scale: base_max,
+            },
+            ResolveWindowScaleRequestCase {
+                name: "quantized_scale_request_above_max_is_clamped_to_base_max",
+                base,
+                request: base_max_request,
+                quantize: true,
+                expected_scale: base_max,
+            },
+            ResolveWindowScaleRequestCase {
+                name: "scale_request_below_min_is_clamped_to_base_min",
+                base: max_scale_base,
+                request: base_min_request,
+                quantize: false,
+                expected_scale: base_min_for_large,
+            },
+            ResolveWindowScaleRequestCase {
+                name: "quantized_scale_request_below_min_is_clamped_to_base_min",
+                base: max_scale_base,
+                request: base_min_request,
+                quantize: true,
+                expected_scale: base_min_for_large,
+            },
+        ];
+
+        run_resolve_window_scale_request_cases(&cases);
+    }
+
+    enum ScaleBaseExpectation {
+        None,
+        SomeSize { width: f64, height: f64 },
+    }
+
+    struct ScaleBaseSizeCase {
+        name: &'static str,
+        logical_size: LogicalSize<f64>,
+        scale: f32,
+        expected: ScaleBaseExpectation,
+        assert_idempotent: bool,
+    }
+
+    fn run_scale_base_size_from_expanded_cases(cases: &[ScaleBaseSizeCase]) {
+        for case in cases {
+            let result =
+                scale_base_size_from_expanded(case.logical_size, case.scale);
+            match case.expected {
+                ScaleBaseExpectation::None => assert!(result.is_none(), "{}", case.name),
+                ScaleBaseExpectation::SomeSize { width, height } => {
+                    let base = result.expect(case.name);
+                    assert!((base.width - width).abs() < 1e-6, "{} width mismatch", case.name);
+                    assert!((base.height - height).abs() < 1e-6, "{} height mismatch", case.name);
+                    if case.assert_idempotent {
+                        let again = scale_base_size_from_expanded(case.logical_size, case.scale);
+                        assert_eq!(base, again.expect(case.name), "{}", case.name);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
-    fn resolve_window_scale_request_quantized_scale_rounds_to_step() {
-        let base = LogicalSize::new(900.0, 520.0);
-        let target_scale = resolve_window_scale_request(1.13, base, true);
-        let nearest_step = (1.13 / PANEL_SCALE_STEP).round() * PANEL_SCALE_STEP;
+    fn scale_base_size_from_expanded_decision_matrix() {
+        let cases = [
+            ScaleBaseSizeCase {
+                name: "rejects_non_finite_width",
+                logical_size: LogicalSize::new(f64::INFINITY, 520.0),
+                scale: 1.2,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "rejects_non_finite_height",
+                logical_size: LogicalSize::new(900.0, f64::NAN),
+                scale: 1.2,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "rejects_non_finite_scale",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                scale: f32::INFINITY,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "rejects_zero_scale",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                scale: 0.0,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "rejects_zero_width",
+                logical_size: LogicalSize::new(0.0, 520.0),
+                scale: 1.2,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "rejects_negative_width",
+                logical_size: LogicalSize::new(-1.0, 520.0),
+                scale: 1.2,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "rejects_zero_height",
+                logical_size: LogicalSize::new(900.0, 0.0),
+                scale: 1.2,
+                expected: ScaleBaseExpectation::None,
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "keeps_scale_math_stable_for_valid_inputs",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                scale: 1.3,
+                expected: ScaleBaseExpectation::SomeSize {
+                    width: 900.0 / 1.3f32 as f64,
+                    height: 520.0 / 1.3f32 as f64,
+                },
+                assert_idempotent: false,
+            },
+            ScaleBaseSizeCase {
+                name: "is_idempotent_for_same_input",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                scale: 1.3,
+                expected: ScaleBaseExpectation::SomeSize {
+                    width: 900.0 / 1.3f32 as f64,
+                    height: 520.0 / 1.3f32 as f64,
+                },
+                assert_idempotent: true,
+            },
+        ];
 
-        assert!(target_scale >= PANEL_SCALE_MIN);
-        assert!((target_scale - nearest_step).abs() < 1e-6);
+        run_scale_base_size_from_expanded_cases(&cases);
+    }
+
+    struct WindowScaleSignificanceCase {
+        name: &'static str,
+        current: f32,
+        target: f32,
+        expected: bool,
+    }
+
+    fn run_window_scale_significance_cases(cases: &[WindowScaleSignificanceCase]) {
+        for case in cases {
+            assert_eq!(
+                is_significant_window_scale_change(case.current, case.target),
+                case.expected,
+                "{}",
+                case.name,
+            );
+        }
     }
 
     #[test]
-    fn resolve_window_scale_request_clamps_to_base_max() {
-        let base = LogicalSize::new(900.0, 520.0);
-        let (_, max_scale_for_base) = window_scale_limits_for_base(base);
-        let requested = max_scale_for_base + 0.5;
+    fn is_significant_window_scale_change_decision_matrix() {
+        let tiny_drag_delta = scale_delta_from_drag(100.0, 100.2);
+        let cases = [
+            WindowScaleSignificanceCase {
+                name: "sub_epsilon_delta_is_false",
+                current: 1.0,
+                target: 1.0 + MIN_SCALE_DRAG_EPSILON * 0.75,
+                expected: false,
+            },
+            WindowScaleSignificanceCase {
+                name: "exact_epsilon_delta_is_true",
+                current: 1.0,
+                target: 1.0 + MIN_SCALE_DRAG_EPSILON,
+                expected: true,
+            },
+            WindowScaleSignificanceCase {
+                name: "above_epsilon_negative_delta_is_true",
+                current: 1.0,
+                target: 1.0 - MIN_SCALE_DRAG_EPSILON * 1.5,
+                expected: true,
+            },
+            WindowScaleSignificanceCase {
+                name: "tiny_drag_delta_from_drag_is_not_significant",
+                current: 1.0,
+                target: 1.0 + tiny_drag_delta,
+                expected: false,
+            },
+        ];
 
-        assert_eq!(resolve_window_scale_request(requested, base, false), max_scale_for_base);
-        let quantized_scale = resolve_window_scale_request(requested, base, true);
-        assert!((PANEL_SCALE_MIN..=max_scale_for_base).contains(&quantized_scale));
+        run_window_scale_significance_cases(&cases);
+    }
+
+    struct NextScaledExpandedRecordCase {
+        name: &'static str,
+        logical_size: LogicalSize<f64>,
+        window_scale: f32,
+        is_main_window: bool,
+        is_compact_mode: bool,
+        current_size: Option<LogicalSize<f64>>,
+        current_base: Option<LogicalSize<f64>>,
+        expected_size: Option<LogicalSize<f64>>,
+        expected_base: Option<LogicalSize<f64>>,
+    }
+
+    fn run_next_scaled_expanded_record_cases(cases: &[NextScaledExpandedRecordCase]) {
+        for case in cases {
+            let (size, base) = next_scaled_expanded_record(
+                case.logical_size,
+                case.window_scale,
+                case.is_main_window,
+                case.is_compact_mode,
+                case.current_size,
+                case.current_base,
+            );
+            assert_eq!(size, case.expected_size, "{}", case.name);
+            assert_eq!(base, case.expected_base, "{}", case.name);
+        }
     }
 
     #[test]
-    fn resolve_window_scale_request_clamps_to_base_min() {
-        let base = LogicalSize::new(2000.0, 2000.0);
-        let (min_scale_for_base, _) = window_scale_limits_for_base(base);
-        let requested = min_scale_for_base - 0.5;
+    fn next_scaled_expanded_record_decision_matrix() {
+        let cases = [
+            NextScaledExpandedRecordCase {
+                name: "updates_state_for_valid_main_window_size",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                window_scale: 1.3,
+                is_main_window: true,
+                is_compact_mode: false,
+                current_size: Some(LogicalSize::new(800.0, 500.0)),
+                current_base: Some(LogicalSize::new(600.0, 380.0)),
+                expected_size: Some(LogicalSize::new(900.0, 520.0)),
+                expected_base: Some(LogicalSize::new(
+                    900.0 / 1.3f32 as f64,
+                    520.0 / 1.3f32 as f64,
+                )),
+            },
+            NextScaledExpandedRecordCase {
+                name: "keeps_state_for_non_main_window",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                window_scale: 1.3,
+                is_main_window: false,
+                is_compact_mode: false,
+                current_size: Some(LogicalSize::new(800.0, 500.0)),
+                current_base: Some(LogicalSize::new(600.0, 380.0)),
+                expected_size: Some(LogicalSize::new(800.0, 500.0)),
+                expected_base: Some(LogicalSize::new(600.0, 380.0)),
+            },
+            NextScaledExpandedRecordCase {
+                name: "keeps_state_for_compact_mode_or_invalid_size",
+                logical_size: LogicalSize::new(-1.0, 520.0),
+                window_scale: 1.3,
+                is_main_window: true,
+                is_compact_mode: false,
+                current_size: Some(LogicalSize::new(800.0, 500.0)),
+                current_base: Some(LogicalSize::new(600.0, 380.0)),
+                expected_size: Some(LogicalSize::new(800.0, 500.0)),
+                expected_base: Some(LogicalSize::new(600.0, 380.0)),
+            },
+            NextScaledExpandedRecordCase {
+                name: "keeps_state_for_compact_mode",
+                logical_size: LogicalSize::new(900.0, 520.0),
+                window_scale: 1.3,
+                is_main_window: true,
+                is_compact_mode: true,
+                current_size: Some(LogicalSize::new(700.0, 450.0)),
+                current_base: Some(LogicalSize::new(500.0, 300.0)),
+                expected_size: Some(LogicalSize::new(700.0, 450.0)),
+                expected_base: Some(LogicalSize::new(500.0, 300.0)),
+            },
+        ];
 
-        assert_eq!(resolve_window_scale_request(requested, base, false), min_scale_for_base);
-        assert_eq!(resolve_window_scale_request(requested, base, true), min_scale_for_base);
-    }
-
-    #[test]
-    fn scale_base_size_from_expanded_rejects_non_finite_values() {
-        assert!(scale_base_size_from_expanded(
-            LogicalSize::new(f64::INFINITY, 520.0),
-            1.2
-        )
-        .is_none());
-        assert!(scale_base_size_from_expanded(
-            LogicalSize::new(900.0, f64::NAN),
-            1.2
-        )
-        .is_none());
-        assert!(scale_base_size_from_expanded(LogicalSize::new(900.0, 520.0), f32::INFINITY).is_none());
-        assert!(scale_base_size_from_expanded(LogicalSize::new(900.0, 520.0), 0.0).is_none());
-    }
-
-    #[test]
-    fn scale_base_size_from_expanded_rejects_non_positive_dimensions() {
-        assert!(scale_base_size_from_expanded(LogicalSize::new(0.0, 520.0), 1.2).is_none());
-        assert!(scale_base_size_from_expanded(LogicalSize::new(-1.0, 520.0), 1.2).is_none());
-        assert!(scale_base_size_from_expanded(LogicalSize::new(900.0, 0.0), 1.2).is_none());
-    }
-
-    #[test]
-    fn scale_base_size_from_expanded_keeps_scale_math_stable() {
-        let base =
-            scale_base_size_from_expanded(LogicalSize::new(900.0, 520.0), 1.3).expect("valid scaled size");
-        let expected_width = 900.0 / 1.3f32 as f64;
-        assert!((base.width - expected_width).abs() < 1e-6);
-        let expected_height = 520.0 / 1.3f32 as f64;
-        assert!((base.height - expected_height).abs() < 1e-6);
-    }
-
-    #[test]
-    fn scale_base_size_from_expanded_is_idempotent_for_same_input() {
-        let first =
-            scale_base_size_from_expanded(LogicalSize::new(900.0, 520.0), 1.3).expect("valid scaled size");
-        let second =
-            scale_base_size_from_expanded(LogicalSize::new(900.0, 520.0), 1.3).expect("valid scaled size");
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn is_significant_window_scale_change_is_false_for_sub_epsilon_delta() {
-        assert!(!is_significant_window_scale_change(
-            1.0,
-            1.0 + MIN_SCALE_DRAG_EPSILON * 0.75
-        ));
-    }
-
-    #[test]
-    fn is_significant_window_scale_change_is_true_at_or_above_epsilon() {
-        assert!(is_significant_window_scale_change(
-            1.0,
-            1.0 + MIN_SCALE_DRAG_EPSILON
-        ));
-        assert!(is_significant_window_scale_change(
-            1.0,
-            1.0 - MIN_SCALE_DRAG_EPSILON * 1.5
-        ));
-    }
-
-    #[test]
-    fn tiny_drag_delta_does_not_count_as_scale_gesture() {
-        let start_x = 100.0f32;
-        let cursor_x = start_x + 0.2;
-        let scale_delta = scale_delta_from_drag(start_x, cursor_x);
-        assert!(scale_delta.abs() < MIN_SCALE_DRAG_EPSILON);
-        assert!(!is_significant_window_scale_change(1.0, 1.0 + scale_delta));
-    }
-
-    #[test]
-    fn next_scaled_expanded_record_updates_state_for_valid_main_window_size() {
-        let (size, base) = next_scaled_expanded_record(
-            LogicalSize::new(900.0, 520.0),
-            1.3,
-            true,
-            false,
-            Some(LogicalSize::new(800.0, 500.0)),
-            Some(LogicalSize::new(600.0, 380.0)),
-        );
-
-        assert_eq!(size, Some(LogicalSize::new(900.0, 520.0)));
-        assert_eq!(
-            base,
-            Some(LogicalSize::new(
-                900.0 / 1.3f32 as f64,
-                520.0 / 1.3f32 as f64
-            ))
-        );
-    }
-
-    #[test]
-    fn next_scaled_expanded_record_keeps_state_for_non_main_window() {
-        let existing_size = Some(LogicalSize::new(800.0, 500.0));
-        let existing_base = Some(LogicalSize::new(600.0, 380.0));
-        let (size, base) = next_scaled_expanded_record(
-            LogicalSize::new(900.0, 520.0),
-            1.3,
-            false,
-            false,
-            existing_size,
-            existing_base,
-        );
-
-        assert_eq!(size, existing_size);
-        assert_eq!(base, existing_base);
-    }
-
-    #[test]
-    fn next_scaled_expanded_record_keeps_state_for_compact_mode_or_invalid_size() {
-        let existing_size = Some(LogicalSize::new(800.0, 500.0));
-        let existing_base = Some(LogicalSize::new(600.0, 380.0));
-        let (size, base) = next_scaled_expanded_record(
-            LogicalSize::new(-1.0, 520.0),
-            1.3,
-            true,
-            false,
-            existing_size,
-            existing_base,
-        );
-
-        assert_eq!(size, existing_size);
-        assert_eq!(base, existing_base);
-
-        let (size, base) = next_scaled_expanded_record(
-            LogicalSize::new(900.0, 520.0),
-            1.3,
-            true,
-            true,
-            Some(LogicalSize::new(700.0, 450.0)),
-            Some(LogicalSize::new(500.0, 300.0)),
-        );
-        assert_eq!(size, Some(LogicalSize::new(700.0, 450.0)));
-        assert_eq!(base, Some(LogicalSize::new(500.0, 300.0)));
+        run_next_scaled_expanded_record_cases(&cases);
     }
 
     struct CompactDragGestureCase {
@@ -776,6 +1126,13 @@ mod tests {
         hint: bool,
         expected: bool,
     }
+
+    const IN_TAP_WINDOW_MS: u64 = COMPACT_DRAG_TAP_MAX_MS;
+    const OUTSIDE_TAP_WINDOW_MS: u64 = COMPACT_DRAG_TAP_MAX_MS + 1;
+    const FAR_ELAPSED_MS: u64 = 180;
+    const ZERO_MS: u64 = 0;
+    const ONE_MS: u64 = 1;
+    const EARLY_MS: u64 = IN_TAP_WINDOW_MS - 1;
 
     fn run_compact_drag_gesture_cases(cases: &[CompactDragGestureCase]) {
         for case in cases {
@@ -792,13 +1149,6 @@ mod tests {
     fn compact_drag_gesture_decision_matrix() {
         // Keep all tap-window boundaries in one place for easier updates when
         // COMPACT_DRAG_TAP_MAX_MS changes.
-        const IN_TAP_WINDOW_MS: u64 = COMPACT_DRAG_TAP_MAX_MS;
-        const OUTSIDE_TAP_WINDOW_MS: u64 = COMPACT_DRAG_TAP_MAX_MS + 1;
-        const FAR_ELAPSED_MS: u64 = 180;
-        const ZERO_MS: u64 = 0;
-        const ONE_MS: u64 = 1;
-        const EARLY_MS: u64 = IN_TAP_WINDOW_MS - 1;
-
         let base = PhysicalPosition::new(100, 100);
         let nearby = PhysicalPosition::new(103, 100);
         let far = PhysicalPosition::new(104, 100);
@@ -866,7 +1216,7 @@ mod tests {
                 expected: true,
             },
             CompactDragGestureCase {
-                name: "hint_rejected_outside_tap_window",
+                name: "hint_rejected_far_elapsed_for_complete_positions",
                 start: Some(base),
                 end: Some(base),
                 elapsed_ms: FAR_ELAPSED_MS,
@@ -930,6 +1280,14 @@ mod tests {
                 hint: false,
                 expected: false,
             },
+            CompactDragGestureCase {
+                name: "complete_position_hint_rejected_far_elapsed",
+                start: Some(base),
+                end: Some(nearby),
+                elapsed_ms: FAR_ELAPSED_MS,
+                hint: false,
+                expected: false,
+            },
         ];
 
         run_compact_drag_gesture_cases(&cases);
@@ -938,13 +1296,6 @@ mod tests {
     #[test]
     fn compact_drag_gesture_decision_matrix_without_complete_positions() {
         // Keep position-missing corner cases in one place because this path is easy to regress.
-        const IN_TAP_WINDOW_MS: u64 = COMPACT_DRAG_TAP_MAX_MS;
-        const OUTSIDE_TAP_WINDOW_MS: u64 = COMPACT_DRAG_TAP_MAX_MS + 1;
-        const FAR_ELAPSED_MS: u64 = 180;
-        const ZERO_MS: u64 = 0;
-        const ONE_MS: u64 = 1;
-        const EARLY_MS: u64 = IN_TAP_WINDOW_MS - 1;
-
         let base = PhysicalPosition::new(100, 100);
         let cases = [
             // Partial positions: only `drag_moved_hint` + tap window decides validity.
@@ -957,11 +1308,19 @@ mod tests {
                 expected: true,
             },
             CompactDragGestureCase {
-                name: "partial_position_hint_rejected_outside_tap_window",
+                name: "partial_position_hint_rejected_far_elapsed",
                 start: Some(base),
                 end: None,
                 elapsed_ms: FAR_ELAPSED_MS,
                 hint: true,
+                expected: false,
+            },
+            CompactDragGestureCase {
+                name: "partial_position_no_hint_rejected_far_elapsed",
+                start: Some(base),
+                end: None,
+                elapsed_ms: FAR_ELAPSED_MS,
+                hint: false,
                 expected: false,
             },
             CompactDragGestureCase {
@@ -1014,6 +1373,14 @@ mod tests {
                 expected: false,
             },
             CompactDragGestureCase {
+                name: "missing_positions_hint_rejected_far_elapsed",
+                start: None,
+                end: None,
+                elapsed_ms: FAR_ELAPSED_MS,
+                hint: true,
+                expected: false,
+            },
+            CompactDragGestureCase {
                 name: "missing_positions_hint_rejected_if_elapsed_overflows",
                 start: None,
                 end: None,
@@ -1053,6 +1420,14 @@ mod tests {
                 hint: false,
                 expected: false,
             },
+            CompactDragGestureCase {
+                name: "missing_positions_no_hint_rejected_far_elapsed",
+                start: None,
+                end: None,
+                elapsed_ms: FAR_ELAPSED_MS,
+                hint: false,
+                expected: false,
+            },
         ];
 
         run_compact_drag_gesture_cases(&cases);
@@ -1062,93 +1437,105 @@ mod tests {
         (PhysicalPosition::new(20, 30), PhysicalSize::new(1024, 768))
     }
 
-    #[test]
-    fn compute_restored_expanded_position_prefers_left_edge_offset() {
-        let (monitor_pos, monitor_size) = compute_monitor();
-        let target = compute_restored_expanded_position(
-            Some(PhysicalPosition::new(35, 400)),
-            Some(DockEdge::Left),
-            None,
-            monitor_pos,
-            monitor_size,
-            (90, 90),
-            (400, 300),
-        );
+    struct RestoredExpandedPositionCase {
+        name: &'static str,
+        compact_pos: Option<PhysicalPosition<i32>>,
+        compact_dock_edge: Option<DockEdge>,
+        expanded_window_pos: Option<PhysicalPosition<i32>>,
+        monitor_position: PhysicalPosition<i32>,
+        monitor_size: PhysicalSize<u32>,
+        compact_size: (i32, i32),
+        restored_size: (i32, i32),
+        expected: PhysicalPosition<i32>,
+    }
 
-        assert_eq!(target, PhysicalPosition::new(monitor_pos.x + 18, 400));
+    fn run_compute_restored_expanded_position_cases(cases: &[RestoredExpandedPositionCase]) {
+        for case in cases {
+            let target = compute_restored_expanded_position(
+                case.compact_pos,
+                case.compact_dock_edge,
+                case.expanded_window_pos,
+                case.monitor_position,
+                case.monitor_size,
+                case.compact_size,
+                case.restored_size,
+            );
+            assert_eq!(target, case.expected, "{}", case.name);
+        }
     }
 
     #[test]
-    fn compute_restored_expanded_position_prefers_right_edge_offset() {
+    fn compute_restored_expanded_position_decision_matrix() {
         let (monitor_pos, monitor_size) = compute_monitor();
-        let target = compute_restored_expanded_position(
-            Some(PhysicalPosition::new(35, 410)),
-            Some(DockEdge::Right),
-            None,
-            monitor_pos,
-            monitor_size,
-            (90, 90),
-            (400, 300),
-        );
-        assert_eq!(target, PhysicalPosition::new(monitor_pos.x + 18, 410));
-    }
+        let cases = [
+            RestoredExpandedPositionCase {
+                name: "prefers_left_edge_offset",
+                compact_pos: Some(PhysicalPosition::new(35, 400)),
+                compact_dock_edge: Some(DockEdge::Left),
+                expanded_window_pos: None,
+                monitor_position: monitor_pos,
+                monitor_size,
+                compact_size: (90, 90),
+                restored_size: (400, 300),
+                expected: PhysicalPosition::new(monitor_pos.x + 18, 400),
+            },
+            RestoredExpandedPositionCase {
+                name: "prefers_right_edge_offset",
+                compact_pos: Some(PhysicalPosition::new(35, 410)),
+                compact_dock_edge: Some(DockEdge::Right),
+                expanded_window_pos: None,
+                monitor_position: monitor_pos,
+                monitor_size,
+                compact_size: (90, 90),
+                restored_size: (400, 300),
+                expected: PhysicalPosition::new(monitor_pos.x + 18, 410),
+            },
+            RestoredExpandedPositionCase {
+                name: "prefers_top_edge_offset",
+                compact_pos: Some(PhysicalPosition::new(300, 33)),
+                compact_dock_edge: Some(DockEdge::Top),
+                expanded_window_pos: None,
+                monitor_position: monitor_pos,
+                monitor_size,
+                compact_size: (90, 90),
+                restored_size: (400, 300),
+                expected: PhysicalPosition::new(300, monitor_pos.y + 18),
+            },
+            RestoredExpandedPositionCase {
+                name: "prefers_bottom_edge_offset",
+                compact_pos: Some(PhysicalPosition::new(300, 680)),
+                compact_dock_edge: Some(DockEdge::Bottom),
+                expanded_window_pos: None,
+                monitor_position: monitor_pos,
+                monitor_size,
+                compact_size: (90, 90),
+                restored_size: (400, 300),
+                expected: PhysicalPosition::new(300, 470),
+            },
+            RestoredExpandedPositionCase {
+                name: "falls_back_to_saved_position_when_not_docked",
+                compact_pos: Some(PhysicalPosition::new(20, 20)),
+                compact_dock_edge: None,
+                expanded_window_pos: Some(PhysicalPosition::new(400, 500)),
+                monitor_position: monitor_pos,
+                monitor_size,
+                compact_size: (90, 90),
+                restored_size: (400, 300),
+                expected: PhysicalPosition::new(400, monitor_pos.y + 450),
+            },
+            RestoredExpandedPositionCase {
+                name: "clamps_to_monitor_bounds_for_left_dock",
+                compact_pos: Some(PhysicalPosition::new(2000, 2000)),
+                compact_dock_edge: Some(DockEdge::Left),
+                expanded_window_pos: Some(PhysicalPosition::new(-1000, -1000)),
+                monitor_position: monitor_pos,
+                monitor_size,
+                compact_size: (90, 90),
+                restored_size: (400, 300),
+                expected: PhysicalPosition::new(626, monitor_pos.y + 450),
+            },
+        ];
 
-    #[test]
-    fn compute_restored_expanded_position_prefers_top_and_bottom_edges() {
-        let (monitor_pos, monitor_size) = compute_monitor();
-
-        let top_target = compute_restored_expanded_position(
-            Some(PhysicalPosition::new(300, 33)),
-            Some(DockEdge::Top),
-            None,
-            monitor_pos,
-            monitor_size,
-            (90, 90),
-            (400, 300),
-        );
-        assert_eq!(top_target, PhysicalPosition::new(300, monitor_pos.y + 18));
-
-        let bottom_target = compute_restored_expanded_position(
-            Some(PhysicalPosition::new(300, 680)),
-            Some(DockEdge::Bottom),
-            None,
-            monitor_pos,
-            monitor_size,
-            (90, 90),
-            (400, 300),
-        );
-        assert_eq!(bottom_target, PhysicalPosition::new(300, 470));
-    }
-
-    #[test]
-    fn compute_restored_expanded_position_falls_back_to_saved_position_when_not_docked() {
-        let (monitor_pos, monitor_size) = compute_monitor();
-        let saved = PhysicalPosition::new(400, 500);
-
-        let target = compute_restored_expanded_position(
-            Some(PhysicalPosition::new(20, 20)),
-            None,
-            Some(saved),
-            monitor_pos,
-            monitor_size,
-            (90, 90),
-            (400, 300),
-        );
-        assert_eq!(target, PhysicalPosition::new(saved.x, monitor_pos.y + 450));
-    }
-
-    #[test]
-    fn compute_restored_expanded_position_clamps_to_monitor_bounds() {
-        let (monitor_pos, monitor_size) = compute_monitor();
-        let target = compute_restored_expanded_position(
-            Some(PhysicalPosition::new(2000, 2000)),
-            Some(DockEdge::Left),
-            Some(PhysicalPosition::new(-1000, -1000)),
-            monitor_pos,
-            monitor_size,
-            (90, 90),
-            (400, 300),
-        );
-        assert_eq!(target, PhysicalPosition::new(626, monitor_pos.y + 450));
+        run_compute_restored_expanded_position_cases(&cases);
     }
 }
