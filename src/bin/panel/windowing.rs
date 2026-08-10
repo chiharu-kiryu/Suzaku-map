@@ -525,10 +525,6 @@ impl PanelState {
 mod tests {
     use super::*;
 
-    fn approx_eq(a: f32, b: f32) {
-        assert!((a - b).abs() < 1e-6);
-    }
-
     struct ScaleDragDeltaCase {
         name: &'static str,
         start_x: f32,
@@ -822,6 +818,8 @@ mod tests {
         let base = LogicalSize::new(900.0, 520.0);
         let (_, base_max) = window_scale_limits_for_base(base);
         let base_max_request = base_max + 0.5;
+        let quantized_base_max = ((base_max / PANEL_SCALE_STEP).round() * PANEL_SCALE_STEP)
+            .clamp(PANEL_SCALE_MIN, base_max);
         let quantized_request = 1.13;
         let quantized_expected = (quantized_request / PANEL_SCALE_STEP).round() * PANEL_SCALE_STEP;
         let max_scale_base = LogicalSize::new(2000.0, 2000.0);
@@ -855,7 +853,7 @@ mod tests {
                 base,
                 request: base_max_request,
                 quantize: true,
-                expected_scale: base_max,
+                expected_scale: quantized_base_max,
             },
             ResolveWindowScaleRequestCase {
                 name: "scale_request_below_min_is_clamped_to_base_min",
@@ -1152,8 +1150,8 @@ mod tests {
         let base = PhysicalPosition::new(100, 100);
         let nearby = PhysicalPosition::new(103, 100);
         let far = PhysicalPosition::new(104, 100);
-        let far_up = PhysicalPosition::new(97, 100);
-        let far_left = PhysicalPosition::new(100, 97);
+        let far_left = PhysicalPosition::new(96, 100);
+        let _far_up = PhysicalPosition::new(100, 97);
         let far_down = PhysicalPosition::new(100, 104);
 
         let cases = [
@@ -1177,7 +1175,7 @@ mod tests {
             CompactDragGestureCase {
                 name: "far_negative_x_delta_crosses_threshold",
                 start: Some(base),
-                end: Some(far_up),
+                end: Some(far_left),
                 elapsed_ms: FAR_ELAPSED_MS,
                 hint: false,
                 expected: true,

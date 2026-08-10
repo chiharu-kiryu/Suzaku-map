@@ -467,27 +467,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn display_settings_round_trip_codec() {
-        let settings = PersistedDisplaySettings {
-            text_scale: DisplayTextScale::Large,
-            candidate_density: CandidateDensity::Compact,
-            preview_style: PreviewStyle::Full,
-            font_face: FontFaceChoice::PingFang,
-            text_spacing: TextSpacing::Relaxed,
-            text_smoothing: TextSmoothing::Sharp,
-            theme_preset: ThemePreset::DeviceDark,
-            voice_auto_insert: false,
-            llm_enabled: false,
-            llm_model: LlmModelPreset::Llama32_3b,
-            llm_temperature: LlmTemperaturePreset::Expressive,
-            pointer_tap_slop_tenths: 95,
-            pointer_tap_max_ms: 240,
-            pointer_target_slop_tenths: 22,
-            window_scale: 1.2,
-        };
+    struct DisplaySettingsCodecRoundTripCase {
+        name: &'static str,
+        settings: PersistedDisplaySettings,
+    }
 
-        let encoded = format!(
+    fn encode_display_settings(settings: &PersistedDisplaySettings) -> String {
+        format!(
             "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
             encode_text_scale(settings.text_scale),
             encode_candidate_density(settings.candidate_density),
@@ -512,8 +498,10 @@ mod tests {
             settings.pointer_tap_max_ms,
             settings.pointer_target_slop_tenths,
             settings.window_scale,
-        );
+        )
+    }
 
+    fn decode_display_settings_payload(payload: &str) -> PersistedDisplaySettings {
         let mut decoded = PersistedDisplaySettings {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
@@ -532,7 +520,7 @@ mod tests {
             window_scale: 1.0,
         };
 
-        for line in encoded.lines() {
+        for line in payload.lines() {
             let (key, value) = line.split_once('=').expect("kv");
             match key {
                 "text_scale" => decoded.text_scale = decode_text_scale(value).expect("scale"),
@@ -572,17 +560,149 @@ mod tests {
             }
         }
 
-        assert_eq!(decoded, settings);
+        decoded
+    }
+
+    fn run_display_settings_codec_round_trip_cases(cases: &[DisplaySettingsCodecRoundTripCase]) {
+        for case in cases {
+            let encoded = encode_display_settings(&case.settings);
+            let decoded = decode_display_settings_payload(&encoded);
+            assert_eq!(decoded, case.settings, "{}", case.name);
+        }
     }
 
     #[test]
-    fn voice_controller_cycles_samples() {
-        let mut voice = VoiceInputController::new();
-        let first = voice.next_sample();
-        let second = voice.next_sample();
-        assert_ne!(first, second);
-        assert!(!first.is_empty());
-        assert!(!second.is_empty());
+    fn display_settings_round_trip_decision_matrix() {
+        let cases = [
+            DisplaySettingsCodecRoundTripCase {
+                name: "display_settings_round_trip_retains_full_payload",
+                settings: PersistedDisplaySettings {
+                    text_scale: DisplayTextScale::Large,
+                    candidate_density: CandidateDensity::Compact,
+                    preview_style: PreviewStyle::Full,
+                    font_face: FontFaceChoice::PingFang,
+                    text_spacing: TextSpacing::Relaxed,
+                    text_smoothing: TextSmoothing::Sharp,
+                    theme_preset: ThemePreset::DeviceDark,
+                    voice_auto_insert: false,
+                    llm_enabled: false,
+                    llm_model: LlmModelPreset::Llama32_3b,
+                    llm_temperature: LlmTemperaturePreset::Expressive,
+                    pointer_tap_slop_tenths: 95,
+                    pointer_tap_max_ms: 240,
+                    pointer_target_slop_tenths: 22,
+                    window_scale: 1.2,
+                },
+            },
+            DisplaySettingsCodecRoundTripCase {
+                name: "display_settings_round_trip_with_auto_and_sharp_normalization_values",
+                settings: PersistedDisplaySettings {
+                    text_scale: DisplayTextScale::Medium,
+                    candidate_density: CandidateDensity::Cozy,
+                    preview_style: PreviewStyle::Compact,
+                    font_face: FontFaceChoice::Auto,
+                    text_spacing: TextSpacing::Normal,
+                    text_smoothing: TextSmoothing::Smooth,
+                    theme_preset: ThemePreset::HighContrast,
+                    voice_auto_insert: true,
+                    llm_enabled: true,
+                    llm_model: LlmModelPreset::Llama32_3b,
+                    llm_temperature: LlmTemperaturePreset::Balanced,
+                    pointer_tap_slop_tenths: 65,
+                    pointer_tap_max_ms: 520,
+                    pointer_target_slop_tenths: 32,
+                    window_scale: 1.55,
+                },
+            },
+            DisplaySettingsCodecRoundTripCase {
+                name: "display_settings_round_trip_with_boolean_extremes",
+                settings: PersistedDisplaySettings {
+                    text_scale: DisplayTextScale::Small,
+                    candidate_density: CandidateDensity::Cozy,
+                    preview_style: PreviewStyle::Compact,
+                    font_face: FontFaceChoice::Monaco,
+                    text_spacing: TextSpacing::Tight,
+                    text_smoothing: TextSmoothing::Smooth,
+                    theme_preset: ThemePreset::Daylight,
+                    voice_auto_insert: false,
+                    llm_enabled: true,
+                    llm_model: LlmModelPreset::Llama32_3b,
+                    llm_temperature: LlmTemperaturePreset::Focused,
+                    pointer_tap_slop_tenths: 110,
+                    pointer_tap_max_ms: 900,
+                    pointer_target_slop_tenths: 88,
+                    window_scale: 1.55,
+                },
+            },
+        ];
+
+        run_display_settings_codec_round_trip_cases(&cases);
+    }
+
+    struct VoiceControllerSampleCase {
+        name: &'static str,
+        sample_count: usize,
+        expected_unique: usize,
+        expect_next_against_index: Option<usize>,
+    }
+
+    fn count_unique_strings(samples: &[String]) -> usize {
+        let mut unique = 0usize;
+        for (i, sample) in samples.iter().enumerate() {
+            if !samples[..i].iter().any(|existing| existing == sample) {
+                unique += 1;
+            }
+        }
+        unique
+    }
+
+    fn run_voice_controller_sample_cases(cases: &[VoiceControllerSampleCase]) {
+        for case in cases {
+            let mut voice = VoiceInputController::new();
+            let samples: Vec<String> = (0..case.sample_count).map(|_| voice.next_sample()).collect();
+
+            assert_eq!(samples.len(), case.sample_count, "{}", case.name);
+            assert!(
+                count_unique_strings(&samples) >= case.expected_unique,
+                "{}",
+                case.name
+            );
+
+            for sample in &samples {
+                assert!(!sample.is_empty(), "{}", case.name);
+            }
+
+            if let Some(repeat_index) = case.expect_next_against_index {
+                let next = voice.next_sample();
+                assert_eq!(next, samples[repeat_index], "{}", case.name);
+            }
+        }
+    }
+
+    #[test]
+    fn voice_controller_cycles_decision_matrix() {
+        let cases = [
+            VoiceControllerSampleCase {
+                name: "voice_controller_two_samples_are_non_empty_and_distinct",
+                sample_count: 2,
+                expected_unique: 2,
+                expect_next_against_index: None,
+            },
+            VoiceControllerSampleCase {
+                name: "voice_controller_full_sample_set_repeats_from_start",
+                sample_count: 4,
+                expected_unique: 4,
+                expect_next_against_index: Some(0),
+            },
+            VoiceControllerSampleCase {
+                name: "voice_controller_cycle_wraps_after_more_than_one_roundtrip",
+                sample_count: 9,
+                expected_unique: 4,
+                expect_next_against_index: Some(1),
+            },
+        ];
+
+        run_voice_controller_sample_cases(&cases);
     }
 
     struct NormalizeDisplayPointerSettingsCase {
@@ -915,19 +1035,6 @@ mod tests {
         run_decode_window_scale_cases(&cases);
     }
 
-    #[test]
-    fn voice_controller_cycles_full_sample_set() {
-        let mut voice = VoiceInputController::new();
-        let samples: Vec<String> = (0..4).map(|_| voice.next_sample()).collect();
-        let next = voice.next_sample();
-
-        assert_eq!(samples.len(), 4);
-        assert_eq!(next, samples[0]);
-        assert!(!samples[0].is_empty());
-        assert!(!samples[1].is_empty());
-        assert_ne!(samples[0], samples[1]);
-    }
-
     struct NormalizeDisplayReadabilityCase {
         name: &'static str,
         font_face_input: FontFaceChoice,
@@ -1000,7 +1107,6 @@ mod tests {
         ThemePreset(ThemePreset),
         LlmTemperature(LlmTemperaturePreset),
         LlmModel(LlmModelPreset),
-        U16,
     }
 
     struct DecodeCodecCase {
@@ -1078,9 +1184,6 @@ mod tests {
                         "{}",
                         case.name
                     );
-                }
-                DecodeCodecCaseValue::U16 => {
-                    panic!("{}: unexpected value kind", case.name);
                 }
             }
         }
