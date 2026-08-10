@@ -133,6 +133,7 @@ mod tests {
     use super::{
         configure_event_loop_builder, decorate_main_window_attributes,
         decorate_settings_window_attributes, is_quit_shortcut, preferred_font_paths,
+        uses_super_for_quit,
     };
     use crate::ime::gpu::FontFaceChoice;
     use winit::event_loop::EventLoop;
@@ -167,6 +168,29 @@ mod tests {
             assert_eq!(is_quit_shortcut(super_mod), false);
         }
         assert_eq!(is_quit_shortcut(modifiers_off), false);
+    }
+
+    #[test]
+    fn quit_shortcut_ignores_non_primary_modifiers() {
+        let alt_or_shift_only = ModifiersState::ALT | ModifiersState::SHIFT;
+        let ctrl_with_shift = ModifiersState::CONTROL | ModifiersState::SHIFT;
+        let super_with_alt = ModifiersState::SUPER | ModifiersState::ALT;
+
+        if cfg!(target_os = "macos") {
+            assert!(!is_quit_shortcut(alt_or_shift_only));
+            assert!(is_quit_shortcut(super_with_alt));
+            assert!(!is_quit_shortcut(ctrl_with_shift));
+        } else {
+            assert!(!is_quit_shortcut(alt_or_shift_only));
+            assert!(is_quit_shortcut(ctrl_with_shift));
+            assert!(!is_quit_shortcut(super_with_alt));
+        }
+    }
+
+    #[test]
+    fn uses_super_for_quit_matches_platform_guard() {
+        let expected = cfg!(target_os = "macos");
+        assert_eq!(uses_super_for_quit(), expected);
     }
 
     #[test]

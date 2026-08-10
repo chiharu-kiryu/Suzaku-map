@@ -34,6 +34,8 @@ pub(super) fn _quad_debug(_quad: &CandidateQuad) {}
 #[cfg(test)]
 mod tests {
     use super::point_in_rect;
+    use super::window_title;
+    use suzaku_map::ime::gpu::RenderScene;
 
     #[test]
     fn point_in_rect_includes_edges() {
@@ -52,5 +54,57 @@ mod tests {
     fn point_in_rect_supports_negative_origins_and_zero_size() {
         assert!(point_in_rect(-4.0, -3.0, [-4.0, -3.0, 0.0, 0.0]));
         assert!(!point_in_rect(-4.1, -3.0, [-4.0, -3.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn window_title_includes_host_and_scene_summary() {
+        let scene = RenderScene {
+            quads: Vec::new(),
+            text_quads: Vec::new(),
+            atlas_glyphs: Vec::new(),
+            text_sections: Vec::new(),
+            hit_targets: Vec::new(),
+            interactive_targets: Vec::new(),
+            sentence_candidate_truncated: Vec::new(),
+            next_token_candidate_truncated: Vec::new(),
+            handwriting_candidate_truncated: Vec::new(),
+            labels: vec!["hello".to_string()],
+            selected_label: Some("selected label".to_string()),
+            draft_text: "draft text".to_string(),
+        };
+
+        let title = window_title(&scene, "committed", false, "Mono");
+
+        assert!(title.contains("Suzaku XR Candidate Panel"));
+        assert!(title.contains("selected: selected label"));
+        assert!(title.contains("draft: draft text"));
+        assert!(title.contains("committed: committed"));
+        assert!(title.contains("font: bitmap-fallback"));
+        assert!(title.contains("host: "));
+    }
+
+    #[test]
+    fn window_title_shows_fallbacks_when_selection_missing() {
+        let scene = RenderScene {
+            quads: Vec::new(),
+            text_quads: Vec::new(),
+            atlas_glyphs: Vec::new(),
+            text_sections: Vec::new(),
+            hit_targets: Vec::new(),
+            interactive_targets: Vec::new(),
+            sentence_candidate_truncated: Vec::new(),
+            next_token_candidate_truncated: Vec::new(),
+            handwriting_candidate_truncated: Vec::new(),
+            labels: Vec::new(),
+            selected_label: None,
+            draft_text: String::new(),
+        };
+
+        let title = window_title(&scene, "", true, "system") ;
+
+        assert!(title.contains("selected: no candidate"));
+        assert!(title.contains("draft: "));
+        assert!(title.contains("committed: "));
+        assert!(title.contains("font: system-atlas"));
     }
 }

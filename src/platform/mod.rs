@@ -101,6 +101,67 @@ pub const PLATFORM_SUPPORT_ROADMAP: [PlatformSupport; 6] = [
     support_for_const(TargetPlatform::SteamOs),
 ];
 
+#[cfg(test)]
+mod platform_tests {
+    use super::{host_platform, support_for, TargetPlatform, SupportTier, support_for_const, PLATFORM_SUPPORT_ROADMAP};
+
+    #[test]
+    fn host_platform_returns_a_supported_target() {
+        let platform = host_platform();
+        assert!(matches!(platform, TargetPlatform::MacOs | TargetPlatform::Windows | TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs | TargetPlatform::Android));
+    }
+
+    #[test]
+    fn support_for_matches_const_profiles_for_all_roadmap_entries() {
+        for support in PLATFORM_SUPPORT_ROADMAP {
+            assert_eq!(support, support_for_const(support.platform));
+            assert_eq!(support_for(support.platform), support);
+        }
+    }
+
+    #[test]
+    fn support_for_matches_const_profiles_for_known_targets() {
+        for support in PLATFORM_SUPPORT_ROADMAP {
+            assert_eq!(support_for(support.platform), support);
+        }
+    }
+
+    #[test]
+    fn linux_profiles_are_secondary_tier() {
+        let ubuntu = support_for(TargetPlatform::Ubuntu);
+        let arch = support_for(TargetPlatform::ArchLinux);
+        let steam = support_for(TargetPlatform::SteamOs);
+
+        assert_eq!(ubuntu.tier, SupportTier::Secondary);
+        assert_eq!(arch.tier, SupportTier::Secondary);
+        assert_eq!(steam.tier, SupportTier::Secondary);
+    }
+
+    #[test]
+    fn support_roadmap_keeps_expected_platform_order() {
+        let expected = [
+            TargetPlatform::MacOs,
+            TargetPlatform::Windows,
+            TargetPlatform::Android,
+            TargetPlatform::Ubuntu,
+            TargetPlatform::ArchLinux,
+            TargetPlatform::SteamOs,
+        ];
+
+        for (index, platform) in expected.iter().enumerate() {
+            assert_eq!(PLATFORM_SUPPORT_ROADMAP[index].platform, *platform);
+        }
+        assert_eq!(PLATFORM_SUPPORT_ROADMAP.len(), expected.len());
+    }
+
+    #[test]
+    fn support_profile_marked_as_readable() {
+        let windows = support_for_const(TargetPlatform::Windows);
+        assert_eq!(windows.capabilities.voice_input, true);
+        assert_eq!(windows.capabilities.permission_bridge, true);
+    }
+}
+
 const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
     match platform {
         TargetPlatform::MacOs => PlatformSupport {
@@ -146,7 +207,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
                 window_host: true,
                 gpu_panel: true,
                 system_ime_host: false,
-                voice_input: false,
+                voice_input: true,
                 handwriting_input: true,
                 permission_bridge: false,
             },
@@ -158,7 +219,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
                 window_host: true,
                 gpu_panel: true,
                 system_ime_host: false,
-                voice_input: false,
+                voice_input: true,
                 handwriting_input: true,
                 permission_bridge: false,
             },
@@ -170,7 +231,7 @@ const fn support_for_const(platform: TargetPlatform) -> PlatformSupport {
                 window_host: true,
                 gpu_panel: true,
                 system_ime_host: false,
-                voice_input: false,
+                voice_input: true,
                 handwriting_input: true,
                 permission_bridge: false,
             },
@@ -213,6 +274,22 @@ mod tests {
         let host = host_platform();
 
         assert_eq!(support_for(host).platform, host);
+    }
+
+    #[test]
+    fn support_profile_tier_distribution_has_primary_and_secondary() {
+        let mut has_primary = false;
+        let mut has_secondary = false;
+
+        for support in &PLATFORM_SUPPORT_ROADMAP {
+            match support.tier {
+                SupportTier::Primary => has_primary = true,
+                SupportTier::Secondary => has_secondary = true,
+            }
+        }
+
+        assert!(has_primary);
+        assert!(has_secondary);
     }
 
     fn support_matches_expected(

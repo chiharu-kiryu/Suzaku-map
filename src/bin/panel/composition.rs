@@ -633,6 +633,21 @@ mod tests {
     }
 
     #[test]
+    fn interaction_repeat_is_true_at_zero_elapsed() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            now,
+        ));
+
+        assert!(is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            last,
+            now,
+        ));
+    }
+
+    #[test]
     fn interaction_repeat_hits_within_window_edge_minus_one_ms() {
         let now = Instant::now();
         let last = Some((
@@ -658,6 +673,40 @@ mod tests {
         assert!(!is_action_repeat(
             suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
             last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_is_false_at_repeat_window_boundary() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(260),
+        };
+
+        assert!(!is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_is_true_when_elapsed_is_zero() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now,
+        };
+
+        assert!(is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
             now,
         ));
     }

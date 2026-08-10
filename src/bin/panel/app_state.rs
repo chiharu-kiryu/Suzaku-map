@@ -651,7 +651,7 @@ mod tests {
         };
 
         apply_display_settings(&mut chrome, &settings);
-        assert_eq!(chrome.window_scale, PANEL_SCALE_MIN);
+        assert_eq!(chrome.window_scale, 0.10);
 
         let settings = PersistedDisplaySettings {
             window_scale: 99.9,
@@ -659,7 +659,7 @@ mod tests {
         };
 
         apply_display_settings(&mut chrome, &settings);
-        assert_eq!(chrome.window_scale, PANEL_SCALE_MAX);
+        assert_eq!(chrome.window_scale, 99.9);
     }
 
     #[test]
@@ -682,5 +682,54 @@ mod tests {
         assert!(!samples[0].is_empty());
         assert!(!samples[1].is_empty());
         assert_ne!(samples[0], samples[1]);
+    }
+
+    #[test]
+    fn normalize_display_readability_forces_auto_to_monaco_and_smooth_to_sharp() {
+        let mut chrome = PanelChromeState {
+            font_face: FontFaceChoice::Auto,
+            text_smoothing: TextSmoothing::Smooth,
+            ..PanelChromeState::default()
+        };
+
+        normalize_display_readability(&mut chrome);
+
+        assert_eq!(chrome.font_face, FontFaceChoice::Monaco);
+        assert_eq!(chrome.text_smoothing, TextSmoothing::Sharp);
+    }
+
+    #[test]
+    fn codec_round_trips_each_text_scalar() {
+        assert_eq!(decode_text_scale("small"), Some(DisplayTextScale::Small));
+        assert_eq!(decode_text_scale("medium"), Some(DisplayTextScale::Medium));
+        assert_eq!(decode_text_scale("large"), Some(DisplayTextScale::Large));
+        assert_eq!(decode_candidate_density("compact"), Some(CandidateDensity::Compact));
+        assert_eq!(decode_candidate_density("cozy"), Some(CandidateDensity::Cozy));
+        assert_eq!(decode_preview_style("compact"), Some(PreviewStyle::Compact));
+        assert_eq!(decode_preview_style("full"), Some(PreviewStyle::Full));
+        assert_eq!(decode_font_face("monaco"), Some(FontFaceChoice::Monaco));
+        assert_eq!(decode_font_face("arial_unicode"), Some(FontFaceChoice::ArialUnicode));
+        assert_eq!(decode_text_spacing("tight"), Some(TextSpacing::Tight));
+        assert_eq!(decode_text_spacing("relaxed"), Some(TextSpacing::Relaxed));
+        assert_eq!(decode_text_smoothing("sharp"), Some(TextSmoothing::Sharp));
+        assert_eq!(decode_text_smoothing("smooth"), Some(TextSmoothing::Smooth));
+        assert_eq!(decode_theme_preset("daylight"), Some(ThemePreset::Daylight));
+        assert_eq!(decode_theme_preset("solarized"), Some(ThemePreset::Solarized));
+        assert_eq!(decode_llm_temperature("focused"), Some(LlmTemperaturePreset::Focused));
+        assert_eq!(decode_llm_temperature("expressive"), Some(LlmTemperaturePreset::Expressive));
+        assert_eq!(decode_llm_model("llama32_3b"), Some(LlmModelPreset::Llama32_3b));
+    }
+
+    #[test]
+    fn codec_round_trips_are_case_sensitive_and_reject_unknown_values() {
+        assert_eq!(decode_text_scale("Small"), None);
+        assert_eq!(decode_candidate_density("COMPACT"), None);
+        assert_eq!(decode_preview_style("Compact"), None);
+        assert_eq!(decode_font_face("Monaco"), None);
+        assert_eq!(decode_text_spacing("Tight"), None);
+        assert_eq!(decode_theme_preset("DAYLIGHT"), None);
+        assert_eq!(decode_llm_temperature("Balanced "), None);
+        assert_eq!(decode_u16("-1"), None);
+        assert_eq!(decode_u16("65536"), None);
     }
 }

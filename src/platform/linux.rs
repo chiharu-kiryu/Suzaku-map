@@ -237,6 +237,24 @@ mod tests {
     }
 
     #[test]
+    fn linux_host_flavor_override_is_case_insensitive() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_HOST", "ArCh");
+
+            assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Arch);
+        });
+    }
+
+    #[test]
+    fn linux_host_flavor_unknown_value_falls_back_to_ubuntu() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_HOST", "not-a-platform");
+
+            assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Ubuntu);
+        });
+    }
+
+    #[test]
     fn linux_portal_and_pipewire_flags_default_off() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
             env.remove_var("SUZAKU_LINUX_PORTAL_AVAILABLE");
