@@ -157,6 +157,14 @@ cargo ime-host
 cargo run --features gpu --bin panel
 ```
 
+Or use one-command launcher:
+
+```bash
+./scripts/panel-gpu.sh
+./scripts/panel-gpu.sh release
+./scripts/panel-gpu.sh build-release
+```
+
 ### Common build note (important)
 
 The root crate is feature-gated for GPU components.  

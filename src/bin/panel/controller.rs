@@ -677,6 +677,9 @@ impl PanelState {
                 }
                 InteractionKind::SettingsToggle => {
                     self.chrome.settings_open = !self.chrome.settings_open;
+                    if self.chrome.settings_open {
+                        self.chrome.settings_scroll_offset = 0.0;
+                    }
                 }
                 InteractionKind::SetTextScale(scale) => {
                     self.chrome.text_scale = scale;

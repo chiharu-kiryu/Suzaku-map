@@ -429,6 +429,13 @@ impl PanelState {
         self.set_window_scale_internal(scale, false);
     }
 
+    pub(super) fn adjust_settings_scroll(&mut self, delta: f32) {
+        if self.kind != PanelWindowKind::Settings || self.chrome.compact_mode {
+            return;
+        }
+        self.chrome.settings_scroll_offset = (self.chrome.settings_scroll_offset + delta).max(0.0);
+    }
+
     pub(super) fn begin_window_scale_drag(&mut self) {
         if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
             return;

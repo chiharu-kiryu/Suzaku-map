@@ -267,6 +267,7 @@ fn render_scene_target_slop_expands_interactive_hit_area() {
             pointer_target_slop_tenths: 20,
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
     let expanded_scene = renderer.build_panel_scene(
         &snapshot,
@@ -274,6 +275,7 @@ fn render_scene_target_slop_expands_interactive_hit_area() {
             pointer_target_slop_tenths: 80,
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     let base_toggle = base_scene
@@ -350,6 +352,7 @@ fn render_scene_can_collapse_input_method_buttons() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(
@@ -410,6 +413,7 @@ fn render_scene_exposes_virtual_keyboard_keys_in_keyboard_mode() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(scene.interactive_targets.iter().any(|target| target.kind
@@ -483,6 +487,7 @@ fn render_scene_hides_virtual_keyboard_keys_outside_keyboard_mode() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(
@@ -514,6 +519,7 @@ fn render_scene_exposes_window_scale_reset_control() {
             sentence_candidates: vec!["ni hao example".into()],
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(
@@ -567,6 +573,7 @@ fn render_scene_disables_scale_controls_at_boundaries() {
             window_scale: PANEL_SCALE_MIN,
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
     let at_max = renderer.build_panel_scene(
         &snapshot,
@@ -574,6 +581,7 @@ fn render_scene_disables_scale_controls_at_boundaries() {
             window_scale: PANEL_SCALE_MAX,
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
     let at_default = renderer.build_panel_scene(
         &snapshot,
@@ -581,6 +589,7 @@ fn render_scene_disables_scale_controls_at_boundaries() {
             window_scale: 1.0,
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(

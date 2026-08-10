@@ -568,6 +568,7 @@ impl PanelState {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
+            settings_scroll_offset: 0.0,
         });
         if let Some(saved) = persisted_settings.as_ref() {
             apply_display_settings(&mut chrome, saved);

@@ -538,8 +538,18 @@ impl WgpuCandidateRenderer {
 
         let mut label_layouts = Vec::new();
         let mut option_layouts = Vec::new();
-        let mut content_y = panel_y + 40.0;
-        let panel_bottom_guard = panel_y + panel_height - 4.0;
+        let settings_content_top = panel_y + 40.0;
+        let settings_content_bottom = panel_y + panel_height - 4.0;
+        let visible_content_height = (settings_content_bottom - settings_content_top).max(0.0);
+        let max_scroll_offset = (estimated_height - visible_content_height).max(0.0);
+        let settings_scroll_offset = chrome
+            .settings_scroll_offset
+            .max(0.0)
+            .min(max_scroll_offset);
+        let mut content_y = settings_content_top - settings_scroll_offset;
+        let visible_in_settings = |top: f32, height: f32| {
+            top + height > settings_content_top && top < settings_content_bottom
+        };
 
         for (label, options) in sections.iter() {
             let section_rows = estimate_chip_rows(options.as_slice());
@@ -549,103 +559,103 @@ impl WgpuCandidateRenderer {
                 section_height += (section_rows as f32 - 1.0) * chip_gap_y;
             }
             let section_top = content_y - 3.2;
-            if section_top + section_height > panel_bottom_guard {
-                break;
+            let section_visible = visible_in_settings(section_top, section_height);
+            if section_visible {
+                append_soft_card_quads(
+                    &mut quads,
+                    [
+                        panel_x + 8.0,
+                        section_top,
+                        panel_width - 16.0,
+                        section_height,
+                    ],
+                    settings_section_fill,
+                    settings_section_border,
+                    [
+                        soft_shadow[0],
+                        soft_shadow[1],
+                        soft_shadow[2],
+                        soft_shadow[3] * 0.45,
+                    ],
+                    surface_muted,
+                    settings_section_radius,
+                );
+                quads.push(CandidateQuad {
+                    rect: [
+                        panel_x + 20.0,
+                        section_top + section_height - 1.0,
+                        panel_width - 40.0,
+                        1.0,
+                    ],
+                    color: settings_divider,
+                });
             }
-            append_soft_card_quads(
-                &mut quads,
-                [
-                    panel_x + 8.0,
-                    section_top,
-                    panel_width - 16.0,
-                    section_height,
-                ],
-                settings_section_fill,
-                settings_section_border,
-                [
-                    soft_shadow[0],
-                    soft_shadow[1],
-                    soft_shadow[2],
-                    soft_shadow[3] * 0.45,
-                ],
-                surface_muted,
-                settings_section_radius,
-            );
-            quads.push(CandidateQuad {
-                rect: [
-                    panel_x + 20.0,
-                    section_top + section_height - 1.0,
-                    panel_width - 40.0,
-                    1.0,
-                ],
-                color: settings_divider,
-            });
 
             let mut chip_x = chip_start_x;
             let mut chip_y = content_y;
-            let chip_area_right = chip_max_x;
             for (kind, chip_label, selected) in options {
                 let (hovered, pressed) = interaction_state(*kind);
                 let available_chip_w =
                     (chip_area_width + chip_start_x - chip_x).max(72.0 * ui_scale);
                 let chip_w = estimated_chip_width(chip_label).min(available_chip_w);
-                if chip_x > chip_start_x && chip_x + chip_w > chip_area_right {
+                if chip_x > chip_start_x && chip_x + chip_w > chip_max_x {
                     chip_x = chip_start_x;
                     chip_y += row_height + chip_gap_y;
                 }
-
                 let rect = [chip_x, chip_y, chip_w, row_height];
+                let rect_visible = visible_in_settings(chip_y, row_height);
                 let visual_rect = animated_rect(rect, hovered, pressed);
-                append_soft_card_quads(
-                    &mut quads,
-                    visual_rect,
-                    if pressed {
-                        settings_press_surface
-                    } else if *selected {
-                        accent_soft
-                    } else if hovered {
-                        settings_hover_surface
-                    } else {
-                        surface
-                    },
-                    if pressed {
-                        accent
-                    } else if *selected {
-                        accent
-                    } else if hovered {
-                        settings_hover_border
-                    } else {
-                        shell_border
-                    },
-                    animated_shadow(soft_shadow, hovered, pressed),
-                    shell,
-                    settings_chip_radius,
-                );
-                interactive_targets.push(InteractiveTarget {
-                    kind: *kind,
-                    rect: interaction_hit_rect(rect),
-                });
+                if rect_visible {
+                    append_soft_card_quads(
+                        &mut quads,
+                        visual_rect,
+                        if pressed {
+                            settings_press_surface
+                        } else if *selected {
+                            accent_soft
+                        } else if hovered {
+                            settings_hover_surface
+                        } else {
+                            surface
+                        },
+                        if pressed {
+                            accent
+                        } else if *selected {
+                            accent
+                        } else if hovered {
+                            settings_hover_border
+                        } else {
+                            shell_border
+                        },
+                        animated_shadow(soft_shadow, hovered, pressed),
+                        shell,
+                        settings_chip_radius,
+                    );
+                    interactive_targets.push(InteractiveTarget {
+                        kind: *kind,
+                        rect: interaction_hit_rect(rect),
+                    });
 
-                let option_layout = TextBlock {
-                    text: (*chip_label).to_string(),
-                    origin: [
-                        visual_rect[0] + 10.0 * ui_scale,
-                        visual_rect[1] + 6.2 * ui_scale,
-                    ],
-                    max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
-                    pixel_size: chip_px,
-                    letter_spacing: ui_tracking,
-                    line_gap: base_line_gap,
-                    max_lines: 1,
-                    color: if *selected { accent_text } else { text_primary },
-                    align: TextAlign::Center,
-                    role: TextRole::SettingOption,
+                    let option_layout = TextBlock {
+                        text: (*chip_label).to_string(),
+                        origin: [
+                            visual_rect[0] + 10.0 * ui_scale,
+                            visual_rect[1] + 6.2 * ui_scale,
+                        ],
+                        max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
+                        pixel_size: chip_px,
+                        letter_spacing: ui_tracking,
+                        line_gap: base_line_gap,
+                        max_lines: 1,
+                        color: if *selected { accent_text } else { text_primary },
+                        align: TextAlign::Center,
+                        role: TextRole::SettingOption,
+                    }
+                    .layout();
+                    text_quads.extend(option_layout.quads.iter().copied());
+                    atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
+                    option_layouts.push(option_layout);
                 }
-                .layout();
-                text_quads.extend(option_layout.quads.iter().copied());
-                atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
-                option_layouts.push(option_layout);
-
                 chip_x += chip_w + chip_gap_x;
             }
 
@@ -662,10 +672,11 @@ impl WgpuCandidateRenderer {
                 role: TextRole::SettingLabel,
             }
             .layout();
-            text_quads.extend(label_layout.quads.iter().copied());
-            atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
-            label_layouts.push(label_layout);
-
+            if section_visible {
+                text_quads.extend(label_layout.quads.iter().copied());
+                atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
+                label_layouts.push(label_layout);
+            }
             content_y += section_height + section_gap_y;
         }
 

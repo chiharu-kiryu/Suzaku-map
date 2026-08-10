@@ -1,3 +1,7 @@
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::time::Duration;
+
 const HANDWRITING_DENOISE_DISTANCE: f32 = 0.9;
 const HANDWRITING_RESAMPLE_DISTANCE: f32 = 3.6;
 const HANDWRITING_PREPROCESS_SMOOTH_ALPHA: f32 = 0.2;
@@ -67,6 +71,198 @@ const KAO_MOJI_COMMON: &[&str] = &[
     "(◕︿◕)",
     "(^_−)",
     "(╰_╯)",
+];
+const NEXT_TOKEN_KAOMOJI_PRIORITY_BONUS: i32 = 240;
+const NEXT_TOKEN_EMOJI_PRIORITY_BONUS: i32 = 280;
+const NEXT_TOKEN_CONTEXT_HINT_BONUS: i32 = 360;
+const MAX_CONTEXT_HINTS_PER_SEED: usize = 4;
+const MAX_CONTEXT_HINT_WORDS: usize = 3;
+const CONTEXT_HINT_PUNCTUATION: &str = "'\"!?.,;:-)()][？！；：、，。]";
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_ENDPOINT_ENV: &str = "IME_NEXT_TOKEN_MODEL_ENDPOINT";
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_NAME_ENV: &str = "IME_NEXT_TOKEN_MODEL_NAME";
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_ENV: &str = "IME_NEXT_TOKEN_MODEL_TIMEOUT_MS";
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_DEFAULT_NAME: &str = "llama3.2:3b";
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_MAX_TOKENS: u32 = 24;
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_MS: u64 = 800;
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_TEMPERATURE_TENTHS: u32 = 3;
+const NEXT_TOKEN_OPEN_SOURCE_MODEL_BONUS: i32 = 560;
+const NEXT_TOKEN_CONTEXT_HINTS: &[(&str, &[&str])] = &[
+    (
+        "thanks",
+        &["🙏", "😊", "👍", ":)", "<3"],
+    ),
+    (
+        "thank you",
+        &["🙏", "😊", "😄", ":D"],
+    ),
+    (
+        "sorry",
+        &["🙇", "😅", "😢", ":)"],
+    ),
+    (
+        "happy",
+        &["😄", "🎉", ":-)", "😊"],
+    ),
+    (
+        "love",
+        &["❤️", "🥹", "😍", ":')"],
+    ),
+    (
+        "congrats",
+        &["🎉", "👏", "👏🏽", "😀"],
+    ),
+    (
+        "good job",
+        &["👏", "🎉", "👍", "😊"],
+    ),
+    (
+        "great job",
+        &["🎉", "👏", "🙌", "😄"],
+    ),
+    (
+        "happy birthday",
+        &["🎉", "🎂", "🎊", "😊"],
+    ),
+    (
+        "you are welcome",
+        &["😊", "🙂", "🙌", "😄"],
+    ),
+    (
+        "good morning",
+        &["🌞", "☀️", "👋", "😀"],
+    ),
+    (
+        "good night",
+        &["🌙", "😴", "💤", "🛌"],
+    ),
+    (
+        "see you",
+        &["🙂", "👍", "🙌", "😁"],
+    ),
+    (
+        "what's up",
+        &["🙂", "😄", "😉", "😌"],
+    ),
+    (
+        "how are you",
+        &["🙂", "😊", "😄", "🙌"],
+    ),
+    (
+        "well done",
+        &["👏", "🎉", "🙌", "✅"],
+    ),
+    (
+        "no problem",
+        &["🙂", "👌", "😊", "👍"],
+    ),
+    (
+        "nice to",
+        &["😊", "😄", "🙌", "😌"],
+    ),
+    (
+        "good to",
+        &["😊", "🙌", "😁", "😄"],
+    ),
+    (
+        "good luck",
+        &["🍀", "✨", "🙌", "🤞"],
+    ),
+    (
+        "all the best",
+        &["🍀", "✨", "💪", "🙌"],
+    ),
+    (
+        "see you later",
+        &["🙂", "👋", "😄", "👍"],
+    ),
+    (
+        "get well",
+        &["🌱", "😌", "🙌", "💪"],
+    ),
+    (
+        "you know",
+        &["🙂", "😅", "🤔", "🙄"],
+    ),
+    (
+        "i mean",
+        &["🤔", "😅", "🙂", "😌"],
+    ),
+    (
+        "what if",
+        &["🤔", "😄", "🤩", "🙈"],
+    ),
+    (
+        "asap",
+        &["⏱️", "🙂", "📌", "💬"],
+    ),
+    (
+        "for real",
+        &["😄", "🙂", "🎯", "🙌"],
+    ),
+    (
+        "thank you 吧",
+        &["🙏", "😄", "🙂", "👍"],
+    ),
+    (
+        "thanks 吧",
+        &["🙂", "😄", "🙏", "👍"],
+    ),
+    (
+        "no problem 吧",
+        &["🙂", "👌", "🙌", "😄"],
+    ),
+    (
+        "good job 吧",
+        &["👏", "🙌", "😄", "👍"],
+    ),
+    (
+        "谢谢",
+        &["🙏", "🙂", "😊", "😄"],
+    ),
+    (
+        "不客气",
+        &["🙂", "🙌", "😊", "👍"],
+    ),
+    (
+        "加油",
+        &["💪", "🔥", "👍", "🙌"],
+    ),
+    (
+        "辛苦",
+        &["🙏", "❤️", "🙂", "😌"],
+    ),
+    (
+        "对吧",
+        &["🙂", "😄", "😊", "👍"],
+    ),
+    (
+        "可以吧",
+        &["🙂", "😄", "👍", "🙌"],
+    ),
+    (
+        "行吧",
+        &["🙂", "😄", "👍", "🙌"],
+    ),
+    (
+        "好的",
+        &["🙂", "👌", "👍", "😊"],
+    ),
+    (
+        "真的吗",
+        &["😮", "🤔", "😄", "🙄"],
+    ),
+    (
+        "哈哈",
+        &["😄", "😂", "😁", "😌"],
+    ),
+    (
+        "没事的",
+        &["🙂", "👍", "🙌", "😄"],
+    ),
+    (
+        "辛苦了",
+        &["🙏", "❤️", "💪", "🙌"],
+    ),
 ];
 
 fn handwriting_speed_profile(
@@ -157,6 +353,11 @@ pub fn derive_next_token_candidates(
     let seed_tokens = tokenize_seed_words(seed_text);
     let seed_token_refs = seed_tokens.iter().map(String::as_str).collect::<Vec<_>>();
     let mut ranked = Vec::<(String, i32, usize)>::new();
+    let model_limit = limit.min(4);
+    for token in next_token_model_candidates(seed_text, &seed_tokens, model_limit) {
+        let score = score_next_token_candidate(0, true, 0) + NEXT_TOKEN_OPEN_SOURCE_MODEL_BONUS;
+        push_ranked_token(&mut ranked, token, score, 0);
+    }
 
     for (source_index, sentence) in sentence_candidates.iter().enumerate() {
         let words: Vec<&str> = sentence.split_whitespace().collect();
@@ -171,9 +372,11 @@ pub fn derive_next_token_candidates(
             .and_then(|raw| normalize_candidate_token(raw))
             .filter(|token| !seed_tokens.iter().any(|existing| existing == token))
             .map(|token| {
+                let score =
+                    score_next_token_candidate(source_index, true, 0) + next_token_expression_bonus(&token);
                 (
                     token,
-                    score_next_token_candidate(source_index, true, 0),
+                    score,
                     prefix_len,
                 )
             });
@@ -190,9 +393,16 @@ pub fn derive_next_token_candidates(
                 continue;
             }
             let distance = candidate_index.saturating_sub(prefix_len + 1);
-            let score = score_next_token_candidate(source_index, false, distance);
+            let score =
+                score_next_token_candidate(source_index, false, distance)
+                    + next_token_expression_bonus(&token);
             push_ranked_token(&mut ranked, token, score, candidate_index);
         }
+    }
+
+    for hint in contextual_expression_hints(&seed_tokens) {
+        let score = score_next_token_candidate(0, true, 0) + NEXT_TOKEN_CONTEXT_HINT_BONUS;
+        push_ranked_token(&mut ranked, hint, score, 0);
     }
 
     ranked.sort_by(|left, right| {
@@ -229,6 +439,318 @@ fn tokenize_seed_words(seed_text: &str) -> Vec<String> {
         .collect()
 }
 
+fn next_token_expression_bonus(token: &str) -> i32 {
+    if looks_like_kaomoji_token(token) {
+        NEXT_TOKEN_KAOMOJI_PRIORITY_BONUS
+    } else if looks_like_emoji_token(token) {
+        NEXT_TOKEN_EMOJI_PRIORITY_BONUS
+    } else {
+        0
+    }
+}
+
+fn contextual_expression_hints(seed_tokens: &[String]) -> Vec<String> {
+    let mut hints = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    if seed_tokens.is_empty() {
+        return hints;
+    };
+
+    let normalized_seed_tokens = seed_tokens
+        .iter()
+        .map(|seed_token| {
+            seed_token
+                .trim_matches(|ch: char| CONTEXT_HINT_PUNCTUATION.contains(ch))
+                .to_lowercase()
+        })
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    if normalized_seed_tokens.is_empty() {
+        return hints;
+    }
+    let normalized_seed_refs: Vec<&str> = normalized_seed_tokens.iter().map(String::as_str).collect();
+    let seed_len = normalized_seed_tokens.len();
+
+    for (trigger, candidates) in NEXT_TOKEN_CONTEXT_HINTS.iter() {
+        let trigger_words = trigger.split_whitespace().collect::<Vec<&str>>();
+        if trigger_words.is_empty() || trigger_words.len() > MAX_CONTEXT_HINT_WORDS {
+            continue;
+        }
+        if trigger_words.len() > seed_len {
+            continue;
+        }
+
+        let candidate_start = seed_len - trigger_words.len();
+        let matched = trigger_words
+            .iter()
+            .zip(normalized_seed_refs[candidate_start..].iter())
+            .all(|(trigger_word, seed_word)| trigger_word == seed_word);
+
+        if !matched {
+            continue;
+        }
+
+        for candidate in candidates.iter() {
+            if seen.len() >= MAX_CONTEXT_HINTS_PER_SEED {
+                break;
+            }
+            if seen.insert((*candidate).to_string()) {
+                hints.push((*candidate).to_string());
+            }
+        }
+    }
+
+    hints
+}
+
+fn next_token_model_candidates(
+    seed_text: &str,
+    seed_tokens: &[String],
+    limit: usize,
+) -> Vec<String> {
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let endpoint = match std::env::var(NEXT_TOKEN_OPEN_SOURCE_MODEL_ENDPOINT_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return Vec::new(),
+    };
+    let model = std::env::var(NEXT_TOKEN_OPEN_SOURCE_MODEL_NAME_ENV)
+        .unwrap_or_else(|_| NEXT_TOKEN_OPEN_SOURCE_MODEL_DEFAULT_NAME.to_string());
+
+    let timeout = std::env::var(NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_MS);
+
+    let Some(endpoint_parsed) = parse_http_endpoint(&endpoint) else {
+        return Vec::new();
+    };
+    if !is_loopback_host(&endpoint_parsed.host) {
+        return Vec::new();
+    }
+
+    let request = build_next_token_model_request(
+        &endpoint,
+        &model,
+        &endpoint_parsed.path,
+        seed_text,
+        limit,
+        timeout,
+);
+
+    let address = format!("{}:{}", endpoint_parsed.host, endpoint_parsed.port);
+    let mut stream = match TcpStream::connect(address) {
+        Ok(value) => value,
+        Err(_) => return Vec::new(),
+    };
+    let timeout = Some(Duration::from_millis(timeout));
+    let _ = stream.set_read_timeout(timeout);
+    let _ = stream.set_write_timeout(timeout);
+    let _ = stream.write_all(request.as_bytes());
+    let mut response = String::new();
+    let _ = stream.read_to_string(&mut response);
+
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or("");
+    parse_next_token_model_candidates(body, seed_tokens, limit)
+}
+
+fn build_next_token_model_request(
+    endpoint: &str,
+    model: &str,
+    path: &str,
+    seed_text: &str,
+    limit: usize,
+    timeout_ms: u64,
+) -> String {
+    let body = format!(
+        "{{\"model\":\"{}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{}\"}},{{\"role\":\"user\",\"content\":\"{}\"}}],\"temperature\":{},\"max_tokens\":{},\"stream\":false}}",
+        escape_json_string(model),
+        escape_json_string(&next_token_system_prompt()),
+        escape_json_string(&next_token_model_prompt(seed_text, limit)),
+        NEXT_TOKEN_OPEN_SOURCE_MODEL_TEMPERATURE_TENTHS as f32 / 10.0,
+        NEXT_TOKEN_OPEN_SOURCE_MODEL_MAX_TOKENS
+);
+    let endpoint_host = endpoint
+        .strip_prefix("http://")
+        .or_else(|| endpoint.strip_prefix("https://"))
+        .unwrap_or(endpoint);
+    let _ = timeout_ms;
+    format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+        path,
+        endpoint_host,
+        body.len(),
+        body
+    )
+}
+
+fn next_token_system_prompt() -> &'static str {
+    "You are a next-token suggestion engine for an IME. Reply with token-level predictions only."
+}
+
+fn next_token_model_prompt(seed_text: &str, limit: usize) -> String {
+    format!(
+        "Seed: {seed_text}\nReturn {limit} concise next-token suggestions, one token per line, no numbering, no punctuation."
+    )
+}
+
+fn parse_next_token_model_candidates(
+    body: &str,
+    seed_tokens: &[String],
+    limit: usize,
+) -> Vec<String> {
+    if limit == 0 || body.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut candidates = Vec::new();
+    let mut search = body;
+    let mut seen = std::collections::HashSet::new();
+    while let Some(start_index) = search.find("\"content\":\"") {
+        let start = start_index + "\"content\":\"".len();
+        let Some((raw_content, rest)) = consume_json_string(&search[start..]) else {
+            break;
+        };
+        for line in normalize_model_content_lines(&raw_content) {
+            if let Some(token) = model_line_to_token(seed_tokens, &line) {
+                if seen.insert(token.clone()) {
+                    candidates.push(token);
+                    if candidates.len() >= limit {
+                        return candidates;
+                    }
+                }
+            }
+        }
+        search = rest;
+    }
+    candidates
+}
+
+fn normalize_model_content_lines(content: &str) -> Vec<String> {
+    let normalized = content
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\t", "\t");
+    normalized
+        .lines()
+        .map(|line| {
+            line.trim()
+                .trim_start_matches(|ch: char| ch.is_ascii_digit() || ch == '.' || ch == '-')
+                .trim()
+                .to_string()
+        })
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn model_line_to_token(seed_tokens: &[String], raw_line: &str) -> Option<String> {
+    let normalized_seed_tokens = seed_tokens.iter().collect::<std::collections::HashSet<_>>();
+    let line = raw_line
+        .trim()
+        .trim_matches(|ch: char| ch == '\"' || ch == '\'' || ch == '`');
+    if line.is_empty() {
+        return None;
+    }
+
+    let candidate = line.split_whitespace().next()?;
+    let normalized = normalize_candidate_token(candidate)?;
+    if normalized_seed_tokens.contains(&normalized) {
+        return None;
+    }
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn parse_http_endpoint(endpoint: &str) -> Option<ParsedHttpEndpoint> {
+    let without_scheme = endpoint.strip_prefix("http://")?;
+    let (host_port, path) = if let Some((head, tail)) = without_scheme.split_once('/') {
+        (head, format!("/{tail}"))
+    } else {
+        (without_scheme, "/v1/chat/completions".to_string())
+    };
+    let (host, port) = if let Some((host, port)) = host_port.rsplit_once(':') {
+        (host.to_string(), port.parse().ok()?)
+    } else {
+        (host_port.to_string(), 80)
+    };
+
+    Some(ParsedHttpEndpoint { host, port, path })
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
+        return true;
+    }
+    host.parse::<std::net::IpAddr>().map_or(false, |ip| ip.is_loopback())
+}
+
+fn consume_json_string(input: &str) -> Option<(String, &str)> {
+    let input = input.strip_prefix('"').unwrap_or(input);
+    let mut output = String::new();
+    let mut chars = input.char_indices();
+    while let Some((index, ch)) = chars.next() {
+        match ch {
+            '\\' => {
+                let (_, escaped) = chars.next()?;
+                match escaped {
+                    '\\' => output.push('\\'),
+                    '"' => output.push('"'),
+                    'n' => output.push('\n'),
+                    'r' => output.push('\r'),
+                    't' => output.push('\t'),
+                    other => output.push(other),
+                }
+            }
+            '"' => return Some((output, &input[index + 1..])),
+            other => output.push(other),
+        }
+    }
+    None
+}
+
+fn escape_json_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
+#[derive(Debug, Clone)]
+struct ParsedHttpEndpoint {
+    host: String,
+    port: u16,
+    path: String,
+}
+
+fn looks_like_emoji_token(raw: &str) -> bool {
+    raw.chars().any(|ch| {
+        let codepoint = ch as u32;
+        matches!(
+            codepoint,
+            0x1F300..=0x1F9FF
+                | 0x1FA70..=0x1FAFF
+                | 0x2600..=0x27BF
+                | 0x1F190..=0x1F251
+                | 0x1F1E6..=0x1F1FF
+        )
+            || ch == '❤'
+    })
+}
+
 fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
     let mut prefix_len = 0;
     while prefix_len < seed_tokens.len()
@@ -257,6 +779,83 @@ fn is_kaomoji_connector(ch: char) -> bool {
     )
 }
 
+fn looks_like_ascii_emoticon_token(raw: &str) -> bool {
+    let token = raw.trim();
+
+    if !token.is_ascii()
+        || token.len() < 2
+        || token.len() > KAO_MOJI_MAX_LENGTH
+        || token.chars().any(char::is_whitespace)
+        || token.contains("://")
+    {
+        return false;
+    }
+
+    if let Some(head) = token.chars().next() {
+        if (head == 'x' || head == 'X') && token.len() <= 5 {
+            return token
+                .chars()
+                .skip(1)
+                .all(|ch| ch == 'd' || ch == 'D');
+        }
+
+        if !matches!(head, ':' | ';' | '<' | '>') {
+            return false;
+        }
+
+        let mut tail = token.chars().skip(1).peekable();
+        while let Some(&ch) = tail.peek() {
+            if matches!(ch, '-' | '^' | '~' | '\'') {
+                tail.next();
+            } else {
+                break;
+            }
+        }
+
+        let mut has_face_char = false;
+        let mut has_side_char = false;
+        let mut saw_only_slashes = true;
+        let mut body_len = 0usize;
+
+        for ch in tail {
+            if !matches!(
+                ch,
+                ':' | ')' | '(' | 'D' | 'd' | 'P' | 'p' | 'O' | 'o' | '3' | '/' | '\\' | '|'
+                    | '*'
+                    | '_' | '.' | '<' | '>' | '[' | ']' | '¬'
+                    | '\''
+            ) {
+                return false;
+            }
+
+            if matches!(ch, '/' | '\\' | '|' | '*' | '<' | '>' | '[' | ']' ) {
+                has_side_char = true;
+            }
+            if matches!(ch, ')' | '(' | 'D' | 'd' | 'P' | 'p' | 'O' | 'o' | '3' | '0') {
+                has_face_char = true;
+            }
+            if ch != '/' {
+                saw_only_slashes = false;
+            }
+            body_len += 1;
+        }
+
+        if body_len == 0 || body_len > 8 {
+            return false;
+        }
+        if body_len > 1 && saw_only_slashes {
+            return false;
+        }
+        if !has_face_char && !has_side_char {
+            return false;
+        }
+
+        return true;
+    }
+
+    false
+}
+
 fn has_kaomoji_enclosure(token: &str) -> bool {
     (token.starts_with('(') && token.ends_with(')'))
         || (token.starts_with('[') && token.ends_with(']'))
@@ -280,6 +879,10 @@ fn looks_like_kaomoji_token(raw: &str) -> bool {
         .iter()
         .any(|candidate| candidate.eq_ignore_ascii_case(token))
     {
+        return true;
+    }
+
+    if looks_like_ascii_emoticon_token(token) {
         return true;
     }
 
@@ -815,8 +1418,9 @@ mod tests {
     use super::{
         derive_next_token_candidates, derive_sentence_candidates,
         derive_sentence_candidates_with_indices, normalize_candidate_token,
-        matching_prefix_len_str, normalize_handwriting_strokes, finalize_sentence,
-        tokenize_seed_words,
+        matching_prefix_len_str, normalize_handwriting_strokes, normalize_model_content_lines,
+        parse_http_endpoint, parse_next_token_model_candidates, consume_json_string,
+        finalize_sentence, tokenize_seed_words,
         recognize_handwriting_candidates, sentence_candidate_style_label,
         summarize_handwriting_strokes,
     };
@@ -1087,6 +1691,278 @@ mod tests {
     }
 
     #[test]
+    fn next_token_candidates_keep_ascii_emoticon() {
+        let tokens = derive_next_token_candidates(
+            "hey",
+            &["hey :-) then continue".into(), "hey there".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == ":-)"));
+        assert!(tokens.iter().any(|token| token == "then"));
+
+        let tokens = derive_next_token_candidates(
+            "wow",
+            &["wow >:) so far".into(), "wow there".into()],
+            8,
+        );
+        assert!(tokens.iter().any(|token| token == ">:)"));
+
+        let tokens = derive_next_token_candidates(
+            "smile",
+            &["smile :'-) here".into(), "smile there".into()],
+            8,
+        );
+        assert!(tokens.iter().any(|token| token == ":'-)"));
+        let tokens = derive_next_token_candidates(
+            "chat",
+            &["chat >.< now".into(), "chat later".into()],
+            8,
+        );
+        assert!(tokens.iter().any(|token| token == ">.<"));
+    }
+
+    #[test]
+    fn next_token_candidates_prefers_expression_by_ranking() {
+        let tokens = derive_next_token_candidates(
+            "i",
+            &["i can".into(), "i 😀".into(), "i :-D".into()],
+            6,
+        );
+
+        assert_eq!(tokens.first(), Some(&"😀".to_string()));
+        assert!(tokens.iter().any(|token| token == ":-D"));
+        assert!(tokens.iter().any(|token| token == "can"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints() {
+        let tokens = derive_next_token_candidates(
+            "thank you",
+            &["thank you".into(), "thank you is ready as the next full sentence".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙏"));
+        assert!(tokens.iter().any(|token| token == "😊"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed() {
+        let tokens = derive_next_token_candidates(
+            "you are welcome",
+            &["you are welcome".into(), "you are welcome always".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "😊"));
+        assert!(tokens.iter().any(|token| token == "😄"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_two_word_seed() {
+        let tokens = derive_next_token_candidates(
+            "see you",
+            &["see you".into(), "see you later".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙂"));
+        assert!(tokens.iter().any(|token| token == "👍"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed_with_punctuated_tokens() {
+        let tokens = derive_next_token_candidates(
+            "how are you",
+            &["how are you".into(), "how are you doing".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙂"));
+        assert!(tokens.iter().any(|token| token == "😊"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed_good_luck() {
+        let tokens = derive_next_token_candidates(
+            "good luck",
+            &["good luck".into(), "good luck my friend".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🍀"));
+        assert!(tokens.iter().any(|token| token == "✨"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed_all_the_best() {
+        let tokens = derive_next_token_candidates(
+            "all the best",
+            &["all the best".into(), "all the best to you".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🍀"));
+        assert!(tokens.iter().any(|token| token == "💪"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed_get_well() {
+        let tokens = derive_next_token_candidates(
+            "get well",
+            &["get well".into(), "get well soon".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🌱"));
+        assert!(tokens.iter().any(|token| token == "😌"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_punctuated_seed_tokens() {
+        let tokens = derive_next_token_candidates(
+            "thank you!",
+            &["thank you".into(), "thank you very much".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙏"));
+        assert!(tokens.iter().any(|token| token == "😊"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_tail_phrase_with_filler_word() {
+        let tokens = derive_next_token_candidates(
+            "you know",
+            &["you know".into(), "you know what".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙂"));
+        assert!(tokens.iter().any(|token| token == "😅"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_seed() {
+        let tokens = derive_next_token_candidates(
+            "谢谢！",
+            &["谢谢".into(), "谢谢你".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙏"));
+        assert!(tokens.iter().any(|token| token == "🙂"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_phrase_with_particle() {
+        let tokens = derive_next_token_candidates(
+            "可以吧",
+            &["可以吧".into(), "可以吧".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙂"));
+        assert!(tokens.iter().any(|token| token == "😄"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_encouragement_phrase() {
+        let tokens = derive_next_token_candidates(
+            "加油",
+            &["加油".into(), "加油 继续".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "💪"));
+        assert!(tokens.iter().any(|token| token == "🔥"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_friendly_endings() {
+        let tokens = derive_next_token_candidates(
+            "好的",
+            &["好的".into(), "好的 我知道".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙂"));
+        assert!(tokens.iter().any(|token| token == "👌"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_filler_particles() {
+        let tokens = derive_next_token_candidates(
+            "行吧",
+            &["行吧".into(), "行吧 那就".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙂"));
+        assert!(tokens.iter().any(|token| token == "😄"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_laugh() {
+        let tokens = derive_next_token_candidates(
+            "哈哈",
+            &["哈哈".into(), "哈哈 太好了".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "😄"));
+        assert!(tokens.iter().any(|token| token == "😂"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_chinese_seed_with_punctuation() {
+        let tokens = derive_next_token_candidates(
+            "谢谢，",
+            &["谢谢".into(), "谢谢 你".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙏"));
+        assert!(tokens.iter().any(|token| token == "🙂"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_mixed_chinese_english_seed() {
+        let tokens = derive_next_token_candidates(
+            "thank you 吧",
+            &["thank you".into(), "thank you 吧".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "🙏"));
+        assert!(tokens.iter().any(|token| token == "😄"));
+    }
+
+    #[test]
+    fn next_token_candidates_adds_contextual_expression_hints_for_mixed_english_chinese_tail() {
+        let tokens = derive_next_token_candidates(
+            "good job 吧",
+            &["good job".into(), "good job 吧".into()],
+            8,
+        );
+
+        assert!(tokens.iter().any(|token| token == "👏"));
+        assert!(tokens.iter().any(|token| token == "🙌"));
+    }
+
+    #[test]
+    fn candidate_normalization_rejects_url_like_input_as_emoticon() {
+        assert_eq!(normalize_candidate_token("http://").as_deref(), Some("http"));
+    }
+
+    #[test]
+    fn candidate_normalization_treats_non_emoticon_colon_prefix_as_word() {
+        assert_eq!(normalize_candidate_token(":alpha").as_deref(), Some("alpha"));
+        assert_eq!(normalize_candidate_token("xD1").as_deref(), Some("xd1"));
+    }
+
+    #[test]
     fn candidate_token_normalization_keeps_emoji() {
         assert_eq!(normalize_candidate_token("😀").as_deref(), Some("😀"));
         assert_eq!(
@@ -1105,6 +1981,18 @@ mod tests {
         assert_eq!(normalize_candidate_token("(^_^)").as_deref(), Some("(^_^)"));
         assert_eq!(normalize_candidate_token(":-)").as_deref(), Some(":-)"));
         assert_eq!(normalize_candidate_token(":)").as_deref(), Some(":)"));
+        assert_eq!(normalize_candidate_token(":-))").as_deref(), Some(":-))"));
+        assert_eq!(normalize_candidate_token(";-P").as_deref(), Some(";-P"));
+        assert_eq!(normalize_candidate_token(":))").as_deref(), Some(":))"));
+        assert_eq!(normalize_candidate_token(":-]").as_deref(), Some(":-]"));
+        assert_eq!(normalize_candidate_token(";]").as_deref(), Some(";]"));
+        assert_eq!(normalize_candidate_token(":0").as_deref(), Some(":0"));
+        assert_eq!(normalize_candidate_token(":/").as_deref(), Some(":/"));
+        assert_eq!(normalize_candidate_token("xD").as_deref(), Some("xD"));
+        assert_eq!(normalize_candidate_token("xDD").as_deref(), Some("xDD"));
+        assert_eq!(normalize_candidate_token(":'-)").as_deref(), Some(":'-)"));
+        assert_eq!(normalize_candidate_token(">:(").as_deref(), Some(">:("));
+        assert_eq!(normalize_candidate_token("<3").as_deref(), Some("<3"));
         assert_eq!(normalize_candidate_token("ಠ_ಠ").as_deref(), Some("ಠ_ಠ"));
         assert_eq!(normalize_candidate_token("(>_<)").as_deref(), Some("(>_<)"));
         assert_eq!(normalize_candidate_token("(╯°□°)╯").as_deref(), Some("(╯°□°)╯"));
@@ -1222,5 +2110,54 @@ mod tests {
                 .any(|(_, sentence)| sentence.contains("👨‍👩‍👧‍👦 can continue with the next suggestion")),
             "guided template cleaning should keep family emoji"
         );
+    }
+
+    #[test]
+    fn parse_http_endpoint_handles_default_path_and_ports() {
+        let parsed = parse_http_endpoint("http://127.0.0.1:11434").expect("endpoint should parse");
+
+        assert_eq!(parsed.host, "127.0.0.1");
+        assert_eq!(parsed.port, 11434);
+        assert_eq!(parsed.path, "/v1/chat/completions");
+    }
+
+    #[test]
+    fn parse_http_endpoint_rejects_non_http_scheme() {
+        assert!(parse_http_endpoint("https://127.0.0.1:11434/v1/chat/completions").is_none());
+    }
+
+    #[test]
+    fn normalize_model_content_lines_strips_numbered_and_bulleted_lines() {
+        let normalized = normalize_model_content_lines("1. hello\n- can\n2. :-)\n");
+
+        assert_eq!(normalized, vec!["hello", "can", ":-)"]);
+    }
+
+    #[test]
+    fn parse_next_token_model_candidates_extracts_and_filters_tokens() {
+        let body = r#"{
+            "choices":[{"message":{"role":"assistant","content":" hello\\n:-)\\n1. world\\nfamily 👨‍👩‍👧‍👦\\n"} }]}}
+        "#;
+        let seed_tokens = vec!["hello".to_string()];
+        let candidates = parse_next_token_model_candidates(body, &seed_tokens, 6);
+
+        assert_eq!(
+            candidates,
+            vec![
+                ":-)".to_string(),
+                "world".to_string(),
+                "family".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn consume_json_string_unescapes_common_sequences() {
+        let source = r#""line1\nline2\"x\t" trailing"#;
+        let (decoded, rest) = consume_json_string(source)
+            .expect("json string should decode");
+
+        assert_eq!(decoded, "line1\nline2\"x\t");
+        assert_eq!(rest, " trailing");
     }
 }

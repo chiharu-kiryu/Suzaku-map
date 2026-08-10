@@ -274,7 +274,7 @@ impl WgpuCandidateRenderer {
             if max_allowed_settings <= 0.0 {
                 0.0
             } else {
-                let min_settings_height = 150.0 * responsive_scale;
+            let min_settings_height = 280.0 * responsive_scale;
                 let preferred_settings_height = (metrics.panel_height * 1.4)
                     .clamp(min_settings_height, 380.0 * responsive_scale);
                 preferred_settings_height

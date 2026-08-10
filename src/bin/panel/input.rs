@@ -313,16 +313,21 @@ pub(super) fn handle_panel_window_event(
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                if state.modifiers.control_key() || state.modifiers.super_key() {
-                    let zoom_delta = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y,
+                let zoom_delta = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(position) => (position.y as f32 / 80.0).signum(),
+                };
+                if state.kind == PanelWindowKind::Main && (state.modifiers.control_key() || state.modifiers.super_key())
+                {
+                    state.scale_window_by_wheel_delta(zoom_delta);
+                } else if state.kind == PanelWindowKind::Settings {
+                    let scroll_delta = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y * 24.0,
                         MouseScrollDelta::PixelDelta(position) => {
-                            (position.y as f32 / 80.0).signum()
+                            (position.y as f32 * 0.85).clamp(-32.0, 32.0)
                         }
                     };
-                    if state.kind == PanelWindowKind::Main {
-                        state.scale_window_by_wheel_delta(zoom_delta);
-                    }
+                    state.adjust_settings_scroll(scroll_delta);
                 }
                 state.window.request_redraw();
             }

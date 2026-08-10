@@ -183,6 +183,7 @@ pub struct PanelChromeState {
     pub handwriting_strokes: Vec<Vec<[f32; 2]>>,
     pub handwriting_candidates: Vec<String>,
     pub handwriting_hint: String,
+    pub settings_scroll_offset: f32,
 }
 
 impl Default for PanelChromeState {
@@ -227,6 +228,7 @@ impl Default for PanelChromeState {
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
+            settings_scroll_offset: 0.0,
         }
     }
 }

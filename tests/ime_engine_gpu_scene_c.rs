@@ -52,6 +52,7 @@ fn render_scene_shows_voice_permission_denied_message() {
             handwriting_hint: String::new(),
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(
@@ -130,6 +131,7 @@ fn render_scene_exposes_handwriting_canvas_and_candidates() {
             handwriting_hint: "Tap a recognized seed to insert it.".into(),
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(
@@ -196,6 +198,7 @@ fn render_scene_caps_next_token_chips_at_six_and_sentences_at_four() {
             ],
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert_eq!(
@@ -244,6 +247,7 @@ fn render_scene_hides_sentence_cards_until_sentence_stage_is_ready() {
             sentence_candidates: Vec::new(),
             ..PanelChromeState::default()
         },
+            None, None, None,
     );
 
     assert!(

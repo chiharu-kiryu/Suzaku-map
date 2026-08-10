@@ -360,13 +360,7 @@
         text_primary
     };
     let primary_max_lines = {
-        let raw_primary_max_lines = if collapsed_daily_mode { 1 } else { 2 };
-        let max_height_for_text =
-            (visual_rect[3] - (if collapsed_daily_mode { 17.0 } else { 31.0 } * responsive_scale))
-                .max(0.0);
-        let primary_line_height = primary_pixel_size * 7.0 + base_line_gap;
-        let dynamic_max_lines = (max_height_for_text / primary_line_height).floor() as usize;
-        raw_primary_max_lines.min(dynamic_max_lines).max(1)
+        if collapsed_daily_mode { 1 } else { 2 }
     };
     let build_primary_layout = |text: &str, max_lines: usize| {
         TextBlock {
@@ -384,15 +378,10 @@
         .layout()
     };
     let mut primary_layout = build_primary_layout(&primary_text, primary_max_lines);
-    let is_primary_wrapped = primary_layout.lines.len() > 1;
-    let needs_single_line_truncate = primary_layout.truncated || is_primary_wrapped;
-    if needs_single_line_truncate {
-        primary_layout = build_primary_layout(&primary_text, 1);
-        if primary_layout.lines.is_empty() {
-            primary_layout = build_primary_layout("", 1);
-        }
+    if primary_layout.lines.is_empty() {
+        primary_layout = build_primary_layout("", primary_max_lines.min(1).max(1));
     }
-    if needs_single_line_truncate {
+    if primary_layout.truncated {
         sentence_candidate_truncated.push(*source_index);
     }
 
@@ -467,14 +456,9 @@
 
         let preferred_meta_y = (primary_bottom + 8.0 * responsive_scale)
             .max(visual_rect[1] + 46.0 * responsive_scale);
-        let meta_line_height = helper_px * 7.0 + base_line_gap;
         let meta_available_h =
             (visual_rect[1] + visual_rect[3] - preferred_meta_y - 3.0 * responsive_scale).max(0.0);
-        let meta_max_lines = if meta_available_h >= meta_line_height * 0.85 {
-            1
-        } else {
-            0
-        };
+        let meta_max_lines = if meta_available_h >= 0.0 { 1 } else { 0 };
 
         if meta_max_lines > 0 {
             candidate_layouts.push(

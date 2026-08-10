@@ -246,8 +246,9 @@
                 let label_y_pad = 3.0 * responsive_scale;
                 let label_row_h = 21.8 * responsive_scale;
                 let section_row_step = chip_height + row_gap;
+                let settings_content_top = settings_rect[1];
                 let settings_content_bottom = settings_rect[1] + settings_rect[3] - 2.0;
-                let mut row_y = settings_rect[1] + 11.0 * responsive_scale;
+                let settings_content_origin = settings_rect[1] + 11.0 * responsive_scale;
                 let chip_start_x = panel_x + 84.0 * responsive_scale;
                 let chip_max_x = settings_rect[0] + settings_rect[2] - 10.0;
                 let available_chip_width = (chip_max_x - chip_start_x).max(24.0 * responsive_scale);
@@ -263,33 +264,89 @@
                         (surface[2] * 0.92 + surface_muted[2] * 0.08),
                         0.30,
                     ];
-                'section_loop: for (label, options) in sections.iter() {
-                    if row_y + label_row_h > settings_content_bottom {
-                        break 'section_loop;
-                    }
+                let estimated_settings_height = {
+                    let mut row_y = settings_content_origin;
+                    let mut content_extent = settings_content_origin;
+                    for (_, options) in sections.iter() {
+                        let mut chip_x = chip_start_x;
+                        let mut chip_y = row_y;
+                        let mut row_bottom = chip_y + chip_height;
+                        let mut section_has_options = false;
 
-                    let label_layout = TextBlock {
-                        text: (*label).to_string(),
-                        origin: [panel_x + 14.0 * responsive_scale, row_y + label_y_pad],
-                    max_width: (72.0 * responsive_scale).max(78.0),
-                        pixel_size: title_px,
-                        letter_spacing: heading_tracking,
-                        line_gap: base_line_gap,
-                        max_lines: 1,
-                        color: text_secondary,
-                        align: TextAlign::Left,
-                        role: TextRole::SettingLabel,
+                        for (_, chip_label, _) in options {
+                            if chip_x >= chip_max_x - 2.0 * responsive_scale {
+                                break;
+                            }
+                            let chip_w = (chip_label.chars().count() as f32 * 10.0)
+                                .max(32.0 * responsive_scale)
+                                .min(available_chip_width)
+                                + 10.0 * responsive_scale;
+                            if chip_x + chip_w > chip_max_x {
+                                chip_x = chip_start_x;
+                                chip_y += section_row_step;
+                                row_bottom = chip_y + chip_height;
+                            }
+                            if chip_x + chip_w > chip_max_x {
+                                break;
+                            }
+                            section_has_options = true;
+                            row_bottom = chip_y + chip_height;
+                            chip_x += chip_w + chip_x_gap;
+                        }
+
+                        let section_content_bottom = if section_has_options {
+                            row_bottom
+                        } else {
+                            row_y + label_row_h
+                        };
+                        content_extent =
+                            (section_content_bottom + 4.3 * responsive_scale).max(content_extent);
+                        if section_has_options {
+                            row_y = row_bottom + row_gap;
+                        } else {
+                            row_y += label_row_h + row_gap;
+                        }
                     }
-                    .layout();
-                    text_quads.extend(label_layout.quads.iter().copied());
-                    atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
-                    settings_layouts.push(label_layout);
+                    (content_extent - settings_content_origin).max(0.0)
+                };
+                let max_scroll_offset =
+                    (estimated_settings_height - (settings_content_bottom - settings_content_origin))
+                        .max(0.0);
+                let settings_scroll_offset =
+                    chrome.settings_scroll_offset.max(0.0).min(max_scroll_offset);
+                let mut row_y = settings_content_origin;
+                let visible_in_settings = |top: f32, height: f32| {
+                    top + height > settings_content_top && top < settings_content_bottom
+                };
+                for (label, options) in sections.iter() {
+                    let section_top = row_y - settings_scroll_offset;
+                    if visible_in_settings(section_top, label_row_h) {
+                        let label_layout = TextBlock {
+                            text: (*label).to_string(),
+                            origin: [
+                                panel_x + 14.0 * responsive_scale,
+                                section_top + label_y_pad,
+                            ],
+                            max_width: (72.0 * responsive_scale).max(78.0),
+                            pixel_size: title_px,
+                            letter_spacing: heading_tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: text_secondary,
+                            align: TextAlign::Left,
+                            role: TextRole::SettingLabel,
+                        }
+                        .layout();
+                        text_quads.extend(label_layout.quads.iter().copied());
+                        atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
+                        settings_layouts.push(label_layout);
+                    }
 
                     let mut chip_x = chip_start_x;
                     let mut chip_y = row_y;
                     let mut row_bottom = chip_y + chip_height;
                     let mut section_has_options = false;
-                    let section_row_start = row_y;
+                    let _section_row_start = row_y;
 
                     'chip_loop: for (kind, chip_label, selected) in options {
                         if chip_x >= chip_max_x - 2.0 * responsive_scale {
@@ -309,56 +366,67 @@
                             break 'chip_loop;
                         }
 
-                        if chip_y + chip_height > settings_content_bottom {
-                            break 'chip_loop;
-                        }
+                        let chip_top = chip_y - settings_scroll_offset;
+                        let chip_visible = visible_in_settings(chip_top, chip_height);
 
-                        let rect = [chip_x, chip_y, chip_w, chip_height];
-                        append_soft_card_quads(
-                            &mut quads,
-                            rect,
-                            if *selected { accent_soft } else { surface },
-                            if *selected { accent } else { border_dark },
-                            soft_shadow,
-                            surface,
-                            chip_corner_radius,
-                        );
-                        interactive_targets.push(InteractiveTarget {
-                            kind: *kind,
-                            rect: interaction_hit_rect(rect),
-                        });
-                        let option_layout = TextBlock {
-                            text: (*chip_label).to_string(),
-                            origin: [chip_x + 5.2 * responsive_scale, chip_y + 5.2 * responsive_scale],
-                            max_width: (chip_w - 12.0 * responsive_scale).max(6.0 * responsive_scale),
-                            pixel_size: chip_px,
-                            letter_spacing: ui_tracking,
-                            line_gap: base_line_gap,
-                            max_lines: 1,
-                            color: if *selected { accent_text } else { text_primary },
-                            align: TextAlign::Center,
-                            role: TextRole::SettingOption,
+                        let rect = [chip_x, chip_top, chip_w, chip_height];
+                        if chip_visible {
+                            append_soft_card_quads(
+                                &mut quads,
+                                rect,
+                                if *selected { accent_soft } else { surface },
+                                if *selected { accent } else { border_dark },
+                                soft_shadow,
+                                surface,
+                                chip_corner_radius,
+                            );
                         }
-                        .layout();
-                        text_quads.extend(option_layout.quads.iter().copied());
-                        atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
-                        option_layouts.push(option_layout);
+                        if chip_visible {
+                            interactive_targets.push(InteractiveTarget {
+                                kind: *kind,
+                                rect: interaction_hit_rect(rect),
+                            });
+                        }
+                        if chip_visible {
+                            let option_layout = TextBlock {
+                                text: (*chip_label).to_string(),
+                                origin: [
+                                    chip_x + 5.2 * responsive_scale,
+                                    chip_top + 5.2 * responsive_scale,
+                                ],
+                                max_width: (chip_w - 12.0 * responsive_scale)
+                                    .max(6.0 * responsive_scale),
+                                pixel_size: chip_px,
+                                letter_spacing: ui_tracking,
+                                line_gap: base_line_gap,
+                                max_lines: 1,
+                                color: if *selected { accent_text } else { text_primary },
+                                align: TextAlign::Center,
+                                role: TextRole::SettingOption,
+                            }
+                            .layout();
+                            text_quads.extend(option_layout.quads.iter().copied());
+                            atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
+                            option_layouts.push(option_layout);
+                        }
 
                         section_has_options = true;
                         row_bottom = chip_y + chip_height;
                         chip_x += chip_w + chip_x_gap;
                     }
 
-                    let section_card_top = (section_row_start - 3.6 * responsive_scale).max(settings_rect[1]);
+                    let section_card_top =
+                        (section_top - 3.6 * responsive_scale).max(settings_content_top);
                     let section_content_bottom = if section_has_options {
                         row_bottom
                     } else {
                         row_y + label_row_h
                     };
                     let section_card_bottom =
-                        (section_content_bottom + 4.3 * responsive_scale).min(settings_content_bottom);
-                    let section_card_h = (section_card_bottom - section_card_top).max(label_row_h);
-                    if section_card_h > 0.0 {
+                        (section_content_bottom + 4.3 * responsive_scale - settings_scroll_offset)
+                            .min(settings_content_bottom);
+                    let section_card_h = (section_card_bottom - section_card_top).max(0.0);
+                    if section_card_h > 0.0 && visible_in_settings(section_card_top, section_card_h) {
                         append_soft_card_quads(
                             &mut quads,
                             [

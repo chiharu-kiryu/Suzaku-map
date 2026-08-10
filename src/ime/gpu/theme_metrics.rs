@@ -143,7 +143,7 @@ impl PanelSceneMetrics {
         let min_panel_width = (max_panel_width * 0.78)
             .clamp(190.0, 310.0)
             .min(max_panel_width);
-        let desired_panel_width = (scene_width * 0.95).max(190.0);
+        let desired_panel_width = (scene_width - 220.0).clamp(190.0, 1200.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);
@@ -199,7 +199,7 @@ impl PanelSceneMetrics {
         } else if collapsed_daily_mode {
             32.5 * responsive_scale
         } else {
-            (if stacked_token_header { 45.0 } else { 34.5 }) * responsive_scale
+            (if stacked_token_header { 45.0 } else { 72.0 }) * responsive_scale
         };
 
         let sentence_columns = if collapsed_daily_mode {
