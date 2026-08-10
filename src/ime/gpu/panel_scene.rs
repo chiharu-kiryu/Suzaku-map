@@ -10,6 +10,7 @@ impl WgpuCandidateRenderer {
         sentence_candidate_scroll: Option<(usize, Instant)>,
         next_token_candidate_scroll: Option<(usize, Instant)>,
         handwriting_candidate_scroll: Option<(usize, Instant)>,
+        settings_option_text_scroll: Option<(InteractionKind, Instant)>,
     ) -> RenderScene {
         if chrome.compact_mode {
             return self.build_compact_scene(snapshot, chrome, false, false);
@@ -303,6 +304,7 @@ impl WgpuCandidateRenderer {
         let mut sentence_candidate_truncated = Vec::new();
         let mut next_token_candidate_truncated = Vec::new();
         let mut handwriting_candidate_truncated = Vec::new();
+        let mut settings_option_truncated = Vec::new();
         let interaction_state = |kind: InteractionKind| {
             (
                 chrome.hovered_interaction == Some(kind),
@@ -1085,6 +1087,8 @@ impl WgpuCandidateRenderer {
         }
 
         let settings_y = panel_y + metrics.panel_height;
+        let mut settings_scroll_metadata: Option<SettingsScrollMetadata> = None;
+        let settings_option_text_scroll = settings_option_text_scroll.as_ref();
         include!("panel_scene_settings_block.rs");
 
         let mut scene = {
@@ -1093,6 +1097,7 @@ impl WgpuCandidateRenderer {
             let sentence_candidate_truncated = &mut sentence_candidate_truncated;
             let next_token_candidate_truncated = &mut next_token_candidate_truncated;
             let handwriting_candidate_truncated = &mut handwriting_candidate_truncated;
+            let settings_option_truncated = &mut settings_option_truncated;
             let sentence_candidate_scroll = sentence_candidate_scroll.as_ref();
             include!("panel_scene_candidates_block.rs")
         };

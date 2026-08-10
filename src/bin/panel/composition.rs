@@ -272,6 +272,27 @@ impl PanelState {
         }
     }
 
+    pub(super) fn handle_settings_search_text(&mut self, text: &str) {
+        let accepted = sanitize_text_input(text);
+        if accepted.is_empty() {
+            return;
+        }
+
+        self.chrome.settings_search_query.push_str(&accepted);
+        self.chrome.settings_search_focused = true;
+    }
+
+    pub(super) fn backspace_settings_search_text(&mut self) {
+        if self.chrome.settings_search_query.pop().is_some() {
+            self.chrome.settings_search_focused = true;
+        }
+    }
+
+    pub(super) fn clear_settings_search_text(&mut self) {
+        self.chrome.settings_search_query.clear();
+        self.chrome.settings_search_focused = true;
+    }
+
     pub(super) fn backspace_seed(&mut self) {
         self.chrome.backspace();
         self.sync_manual_seed_base();

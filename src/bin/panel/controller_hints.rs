@@ -1,7 +1,7 @@
 use super::{PanelState, PanelWindowKind};
 use suzaku_map::ime::gpu::{
     CandidateQuad, InteractionKind, RenderScene, TextAlign, TextBlock, TextRole,
-    VirtualKeyboardKey, VoiceCaptureState,
+    VirtualKeyboardKey, VoiceCaptureState, LlmModelPreset,
 };
 
 impl PanelState {
@@ -180,10 +180,10 @@ impl PanelState {
             } else {
                 "LLM suggestions: off".to_string()
             }),
-            InteractionKind::SetLlmModel(_) => Some("LLM model preset".to_string()),
+            InteractionKind::SetLlmModel(model) => Some(format!("LLM model: {}", llm_model_label(model))),
             InteractionKind::SetLlmTemperature(temp) => {
                 Some(format!("LLM creativity: {}", llm_temperature_label(temp)))
-            }
+            },
             InteractionKind::SetPointerTapSlopTenths(value) => {
                 Some(format!("Tap slop: {:.1}px", value as f32 / 10.0))
             }
@@ -191,6 +191,15 @@ impl PanelState {
             InteractionKind::SetPointerTargetSlopTenths(value) => {
                 Some(format!("Target slop: {:.1}px", value as f32 / 10.0))
             }
+            InteractionKind::SettingsSearchInput => Some("Search settings".to_string()),
+            InteractionKind::SettingsSearchClear => Some("Clear settings search".to_string()),
+            InteractionKind::ToggleSettingsSection(section_index) => Some(format!(
+                "Toggle settings section {section_index}"
+            )),
+            InteractionKind::SettingsOptionTextScroll(kind) => Some(format!(
+                "Scroll option: {}",
+                self.interaction_hint(*kind).unwrap_or_else(|| "Setting option".to_string())
+            )),
             InteractionKind::SelectNextToken(index) => {
                 self.chrome.next_token_candidates.get(index).cloned()
             }
@@ -311,14 +320,20 @@ pub(super) fn llm_temperature_label(
     }
 }
 
+pub(super) fn llm_model_label(value: LlmModelPreset) -> &'static str {
+    match value {
+        LlmModelPreset::Llama32_3b => "Llama 3.2 3B",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         density_label, display_text_scale_label, font_face_label, llm_temperature_label,
-        preview_style_label, smoothing_label, text_spacing_label, theme_preset_label,
+        llm_model_label, preview_style_label, smoothing_label, text_spacing_label, theme_preset_label,
     };
     use suzaku_map::ime::gpu::{
-        CandidateDensity, DisplayTextScale, FontFaceChoice, LlmTemperaturePreset, PreviewStyle,
+        CandidateDensity, DisplayTextScale, FontFaceChoice, LlmModelPreset, LlmTemperaturePreset, PreviewStyle,
         TextSmoothing, TextSpacing, ThemePreset,
     };
 
@@ -363,5 +378,10 @@ mod tests {
             llm_temperature_label(LlmTemperaturePreset::Expressive),
             "Expressive"
         );
+    }
+
+    #[test]
+    fn panel_hint_llm_model_label() {
+        assert_eq!(llm_model_label(LlmModelPreset::Llama32_3b), "Llama 3.2 3B");
     }
 }

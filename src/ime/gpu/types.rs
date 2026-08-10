@@ -184,6 +184,9 @@ pub struct PanelChromeState {
     pub handwriting_candidates: Vec<String>,
     pub handwriting_hint: String,
     pub settings_scroll_offset: f32,
+    pub settings_search_query: String,
+    pub settings_search_focused: bool,
+    pub settings_collapsed_sections: Vec<bool>,
 }
 
 impl Default for PanelChromeState {
@@ -229,6 +232,9 @@ impl Default for PanelChromeState {
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
             settings_scroll_offset: 0.0,
+            settings_search_query: String::new(),
+            settings_search_focused: false,
+            settings_collapsed_sections: Vec::new(),
         }
     }
 }
@@ -341,6 +347,12 @@ pub enum InteractionKind {
     SetVoiceAutoInsert(bool),
     SetLlmModel(LlmModelPreset),
     SetLlmTemperature(LlmTemperaturePreset),
+    SettingsScrollTrack,
+    SettingsScrollHandle,
+    SettingsSearchInput,
+    SettingsSearchClear,
+    ToggleSettingsSection(usize),
+    SettingsOptionTextScroll(InteractionKind),
     SelectNextToken(usize),
     RewindNextToken,
     ToggleVoiceCapture,
@@ -360,6 +372,16 @@ pub enum InteractionKind {
 pub struct InteractiveTarget {
     pub kind: InteractionKind,
     pub rect: [f32; 4],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SettingsScrollMetadata {
+    pub track_rect: [f32; 4],
+    pub handle_rect: [f32; 4],
+    pub content_height: f32,
+    pub visible_height: f32,
+    pub max_scroll_offset: f32,
+    pub handle_drag_range: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -403,6 +425,8 @@ pub struct RenderScene {
     pub sentence_candidate_truncated: Vec<usize>,
     pub next_token_candidate_truncated: Vec<usize>,
     pub handwriting_candidate_truncated: Vec<usize>,
+    pub settings_option_truncated: Vec<InteractionKind>,
+    pub settings_scroll_metadata: Option<SettingsScrollMetadata>,
     pub labels: Vec<String>,
     pub selected_label: Option<String>,
     pub draft_text: String,

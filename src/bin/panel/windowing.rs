@@ -430,10 +430,59 @@ impl PanelState {
     }
 
     pub(super) fn adjust_settings_scroll(&mut self, delta: f32) {
-        if self.kind != PanelWindowKind::Settings || self.chrome.compact_mode {
+        if self.chrome.compact_mode {
             return;
         }
-        self.chrome.settings_scroll_offset = (self.chrome.settings_scroll_offset + delta).max(0.0);
+        let offset = self.chrome.settings_scroll_offset + delta;
+        self.set_settings_scroll_offset(offset);
+    }
+
+    pub(super) fn set_settings_scroll_offset(&mut self, offset: f32) {
+        if self.chrome.compact_mode {
+            return;
+        }
+        self.chrome.settings_scroll_offset = offset.clamp(0.0, self.interaction.settings_scroll_max_offset);
+    }
+
+    pub(super) fn begin_settings_scroll_drag(&mut self) {
+        if self.chrome.compact_mode {
+            return;
+        }
+        if self.interaction.settings_scroll_max_offset <= 0.0
+            || self.interaction.settings_scroll_drag_range <= 0.0
+        {
+            return;
+        }
+        self.interaction.settings_scroll_dragging = true;
+        self.interaction.settings_scroll_drag_start_y = self.cursor_position.map(|(_, y)| y);
+        self.interaction.settings_scroll_drag_start_offset = self.chrome.settings_scroll_offset;
+    }
+
+    pub(super) fn update_settings_scroll_drag(&mut self, cursor_y: f32) {
+        if !self.interaction.settings_scroll_dragging
+            || self.chrome.compact_mode
+        {
+            return;
+        }
+        let Some(start_y) = self.interaction.settings_scroll_drag_start_y else {
+            return;
+        };
+        let drag_range = self.interaction.settings_scroll_drag_range;
+        if drag_range <= 0.0 || self.interaction.settings_scroll_max_offset <= 0.0 {
+            return;
+        }
+        let drag_delta = cursor_y - start_y;
+        let offset_delta = (drag_delta / drag_range) * self.interaction.settings_scroll_max_offset;
+        self.set_settings_scroll_offset(self.interaction.settings_scroll_drag_start_offset + offset_delta);
+    }
+
+    pub(super) fn end_settings_scroll_drag(&mut self) {
+        if !self.interaction.settings_scroll_dragging {
+            return;
+        }
+        self.interaction.settings_scroll_dragging = false;
+        self.interaction.settings_scroll_drag_start_y = None;
+        self.interaction.settings_scroll_drag_start_offset = 0.0;
     }
 
     pub(super) fn begin_window_scale_drag(&mut self) {

@@ -53,7 +53,7 @@ impl WgpuCandidateRenderer {
             input_modes_expanded: true,
             ..PanelChromeState::default()
         };
-        self.build_panel_scene(snapshot, &chrome, None, None, None)
+        self.build_panel_scene(snapshot, &chrome, None, None, None, None)
     }
 
     pub fn build_compact_scene(
@@ -279,6 +279,8 @@ impl WgpuCandidateRenderer {
             sentence_candidate_truncated: Vec::new(),
             next_token_candidate_truncated: Vec::new(),
             handwriting_candidate_truncated: Vec::new(),
+            settings_option_truncated: Vec::new(),
+            settings_scroll_metadata: None,
             selected_label: snapshot
                 .candidate_labels
                 .get(snapshot.selected_index)

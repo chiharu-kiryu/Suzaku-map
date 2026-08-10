@@ -35,7 +35,8 @@ use crate::app_state::{
 use crate::input::handle_panel_window_event;
 use crate::render::{FontAtlas, PanelVertex, TextVertex, create_font_atlas};
 use suzaku_map::ime::gpu::{
-    CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, LlmModelPreset,
+    CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
+    LlmModelPreset,
     LlmTemperaturePreset, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelChromeState,
     PreviewStyle, TextSmoothing, TextSpacing, VoiceCaptureState, VoicePermissionState,
     WgpuCandidateRenderer,
@@ -229,6 +230,17 @@ struct PanelInteractionState {
     handwriting_candidate_scroll_started_at: Option<Instant>,
     handwriting_last_sample: Option<Instant>,
     handwriting_last_sample_position: Option<[f32; 2]>,
+    settings_option_text_scroll_target: Option<InteractionKind>,
+    settings_option_text_scroll_started_at: Option<Instant>,
+    settings_scroll_dragging: bool,
+    settings_scroll_drag_start_y: Option<f32>,
+    settings_scroll_drag_start_offset: f32,
+    settings_scroll_drag_range: f32,
+    settings_scroll_track_rect: Option<[f32; 4]>,
+    settings_scroll_handle_rect: Option<[f32; 4]>,
+    settings_scroll_max_offset: f32,
+    settings_scroll_visible_height: f32,
+    settings_scroll_content_height: f32,
 }
 
 impl ApplicationHandler for PanelApp {
@@ -569,6 +581,9 @@ impl PanelState {
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
             settings_scroll_offset: 0.0,
+            settings_search_query: String::new(),
+            settings_search_focused: false,
+            settings_collapsed_sections: Vec::new(),
         });
         if let Some(saved) = persisted_settings.as_ref() {
             apply_display_settings(&mut chrome, saved);

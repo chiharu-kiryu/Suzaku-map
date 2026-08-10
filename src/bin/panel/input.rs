@@ -57,6 +57,8 @@ pub(super) fn handle_panel_window_event(
                     state.update_compact_hover();
                 } else if state.interaction.scale_dragging {
                     state.update_window_scale_drag(position.x as f32);
+                } else if state.interaction.settings_scroll_dragging {
+                    state.update_settings_scroll_drag(position.y as f32);
                 } else if state.kind == PanelWindowKind::Main {
                     state.extend_handwriting_stroke();
                 }
@@ -165,9 +167,49 @@ pub(super) fn handle_panel_window_event(
                         event_loop.exit();
                         return;
                     }
-                    if state.kind == PanelWindowKind::Settings {
-                        if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key {
-                            state.chrome.settings_open = false;
+                    if state.kind == PanelWindowKind::Settings
+                        || (state.kind == PanelWindowKind::Main && state.chrome.settings_open)
+                    {
+                        match event.physical_key {
+                            PhysicalKey::Code(KeyCode::Escape) => {
+                                state.chrome.settings_open = false;
+                            }
+                            PhysicalKey::Code(KeyCode::PageUp) => {
+                                state.current_scene();
+                                state.adjust_settings_scroll(-34.0);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            PhysicalKey::Code(KeyCode::PageDown) => {
+                                state.current_scene();
+                                state.adjust_settings_scroll(34.0);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            PhysicalKey::Code(KeyCode::Home) => {
+                                state.current_scene();
+                                state.set_settings_scroll_offset(0.0);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            PhysicalKey::Code(KeyCode::End) => {
+                                state.current_scene();
+                                state.set_settings_scroll_offset(state.interaction.settings_scroll_max_offset);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            PhysicalKey::Code(KeyCode::Backspace) => {
+                                state.backspace_settings_search_text();
+                                state.window.request_redraw();
+                                return;
+                            }
+                            _ => {}
+                        }
+
+                        if let Some(text) = event.text.as_deref() {
+                            state.handle_settings_search_text(text);
+                            state.window.request_redraw();
+                            return;
                         }
                     } else {
                         match event.physical_key {
@@ -305,7 +347,7 @@ pub(super) fn handle_panel_window_event(
                             }
                             _ => {}
                         }
-                        if let Some(text) = event.text.as_deref() {
+                    if let Some(text) = event.text.as_deref() {
                             state.handle_text_input(text);
                         }
                     }
@@ -320,7 +362,10 @@ pub(super) fn handle_panel_window_event(
                 if state.kind == PanelWindowKind::Main && (state.modifiers.control_key() || state.modifiers.super_key())
                 {
                     state.scale_window_by_wheel_delta(zoom_delta);
-                } else if state.kind == PanelWindowKind::Settings {
+                } else if (state.kind == PanelWindowKind::Main && state.chrome.settings_open)
+                    || state.kind == PanelWindowKind::Settings
+                {
+                    state.current_scene();
                     let scroll_delta = match delta {
                         MouseScrollDelta::LineDelta(_, y) => y * 24.0,
                         MouseScrollDelta::PixelDelta(position) => {

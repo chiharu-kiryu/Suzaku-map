@@ -1,7 +1,11 @@
 use super::*;
 
 impl WgpuCandidateRenderer {
-    pub fn build_settings_scene(&self, chrome: &PanelChromeState) -> RenderScene {
+    pub fn build_settings_scene(
+        &self,
+        chrome: &PanelChromeState,
+        settings_option_text_scroll: Option<(InteractionKind, Instant)>,
+    ) -> RenderScene {
         let theme = PanelTheme::for_preset(chrome.theme_preset);
         let page_bg = theme.page_bg;
         let shell = theme.shell;
@@ -376,16 +380,96 @@ impl WgpuCandidateRenderer {
             }
             rows
         };
+        let search_query = chrome.settings_search_query.trim().to_ascii_lowercase();
+        let is_searching = !search_query.is_empty();
+        let mut visible_sections: Vec<(usize, &str, Vec<(InteractionKind, &str, bool)>, bool)> =
+            Vec::new();
+
+        for (index, (label, options)) in sections.iter().enumerate() {
+            let is_collapsed = chrome
+                .settings_collapsed_sections
+                .get(index)
+                .copied()
+                .unwrap_or(false);
+            let mut filtered_options = Vec::new();
+
+            if is_searching {
+                let label_matches = label
+                    .to_ascii_lowercase()
+                    .contains(&search_query);
+                for (kind, option_label, selected) in options {
+                    if label_matches || option_label.to_ascii_lowercase().contains(&search_query) {
+                        filtered_options.push((*kind, *option_label, *selected));
+                    }
+                }
+                if label_matches || !filtered_options.is_empty() {
+                    visible_sections.push((index, label, filtered_options, false));
+                }
+            } else {
+                for (kind, option_label, selected) in options {
+                    filtered_options.push((*kind, *option_label, *selected));
+                }
+                visible_sections.push((index, label, filtered_options, is_collapsed));
+            }
+        }
+
+        let scroll_text_for_option = |text: &str,
+                                    started_at: Instant,
+                                    pixel_size: f32,
+                                    letter_spacing: f32,
+                                    max_width: f32| {
+            let chars: Vec<char> = text.chars().collect();
+            if chars.is_empty() || max_width <= 0.0 {
+                return "…".to_string();
+            }
+
+            let glyph_advance = (pixel_size * 6.5 + letter_spacing).max(pixel_size * 4.0);
+            let width_for_char = |ch: char| {
+                if ch == ' ' {
+                    pixel_size * 4.0
+                } else {
+                    glyph_advance
+                }
+            };
+
+            let doubled: Vec<char> = chars.iter().chain(chars.iter()).cloned().collect();
+            let cycle_step = (started_at.elapsed().as_millis() as f32 / 220.0).floor() as usize;
+            let start = cycle_step % chars.len();
+            let viewport_capacity = ((max_width / glyph_advance).floor() as usize).max(1);
+
+            let mut text = String::new();
+            let mut width = 0.0_f32;
+
+            for (offset, ch) in doubled.iter().skip(start).take(chars.len()).enumerate() {
+                if width_for_char(*ch) + width > max_width && !text.is_empty() {
+                    break;
+                }
+                if text.is_empty() {
+                    text.push(*ch);
+                    width = width_for_char(*ch);
+                } else if offset < viewport_capacity {
+                    text.push(*ch);
+                    width += width_for_char(*ch);
+                }
+            }
+
+            text
+        };
+
         let mut estimated_height = 0.0;
 
-        for (_, options) in sections.iter() {
-            let section_rows = estimate_chip_rows(options.as_slice());
-            estimated_height += section_margin + section_label_height;
-            estimated_height += section_rows as f32 * row_height;
-            if section_rows > 1 {
-                estimated_height += (section_rows as f32 - 1.0) * chip_gap_y;
+        for (_, _, options, is_collapsed) in visible_sections.iter() {
+            if !is_collapsed && !options.is_empty() {
+                let section_rows = estimate_chip_rows(options.as_slice());
+                estimated_height += section_margin + section_label_height;
+                estimated_height += section_rows as f32 * row_height;
+                if section_rows > 1 {
+                    estimated_height += (section_rows as f32 - 1.0) * chip_gap_y;
+                }
+                estimated_height += section_gap_y;
+            } else {
+                estimated_height += section_margin + section_label_height + section_gap_y;
             }
-            estimated_height += section_gap_y;
         }
 
         let title_section_h = 33.8;
@@ -405,6 +489,7 @@ impl WgpuCandidateRenderer {
         let mut text_sections = Vec::new();
         let hit_targets = Vec::new();
         let mut interactive_targets = Vec::new();
+        let mut settings_option_truncated = Vec::new();
         let interaction_state = |kind: InteractionKind| {
             (
                 chrome.hovered_interaction == Some(kind),
@@ -538,7 +623,126 @@ impl WgpuCandidateRenderer {
 
         let mut label_layouts = Vec::new();
         let mut option_layouts = Vec::new();
-        let settings_content_top = panel_y + 40.0;
+        let search_bar_x = panel_x + 14.0 * ui_scale;
+        let search_bar_w = (panel_width - 72.0 * ui_scale).max(140.0 * ui_scale);
+        let search_bar_h = 19.2 * ui_scale;
+        let search_bar_y = panel_y + 35.0 * ui_scale;
+        let search_clear_size = (18.0 * ui_scale).max(10.0);
+        let search_clear_x = search_bar_x + search_bar_w + 6.0 * ui_scale;
+        let search_clear_y = search_bar_y;
+        let clear_search_text = !chrome.settings_search_query.is_empty();
+        let clear_search_visible = clear_search_text;
+        let search_bar_rect = [search_bar_x, search_bar_y, search_bar_w, search_bar_h];
+        let clear_button_rect = [search_clear_x, search_clear_y, search_clear_size, search_bar_h];
+        let (search_hovered, search_pressed) =
+            interaction_state(InteractionKind::SettingsSearchInput);
+        let (clear_hovered, clear_pressed) =
+            interaction_state(InteractionKind::SettingsSearchClear);
+
+        let search_bar_fill = if search_pressed {
+            surface_muted
+        } else if search_hovered || chrome.settings_search_focused {
+            surface
+        } else {
+            surface_alt
+        };
+        append_soft_card_quads(
+            &mut quads,
+            search_bar_rect,
+            search_bar_fill,
+            if search_hovered || clear_hovered {
+                accent
+            } else {
+                border_dark
+            },
+            soft_shadow,
+            surface,
+            8.0 * ui_scale,
+        );
+        interactive_targets.push(InteractiveTarget {
+            kind: InteractionKind::SettingsSearchInput,
+            rect: interaction_hit_rect(search_bar_rect),
+        });
+
+        let search_text = if chrome.settings_search_query.is_empty() {
+            "Search settings".to_string()
+        } else {
+            chrome.settings_search_query.clone()
+        };
+        let search_layout = TextBlock {
+            text: search_text,
+            origin: [search_bar_rect[0] + 8.0 * ui_scale, search_bar_rect[1] + 4.8 * ui_scale],
+            max_width: (search_bar_rect[2] - 16.0 * ui_scale).max(40.0),
+            pixel_size: section_px,
+            letter_spacing: ui_tracking,
+            line_gap: base_line_gap,
+            max_lines: 1,
+            color: if chrome.settings_search_query.is_empty() {
+                text_secondary
+            } else {
+                text_primary
+            },
+            align: TextAlign::Left,
+            role: TextRole::InputValue,
+        }
+        .layout();
+        text_quads.extend(search_layout.quads.iter().copied());
+        atlas_glyphs.extend(search_layout.atlas_glyphs.iter().cloned());
+
+        if clear_search_visible {
+            let clear_fill = if clear_pressed {
+                settings_press_surface
+            } else if clear_hovered {
+                settings_hover_surface
+            } else {
+                surface_alt
+            };
+            append_soft_card_quads(
+                &mut quads,
+                clear_button_rect,
+                clear_fill,
+                if clear_pressed {
+                    accent
+                } else if clear_hovered {
+                    settings_hover_border
+                } else {
+                    shell_border
+                },
+                soft_shadow,
+                surface,
+                8.0 * ui_scale,
+            );
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsSearchClear,
+                rect: interaction_hit_rect(clear_button_rect),
+            });
+
+            let clear_label = TextBlock {
+                text: "×".to_string(),
+                origin: [
+                    clear_button_rect[0] + 6.0 * ui_scale,
+                    clear_button_rect[1] + 4.0 * ui_scale,
+                ],
+                max_width: (clear_button_rect[2] - 2.0 * ui_scale).max(2.0),
+                pixel_size: section_px,
+                letter_spacing: ui_tracking,
+                line_gap: base_line_gap,
+                max_lines: 1,
+                color: text_secondary,
+                align: TextAlign::Center,
+                role: TextRole::SettingOption,
+            }
+            .layout();
+            text_quads.extend(clear_label.quads.iter().copied());
+            atlas_glyphs.extend(clear_label.atlas_glyphs.iter().cloned());
+        }
+
+        text_sections.push(TextSection {
+            role: TextRole::InputLabel,
+            layouts: vec![search_layout],
+        });
+
+        let settings_content_top = search_bar_y + search_bar_h + 8.0;
         let settings_content_bottom = panel_y + panel_height - 4.0;
         let visible_content_height = (settings_content_bottom - settings_content_top).max(0.0);
         let max_scroll_offset = (estimated_height - visible_content_height).max(0.0);
@@ -546,17 +750,111 @@ impl WgpuCandidateRenderer {
             .settings_scroll_offset
             .max(0.0)
             .min(max_scroll_offset);
+        let scroll_track_width = 5.8 * ui_scale;
+        let scroll_track_padding = 8.0 * ui_scale;
+        let settings_scroll_track_x = (panel_x + panel_width - scroll_track_width - scroll_track_padding)
+            .max(panel_x + 2.0);
+        let settings_scroll_track_top = settings_content_top;
+        let settings_scroll_track_height = (settings_content_bottom - settings_scroll_track_top).max(0.0);
+        let chip_max_x = panel_x + panel_width - (scroll_track_width + scroll_track_padding * 1.5);
         let mut content_y = settings_content_top - settings_scroll_offset;
+        let has_settings_scroll = max_scroll_offset > 0.0 && settings_scroll_track_height > 0.0;
+        let settings_scroll_handle_height = if has_settings_scroll {
+            let ratio = (visible_content_height / estimated_height.max(visible_content_height)).clamp(0.12, 1.0);
+            (settings_scroll_track_height * ratio)
+                .clamp(14.0 * ui_scale, settings_scroll_track_height)
+        } else {
+            settings_scroll_track_height.min(16.0 * ui_scale)
+        };
+        let settings_scroll_drag_range = (settings_scroll_track_height - settings_scroll_handle_height).max(0.0);
+        let settings_scroll_handle_offset = if has_settings_scroll && settings_scroll_drag_range > 0.0 {
+            (settings_scroll_offset / max_scroll_offset * settings_scroll_drag_range).clamp(0.0, settings_scroll_drag_range)
+        } else {
+            0.0
+        };
+        let settings_scroll_track_rect = [
+            settings_scroll_track_x,
+            settings_scroll_track_top,
+            scroll_track_width,
+            settings_scroll_track_height,
+        ];
+        let settings_scroll_handle_rect = [
+            settings_scroll_track_x,
+            settings_scroll_track_top + settings_scroll_handle_offset,
+            scroll_track_width,
+            settings_scroll_handle_height,
+        ];
+        let settings_scroll_metadata = SettingsScrollMetadata {
+            track_rect: settings_scroll_track_rect,
+            handle_rect: settings_scroll_handle_rect,
+            content_height: estimated_height.max(0.0),
+            visible_height: visible_content_height,
+            max_scroll_offset,
+            handle_drag_range: settings_scroll_drag_range,
+        };
         let visible_in_settings = |top: f32, height: f32| {
             top + height > settings_content_top && top < settings_content_bottom
         };
 
-        for (label, options) in sections.iter() {
-            let section_rows = estimate_chip_rows(options.as_slice());
-            let mut section_height =
-                section_margin + section_label_height + section_rows as f32 * row_height;
-            if section_rows > 1 {
-                section_height += (section_rows as f32 - 1.0) * chip_gap_y;
+        if has_settings_scroll {
+            let track_color = [
+                (text_primary[0] + text_secondary[0] * 0.7) / 1.7,
+                (text_primary[1] + text_secondary[1] * 0.7) / 1.7,
+                (text_primary[2] + text_secondary[2] * 0.7) / 1.7,
+                0.2,
+            ];
+            append_soft_card_quads(
+                &mut quads,
+                settings_scroll_track_rect,
+                track_color,
+                [
+                    (text_secondary[0] * 0.2),
+                    (text_secondary[1] * 0.2),
+                    (text_secondary[2] * 0.2),
+                    0.4,
+                ],
+                [0.0, 0.0, 0.0, 0.0],
+                surface,
+                scroll_track_width * 0.55,
+            );
+            let (scroll_hovered_track, _) = interaction_state(InteractionKind::SettingsScrollTrack);
+            let (scroll_hovered_handle, _) = interaction_state(InteractionKind::SettingsScrollHandle);
+            let handle_hovered = scroll_hovered_track || scroll_hovered_handle;
+            let handle_color = if self.chrome.settings_open && handle_hovered {
+                [text_primary[0], text_primary[1], text_primary[2], 0.44]
+            } else {
+                [text_primary[0], text_primary[1], text_primary[2], 0.34]
+            };
+            let handle_rect = settings_scroll_handle_rect;
+            quads.push(CandidateQuad {
+                rect: handle_rect,
+                color: handle_color,
+            });
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsScrollTrack,
+                rect: interaction_hit_rect(settings_scroll_track_rect),
+            });
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsScrollHandle,
+                rect: interaction_hit_rect(settings_scroll_handle_rect),
+            });
+        }
+
+        for (_visible_index, (section_index, label, options, is_collapsed)) in
+            visible_sections.iter().enumerate()
+        {
+            let section_effectively_collapsed = is_searching || *is_collapsed;
+            let section_rows = if section_effectively_collapsed || options.is_empty() {
+                1.0
+            } else {
+                estimate_chip_rows(options.as_slice()) as f32
+            };
+            let mut section_height = section_margin + section_label_height;
+            if !section_effectively_collapsed && !options.is_empty() {
+                section_height += section_rows * row_height;
+                if section_rows > 1.0 {
+                    section_height += (section_rows - 1.0) * chip_gap_y;
+                }
             }
             let section_top = content_y - 3.2;
             let section_visible = visible_in_settings(section_top, section_height);
@@ -591,72 +889,139 @@ impl WgpuCandidateRenderer {
                 });
             }
 
+            let label_toggle_layout = TextBlock {
+                text: if section_effectively_collapsed { "▸" } else { "▾" }.to_string(),
+                origin: [panel_x + panel_width - 24.0 * ui_scale, content_y + 6.2],
+                max_width: 10.0,
+                pixel_size: section_px,
+                letter_spacing: heading_tracking,
+                line_gap: base_line_gap,
+                max_lines: 1,
+                color: text_secondary,
+                align: TextAlign::Center,
+                role: TextRole::SettingOption,
+            }
+            .layout();
+            if section_visible {
+                text_quads.extend(label_toggle_layout.quads.iter().copied());
+                atlas_glyphs.extend(label_toggle_layout.atlas_glyphs.iter().cloned());
+                option_layouts.push(label_toggle_layout);
+                    interactive_targets.push(InteractiveTarget {
+                        kind: InteractionKind::ToggleSettingsSection(*section_index),
+                        rect: interaction_hit_rect([
+                            panel_x + 8.0 * ui_scale,
+                            section_top,
+                            panel_width - 16.0 * ui_scale,
+                        section_label_height,
+                    ]),
+                });
+            }
+
             let mut chip_x = chip_start_x;
             let mut chip_y = content_y;
-            for (kind, chip_label, selected) in options {
-                let (hovered, pressed) = interaction_state(*kind);
-                let available_chip_w =
-                    (chip_area_width + chip_start_x - chip_x).max(72.0 * ui_scale);
-                let chip_w = estimated_chip_width(chip_label).min(available_chip_w);
-                if chip_x > chip_start_x && chip_x + chip_w > chip_max_x {
-                    chip_x = chip_start_x;
-                    chip_y += row_height + chip_gap_y;
-                }
-                let rect = [chip_x, chip_y, chip_w, row_height];
-                let rect_visible = visible_in_settings(chip_y, row_height);
-                let visual_rect = animated_rect(rect, hovered, pressed);
-                if rect_visible {
-                    append_soft_card_quads(
-                        &mut quads,
-                        visual_rect,
-                        if pressed {
-                            settings_press_surface
-                        } else if *selected {
-                            accent_soft
-                        } else if hovered {
-                            settings_hover_surface
-                        } else {
-                            surface
-                        },
-                        if pressed {
-                            accent
-                        } else if *selected {
-                            accent
-                        } else if hovered {
-                            settings_hover_border
-                        } else {
-                            shell_border
-                        },
-                        animated_shadow(soft_shadow, hovered, pressed),
-                        shell,
-                        settings_chip_radius,
-                    );
-                    interactive_targets.push(InteractiveTarget {
-                        kind: *kind,
-                        rect: interaction_hit_rect(rect),
-                    });
-
-                    let option_layout = TextBlock {
-                        text: (*chip_label).to_string(),
-                        origin: [
-                            visual_rect[0] + 10.0 * ui_scale,
-                            visual_rect[1] + 6.2 * ui_scale,
-                        ],
-                        max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
-                        pixel_size: chip_px,
-                        letter_spacing: ui_tracking,
-                        line_gap: base_line_gap,
-                        max_lines: 1,
-                        color: if *selected { accent_text } else { text_primary },
-                        align: TextAlign::Center,
-                        role: TextRole::SettingOption,
+            if !section_effectively_collapsed {
+                for (kind, chip_label, selected) in options {
+                    let (hovered, pressed) = interaction_state(*kind);
+                    let available_chip_w =
+                        (chip_area_width + chip_start_x - chip_x).max(72.0 * ui_scale);
+                    let chip_w = estimated_chip_width(chip_label).min(available_chip_w);
+                    if chip_x > chip_start_x && chip_x + chip_w > chip_max_x {
+                        chip_x = chip_start_x;
+                        chip_y += row_height + chip_gap_y;
                     }
-                    .layout();
-                    text_quads.extend(option_layout.quads.iter().copied());
-                    atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
-                    option_layouts.push(option_layout);
+                    let rect = [chip_x, chip_y, chip_w, row_height];
+                    let rect_visible = visible_in_settings(chip_y, row_height);
+                    let visual_rect = animated_rect(rect, hovered, pressed);
+
+                    let mut option_text = (*chip_label).to_string();
+                    if rect_visible {
+                        let base_layout = TextBlock {
+                            text: option_text.clone(),
+                            origin: [
+                                visual_rect[0] + 10.0 * ui_scale,
+                                visual_rect[1] + 6.2 * ui_scale,
+                            ],
+                            max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
+                            pixel_size: chip_px,
+                            letter_spacing: ui_tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: if *selected { accent_text } else { text_primary },
+                            align: TextAlign::Center,
+                            role: TextRole::SettingOption,
+                        }
+                        .layout();
+                        if base_layout.truncated || base_layout.lines.len() > 1 {
+                            settings_option_truncated
+                                .push(InteractionKind::SettingsOptionTextScroll(*kind));
+                        }
+
+                        if let Some((scroll_kind, started_at)) =
+                            settings_option_text_scroll.as_ref()
+                        {
+                            if *scroll_kind == *kind && base_layout.truncated {
+                                option_text = scroll_text_for_option(
+                                    &option_text,
+                                    *started_at,
+                                    chip_px,
+                                    ui_tracking,
+                                    (visual_rect[2] - 20.0 * ui_scale).max(14.0),
+                                );
+                            }
+                        }
+
+                        append_soft_card_quads(
+                            &mut quads,
+                            visual_rect,
+                            if pressed {
+                                settings_press_surface
+                            } else if *selected {
+                                accent_soft
+                            } else if hovered {
+                                settings_hover_surface
+                            } else {
+                                surface
+                            },
+                            if pressed {
+                                accent
+                            } else if *selected {
+                                accent
+                            } else if hovered {
+                                settings_hover_border
+                            } else {
+                                shell_border
+                            },
+                            animated_shadow(soft_shadow, hovered, pressed),
+                            shell,
+                            settings_chip_radius,
+                        );
+                        interactive_targets.push(InteractiveTarget {
+                            kind: *kind,
+                            rect: interaction_hit_rect(rect),
+                        });
+
+                        let option_layout = TextBlock {
+                            text: option_text,
+                            origin: [
+                                visual_rect[0] + 10.0 * ui_scale,
+                                visual_rect[1] + 6.2 * ui_scale,
+                            ],
+                            max_width: (visual_rect[2] - 20.0 * ui_scale).max(14.0),
+                            pixel_size: chip_px,
+                            letter_spacing: ui_tracking,
+                            line_gap: base_line_gap,
+                            max_lines: 1,
+                            color: if *selected { accent_text } else { text_primary },
+                            align: TextAlign::Center,
+                            role: TextRole::SettingOption,
+                        }
+                        .layout();
+                        text_quads.extend(option_layout.quads.iter().copied());
+                        atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
+                        option_layouts.push(option_layout);
+                    }
+                    chip_x += chip_w + chip_gap_x;
                 }
-                chip_x += chip_w + chip_gap_x;
             }
 
             let label_layout = TextBlock {
@@ -699,6 +1064,8 @@ impl WgpuCandidateRenderer {
             sentence_candidate_truncated: Vec::new(),
             next_token_candidate_truncated: Vec::new(),
             handwriting_candidate_truncated: Vec::new(),
+            settings_option_truncated,
+            settings_scroll_metadata: Some(settings_scroll_metadata),
             labels: Vec::new(),
             selected_label: None,
             draft_text: String::new(),

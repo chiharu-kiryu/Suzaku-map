@@ -8,8 +8,8 @@ use crate::helpers::window_title;
 use crate::render::{build_shape_vertices, build_text_vertices};
 use std::time::{Duration, Instant};
 use suzaku_map::ime::gpu::{
-    InputMode, InteractionKind, RenderScene, VirtualKeyboardKey, VoiceCaptureState,
-    VoicePermissionState,
+    InputMode, InteractionKind, RenderScene, SettingsScrollMetadata, VirtualKeyboardKey,
+    VoiceCaptureState, VoicePermissionState,
 };
 use suzaku_map::ime::CommitOptions;
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
@@ -379,7 +379,7 @@ impl PanelState {
         let _ = save_display_settings(&settings);
     }
 
-    pub(super) fn current_scene(&self) -> RenderScene {
+    pub(super) fn current_scene(&mut self) -> RenderScene {
         let mut scene = match self.kind {
             PanelWindowKind::Main => {
                 let mut chrome = self.chrome.clone();
@@ -414,6 +414,15 @@ impl PanelState {
                             .as_ref()
                             .map(|started_at| (index, *started_at))
                     });
+                let settings_option_text_scroll = self
+                    .interaction
+                    .settings_option_text_scroll_target
+                    .and_then(|kind| {
+                        self.interaction
+                            .settings_option_text_scroll_started_at
+                            .as_ref()
+                            .map(|started_at| (kind, *started_at))
+                    });
                 if chrome.compact_mode {
                     self.renderer.build_compact_scene(
                         &self.engine.snapshot(),
@@ -428,6 +437,7 @@ impl PanelState {
                         sentence_candidate_scroll,
                         next_token_candidate_scroll,
                         handwriting_candidate_scroll,
+                        settings_option_text_scroll,
                     )
                 }
             }
@@ -435,12 +445,46 @@ impl PanelState {
                 let mut chrome = self.chrome.clone();
                 chrome.hovered_interaction = self.interaction.hovered_interaction;
                 chrome.pressed_interaction = self.interaction.pressed_interaction;
-                self.renderer.build_settings_scene(&chrome)
+                self.renderer
+                    .build_settings_scene(&chrome, self.interaction.settings_option_text_scroll_target.and_then(
+                        |kind| self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .as_ref()
+                            .map(|started_at| (kind, *started_at)),
+                    ))
             }
         };
         self.append_hover_tooltip(&mut scene);
         self.append_commit_feedback(&mut scene);
+        self.sync_settings_scroll_interaction_metadata(&scene.settings_scroll_metadata);
         scene
+    }
+
+    fn sync_settings_scroll_interaction_metadata(
+        &mut self,
+        metadata: &Option<SettingsScrollMetadata>,
+    ) {
+        let Some(settings_scroll_metadata) = metadata else {
+            self.interaction.settings_scroll_track_rect = None;
+            self.interaction.settings_scroll_handle_rect = None;
+            self.interaction.settings_scroll_max_offset = 0.0;
+            self.interaction.settings_scroll_drag_range = 0.0;
+            self.interaction.settings_scroll_visible_height = 0.0;
+            self.interaction.settings_scroll_content_height = 0.0;
+            return;
+        };
+
+        self.interaction.settings_scroll_track_rect = Some(settings_scroll_metadata.track_rect);
+        self.interaction.settings_scroll_handle_rect = Some(settings_scroll_metadata.handle_rect);
+        self.interaction.settings_scroll_max_offset = settings_scroll_metadata.max_scroll_offset.max(0.0);
+        self.interaction.settings_scroll_drag_range = settings_scroll_metadata.handle_drag_range.max(0.0);
+        self.interaction.settings_scroll_visible_height = settings_scroll_metadata.visible_height.max(0.0);
+        self.interaction.settings_scroll_content_height = settings_scroll_metadata.content_height.max(0.0);
+        self.chrome.settings_scroll_offset = self
+            .chrome
+            .settings_scroll_offset
+            .clamp(0.0, self.interaction.settings_scroll_max_offset);
     }
 
     pub(super) fn adopt_settings_from(&mut self, other: &suzaku_map::ime::gpu::PanelChromeState) {
@@ -452,6 +496,9 @@ impl PanelState {
 
         apply_display_settings(&mut self.chrome, &PersistedDisplaySettings::from(other));
         self.persist_display_settings();
+        self.chrome.settings_search_query = other.settings_search_query.clone();
+        self.chrome.settings_search_focused = other.settings_search_focused;
+        self.chrome.settings_collapsed_sections = other.settings_collapsed_sections.clone();
 
         if needs_font_rebuild {
             self.rebuild_font_atlas();
@@ -681,33 +728,207 @@ impl PanelState {
                         self.chrome.settings_scroll_offset = 0.0;
                     }
                 }
+                InteractionKind::SettingsSearchInput => {
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.chrome.settings_search_focused = true;
+                }
+                InteractionKind::SettingsSearchClear => {
+                    self.clear_settings_search_text();
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.chrome.settings_search_focused = true;
+                    self.chrome.settings_scroll_offset = 0.0;
+                }
+                InteractionKind::ToggleSettingsSection(index) => {
+                    if index >= self.chrome.settings_collapsed_sections.len() {
+                        self.chrome
+                            .settings_collapsed_sections
+                            .resize(index + 1, false);
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.chrome.settings_collapsed_sections[index] =
+                        !self.chrome.settings_collapsed_sections[index];
+                }
+                InteractionKind::SettingsScrollTrack => {
+                    let Some((_, cursor_y)) = self.cursor_position else {
+                        return;
+                    };
+                    let Some(track_rect) = self.interaction.settings_scroll_track_rect else {
+                        return;
+                    };
+                    let Some(handle_rect) = self.interaction.settings_scroll_handle_rect else {
+                        return;
+                    };
+                    if self.interaction.settings_scroll_drag_range <= 0.0
+                        || self.interaction.settings_scroll_max_offset <= 0.0
+                    {
+                        let step = (self.interaction.settings_scroll_visible_height * 0.88)
+                            .max(20.0);
+                        if cursor_y < handle_rect[1] {
+                            self.adjust_settings_scroll(-step);
+                        } else if cursor_y > handle_rect[1] + handle_rect[3] {
+                            self.adjust_settings_scroll(step);
+                        }
+                        return;
+                    }
+
+                    let click_ratio = ((cursor_y - track_rect[1] - handle_rect[3] * 0.5)
+                        / self.interaction.settings_scroll_drag_range)
+                        .clamp(0.0, 1.0);
+                    let target = click_ratio * self.interaction.settings_scroll_max_offset;
+                    self.set_settings_scroll_offset(target);
+                }
+                InteractionKind::SettingsScrollHandle => {
+                    // Handle dragging is processed while the pointer is held.
+                }
                 InteractionKind::SetTextScale(scale) => {
+                    let action = InteractionKind::SetTextScale(scale);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.text_scale = scale;
                     self.persist_display_settings();
                 }
                 InteractionKind::SetCandidateDensity(density) => {
+                    let action = InteractionKind::SetCandidateDensity(density);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.candidate_density = density;
                     self.persist_display_settings();
                 }
                 InteractionKind::SetPreviewStyle(style) => {
+                    let action = InteractionKind::SetPreviewStyle(style);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.preview_style = style;
                     self.persist_display_settings();
                 }
                 InteractionKind::SetFontFace(font_face) => {
+                    let action = InteractionKind::SetFontFace(font_face);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.font_face = font_face;
                     self.rebuild_font_atlas();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetTextSpacing(spacing) => {
+                    let action = InteractionKind::SetTextSpacing(spacing);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.text_spacing = spacing;
                     self.persist_display_settings();
                 }
                 InteractionKind::SetTextSmoothing(smoothing) => {
+                    let action = InteractionKind::SetTextSmoothing(smoothing);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.text_smoothing = smoothing;
                     self.rebuild_font_atlas();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetThemePreset(theme) => {
+                    let action = InteractionKind::SetThemePreset(theme);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.theme_preset = theme;
                     if theme == suzaku_map::ime::gpu::ThemePreset::HighContrast
                         && self.chrome.text_smoothing
@@ -719,35 +940,154 @@ impl PanelState {
                     self.persist_display_settings();
                 }
                 InteractionKind::SetLlmEnabled(enabled) => {
+                    let action = InteractionKind::SetLlmEnabled(enabled);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.llm_enabled = enabled;
                     self.reconfigure_llama_plugin();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetPointerTapSlopTenths(value) => {
+                    let action = InteractionKind::SetPointerTapSlopTenths(value);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.pointer_tap_slop_tenths = value;
                     normalize_pointer_stability_settings(&mut self.chrome);
                     self.persist_display_settings();
                 }
                 InteractionKind::SetPointerTapMaxMs(value) => {
+                    let action = InteractionKind::SetPointerTapMaxMs(value);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.pointer_tap_max_ms = value;
                     normalize_pointer_stability_settings(&mut self.chrome);
                     self.persist_display_settings();
                 }
                 InteractionKind::SetPointerTargetSlopTenths(value) => {
+                    let action = InteractionKind::SetPointerTargetSlopTenths(value);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.pointer_target_slop_tenths = value;
                     normalize_pointer_stability_settings(&mut self.chrome);
                     self.persist_display_settings();
                 }
                 InteractionKind::SetVoiceAutoInsert(enabled) => {
+                    let action = InteractionKind::SetVoiceAutoInsert(enabled);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.voice_auto_insert = enabled;
                     self.persist_display_settings();
                 }
                 InteractionKind::SetLlmModel(model) => {
+                    let action = InteractionKind::SetLlmModel(model);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.llm_model = model;
                     self.reconfigure_llama_plugin();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetLlmTemperature(temp) => {
+                    let action = InteractionKind::SetLlmTemperature(temp);
+                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_scrolling = self.interaction.settings_option_text_scroll_target
+                        == Some(action)
+                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                    if is_truncated && !is_scrolling {
+                        self.interaction.settings_option_text_scroll_target = Some(action);
+                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        return;
+                    }
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.clear_sentence_candidate_scroll();
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
                     self.chrome.llm_temperature = temp;
                     self.reconfigure_llama_plugin();
                     self.persist_display_settings();
@@ -921,6 +1261,12 @@ impl PanelState {
             self.clear_sentence_candidate_scroll();
         }
 
+        if self.interaction.pressed_interaction == Some(InteractionKind::SettingsScrollHandle) {
+            self.interaction.touch_tap_pending = false;
+            self.begin_settings_scroll_drag();
+            return;
+        }
+
         if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
                 self.interaction.touch_tap_pending = false;
@@ -949,6 +1295,12 @@ impl PanelState {
     pub(super) fn update_touch_move_stability(&mut self) {
         if self.interaction.handwriting_dragging {
             self.extend_handwriting_stroke();
+            return;
+        }
+        if self.interaction.settings_scroll_dragging {
+            if let Some((_, y)) = self.cursor_position {
+                self.update_settings_scroll_drag(y);
+            }
             return;
         }
         if self.interaction.compact_dragging {
@@ -989,6 +1341,8 @@ impl PanelState {
             } else if selected_from_pressed {
                 self.select_at_cursor();
             }
+        } else if self.interaction.settings_scroll_dragging {
+            self.end_settings_scroll_drag();
         } else if self.interaction.scale_dragging {
             self.end_window_scale_drag();
         } else if is_touch {
@@ -1023,6 +1377,9 @@ impl PanelState {
 
     pub(super) fn cancel_primary_interaction(&mut self) {
         self.finish_handwriting_stroke();
+        if self.interaction.settings_scroll_dragging {
+            self.end_settings_scroll_drag();
+        }
         if self.interaction.compact_dragging {
             self.interaction.compact_dragging = false;
             self.interaction.compact_drag_moved = false;
@@ -1123,6 +1480,8 @@ impl PanelState {
         self.interaction.next_token_candidate_scroll_started_at = None;
         self.interaction.handwriting_candidate_scroll_index = None;
         self.interaction.handwriting_candidate_scroll_started_at = None;
+        self.interaction.settings_option_text_scroll_target = None;
+        self.interaction.settings_option_text_scroll_started_at = None;
     }
 
     pub(super) fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {
