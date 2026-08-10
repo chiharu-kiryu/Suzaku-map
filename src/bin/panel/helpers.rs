@@ -30,3 +30,27 @@ pub(super) fn window_title(
 
 #[allow(dead_code)]
 pub(super) fn _quad_debug(_quad: &CandidateQuad) {}
+
+#[cfg(test)]
+mod tests {
+    use super::point_in_rect;
+
+    #[test]
+    fn point_in_rect_includes_edges() {
+        assert!(point_in_rect(0.0, 0.0, [0.0, 0.0, 10.0, 20.0]));
+        assert!(point_in_rect(10.0, 20.0, [0.0, 0.0, 10.0, 20.0]));
+    }
+
+    #[test]
+    fn point_in_rect_rejects_points_outside_bounds() {
+        assert!(!point_in_rect(-0.1, 0.0, [0.0, 0.0, 10.0, 20.0]));
+        assert!(!point_in_rect(10.1, 10.0, [0.0, 0.0, 10.0, 20.0]));
+        assert!(!point_in_rect(5.0, 20.1, [0.0, 0.0, 10.0, 20.0]));
+    }
+
+    #[test]
+    fn point_in_rect_supports_negative_origins_and_zero_size() {
+        assert!(point_in_rect(-4.0, -3.0, [-4.0, -3.0, 0.0, 0.0]));
+        assert!(!point_in_rect(-4.1, -3.0, [-4.0, -3.0, 0.0, 0.0]));
+    }
+}

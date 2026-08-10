@@ -628,4 +628,59 @@ mod tests {
         assert_eq!(chrome.pointer_tap_max_ms, 120);
         assert_eq!(chrome.pointer_target_slop_tenths, 10);
     }
+
+    #[test]
+    fn apply_display_settings_clamps_window_scale_to_safe_range() {
+        let mut chrome = PanelChromeState::default();
+        let settings = PersistedDisplaySettings {
+            text_scale: DisplayTextScale::Medium,
+            candidate_density: CandidateDensity::Cozy,
+            preview_style: PreviewStyle::Compact,
+            font_face: FontFaceChoice::Monaco,
+            text_spacing: TextSpacing::Normal,
+            text_smoothing: TextSmoothing::Sharp,
+            theme_preset: ThemePreset::Daylight,
+            voice_auto_insert: true,
+            llm_enabled: false,
+            llm_model: LlmModelPreset::Llama32_3b,
+            llm_temperature: LlmTemperaturePreset::Balanced,
+            pointer_tap_slop_tenths: 100,
+            pointer_tap_max_ms: 420,
+            pointer_target_slop_tenths: 50,
+            window_scale: 0.10,
+        };
+
+        apply_display_settings(&mut chrome, &settings);
+        assert_eq!(chrome.window_scale, PANEL_SCALE_MIN);
+
+        let settings = PersistedDisplaySettings {
+            window_scale: 99.9,
+            ..settings
+        };
+
+        apply_display_settings(&mut chrome, &settings);
+        assert_eq!(chrome.window_scale, PANEL_SCALE_MAX);
+    }
+
+    #[test]
+    fn decode_window_scale_clamps_and_rejects_invalid_values() {
+        assert_eq!(decode_window_scale("0.01"), Some(PANEL_SCALE_MIN));
+        assert_eq!(decode_window_scale("9.0"), Some(PANEL_SCALE_MAX));
+        assert_eq!(decode_window_scale("1.3"), Some(1.3));
+        assert_eq!(decode_window_scale("NaN"), None);
+        assert_eq!(decode_window_scale("not-a-number"), None);
+    }
+
+    #[test]
+    fn voice_controller_cycles_full_sample_set() {
+        let mut voice = VoiceInputController::new();
+        let samples: Vec<String> = (0..4).map(|_| voice.next_sample()).collect();
+        let next = voice.next_sample();
+
+        assert_eq!(samples.len(), 4);
+        assert_eq!(next, samples[0]);
+        assert!(!samples[0].is_empty());
+        assert!(!samples[1].is_empty());
+        assert_ne!(samples[0], samples[1]);
+    }
 }

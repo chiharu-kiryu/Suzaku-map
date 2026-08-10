@@ -1,4 +1,4 @@
-use super::{SupportTier, TargetPlatform, host_platform, support_for};
+use super::{SupportTier, TargetPlatform, host_platform, linux_ime, support_for};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PanelCompanionRole {
@@ -38,7 +38,13 @@ pub fn current_panel_companion_dispatch() -> PanelCompanionDispatch {
 
 pub fn dispatch_for(platform: TargetPlatform) -> PanelCompanionDispatch {
     let support = support_for(platform);
-    let system_ime_host = support.capabilities.system_ime_host;
+    let system_ime_host = match platform {
+        TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs => {
+            support.capabilities.system_ime_host
+                || linux_ime::bootstrap_status(platform).host_registration_ready
+        }
+        _ => support.capabilities.system_ime_host,
+    };
     let role = if system_ime_host {
         PanelCompanionRole::DebugCompanion
     } else {
@@ -70,6 +76,8 @@ pub fn dispatch_for(platform: TargetPlatform) -> PanelCompanionDispatch {
 mod tests {
     use super::{PanelCompanionRole, current_panel_companion_dispatch, dispatch_for};
     use crate::platform::{TargetPlatform, host_platform};
+    use crate::platform::test_env;
+    use crate::platform::test_env::ScopedEnv;
 
     #[test]
     fn panel_dispatch_matches_host_platform() {
@@ -101,10 +109,33 @@ mod tests {
             TargetPlatform::ArchLinux,
             TargetPlatform::SteamOs,
         ] {
-            assert_eq!(
-                dispatch_for(platform).role,
-                PanelCompanionRole::PrimaryPanelHost
-            );
+            test_env::with_test_env(|env: &mut ScopedEnv| {
+                env.set_var("SUZAKU_LINUX_IME_REGISTERED", "0");
+
+                assert_eq!(
+                    dispatch_for(platform).role,
+                    PanelCompanionRole::PrimaryPanelHost
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn linux_targets_switch_to_debug_companion_when_registered() {
+        for platform in [
+            TargetPlatform::Ubuntu,
+            TargetPlatform::ArchLinux,
+            TargetPlatform::SteamOs,
+        ] {
+            test_env::with_test_env(|env: &mut ScopedEnv| {
+                env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
+                env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+
+                assert_eq!(
+                    dispatch_for(platform).role,
+                    PanelCompanionRole::DebugCompanion
+                );
+            });
         }
     }
 }

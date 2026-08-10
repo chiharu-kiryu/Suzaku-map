@@ -1,8 +1,12 @@
-use super::PanelState;
+use super::{CommitAttempt, PanelState};
 use crate::render::create_font_atlas;
 use std::time::{Duration, Instant};
 use suzaku_map::ime::SignalState;
+use suzaku_map::ime::InputSource;
 use suzaku_map::ime::gpu::InteractionKind;
+use suzaku_map::platform::ime_host_adapter::shared_session_bridge;
+use suzaku_map::platform::ime_host_adapter::ImeHostSessionBridge;
+use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
 use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
 use suzaku_map::panel_support::{
     derive_next_token_candidates, derive_sentence_candidates_with_indices,
@@ -11,12 +15,30 @@ use suzaku_map::panel_support::{
 const COMMIT_INPUT_REPEAT_WINDOW: Duration = Duration::from_millis(260);
 const ACTION_REPEAT_WINDOW: Duration = Duration::from_millis(260);
 
+fn is_action_repeat(
+    target: InteractionKind,
+    last: Option<(InteractionKind, Instant)>,
+    now: Instant,
+) -> bool {
+    last.is_some_and(|(last_action, started_at)| {
+        last_action == target && now.duration_since(started_at) < ACTION_REPEAT_WINDOW
+    })
+}
+
+fn is_commit_input_repeat(
+    selected_index: usize,
+    text: &str,
+    last: &CommitAttempt,
+    now: Instant,
+) -> bool {
+    last.selected_index == selected_index
+        && last.text == text
+        && now.duration_since(last.timestamp) < COMMIT_INPUT_REPEAT_WINDOW
+}
+
 impl PanelState {
     pub(super) fn is_repeating_interaction(&self, target: InteractionKind) -> bool {
-        self.last_interaction_action
-            .is_some_and(|(last_action, started_at)| {
-                last_action == target && started_at.elapsed() < ACTION_REPEAT_WINDOW
-            })
+        is_action_repeat(target, self.last_interaction_action, Instant::now())
     }
 
     pub(super) fn note_interaction_action(&mut self, action: InteractionKind) {
@@ -68,9 +90,8 @@ impl PanelState {
         let Some(last) = self.last_commit_attempt.as_ref() else {
             return false;
         };
-        last.selected_index == selected_index
-            && last.text == text
-            && last.timestamp.elapsed() < COMMIT_INPUT_REPEAT_WINDOW
+
+        is_commit_input_repeat(selected_index, text, last, Instant::now())
     }
 
     pub(super) fn note_commit_attempt(&mut self, selected_index: usize, text: &str) {
@@ -79,6 +100,28 @@ impl PanelState {
             text: text.to_string(),
             timestamp: Instant::now(),
         });
+    }
+
+    fn sync_marked_text_with_host(&mut self, text: &str) {
+        if !current_ime_host_dispatch().marked_text_roundtrip {
+            return;
+        }
+
+        let normalized = text.trim();
+        let bridge = shared_session_bridge();
+        let _ = bridge.activate_session();
+        if normalized.is_empty() {
+            bridge.clear_marked_text();
+            return;
+        }
+        let _ = bridge.replace_marked_text(normalized, InputSource::OnScreenPanel);
+    }
+
+    fn refresh_seed_with_text(&mut self, text: &str) {
+        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        self.engine.seed(&normalized);
+        self.refresh_composition_candidates();
+        self.sync_marked_text_with_host(&normalized);
     }
 
     pub(super) fn reset_after_commit(&mut self, committed_seed: &str) {
@@ -186,8 +229,7 @@ impl PanelState {
         let full_seed = self.full_composed_seed();
         self.chrome.set_seed_text(full_seed.clone());
         self.chrome.move_caret_to_end();
-        self.engine.seed(&full_seed);
-        self.refresh_composition_candidates();
+        self.refresh_seed_with_text(&full_seed);
     }
 
     pub(super) fn rewind_next_token(&mut self) {
@@ -201,8 +243,7 @@ impl PanelState {
         let full_seed = self.full_composed_seed();
         self.chrome.set_seed_text(full_seed.clone());
         self.chrome.move_caret_to_end();
-        self.engine.seed(&full_seed);
-        self.refresh_composition_candidates();
+        self.refresh_seed_with_text(&full_seed);
     }
 
     pub(super) fn rebuild_font_atlas(&mut self) {
@@ -244,8 +285,7 @@ impl PanelState {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
-        self.engine.seed(&normalized);
-        self.refresh_composition_candidates();
+        self.refresh_seed_with_text(&normalized);
     }
 }
 
@@ -381,5 +421,328 @@ mod tests {
 
         assert_eq!(chrome.seed_text, expected);
         assert_eq!(chrome.caret_index, snapshot);
+    }
+
+    #[test]
+    fn commit_repeat_is_detected_for_same_index_text_within_window() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(120),
+        };
+
+        assert!(is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_is_not_detected_when_text_changes() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(120),
+        };
+
+        assert!(!is_commit_input_repeat(
+            2,
+            "world",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_is_not_detected_when_text_case_changes_only() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(120),
+        };
+
+        assert!(!is_commit_input_repeat(
+            2,
+            "Hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_expires_at_window_boundary() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now - COMMIT_INPUT_REPEAT_WINDOW,
+        };
+
+        assert!(!is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_expires_just_outside_window() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(261),
+        };
+
+        assert!(!is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_hits_when_timestamp_is_current() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: now,
+        };
+
+        assert!(is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_is_not_detected_when_candidate_index_changes() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 1,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(10),
+        };
+
+        assert!(!is_commit_input_repeat(
+            2,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_treats_emoji_candidates_as_text_identity() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 3,
+            text: "😀 emoji".to_string(),
+            timestamp: now - Duration::from_millis(80),
+        };
+
+        assert!(is_commit_input_repeat(
+            3,
+            "😀 emoji",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_hits_same_index_and_text_within_window_edge_minus_one_ms() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 0,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(259),
+        };
+
+        assert!(is_commit_input_repeat(
+            0,
+            "hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_within_window_and_same_target() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            now - Duration::from_millis(120),
+        ));
+
+        assert!(is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_requires_exact_same_target() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            now - Duration::from_millis(120),
+        ));
+
+        assert!(!is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::SelectNextToken(2),
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_is_false_when_no_previous_action() {
+        let now = Instant::now();
+
+        assert!(!is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            None,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_is_false_when_at_window_boundary() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            now - ACTION_REPEAT_WINDOW,
+        ));
+
+        assert!(!is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_hits_within_window_edge_minus_one_ms() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            now - Duration::from_millis(259),
+        ));
+
+        assert!(is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_expires_outside_window() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            now - Duration::from_millis(261),
+        ));
+
+        assert!(!is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_is_false_when_same_kind_but_different_payload() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::SelectNextToken(2),
+            now - Duration::from_millis(120),
+        ));
+
+        assert!(!is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::SelectNextToken(4),
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn interaction_repeat_is_true_when_same_indexed_select_token_repeats_within_window() {
+        let now = Instant::now();
+        let last = Some((
+            suzaku_map::ime::gpu::InteractionKind::SelectNextToken(7),
+            now - Duration::from_millis(120),
+        ));
+
+        assert!(is_action_repeat(
+            suzaku_map::ime::gpu::InteractionKind::SelectNextToken(7),
+            last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_is_false_when_text_trim_difference_only() {
+        let now = Instant::now();
+        let last = CommitAttempt {
+            selected_index: 1,
+            text: "hello".to_string(),
+            timestamp: now - Duration::from_millis(120),
+        };
+
+        assert!(!is_commit_input_repeat(
+            1,
+            " hello",
+            &last,
+            now,
+        ));
+    }
+
+    #[test]
+    fn commit_repeat_sequence_treats_second_as_repeat_and_third_after_window_as_new() {
+        let first = Instant::now();
+        let second = first + Duration::from_millis(120);
+        let third = second + Duration::from_millis(280);
+
+        let previous = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: first,
+        };
+
+        assert!(is_commit_input_repeat(2, "hello", &previous, second));
+
+        let previous = CommitAttempt {
+            selected_index: 2,
+            text: "hello".to_string(),
+            timestamp: second,
+        };
+
+        assert!(!is_commit_input_repeat(2, "hello", &previous, third));
+    }
+
+    #[test]
+    fn interaction_repeat_sequence_within_window_then_after_window() {
+        let kind = suzaku_map::ime::gpu::InteractionKind::SelectNextToken(7);
+        let first = Instant::now();
+        let second = first + Duration::from_millis(120);
+        let third = second + Duration::from_millis(300);
+
+        let previous = Some((kind, first));
+        assert!(is_action_repeat(kind, previous, second));
+
+        let previous = Some((kind, second));
+        assert!(!is_action_repeat(kind, previous, third));
     }
 }

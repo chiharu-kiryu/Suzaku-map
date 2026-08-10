@@ -43,14 +43,20 @@ pub fn bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
     let recommended_connection_name = recommended_connection_name();
     let daemon_detected = framework_daemon_detected(&framework);
     let host_registration_ready = framework_host_registered(&framework, &recommended_connection_name);
+    let roundtrip_capable = host_registration_ready && daemon_detected;
     LinuxImeBootstrap {
         framework,
         host_platform: platform,
         daemon_detected,
         host_registration_ready,
-        marked_text_roundtrip_ready: false,
-        commit_roundtrip_ready: false,
-        native_candidate_window_ready: false,
+        marked_text_roundtrip_ready: env_flag_override_or("SUZAKU_LINUX_IME_MARKED_TEXT")
+            .unwrap_or(roundtrip_capable),
+        commit_roundtrip_ready: env_flag_override_or("SUZAKU_LINUX_IME_COMMIT")
+            .unwrap_or(roundtrip_capable),
+        native_candidate_window_ready: env_flag_override_or(
+            "SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW",
+        )
+        .unwrap_or(roundtrip_capable),
         recommended_connection_name,
     }
 }
@@ -67,6 +73,10 @@ fn detected_framework() -> LinuxImeFramework {
 }
 
 fn framework_daemon_detected(framework: &LinuxImeFramework) -> bool {
+    if let Some(value) = env_flag_override("SUZAKU_LINUX_IME_DAEMON_READY") {
+        return value;
+    }
+
     match framework {
         LinuxImeFramework::IBus => process_has_name("ibus-daemon")
             || process_has_name("ibus-x11")
@@ -91,7 +101,20 @@ fn framework_host_registered(framework: &LinuxImeFramework, connection: &str) ->
 }
 
 fn env_flag_override(key: &str) -> Option<bool> {
-    std::env::var(key).ok().map(|value| value == "1")
+    parse_bool_env(std::env::var(key).ok()?)
+}
+
+fn env_flag_override_or(key: &str) -> Option<bool> {
+    env_flag_override(key)
+}
+
+fn parse_bool_env(value: String) -> Option<bool> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "1" | "true" | "on" | "yes" => Some(true),
+        "0" | "false" | "off" | "no" => Some(false),
+        _ => None,
+    }
 }
 
 fn process_has_name(process_name: &str) -> bool {
@@ -260,6 +283,28 @@ mod tests {
             let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
             assert_eq!(bootstrap.framework, LinuxImeFramework::Fcitx);
             assert!(!bootstrap.host_registration_ready);
+        });
+    }
+
+    #[test]
+    fn linux_ime_bootstrap_can_report_roundtrip_capabilities_with_overrides() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
+            env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+
+            let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert!(bootstrap.marked_text_roundtrip_ready);
+            assert!(bootstrap.commit_roundtrip_ready);
+            assert!(bootstrap.native_candidate_window_ready);
+
+            env.set_var("SUZAKU_LINUX_IME_MARKED_TEXT", "0");
+            env.set_var("SUZAKU_LINUX_IME_COMMIT", "0");
+            env.set_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW", "0");
+
+            let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert!(!bootstrap.marked_text_roundtrip_ready);
+            assert!(!bootstrap.commit_roundtrip_ready);
+            assert!(!bootstrap.native_candidate_window_ready);
         });
     }
 }

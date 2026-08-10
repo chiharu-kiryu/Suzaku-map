@@ -63,6 +63,14 @@ const MAX_PANEL_INNER_HEIGHT: f64 = 806.0;
 const COMPACT_PANEL_INNER_WIDTH: f64 = 92.0;
 const COMPACT_PANEL_INNER_HEIGHT: f64 = 92.0;
 
+fn advance_commit_feedback_state(ticks: u8) -> (u8, bool) {
+    if ticks == 0 {
+        return (0, false);
+    }
+    let next = ticks - 1;
+    (next, next == 0)
+}
+
 const SHADER: &str = r#"
 struct VsIn {
     @location(0) position: vec2<f32>,
@@ -310,11 +318,11 @@ impl ApplicationHandler for PanelApp {
             if panel.is_focused {
                 panel.poll_voice_bridge();
             }
-            if panel.commit_feedback_ticks > 0 {
-                panel.commit_feedback_ticks -= 1;
-                if panel.commit_feedback_ticks == 0 {
-                    panel.last_commit_feedback = None;
-                }
+            let (next_ticks, should_clear_feedback) =
+                advance_commit_feedback_state(panel.commit_feedback_ticks);
+            panel.commit_feedback_ticks = next_ticks;
+            if should_clear_feedback {
+                panel.last_commit_feedback = None;
             }
             if panel.chrome.active_input_mode == InputMode::Dictation
                 && panel.chrome.voice_state == VoiceCaptureState::Listening

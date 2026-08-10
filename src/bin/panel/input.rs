@@ -179,11 +179,11 @@ pub(super) fn handle_panel_window_event(
                                 if state.chrome.input_focused {
                                     state.chrome.blur_input();
                                 } else {
-                                    state.engine.move_selection(1);
+                                    state.move_candidate_selection(1);
                                 }
                             }
                             PhysicalKey::Code(KeyCode::ArrowUp) => {
-                                state.engine.move_selection(-1);
+                                state.move_candidate_selection(-1);
                             }
                             PhysicalKey::Code(KeyCode::Digit1) => {
                                 if !state.chrome.input_modes_expanded

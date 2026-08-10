@@ -117,7 +117,7 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
                 platform,
                 tier: support.tier,
                 backend: ImeHostBackendKind::LinuxIbusFcitx,
-                system_ime_host: support.capabilities.system_ime_host,
+                system_ime_host: support.capabilities.system_ime_host || bootstrap.host_registration_ready,
                 marked_text_roundtrip: bootstrap.marked_text_roundtrip_ready,
                 commit_roundtrip: bootstrap.commit_roundtrip_ready,
                 native_candidate_window: bootstrap.native_candidate_window_ready,
@@ -143,7 +143,16 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
 #[cfg(test)]
 mod tests {
     use super::{ImeHostBackendKind, current_ime_host_dispatch, dispatch_for};
-    use crate::platform::{TargetPlatform, host_platform};
+    use crate::platform::{host_platform, test_env, TargetPlatform};
+
+    fn describe_mentions_roundtrip_capabilities(dispatch: &super::ImeHostDispatch) -> bool {
+        let text = dispatch.describe();
+        text.contains("platform=")
+            && text.contains("backend=")
+            && text.contains("marked_text=")
+            && text.contains("commit=")
+            && text.contains("native_candidates=")
+    }
 
     #[test]
     fn dispatch_matches_host_platform() {
@@ -184,4 +193,59 @@ mod tests {
         assert_eq!(dispatch.backend, ImeHostBackendKind::LinuxIbusFcitx);
         assert!(dispatch.notes.contains("Linux"));
     }
+
+    #[test]
+    fn linux_dispatch_roundtrip_flags_respect_environment_overrides() {
+        test_env::with_test_env(|env| {
+            env.set_var("SUZAKU_LINUX_IME_FRAMEWORK", "fcitx");
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
+            env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+            env.set_var("SUZAKU_LINUX_IME_MARKED_TEXT", "0");
+            env.set_var("SUZAKU_LINUX_IME_COMMIT", "0");
+            env.set_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW", "0");
+
+            let dispatch = dispatch_for(TargetPlatform::ArchLinux);
+            assert_eq!(dispatch.platform, TargetPlatform::ArchLinux);
+            assert_eq!(dispatch.backend, ImeHostBackendKind::LinuxIbusFcitx);
+            assert!(!dispatch.marked_text_roundtrip);
+            assert!(!dispatch.commit_roundtrip);
+            assert!(!dispatch.native_candidate_window);
+            assert!(dispatch.system_ime_host);
+            assert!(dispatch.notes.contains("Linux"));
+            assert!(dispatch.notes.contains("running"));
+        });
+    }
+
+    #[test]
+    fn linux_dispatch_can_report_roundtrip_ready_state() {
+        test_env::with_test_env(|env| {
+            env.set_var("SUZAKU_LINUX_IME_FRAMEWORK", "ibus");
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
+            env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+            env.set_var("SUZAKU_LINUX_IME_MARKED_TEXT", "1");
+            env.set_var("SUZAKU_LINUX_IME_COMMIT", "1");
+            env.set_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW", "1");
+
+            let dispatch = dispatch_for(TargetPlatform::Ubuntu);
+            assert!(dispatch.marked_text_roundtrip);
+            assert!(dispatch.commit_roundtrip);
+            assert!(dispatch.native_candidate_window);
+            assert!(dispatch.system_ime_host);
+            assert!(describe_mentions_roundtrip_capabilities(&dispatch));
+        });
+    }
+
+    #[test]
+    fn linux_dispatch_uses_system_host_hint_when_unregistered() {
+        test_env::with_test_env(|env| {
+            env.remove_var("SUZAKU_LINUX_IME_REGISTERED");
+            env.remove_var("SUZAKU_LINUX_IME_DAEMON_READY");
+
+            let dispatch = dispatch_for(TargetPlatform::SteamOs);
+            assert_eq!(dispatch.platform, TargetPlatform::SteamOs);
+            assert!(dispatch.notes.contains("host shell is planned"));
+            assert_eq!(dispatch.system_ime_host, false);
+        });
+    }
+
 }

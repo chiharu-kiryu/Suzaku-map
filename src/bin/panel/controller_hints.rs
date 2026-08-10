@@ -310,3 +310,58 @@ pub(super) fn llm_temperature_label(
         suzaku_map::ime::gpu::LlmTemperaturePreset::Expressive => "Expressive",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        density_label, display_text_scale_label, font_face_label, llm_temperature_label,
+        preview_style_label, smoothing_label, text_spacing_label, theme_preset_label,
+    };
+    use suzaku_map::ime::gpu::{
+        CandidateDensity, DisplayTextScale, FontFaceChoice, LlmTemperaturePreset, PreviewStyle,
+        TextSmoothing, TextSpacing, ThemePreset,
+    };
+
+    #[test]
+    fn panel_hint_scale_labels_cover_expected_values() {
+        assert_eq!(display_text_scale_label(DisplayTextScale::Small), "Small");
+        assert_eq!(display_text_scale_label(DisplayTextScale::Medium), "Medium");
+        assert_eq!(display_text_scale_label(DisplayTextScale::Large), "Large");
+        assert_eq!(density_label(CandidateDensity::Compact), "Compact");
+        assert_eq!(density_label(CandidateDensity::Cozy), "Cozy");
+    }
+
+    #[test]
+    fn panel_hint_style_labels_cover_expected_values() {
+        assert_eq!(preview_style_label(PreviewStyle::Compact), "Compact");
+        assert_eq!(preview_style_label(PreviewStyle::Full), "Full");
+        assert_eq!(text_spacing_label(TextSpacing::Tight), "Tight");
+        assert_eq!(text_spacing_label(TextSpacing::Normal), "Normal");
+        assert_eq!(text_spacing_label(TextSpacing::Relaxed), "Relaxed");
+        assert_eq!(smoothing_label(TextSmoothing::Sharp), "Sharp");
+        assert_eq!(smoothing_label(TextSmoothing::Smooth), "Smooth");
+    }
+
+    #[test]
+    fn panel_hint_font_and_theme_labels_are_stable() {
+        assert_eq!(font_face_label(FontFaceChoice::Auto), "Auto");
+        assert_eq!(font_face_label(FontFaceChoice::Monaco), "Monaco");
+        assert_eq!(font_face_label(FontFaceChoice::ArialUnicode), "Arial Unicode");
+        assert_eq!(theme_preset_label(ThemePreset::Daylight), "Daylight");
+        assert_eq!(theme_preset_label(ThemePreset::DeviceDark), "Device Dark");
+        assert_eq!(theme_preset_label(ThemePreset::HighContrast), "High Contrast");
+    }
+
+    #[test]
+    fn panel_hint_temperature_labels_are_readable() {
+        assert_eq!(llm_temperature_label(LlmTemperaturePreset::Focused), "Focused");
+        assert_eq!(
+            llm_temperature_label(LlmTemperaturePreset::Balanced),
+            "Balanced"
+        );
+        assert_eq!(
+            llm_temperature_label(LlmTemperaturePreset::Expressive),
+            "Expressive"
+        );
+    }
+}

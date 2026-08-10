@@ -11,12 +11,43 @@ use suzaku_map::ime::gpu::{
     InputMode, InteractionKind, RenderScene, VirtualKeyboardKey, VoiceCaptureState,
     VoicePermissionState,
 };
+use suzaku_map::ime::CommitOptions;
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
-use suzaku_map::platform::text_output_host::commit_text_to_active_target;
+use suzaku_map::platform::ime_host_adapter::{
+    shared_session_bridge, ImeHostSessionBridge,
+};
+use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
+use suzaku_map::platform::text_output_host::{
+    commit_text_to_active_target, HostTextOutputResult, HostTextOutputStatus,
+};
 use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
 use wgpu::util::DeviceExt;
 use winit::keyboard::{KeyCode, PhysicalKey};
+
+fn host_commit_fallback_text(fallback_text: &str, committed: Option<String>) -> String {
+    committed
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| {
+            if fallback_text.trim().is_empty() {
+                "Candidate commit".to_string()
+            } else {
+                fallback_text.to_string()
+            }
+        })
+}
+
+fn commit_feedback_text(candidate_text: &str, delivered: bool, message: &str) -> String {
+    if delivered {
+        format!("Sent to active app: {candidate_text}")
+    } else {
+        format!("Committed locally · {message}")
+    }
+}
+
+fn commit_feedback_ticks_for_delivery(delivered: bool) -> u8 {
+    if delivered { 24 } else { 40 }
+}
 
 impl PanelState {
     pub(super) fn dispatch_input<F, R>(&mut self, handler: F) -> Option<R>
@@ -32,6 +63,65 @@ impl PanelState {
         Some(result)
     }
 
+    fn is_host_marked_text_roundtrip_ready(&self) -> bool {
+        current_ime_host_dispatch().marked_text_roundtrip
+    }
+
+    fn is_host_commit_roundtrip_ready(&self) -> bool {
+        current_ime_host_dispatch().commit_roundtrip
+    }
+
+    fn is_host_roundtrip_ready(&self) -> bool {
+        self.is_host_marked_text_roundtrip_ready() && self.is_host_commit_roundtrip_ready()
+    }
+
+    fn sync_host_candidate_selection(&self, selected_index: usize) {
+        if !self.is_host_marked_text_roundtrip_ready() {
+            return;
+        }
+        let bridge = shared_session_bridge();
+        let _ = bridge.activate_session();
+        bridge.select_candidate(selected_index);
+    }
+
+    pub(super) fn move_candidate_selection(&mut self, delta: isize) {
+        self.engine.move_selection(delta);
+        if !self.is_host_marked_text_roundtrip_ready() {
+            return;
+        }
+        let bridge = shared_session_bridge();
+        let _ = bridge.activate_session();
+        bridge.move_selection(delta);
+    }
+
+    fn host_commit_selected_candidate(
+        &self,
+        selected_index: usize,
+        force: bool,
+        fallback_text: &str,
+    ) -> Option<HostTextOutputResult> {
+        if !self.is_host_roundtrip_ready() {
+            return None;
+        }
+
+        let bridge = shared_session_bridge();
+        let _ = bridge.activate_session();
+        bridge.select_candidate(selected_index);
+        if !bridge.commit_selected(force) {
+            return None;
+        }
+
+        let committed = bridge
+            .take_last_committed_text()
+            .filter(|text: &String| !text.trim().is_empty());
+        let committed = host_commit_fallback_text(fallback_text, committed);
+
+        Some(HostTextOutputResult {
+            status: HostTextOutputStatus::Delivered,
+            message: format!("Sent to active app via IME host: {committed}"),
+        })
+    }
+
     pub(super) fn set_window_focus(&mut self, focused: bool) {
         if self.is_focused == focused {
             return;
@@ -42,6 +132,11 @@ impl PanelState {
                 self.chosen_canvas_abandon_state();
             } else {
                 self.clear_pressed_interaction();
+            }
+            if self.is_host_marked_text_roundtrip_ready() {
+                let bridge = shared_session_bridge();
+                let _ = bridge.activate_session();
+                bridge.clear_marked_text();
             }
             self.clear_sentence_candidate_scroll();
             self.voice_stability_ticks = 0;
@@ -95,7 +190,7 @@ impl PanelState {
 
     pub(super) fn commit_selected_candidate_to_host(
         &mut self,
-        options: suzaku_map::ime::CommitOptions,
+        options: CommitOptions,
     ) -> bool {
         let Some(candidate) = self
             .engine
@@ -112,24 +207,25 @@ impl PanelState {
 
         self.chrome.blur_input();
         let selected_index = self.engine.snapshot().selected_index;
-        let result = self.engine.commit(options);
+        self.sync_host_candidate_selection(selected_index);
+        let force = options.force;
+        let result = self.engine.commit(CommitOptions { force });
         if !result.ok {
             return false;
         }
 
         let committed_text = result.text.unwrap_or_else(|| candidate.text.clone());
-        let output = commit_text_to_active_target(&candidate.text);
+        let output = self
+            .host_commit_selected_candidate(selected_index, force, &committed_text)
+            .unwrap_or_else(|| commit_text_to_active_target(&candidate.text));
         self.note_commit_attempt(selected_index, &candidate.text);
-        self.last_commit_feedback = Some(if output.delivered_successfully() {
-            format!("Sent to active app: {}", candidate.text)
-        } else {
-            format!("Committed locally · {}", output.message)
-        });
-        self.commit_feedback_ticks = if output.delivered_successfully() {
-            24
-        } else {
-            40
-        };
+        let delivered = output.delivered_successfully();
+        self.last_commit_feedback = Some(commit_feedback_text(
+            &candidate.text,
+            delivered,
+            &output.message,
+        ));
+        self.commit_feedback_ticks = commit_feedback_ticks_for_delivery(delivered);
         self.clear_sentence_candidate_scroll();
         self.reset_after_commit(&committed_text);
         true
@@ -161,26 +257,26 @@ impl PanelState {
         }
 
         self.chrome.blur_input();
+        self.sync_host_candidate_selection(index);
         self.engine.select_candidate(index);
         let result = self
             .engine
-            .commit(suzaku_map::ime::CommitOptions { force: true });
+            .commit(CommitOptions { force: true });
         if !result.ok {
             return false;
         }
         let committed_text = result.text.unwrap_or_else(|| candidate.text.clone());
-        let output = commit_text_to_active_target(&candidate.text);
+        let output = self
+            .host_commit_selected_candidate(index, true, &committed_text)
+            .unwrap_or_else(|| commit_text_to_active_target(&candidate.text));
         self.note_commit_attempt(index, &candidate.text);
-        self.last_commit_feedback = Some(if output.delivered_successfully() {
-            format!("Sent to active app: {}", candidate.text)
-        } else {
-            format!("Committed locally · {}", output.message)
-        });
-        self.commit_feedback_ticks = if output.delivered_successfully() {
-            24
-        } else {
-            40
-        };
+        let delivered = output.delivered_successfully();
+        self.last_commit_feedback = Some(commit_feedback_text(
+            &candidate.text,
+            delivered,
+            &output.message,
+        ));
+        self.commit_feedback_ticks = commit_feedback_ticks_for_delivery(delivered);
         self.clear_sentence_candidate_scroll();
         self.reset_after_commit(&committed_text);
         true
@@ -268,7 +364,7 @@ impl PanelState {
             })
     }
 
-    fn normalize_candidate_text(text: &str) -> String {
+    pub(super) fn normalize_candidate_text(text: &str) -> String {
         text.to_lowercase()
             .trim()
             .trim_end_matches(|ch| matches!(ch, '.' | '!' | '?'))
@@ -1028,5 +1124,128 @@ impl PanelState {
 
     pub(super) fn is_quit_shortcut(&self, key: &PhysicalKey) -> bool {
         matches!(key, PhysicalKey::Code(KeyCode::KeyQ)) && is_quit_shortcut(self.modifiers)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{commit_feedback_text, commit_feedback_ticks_for_delivery, host_commit_fallback_text};
+
+    #[test]
+    fn host_commit_fallback_prefers_non_empty_committed_text() {
+        let committed = host_commit_fallback_text("fallback", Some("from_host".to_string()));
+
+        assert_eq!(committed, "from_host");
+    }
+
+    #[test]
+    fn host_commit_fallback_falls_back_to_candidate_text_when_committed_empty() {
+        let committed = host_commit_fallback_text("Candidate  ", Some("   ".to_string()));
+
+        assert_eq!(committed, "Candidate  ");
+    }
+
+    #[test]
+    fn host_commit_fallback_uses_default_when_candidate_empty() {
+        let committed = host_commit_fallback_text("", None);
+
+        assert_eq!(committed, "Candidate commit");
+    }
+
+    #[test]
+    fn host_commit_fallback_trims_fallback_text_before_defaulting() {
+        let committed = host_commit_fallback_text("   ", None);
+
+        assert_eq!(committed, "Candidate commit");
+    }
+
+    #[test]
+    fn host_commit_fallback_defaults_when_committed_empty_and_candidate_empty() {
+        let committed = host_commit_fallback_text("", Some("\n  \t".to_string()));
+
+        assert_eq!(committed, "Candidate commit");
+    }
+
+    #[test]
+    fn host_commit_fallback_keeps_non_empty_fallback_with_spaces() {
+        let committed = host_commit_fallback_text("  hello  ", Some(" ".to_string()));
+
+        assert_eq!(committed, "  hello  ");
+    }
+
+    #[test]
+    fn host_commit_fallback_keeps_candidate_with_unicode_and_emojis() {
+        let committed = host_commit_fallback_text("😀 hello", Some("\n".to_string()));
+
+        assert_eq!(committed, "😀 hello");
+    }
+
+    #[test]
+    fn host_commit_fallback_defaults_when_candidate_empty_and_committed_blank() {
+        let committed = host_commit_fallback_text("", Some("\n\t \r".to_string()));
+
+        assert_eq!(committed, "Candidate commit");
+    }
+
+    #[test]
+    fn host_commit_fallback_prefers_emoji_candidate_when_host_text_blank() {
+        let committed = host_commit_fallback_text(" 😀", Some("\n".to_string()));
+
+        assert_eq!(committed, " 😀");
+    }
+
+    #[test]
+    fn host_commit_fallback_keeps_emoji_from_host_when_present() {
+        let committed = host_commit_fallback_text("fallback", Some("👍🏽 hello".to_string()));
+
+        assert_eq!(committed, "👍🏽 hello");
+    }
+
+    #[test]
+    fn commit_feedback_text_marks_success_path_with_candidate() {
+        let feedback = commit_feedback_text("hello", true, "ignored message");
+
+        assert_eq!(feedback, "Sent to active app: hello");
+    }
+
+    #[test]
+    fn commit_feedback_text_marks_local_path_with_message() {
+        let feedback = commit_feedback_text("hello", false, "Candidate commit");
+
+        assert_eq!(feedback, "Committed locally · Candidate commit");
+    }
+
+    #[test]
+    fn commit_feedback_text_keeps_emoji_message_for_local_path() {
+        let feedback = commit_feedback_text("ignored", false, "fallback: ✅ done");
+
+        assert_eq!(feedback, "Committed locally · fallback: ✅ done");
+    }
+
+    #[test]
+    fn commit_feedback_ticks_for_delivery_matches_success_and_failure_paths() {
+        assert_eq!(commit_feedback_ticks_for_delivery(true), 24);
+        assert_eq!(commit_feedback_ticks_for_delivery(false), 40);
+    }
+
+    #[test]
+    fn commit_feedback_text_honors_candidate_on_success_even_with_empty_candidate_text() {
+        let feedback = commit_feedback_text("", true, "ignored message");
+
+        assert_eq!(feedback, "Sent to active app: ");
+    }
+
+    #[test]
+    fn commit_feedback_text_local_with_empty_message_keeps_separator() {
+        let feedback = commit_feedback_text("hello", false, "");
+
+        assert_eq!(feedback, "Committed locally · ");
+    }
+
+    #[test]
+    fn commit_feedback_text_uses_candidate_for_success_path() {
+        let feedback = commit_feedback_text("sentinel ✨", true, "host said something odd");
+
+        assert_eq!(feedback, "Sent to active app: sentinel ✨");
     }
 }

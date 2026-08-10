@@ -321,6 +321,11 @@ System-host direction is moving from scaffold to registration-aware status repor
   - bootstrap reads `SUZAKU_LINUX_IME_FRAMEWORK=fcitx` to switch to Fcitx checks
   - registration status is marked ready when `ibus list-engine` contains `dev.suzaku.linux.ime` (IBus) or Fcitx-side config references are detected
   - quick local override for staging: `SUZAKU_LINUX_IME_REGISTERED=1`
+  - lifecycle simulation overrides for host checks:
+    - `SUZAKU_LINUX_IME_DAEMON_READY=1|0`
+    - `SUZAKU_LINUX_IME_MARKED_TEXT=1|0`
+    - `SUZAKU_LINUX_IME_COMMIT=1|0`
+    - `SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW=1|0`
 - quick bootstrap and local registration command:
   - `cargo linux-register -- install`
   - `cargo linux-register -- status`
