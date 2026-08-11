@@ -443,7 +443,7 @@ pub fn derive_next_token_candidates(
 fn tokenize_seed_words(seed_text: &str) -> Vec<String> {
     seed_text
         .split_whitespace()
-        .map(|token| token.to_lowercase())
+        .filter_map(normalize_candidate_token)
         .collect()
 }
 
@@ -760,10 +760,19 @@ fn looks_like_emoji_token(raw: &str) -> bool {
 }
 
 fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
+    let normalized_seed_tokens = seed_tokens
+        .iter()
+        .map(|token| normalize_token_for_matching(token))
+        .collect::<Vec<_>>();
+    let normalized_words = words
+        .iter()
+        .map(|word| normalize_token_for_matching(word))
+        .collect::<Vec<_>>();
+
     let mut prefix_len = 0;
-    while prefix_len < seed_tokens.len()
-        && prefix_len < words.len()
-        && seed_tokens[prefix_len].to_lowercase() == words[prefix_len].to_lowercase()
+    while prefix_len < normalized_seed_tokens.len()
+        && prefix_len < normalized_words.len()
+        && normalized_seed_tokens[prefix_len] == normalized_words[prefix_len]
     {
         prefix_len += 1;
     }
@@ -986,6 +995,20 @@ fn normalize_candidate_token(raw: &str) -> Option<String> {
     if token.is_empty() { None } else { Some(token) }
 }
 
+fn normalize_token_for_matching(token: &str) -> String {
+    normalize_candidate_token(token).unwrap_or_else(|| token.to_lowercase())
+}
+
+fn normalized_candidate_tokens(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter_map(normalize_candidate_token)
+        .collect()
+}
+
+fn normalize_sentence_signature(text: &str) -> String {
+    normalized_candidate_tokens(text).join(" ")
+}
+
 fn score_next_token_candidate(source_index: usize, immediate: bool, offset: usize) -> i32 {
     let source_credit = (1600_i32).saturating_sub(source_index as i32 * 35);
     let immediate_bonus = if immediate { 260 } else { 130 };
@@ -1015,10 +1038,17 @@ pub fn derive_sentence_candidates_with_indices(
 ) -> Vec<(usize, String)> {
     let normalized_seed = seed_text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut derived = Vec::new();
+    let mut normalized_seen = std::collections::HashSet::new();
 
     for (index, candidate) in raw_candidates.iter().enumerate() {
         let cleaned = clean_sentence_candidate(&normalized_seed, candidate);
-        if cleaned.is_empty() || derived.iter().any(|(_, existing)| existing == &cleaned) {
+        if cleaned.is_empty() {
+            continue;
+        }
+        let normalized_signature = normalize_sentence_signature(&cleaned);
+        if normalized_signature.is_empty()
+            || !normalized_seen.insert(normalized_signature)
+        {
             continue;
         }
         derived.push((index, cleaned));
@@ -1075,9 +1105,10 @@ fn sentence_candidate_rank(
     sentence: &str,
     source_index: usize,
 ) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
-    let normalized_seed = seed_text.to_lowercase();
+    let normalized_seed_tokens = normalized_candidate_tokens(seed_text);
+    let normalized_seed = normalized_seed_tokens.join(" ");
     let normalized_sentence = sentence.to_lowercase();
-    let seed_tokens = normalized_seed.split_whitespace().collect::<Vec<_>>();
+    let seed_tokens = normalized_seed_tokens.iter().map(String::as_str).collect::<Vec<_>>();
     let sentence_tokens = normalized_sentence.split_whitespace().collect::<Vec<_>>();
     let token_count = normalized_sentence.split_whitespace().count();
     let ideal_length_delta = token_count.abs_diff((seed_tokens.len() + 6).clamp(6, 14));
@@ -1099,6 +1130,7 @@ fn sentence_candidate_rank(
     let seed_repetition_penalty = usize::from(
         normalized_sentence
             .split_whitespace()
+            .filter_map(normalize_candidate_token)
             .collect::<Vec<_>>()
             .windows(2)
             .any(|window| window[0] == window[1])
@@ -1561,6 +1593,48 @@ mod tests {
     }
 
     #[test]
+    fn sentence_derivation_keeps_punctuated_seed_matching_stable() {
+        let sentences = derive_sentence_candidates(
+            "Apple!",
+            &[
+                "Apple! is ready as the next full sentence".into(),
+                "Apple! can continue by tapping the next suggestion".into(),
+                "Apple! now expands into a complete candidate".into(),
+            ],
+            3,
+        );
+
+        assert_eq!(sentences[0], "Apple! is ready.");
+        assert_eq!(
+            sentences[1],
+            "Apple! can continue with the next suggestion."
+        );
+    }
+
+    #[test]
+    fn sentence_derivation_deduplicates_case_and_punctuation_variants() {
+        let sentences = derive_sentence_candidates(
+            "hello world",
+            &[
+                "hello world can continue by tapping the next suggestion".into(),
+                "Hello world, can continue by tapping the next suggestion".into(),
+                "hello world can now expands into a complete candidate".into(),
+            ],
+            4,
+        );
+
+        assert_eq!(sentences.len(), 2);
+        assert_eq!(
+            sentences[0],
+            "Hello world can continue with the next suggestion."
+        );
+        assert_eq!(
+            sentences[1],
+            "Hello world can now expands into a complete sentence."
+        );
+    }
+
+    #[test]
     fn sentence_derivation_prefers_more_natural_commit_candidate() {
         let sentences = derive_sentence_candidates_with_indices(
             "now can as",
@@ -1715,11 +1789,35 @@ mod tests {
     }
 
     #[test]
+    fn seed_tokenization_strips_boundary_punctuation() {
+        assert_eq!(
+            tokenize_seed_words("Hello, 👋! world!!!"),
+            vec!["hello".to_string(), "👋".to_string(), "world".to_string()]
+        );
+    }
+
+    #[test]
     fn matching_prefix_len_respects_emoji_seed_tokens() {
         let seed_tokens = ["hello", "👨‍👩‍👧‍👦", "world"];
         let words = ["hello", "👨‍👩‍👧‍👦", "earth"];
 
         assert_eq!(matching_prefix_len_str(&seed_tokens, &words), 2);
+    }
+
+    #[test]
+    fn matching_prefix_len_uses_normalized_tokens() {
+        let seed_tokens = ["Hello!", "world,"];
+        let words = ["hello", "WORLD", "next"];
+
+        assert_eq!(matching_prefix_len_str(&seed_tokens, &words), 2);
+    }
+
+    #[test]
+    fn next_token_candidates_prefers_continuation_after_punctuated_seed() {
+        let tokens = derive_next_token_candidates("apple!", &["apple! can".into()], 6);
+
+        assert_eq!(tokens.first(), Some(&"can".to_string()));
+        assert!(!tokens.iter().any(|token| token == "apple"));
     }
 
     #[test]

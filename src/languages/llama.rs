@@ -479,6 +479,21 @@ mod tests {
 
     #[test]
     fn generate_reads_candidates_from_http_bridge() {
+        if std::env::var("RUN_LOCAL_LLM_BRIDGE_TESTS")
+            .ok()
+            .filter(|value| {
+                value == "1"
+                    || value.eq_ignore_ascii_case("true")
+                    || value.eq_ignore_ascii_case("yes")
+            })
+            .is_none()
+        {
+            eprintln!(
+                "skipping generate_reads_candidates_from_http_bridge: set RUN_LOCAL_LLM_BRIDGE_TESTS=1 to run"
+            );
+            return;
+        }
+
         let listener = match TcpListener::bind("127.0.0.1:0") {
             Ok(listener) => listener,
             Err(err) => {

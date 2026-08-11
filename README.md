@@ -144,6 +144,7 @@ The original system notes are still part of the repository and now serve as back
 
 ```bash
 cargo check --features gpu
+./scripts/test-gpu-smoke.sh
 cargo test --features gpu
 cargo build --features gpu
 cargo build --release --features gpu
@@ -165,6 +166,23 @@ Or use one-command launcher:
 ./scripts/panel-gpu.sh build-release
 ```
 
+### GPU smoke test profile
+
+The default GPU smoke test command intentionally skips local-loopback llama bridge tests to stay stable in restricted environments.
+
+```bash
+# Local validation (default)
+cargo test-gpu-smoke
+./scripts/test-gpu-smoke.sh
+```
+
+### Integration validation (local-loopback llama bridge required)
+
+```bash
+RUN_LOCAL_LLM_BRIDGE_TESTS=1 cargo test-gpu-smoke-llm
+./scripts/test-gpu-smoke.sh llm-bridge
+```
+
 ### Common build note (important)
 
 The root crate is feature-gated for GPU components.  
@@ -181,7 +199,10 @@ Shortcuts from Cargo aliases:
 
 ```bash
 cargo panel-macos
-cargo test-gpu
+# GPU-focused tests:
+cargo test-gpu                 # raw GPU test run (no --nocapture)
+cargo test-gpu-smoke           # local smoke run (bridge test skipped unless enabled)
+cargo test-gpu-smoke-llm       # same command; set RUN_LOCAL_LLM_BRIDGE_TESTS=1 to include bridge test
 ```
 
 ### macOS panel bundle
