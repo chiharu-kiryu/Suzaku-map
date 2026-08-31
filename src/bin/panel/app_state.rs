@@ -155,11 +155,11 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         llm_enabled: false,
         llm_model: LlmModelPreset::Llama32_3b,
         llm_temperature: LlmTemperaturePreset::Balanced,
-            pointer_tap_slop_tenths: 100,
-            pointer_tap_max_ms: 420,
-            pointer_target_slop_tenths: 50,
-            window_scale: DEFAULT_WINDOW_SCALE,
-        };
+        pointer_tap_slop_tenths: 100,
+        pointer_tap_max_ms: 420,
+        pointer_target_slop_tenths: 50,
+        window_scale: DEFAULT_WINDOW_SCALE,
+    };
 
     for line in contents.lines() {
         let Some((key, value)) = line.split_once('=') else {
@@ -458,7 +458,10 @@ mod tests {
 
     fn assert_float_eq(actual: f32, expected: f32, case: &str) {
         if actual.is_infinite() || expected.is_infinite() {
-            assert_eq!(actual, expected, "{case}: expected {expected}, got {actual}");
+            assert_eq!(
+                actual, expected,
+                "{case}: expected {expected}, got {actual}"
+            );
             return;
         }
         assert!(
@@ -659,7 +662,9 @@ mod tests {
     fn run_voice_controller_sample_cases(cases: &[VoiceControllerSampleCase]) {
         for case in cases {
             let mut voice = VoiceInputController::new();
-            let samples: Vec<String> = (0..case.sample_count).map(|_| voice.next_sample()).collect();
+            let samples: Vec<String> = (0..case.sample_count)
+                .map(|_| voice.next_sample())
+                .collect();
 
             assert_eq!(samples.len(), case.sample_count, "{}", case.name);
             assert!(
@@ -715,9 +720,7 @@ mod tests {
         expected_target_slop_tenths: u16,
     }
 
-    fn run_normalize_display_pointer_settings_cases(
-        cases: &[NormalizeDisplayPointerSettingsCase],
-    ) {
+    fn run_normalize_display_pointer_settings_cases(cases: &[NormalizeDisplayPointerSettingsCase]) {
         for case in cases {
             let mut settings = PersistedDisplaySettings {
                 text_scale: DisplayTextScale::Medium,
@@ -740,20 +743,17 @@ mod tests {
             normalize_display_pointer_settings(&mut settings);
 
             assert_eq!(
-                settings.pointer_tap_slop_tenths,
-                case.expected_tap_slop_tenths,
+                settings.pointer_tap_slop_tenths, case.expected_tap_slop_tenths,
                 "{}",
                 case.name
             );
             assert_eq!(
-                settings.pointer_tap_max_ms,
-                case.expected_tap_max_ms,
+                settings.pointer_tap_max_ms, case.expected_tap_max_ms,
                 "{}",
                 case.name
             );
             assert_eq!(
-                settings.pointer_target_slop_tenths,
-                case.expected_target_slop_tenths,
+                settings.pointer_target_slop_tenths, case.expected_target_slop_tenths,
                 "{}",
                 case.name
             );
@@ -845,20 +845,17 @@ mod tests {
             apply_display_settings(&mut chrome, &settings);
 
             assert_eq!(
-                chrome.pointer_tap_slop_tenths,
-                case.expected_tap_slop_tenths,
+                chrome.pointer_tap_slop_tenths, case.expected_tap_slop_tenths,
                 "{}",
                 case.name
             );
             assert_eq!(
-                chrome.pointer_tap_max_ms,
-                case.expected_tap_max_ms,
+                chrome.pointer_tap_max_ms, case.expected_tap_max_ms,
                 "{}",
                 case.name
             );
             assert_eq!(
-                chrome.pointer_target_slop_tenths,
-                case.expected_target_slop_tenths,
+                chrome.pointer_target_slop_tenths, case.expected_target_slop_tenths,
                 "{}",
                 case.name
             );
@@ -915,7 +912,9 @@ mod tests {
         expected_window_scale: f32,
     }
 
-    fn run_apply_display_settings_window_scale_cases(cases: &[ApplyDisplaySettingsWindowScaleCase]) {
+    fn run_apply_display_settings_window_scale_cases(
+        cases: &[ApplyDisplaySettingsWindowScaleCase],
+    ) {
         let settings = PersistedDisplaySettings {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
@@ -1053,8 +1052,7 @@ mod tests {
             normalize_display_readability(&mut chrome);
             assert_eq!(chrome.font_face, case.expected_font_face, "{}", case.name);
             assert_eq!(
-                chrome.text_smoothing,
-                case.expected_text_smoothing,
+                chrome.text_smoothing, case.expected_text_smoothing,
                 "{}",
                 case.name
             );
@@ -1119,7 +1117,12 @@ mod tests {
         for case in cases {
             match case.expected {
                 DecodeCodecCaseValue::TextScale(expected) => {
-                    assert_eq!(decode_text_scale(case.input), Some(expected), "{}", case.name);
+                    assert_eq!(
+                        decode_text_scale(case.input),
+                        Some(expected),
+                        "{}",
+                        case.name
+                    );
                 }
                 DecodeCodecCaseValue::CandidateDensity(expected) => {
                     assert_eq!(
@@ -1209,7 +1212,11 @@ mod tests {
                 assert!(decode_text_scale(case.input).is_none(), "{}", case.name);
             }
             if case.reject_candidate_density {
-                assert!(decode_candidate_density(case.input).is_none(), "{}", case.name);
+                assert!(
+                    decode_candidate_density(case.input).is_none(),
+                    "{}",
+                    case.name
+                );
             }
             if case.reject_preview_style {
                 assert!(decode_preview_style(case.input).is_none(), "{}", case.name);
@@ -1224,7 +1231,11 @@ mod tests {
                 assert!(decode_theme_preset(case.input).is_none(), "{}", case.name);
             }
             if case.reject_llm_temperature {
-                assert!(decode_llm_temperature(case.input).is_none(), "{}", case.name);
+                assert!(
+                    decode_llm_temperature(case.input).is_none(),
+                    "{}",
+                    case.name
+                );
             }
             if case.reject_llm_model {
                 assert!(decode_llm_model(case.input).is_none(), "{}", case.name);

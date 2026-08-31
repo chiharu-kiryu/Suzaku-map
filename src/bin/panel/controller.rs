@@ -7,18 +7,16 @@ use crate::helpers::point_in_rect;
 use crate::helpers::window_title;
 use crate::render::{build_shape_vertices, build_text_vertices};
 use std::time::{Duration, Instant};
+use suzaku_map::ime::CommitOptions;
 use suzaku_map::ime::gpu::{
     InputMode, InteractionKind, RenderScene, SettingsScrollMetadata, VirtualKeyboardKey,
     VoiceCaptureState, VoicePermissionState,
 };
-use suzaku_map::ime::CommitOptions;
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
-use suzaku_map::platform::ime_host_adapter::{
-    shared_session_bridge, ImeHostSessionBridge,
-};
+use suzaku_map::platform::ime_host_adapter::{ImeHostSessionBridge, shared_session_bridge};
 use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
 use suzaku_map::platform::text_output_host::{
-    commit_text_to_active_target, HostTextOutputResult, HostTextOutputStatus,
+    HostTextOutputResult, HostTextOutputStatus, commit_text_to_active_target,
 };
 use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
@@ -188,10 +186,7 @@ impl PanelState {
         self.interaction.handwriting_last_sample_position = None;
     }
 
-    pub(super) fn commit_selected_candidate_to_host(
-        &mut self,
-        options: CommitOptions,
-    ) -> bool {
+    pub(super) fn commit_selected_candidate_to_host(&mut self, options: CommitOptions) -> bool {
         let Some(candidate) = self
             .engine
             .candidates()
@@ -259,9 +254,7 @@ impl PanelState {
         self.chrome.blur_input();
         self.sync_host_candidate_selection(index);
         self.engine.select_candidate(index);
-        let result = self
-            .engine
-            .commit(CommitOptions { force: true });
+        let result = self.engine.commit(CommitOptions { force: true });
         if !result.ok {
             return false;
         }
@@ -445,14 +438,17 @@ impl PanelState {
                 let mut chrome = self.chrome.clone();
                 chrome.hovered_interaction = self.interaction.hovered_interaction;
                 chrome.pressed_interaction = self.interaction.pressed_interaction;
-                self.renderer
-                    .build_settings_scene(&chrome, self.interaction.settings_option_text_scroll_target.and_then(
-                        |kind| self
-                            .interaction
-                            .settings_option_text_scroll_started_at
-                            .as_ref()
-                            .map(|started_at| (kind, *started_at)),
-                    ))
+                self.renderer.build_settings_scene(
+                    &chrome,
+                    self.interaction
+                        .settings_option_text_scroll_target
+                        .and_then(|kind| {
+                            self.interaction
+                                .settings_option_text_scroll_started_at
+                                .as_ref()
+                                .map(|started_at| (kind, *started_at))
+                        }),
+                )
             }
         };
         self.append_hover_tooltip(&mut scene);
@@ -477,10 +473,14 @@ impl PanelState {
 
         self.interaction.settings_scroll_track_rect = Some(settings_scroll_metadata.track_rect);
         self.interaction.settings_scroll_handle_rect = Some(settings_scroll_metadata.handle_rect);
-        self.interaction.settings_scroll_max_offset = settings_scroll_metadata.max_scroll_offset.max(0.0);
-        self.interaction.settings_scroll_drag_range = settings_scroll_metadata.handle_drag_range.max(0.0);
-        self.interaction.settings_scroll_visible_height = settings_scroll_metadata.visible_height.max(0.0);
-        self.interaction.settings_scroll_content_height = settings_scroll_metadata.content_height.max(0.0);
+        self.interaction.settings_scroll_max_offset =
+            settings_scroll_metadata.max_scroll_offset.max(0.0);
+        self.interaction.settings_scroll_drag_range =
+            settings_scroll_metadata.handle_drag_range.max(0.0);
+        self.interaction.settings_scroll_visible_height =
+            settings_scroll_metadata.visible_height.max(0.0);
+        self.interaction.settings_scroll_content_height =
+            settings_scroll_metadata.content_height.max(0.0);
         self.chrome.settings_scroll_offset = self
             .chrome
             .settings_scroll_offset
@@ -764,8 +764,8 @@ impl PanelState {
                     if self.interaction.settings_scroll_drag_range <= 0.0
                         || self.interaction.settings_scroll_max_offset <= 0.0
                     {
-                        let step = (self.interaction.settings_scroll_visible_height * 0.88)
-                            .max(20.0);
+                        let step =
+                            (self.interaction.settings_scroll_visible_height * 0.88).max(20.0);
                         if cursor_y < handle_rect[1] {
                             self.adjust_settings_scroll(-step);
                         } else if cursor_y > handle_rect[1] + handle_rect[3] {
@@ -788,10 +788,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -809,10 +813,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -830,10 +838,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -851,10 +863,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -873,10 +889,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -894,10 +914,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -916,10 +940,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -931,8 +959,7 @@ impl PanelState {
                     self.note_interaction_action(action);
                     self.chrome.theme_preset = theme;
                     if theme == suzaku_map::ime::gpu::ThemePreset::HighContrast
-                        && self.chrome.text_smoothing
-                            != suzaku_map::ime::gpu::TextSmoothing::Sharp
+                        && self.chrome.text_smoothing != suzaku_map::ime::gpu::TextSmoothing::Sharp
                     {
                         self.chrome.text_smoothing = suzaku_map::ime::gpu::TextSmoothing::Sharp;
                         self.rebuild_font_atlas();
@@ -944,10 +971,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -966,10 +997,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -988,10 +1023,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -1010,10 +1049,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -1032,10 +1075,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -1053,10 +1100,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -1075,10 +1126,14 @@ impl PanelState {
                     let is_truncated = scene.settings_option_truncated.contains(&action);
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
-                        && self.interaction.settings_option_text_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .settings_option_text_scroll_started_at
+                            .is_some();
                     if is_truncated && !is_scrolling {
                         self.interaction.settings_option_text_scroll_target = Some(action);
-                        self.interaction.settings_option_text_scroll_started_at = Some(Instant::now());
+                        self.interaction.settings_option_text_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
                     self.interaction.settings_option_text_scroll_target = None;
@@ -1097,7 +1152,10 @@ impl PanelState {
                     let is_truncated = scene.next_token_candidate_truncated.contains(&index);
                     let is_scrolling = self.interaction.next_token_candidate_scroll_index
                         == Some(index)
-                        && self.interaction.next_token_candidate_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .next_token_candidate_scroll_started_at
+                            .is_some();
 
                     if is_truncated && !is_scrolling {
                         self.interaction.next_token_candidate_scroll_index = Some(index);
@@ -1160,7 +1218,10 @@ impl PanelState {
                     let is_truncated = scene.handwriting_candidate_truncated.contains(&index);
                     let is_scrolling = self.interaction.handwriting_candidate_scroll_index
                         == Some(index)
-                        && self.interaction.handwriting_candidate_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .handwriting_candidate_scroll_started_at
+                            .is_some();
 
                     if is_truncated && !is_scrolling {
                         self.interaction.handwriting_candidate_scroll_index = Some(index);
@@ -1201,11 +1262,15 @@ impl PanelState {
                     let is_truncated = scene.sentence_candidate_truncated.contains(&index);
                     let is_scrolling = self.interaction.sentence_candidate_scroll_index
                         == Some(index)
-                        && self.interaction.sentence_candidate_scroll_started_at.is_some();
+                        && self
+                            .interaction
+                            .sentence_candidate_scroll_started_at
+                            .is_some();
 
                     if is_truncated && !is_scrolling {
                         self.interaction.sentence_candidate_scroll_index = Some(index);
-                        self.interaction.sentence_candidate_scroll_started_at = Some(Instant::now());
+                        self.interaction.sentence_candidate_scroll_started_at =
+                            Some(Instant::now());
                         return;
                     }
 
@@ -1239,13 +1304,14 @@ impl PanelState {
         };
         let scene = self.current_scene();
         self.interaction.pressed_interaction = scene.hit_interaction(x, y);
-        self.interaction.press_target_rect = self.interaction.pressed_interaction.and_then(|target| {
-            scene
-                .interactive_targets
-                .iter()
-                .find(|candidate| candidate.kind == target)
-                .map(|candidate| candidate.rect)
-        });
+        self.interaction.press_target_rect =
+            self.interaction.pressed_interaction.and_then(|target| {
+                scene
+                    .interactive_targets
+                    .iter()
+                    .find(|candidate| candidate.kind == target)
+                    .map(|candidate| candidate.rect)
+            });
         self.interaction.press_start_cursor = Some((x, y));
         self.interaction.press_start_instant = Some(Instant::now());
     }
@@ -1254,9 +1320,11 @@ impl PanelState {
         self.update_pressed_interaction();
         if !matches!(
             self.interaction.pressed_interaction,
-            Some(InteractionKind::Candidate(_)
-                | InteractionKind::SelectNextToken(_)
-                | InteractionKind::UseHandwritingCandidate(_))
+            Some(
+                InteractionKind::Candidate(_)
+                    | InteractionKind::SelectNextToken(_)
+                    | InteractionKind::UseHandwritingCandidate(_)
+            )
         ) {
             self.clear_sentence_candidate_scroll();
         }
@@ -1351,7 +1419,8 @@ impl PanelState {
             } else if self.interaction.touch_tap_pending && selected_from_pressed {
                 self.select_at_cursor();
             }
-        } else if selected_from_pressed && (self.kind != PanelWindowKind::Main || !self.interaction.handwriting_dragging)
+        } else if selected_from_pressed
+            && (self.kind != PanelWindowKind::Main || !self.interaction.handwriting_dragging)
         {
             self.select_at_cursor();
             self.finish_handwriting_stroke();
@@ -1365,9 +1434,11 @@ impl PanelState {
         }
         if !matches!(
             pressed_interaction,
-            Some(InteractionKind::Candidate(_)
-                | InteractionKind::SelectNextToken(_)
-                | InteractionKind::UseHandwritingCandidate(_))
+            Some(
+                InteractionKind::Candidate(_)
+                    | InteractionKind::SelectNextToken(_)
+                    | InteractionKind::UseHandwritingCandidate(_)
+            )
         ) || !selected_from_pressed
         {
             self.clear_sentence_candidate_scroll();
@@ -1491,7 +1562,9 @@ impl PanelState {
 
 #[cfg(test)]
 mod tests {
-    use super::{commit_feedback_text, commit_feedback_ticks_for_delivery, host_commit_fallback_text};
+    use super::{
+        commit_feedback_text, commit_feedback_ticks_for_delivery, host_commit_fallback_text,
+    };
 
     #[test]
     fn host_commit_fallback_prefers_non_empty_committed_text() {

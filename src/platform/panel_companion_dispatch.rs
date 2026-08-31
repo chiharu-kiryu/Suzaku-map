@@ -75,9 +75,9 @@ pub fn dispatch_for(platform: TargetPlatform) -> PanelCompanionDispatch {
 #[cfg(test)]
 mod tests {
     use super::{PanelCompanionRole, current_panel_companion_dispatch, dispatch_for};
-    use crate::platform::{TargetPlatform, host_platform};
     use crate::platform::test_env;
     use crate::platform::test_env::ScopedEnv;
+    use crate::platform::{TargetPlatform, host_platform};
 
     #[test]
     fn panel_dispatch_matches_host_platform() {

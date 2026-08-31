@@ -13,6 +13,7 @@ pub struct HostTextOutputResult {
 }
 
 impl HostTextOutputResult {
+    #[cfg(any(target_os = "macos", test))]
     fn delivered(message: impl Into<String>) -> Self {
         Self {
             status: HostTextOutputStatus::Delivered,
@@ -20,6 +21,7 @@ impl HostTextOutputResult {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     fn permission_required(message: impl Into<String>) -> Self {
         Self {
             status: HostTextOutputStatus::PermissionRequired,

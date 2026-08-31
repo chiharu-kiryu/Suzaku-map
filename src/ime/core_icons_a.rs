@@ -69,10 +69,7 @@ pub(crate) fn append_soft_card_quads(
 ) {
     let [x, y, w, h] = rect;
     let radius = radius.min(w * 0.22).min(h * 0.35).max(5.0);
-    let border = 1.2_f32
-        .min(w * 0.045)
-        .min(h * 0.13)
-        .max(1.0);
+    let border = 1.2_f32.min(w * 0.045).min(h * 0.13).max(1.0);
 
     let deep_shadow = [shadow[0], shadow[1], shadow[2], (shadow[3] * 0.58).min(1.0)];
     let ambient_shadow = [shadow[0], shadow[1], shadow[2], (shadow[3] * 0.28).min(1.0)];
@@ -82,12 +79,7 @@ pub(crate) fn append_soft_card_quads(
         ambient_shadow,
         radius + 2.0,
     );
-    append_rounded_rect_quads(
-        quads,
-        [x + 1.6, y + 3.0, w, h],
-        deep_shadow,
-        radius + 1.1,
-    );
+    append_rounded_rect_quads(quads, [x + 1.6, y + 3.0, w, h], deep_shadow, radius + 1.1);
     append_rounded_rect_quads(quads, rect, outline, radius);
     append_rounded_rect_quads(
         quads,

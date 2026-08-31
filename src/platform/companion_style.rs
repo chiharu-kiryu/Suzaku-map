@@ -222,7 +222,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     use std::fs;
     #[cfg(target_os = "linux")]
-    use std::path::PathBuf;
+    use std::path::Path;
     #[cfg(target_os = "linux")]
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -378,10 +378,7 @@ mod tests {
     #[test]
     fn current_companion_theme_preset_uses_first_matching_entry_when_duplicated() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
-            write_theme_setting_file(
-                "theme_preset=device_dark\ntheme_preset=daylight",
-                env,
-            );
+            write_theme_setting_file("theme_preset=device_dark\ntheme_preset=daylight", env);
             assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
         });
     }
@@ -401,7 +398,7 @@ mod tests {
         env.set_var("XDG_CONFIG_HOME", temp_root.to_str().expect("temp path"));
 
         let settings_path = super::super::settings_host::display_settings_path();
-        let parent = settings_path.parent().unwrap_or_else(|| PathBuf::from("."));
+        let parent = settings_path.parent().unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent).expect("create settings directory");
         fs::write(settings_path, contents).expect("write settings file");
     }

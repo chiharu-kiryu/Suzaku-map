@@ -224,24 +224,23 @@ mod tests {
         let report = current_runtime_report(false);
 
         assert!(report.contains(&profile.title));
-        assert!(report.contains(&format!(
-            "preferred-command: {}",
-            profile.preferred_command
-        )));
+        assert!(report.contains(&format!("preferred-command: {}", profile.preferred_command)));
     }
 
     #[test]
     fn current_runtime_report_matches_runtime_report_for_host_platform() {
-        let platform = host_platform();
+        crate::platform::test_env::with_test_env(|_| {
+            let platform = host_platform();
 
-        assert_eq!(
-            current_runtime_report(false),
-            runtime_report_for(platform, false)
-        );
-        assert_eq!(
-            current_runtime_report(true),
-            runtime_report_for(platform, true)
-        );
+            assert_eq!(
+                current_runtime_report(false),
+                runtime_report_for(platform, false)
+            );
+            assert_eq!(
+                current_runtime_report(true),
+                runtime_report_for(platform, true)
+            );
+        });
     }
 
     #[test]
@@ -266,10 +265,7 @@ mod tests {
             assert!(compact.contains("ime-dispatch:"));
             assert!(compact.contains("panel-dispatch:"));
             assert!(compact.contains("registration-hint:"));
-            assert!(compact.contains(&format!(
-                "preferred-command: {}",
-                profile.preferred_command
-            )));
+            assert!(compact.contains(&format!("preferred-command: {}", profile.preferred_command)));
             assert!(!compact.contains("session-probe:"));
 
             assert!(with_probe.contains("session-probe:"));

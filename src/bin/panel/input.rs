@@ -194,7 +194,9 @@ pub(super) fn handle_panel_window_event(
                             }
                             PhysicalKey::Code(KeyCode::End) => {
                                 state.current_scene();
-                                state.set_settings_scroll_offset(state.interaction.settings_scroll_max_offset);
+                                state.set_settings_scroll_offset(
+                                    state.interaction.settings_scroll_max_offset,
+                                );
                                 state.window.request_redraw();
                                 return;
                             }
@@ -347,7 +349,7 @@ pub(super) fn handle_panel_window_event(
                             }
                             _ => {}
                         }
-                    if let Some(text) = event.text.as_deref() {
+                        if let Some(text) = event.text.as_deref() {
                             state.handle_text_input(text);
                         }
                     }
@@ -359,7 +361,8 @@ pub(super) fn handle_panel_window_event(
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(position) => (position.y as f32 / 80.0).signum(),
                 };
-                if state.kind == PanelWindowKind::Main && (state.modifiers.control_key() || state.modifiers.super_key())
+                if state.kind == PanelWindowKind::Main
+                    && (state.modifiers.control_key() || state.modifiers.super_key())
                 {
                     state.scale_window_by_wheel_delta(zoom_delta);
                 } else if (state.kind == PanelWindowKind::Main && state.chrome.settings_open)

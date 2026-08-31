@@ -29,14 +29,13 @@ mod voice;
 mod windowing;
 
 use crate::app_state::{
-    VoiceInputController, FIRST_LAUNCH_WINDOW_SCALE, apply_display_settings,
-    load_display_settings, normalize_pointer_stability_settings,
+    FIRST_LAUNCH_WINDOW_SCALE, VoiceInputController, apply_display_settings, load_display_settings,
+    normalize_pointer_stability_settings,
 };
 use crate::input::handle_panel_window_event;
 use crate::render::{FontAtlas, PanelVertex, TextVertex, create_font_atlas};
 use suzaku_map::ime::gpu::{
-    CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
-    LlmModelPreset,
+    CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind, LlmModelPreset,
     LlmTemperaturePreset, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelChromeState,
     PreviewStyle, TextSmoothing, TextSpacing, VoiceCaptureState, VoicePermissionState,
     WgpuCandidateRenderer,

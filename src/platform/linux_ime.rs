@@ -42,7 +42,8 @@ pub fn bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
     let framework = detected_framework();
     let recommended_connection_name = recommended_connection_name();
     let daemon_detected = framework_daemon_detected(&framework);
-    let host_registration_ready = framework_host_registered(&framework, &recommended_connection_name);
+    let host_registration_ready =
+        framework_host_registered(&framework, &recommended_connection_name);
     let roundtrip_capable = host_registration_ready && daemon_detected;
     LinuxImeBootstrap {
         framework,
@@ -78,13 +79,13 @@ fn framework_daemon_detected(framework: &LinuxImeFramework) -> bool {
     }
 
     match framework {
-        LinuxImeFramework::IBus => process_has_name("ibus-daemon")
-            || process_has_name("ibus-x11")
-            || process_has_name("ibus-portal"),
+        LinuxImeFramework::IBus => {
+            process_has_name("ibus-daemon")
+                || process_has_name("ibus-x11")
+                || process_has_name("ibus-portal")
+        }
         LinuxImeFramework::Fcitx => {
-            process_has_name("fcitx")
-                || process_has_name("fcitx5")
-                || process_has_name("fcitx5-qt")
+            process_has_name("fcitx") || process_has_name("fcitx5") || process_has_name("fcitx5-qt")
         }
     }
 }
@@ -232,8 +233,13 @@ fn has_fcitx_config_file_named(connection_name: &str) -> bool {
     };
     let filename = format!("{}.conf", connection_name.replace('.', "_"));
     let paths = [
-        std::path::Path::new(&home).join(".local/share/fcitx5/inputmethod").join(filename.as_str()),
-        std::path::Path::new(&home).join(".config/fcitx").join("inputmethod").join(filename.as_str()),
+        std::path::Path::new(&home)
+            .join(".local/share/fcitx5/inputmethod")
+            .join(filename.as_str()),
+        std::path::Path::new(&home)
+            .join(".config/fcitx")
+            .join("inputmethod")
+            .join(filename.as_str()),
         std::path::Path::new(&home)
             .join(".config/fcitx5/inputmethod")
             .join(filename.as_str()),

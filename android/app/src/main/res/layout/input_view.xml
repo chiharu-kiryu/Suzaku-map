@@ -362,6 +362,80 @@
                         android:text="@string/handwrite_clear" />
                 </LinearLayout>
             </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/settingsDrawer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_drawer_title"
+                    android:textColor="#173B63"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/settingsAutoCapitalization"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:minHeight="48dp"
+                    android:text="@string/settings_auto_capitalization"
+                    android:textColor="#254A72" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/settingsNumberRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/settings_number_row"
+                    android:textColor="#254A72" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/settingsHapticFeedback"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/settings_haptic_feedback"
+                    android:textColor="#254A72" />
+
+                <TextView
+                    android:id="@+id/settingsStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/settings_saved"
+                    android:textColor="#60758D"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    style="?android:attr/buttonBarStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="end"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/settingsDiagnosticsButton"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_diagnostics" />
+
+                    <Button
+                        android:id="@+id/settingsResetButton"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/settings_reset" />
+                </LinearLayout>
+            </LinearLayout>
         </FrameLayout>
 
         <TextView

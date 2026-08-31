@@ -395,9 +395,7 @@ impl WgpuCandidateRenderer {
             let mut filtered_options = Vec::new();
 
             if is_searching {
-                let label_matches = label
-                    .to_ascii_lowercase()
-                    .contains(&search_query);
+                let label_matches = label.to_ascii_lowercase().contains(&search_query);
                 for (kind, option_label, selected) in options {
                     if label_matches || option_label.to_ascii_lowercase().contains(&search_query) {
                         filtered_options.push((*kind, *option_label, *selected));
@@ -415,10 +413,10 @@ impl WgpuCandidateRenderer {
         }
 
         let scroll_text_for_option = |text: &str,
-                                    started_at: Instant,
-                                    pixel_size: f32,
-                                    letter_spacing: f32,
-                                    max_width: f32| {
+                                      started_at: Instant,
+                                      pixel_size: f32,
+                                      letter_spacing: f32,
+                                      max_width: f32| {
             let chars: Vec<char> = text.chars().collect();
             if chars.is_empty() || max_width <= 0.0 {
                 return "…".to_string();
@@ -634,7 +632,12 @@ impl WgpuCandidateRenderer {
         let clear_search_text = !chrome.settings_search_query.is_empty();
         let clear_search_visible = clear_search_text;
         let search_bar_rect = [search_bar_x, search_bar_y, search_bar_w, search_bar_h];
-        let clear_button_rect = [search_clear_x, search_clear_y, search_clear_size, search_bar_h];
+        let clear_button_rect = [
+            search_clear_x,
+            search_clear_y,
+            search_clear_size,
+            search_bar_h,
+        ];
         let (search_hovered, search_pressed) =
             interaction_state(InteractionKind::SettingsSearchInput);
         let (clear_hovered, clear_pressed) =
@@ -672,7 +675,10 @@ impl WgpuCandidateRenderer {
         };
         let search_layout = TextBlock {
             text: search_text,
-            origin: [search_bar_rect[0] + 8.0 * ui_scale, search_bar_rect[1] + 4.8 * ui_scale],
+            origin: [
+                search_bar_rect[0] + 8.0 * ui_scale,
+                search_bar_rect[1] + 4.8 * ui_scale,
+            ],
             max_width: (search_bar_rect[2] - 16.0 * ui_scale).max(40.0),
             pixel_size: section_px,
             letter_spacing: ui_tracking,
@@ -753,26 +759,31 @@ impl WgpuCandidateRenderer {
             .min(max_scroll_offset);
         let scroll_track_width = 5.8 * ui_scale;
         let scroll_track_padding = 8.0 * ui_scale;
-        let settings_scroll_track_x = (panel_x + panel_width - scroll_track_width - scroll_track_padding)
-            .max(panel_x + 2.0);
+        let settings_scroll_track_x =
+            (panel_x + panel_width - scroll_track_width - scroll_track_padding).max(panel_x + 2.0);
         let settings_scroll_track_top = settings_content_top;
-        let settings_scroll_track_height = (settings_content_bottom - settings_scroll_track_top).max(0.0);
+        let settings_scroll_track_height =
+            (settings_content_bottom - settings_scroll_track_top).max(0.0);
         let chip_max_x = panel_x + panel_width - (scroll_track_width + scroll_track_padding * 1.5);
         let mut content_y = settings_content_top - settings_scroll_offset;
         let has_settings_scroll = max_scroll_offset > 0.0 && settings_scroll_track_height > 0.0;
         let settings_scroll_handle_height = if has_settings_scroll {
-            let ratio = (visible_content_height / estimated_height.max(visible_content_height)).clamp(0.12, 1.0);
+            let ratio = (visible_content_height / estimated_height.max(visible_content_height))
+                .clamp(0.12, 1.0);
             (settings_scroll_track_height * ratio)
                 .clamp(14.0 * ui_scale, settings_scroll_track_height)
         } else {
             settings_scroll_track_height.min(16.0 * ui_scale)
         };
-        let settings_scroll_drag_range = (settings_scroll_track_height - settings_scroll_handle_height).max(0.0);
-        let settings_scroll_handle_offset = if has_settings_scroll && settings_scroll_drag_range > 0.0 {
-            (settings_scroll_offset / max_scroll_offset * settings_scroll_drag_range).clamp(0.0, settings_scroll_drag_range)
-        } else {
-            0.0
-        };
+        let settings_scroll_drag_range =
+            (settings_scroll_track_height - settings_scroll_handle_height).max(0.0);
+        let settings_scroll_handle_offset =
+            if has_settings_scroll && settings_scroll_drag_range > 0.0 {
+                (settings_scroll_offset / max_scroll_offset * settings_scroll_drag_range)
+                    .clamp(0.0, settings_scroll_drag_range)
+            } else {
+                0.0
+            };
         let settings_scroll_track_rect = [
             settings_scroll_track_x,
             settings_scroll_track_top,
@@ -819,7 +830,8 @@ impl WgpuCandidateRenderer {
                 scroll_track_width * 0.55,
             );
             let (scroll_hovered_track, _) = interaction_state(InteractionKind::SettingsScrollTrack);
-            let (scroll_hovered_handle, _) = interaction_state(InteractionKind::SettingsScrollHandle);
+            let (scroll_hovered_handle, _) =
+                interaction_state(InteractionKind::SettingsScrollHandle);
             let handle_hovered = scroll_hovered_track || scroll_hovered_handle;
             let handle_color = if handle_hovered {
                 [text_primary[0], text_primary[1], text_primary[2], 0.44]
@@ -891,7 +903,12 @@ impl WgpuCandidateRenderer {
             }
 
             let label_toggle_layout = TextBlock {
-                text: if section_effectively_collapsed { "▸" } else { "▾" }.to_string(),
+                text: if section_effectively_collapsed {
+                    "▸"
+                } else {
+                    "▾"
+                }
+                .to_string(),
                 origin: [panel_x + panel_width - 24.0 * ui_scale, content_y + 6.2],
                 max_width: 10.0,
                 pixel_size: section_px,
@@ -907,19 +924,19 @@ impl WgpuCandidateRenderer {
                 text_quads.extend(label_toggle_layout.quads.iter().copied());
                 atlas_glyphs.extend(label_toggle_layout.atlas_glyphs.iter().cloned());
                 option_layouts.push(label_toggle_layout);
-            interactive_targets.push(InteractiveTarget {
-                kind: InteractionKind::ToggleSettingsSection(*section_index),
-                rect: {
-                    let toggle_area_w = 16.0 * ui_scale;
-                    let toggle_area_x = panel_x + panel_width - toggle_area_w - 6.0 * ui_scale;
-                    interaction_hit_rect([
-                        toggle_area_x,
-                        section_top,
-                        toggle_area_w,
-                        section_label_height,
-                    ])
-                },
-            });
+                interactive_targets.push(InteractiveTarget {
+                    kind: InteractionKind::ToggleSettingsSection(*section_index),
+                    rect: {
+                        let toggle_area_w = 16.0 * ui_scale;
+                        let toggle_area_x = panel_x + panel_width - toggle_area_w - 6.0 * ui_scale;
+                        interaction_hit_rect([
+                            toggle_area_x,
+                            section_top,
+                            toggle_area_w,
+                            section_label_height,
+                        ])
+                    },
+                });
             }
 
             let mut chip_x = chip_start_x;

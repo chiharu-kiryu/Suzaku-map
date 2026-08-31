@@ -120,7 +120,8 @@ impl WgpuCandidateRenderer {
             ThemePreset::DeviceDark => [0.32, 0.60, 0.98, 1.0],
             ThemePreset::HighContrast => [0.14, 0.82, 1.0, 1.0],
         };
-        let responsive_scale = (self.responsive_scale() * chrome.window_scale * 1.12).clamp(0.9, 2.4);
+        let responsive_scale =
+            (self.responsive_scale() * chrome.window_scale * 1.12).clamp(0.9, 2.4);
         let input_value_px = match chrome.text_scale {
             DisplayTextScale::Small => 2.4,
             DisplayTextScale::Medium => 3.4,
@@ -165,25 +166,27 @@ impl WgpuCandidateRenderer {
                 0.16
             },
         ];
-        let panel_glass_layer_alpha = |is_hovered: bool, is_focused: bool, is_pressed: bool| -> f32 {
-            let mut alpha = panel_glass_divider[3];
-            if is_pressed {
-                alpha += 0.10;
-            } else if is_focused {
-                alpha += 0.05;
-            } else if is_hovered {
-                alpha += 0.03;
-            }
-            alpha.min(0.52)
-        };
-        let panel_glass_layer_color = |is_hovered: bool, is_focused: bool, is_pressed: bool| -> [f32; 4] {
-            [
-                panel_glass_divider[0],
-                panel_glass_divider[1],
-                panel_glass_divider[2],
-                panel_glass_layer_alpha(is_hovered, is_focused, is_pressed),
-            ]
-        };
+        let panel_glass_layer_alpha =
+            |is_hovered: bool, is_focused: bool, is_pressed: bool| -> f32 {
+                let mut alpha = panel_glass_divider[3];
+                if is_pressed {
+                    alpha += 0.10;
+                } else if is_focused {
+                    alpha += 0.05;
+                } else if is_hovered {
+                    alpha += 0.03;
+                }
+                alpha.min(0.52)
+            };
+        let panel_glass_layer_color =
+            |is_hovered: bool, is_focused: bool, is_pressed: bool| -> [f32; 4] {
+                [
+                    panel_glass_divider[0],
+                    panel_glass_divider[1],
+                    panel_glass_divider[2],
+                    panel_glass_layer_alpha(is_hovered, is_focused, is_pressed),
+                ]
+            };
         let focus_ring_inner = if chrome.theme_preset == ThemePreset::HighContrast {
             [0.78, 0.98, 1.0, 0.30]
         } else {
@@ -275,7 +278,7 @@ impl WgpuCandidateRenderer {
             if max_allowed_settings <= 0.0 {
                 0.0
             } else {
-            let min_settings_height = 280.0 * responsive_scale;
+                let min_settings_height = 280.0 * responsive_scale;
                 let preferred_settings_height = (metrics.panel_height * 1.4)
                     .clamp(min_settings_height, 380.0 * responsive_scale);
                 preferred_settings_height
@@ -361,7 +364,8 @@ impl WgpuCandidateRenderer {
         let panel_shell_h = (panel_height + 4.2 * responsive_scale)
             .min((self.scene_height - panel_shell_y).max(1.0));
         let shell_left = panel_x.max(0.0);
-        let (seed_input_hovered, seed_input_pressed) = interaction_state(InteractionKind::SeedInput);
+        let (seed_input_hovered, seed_input_pressed) =
+            interaction_state(InteractionKind::SeedInput);
         append_soft_card_quads(
             &mut quads,
             [
@@ -395,7 +399,11 @@ impl WgpuCandidateRenderer {
                     panel_width - 6.4 * responsive_scale,
                     1.2 * responsive_scale,
                 ],
-                color: panel_glass_layer_color(seed_input_hovered, chrome.input_focused, seed_input_pressed),
+                color: panel_glass_layer_color(
+                    seed_input_hovered,
+                    chrome.input_focused,
+                    seed_input_pressed,
+                ),
             });
         }
         append_soft_card_quads(
@@ -819,7 +827,8 @@ impl WgpuCandidateRenderer {
         });
 
         let tools_header_rect = [panel_x, tools_y, panel_width, metrics.tools_header_h];
-        let (settings_hovered, settings_pressed) = interaction_state(InteractionKind::SettingsToggle);
+        let (settings_hovered, settings_pressed) =
+            interaction_state(InteractionKind::SettingsToggle);
         let (virtual_keyboard_hovered, virtual_keyboard_pressed) = if chrome.input_modes_expanded {
             interaction_state(InteractionKind::InputModeButton(InputMode::VirtualKeyboard))
         } else {
@@ -1002,26 +1011,12 @@ impl WgpuCandidateRenderer {
                 shell,
                 panel_tool_panel_radius,
             );
-                if tools_panel_rect[3] > 3.0 * responsive_scale {
-                    quads.push(CandidateQuad {
-                        rect: [
-                            tools_panel_rect[0] + 7.0 * responsive_scale,
-                            tools_panel_rect[1] + 4.0 * responsive_scale,
-                            tools_panel_rect[2] - 14.0 * responsive_scale,
-                            2.0 * responsive_scale,
-                        ],
-                        color: panel_glass_layer_color(
-                            tools_group_hovered,
-                            chrome.input_focused,
-                            tools_group_pressed,
-                        ),
-                    });
-                }
+            if tools_panel_rect[3] > 3.0 * responsive_scale {
                 quads.push(CandidateQuad {
                     rect: [
-                        tools_panel_rect[0] + 10.0 * responsive_scale,
-                        tools_panel_rect[1] + 5.2 * responsive_scale,
-                        tools_panel_rect[2] - 16.0 * responsive_scale,
+                        tools_panel_rect[0] + 7.0 * responsive_scale,
+                        tools_panel_rect[1] + 4.0 * responsive_scale,
+                        tools_panel_rect[2] - 14.0 * responsive_scale,
                         2.0 * responsive_scale,
                     ],
                     color: panel_glass_layer_color(
@@ -1030,6 +1025,20 @@ impl WgpuCandidateRenderer {
                         tools_group_pressed,
                     ),
                 });
+            }
+            quads.push(CandidateQuad {
+                rect: [
+                    tools_panel_rect[0] + 10.0 * responsive_scale,
+                    tools_panel_rect[1] + 5.2 * responsive_scale,
+                    tools_panel_rect[2] - 16.0 * responsive_scale,
+                    2.0 * responsive_scale,
+                ],
+                color: panel_glass_layer_color(
+                    tools_group_hovered,
+                    chrome.input_focused,
+                    tools_group_pressed,
+                ),
+            });
             let drawer_rect = [
                 tools_panel_rect[0] + 6.0 * responsive_scale,
                 tools_panel_rect[1] + 3.2 * responsive_scale,
@@ -1045,21 +1054,21 @@ impl WgpuCandidateRenderer {
                 surface,
                 panel_tool_drawer_radius,
             );
-                if drawer_rect[3] > 6.0 * responsive_scale {
-                    quads.push(CandidateQuad {
-                        rect: [
-                            drawer_rect[0] + 4.0 * responsive_scale,
-                            drawer_rect[1] + 4.0 * responsive_scale,
-                            drawer_rect[2] - 8.0 * responsive_scale,
-                            1.8 * responsive_scale,
-                        ],
-                        color: panel_glass_layer_color(
-                            tools_group_hovered,
-                            chrome.input_focused,
-                            tools_group_pressed,
-                        ),
-                    });
-                }
+            if drawer_rect[3] > 6.0 * responsive_scale {
+                quads.push(CandidateQuad {
+                    rect: [
+                        drawer_rect[0] + 4.0 * responsive_scale,
+                        drawer_rect[1] + 4.0 * responsive_scale,
+                        drawer_rect[2] - 8.0 * responsive_scale,
+                        1.8 * responsive_scale,
+                    ],
+                    color: panel_glass_layer_color(
+                        tools_group_hovered,
+                        chrome.input_focused,
+                        tools_group_pressed,
+                    ),
+                });
+            }
             let handle_w = 44.0 * responsive_scale;
             quads.push(CandidateQuad {
                 rect: [
@@ -1087,7 +1096,7 @@ impl WgpuCandidateRenderer {
         }
 
         let settings_y = panel_y + metrics.panel_height;
-        let mut settings_scroll_metadata: Option<SettingsScrollMetadata> = None;
+        let settings_scroll_metadata: Option<SettingsScrollMetadata>;
         let settings_option_text_scroll = settings_option_text_scroll.as_ref();
         include!("panel_scene_settings_block.rs");
 

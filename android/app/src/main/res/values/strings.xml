@@ -2,6 +2,16 @@
 <resources>
     <string name="app_name">Suzaku IME</string>
     <string name="ime_name">Suzaku Input Method</string>
+    <string name="setup_intro">Enable Suzaku in Android settings, then choose it as the current keyboard.</string>
+    <string name="setup_status_disabled">Suzaku is not enabled yet</string>
+    <string name="setup_status_enabled">Suzaku is enabled · choose it as the current keyboard</string>
+    <string name="setup_status_active">Suzaku is enabled and currently selected</string>
+    <string name="setup_open_system_settings">Open input method settings</string>
+    <string name="setup_choose_keyboard">Choose current keyboard</string>
+    <string name="setup_refresh">Refresh status</string>
+    <string name="setup_preferences_title">Keyboard preferences</string>
+    <string name="setup_diagnostics_title">Diagnostics</string>
+    <string name="setup_settings_loaded">Preferences are shared with the keyboard</string>
     <string name="virtual_keyboard">Virtual keyboard</string>
     <string name="voice_input">Voice input</string>
     <string name="handwriting_input">Handwriting input</string>
@@ -9,8 +19,14 @@
     <string name="collapse_input">Collapse input</string>
     <string name="compose_placeholder">Type to compose</string>
     <string name="candidate_empty">Keep typing to see suggestions</string>
+    <string name="direct_input_placeholder">Direct input</string>
+    <string name="candidate_direct_input">Direct field · suggestions off</string>
+    <string name="candidate_editor_completion_waiting">Waiting for app suggestions</string>
+    <string name="secure_input_placeholder">Secure input</string>
+    <string name="candidate_secure_input">Secure field · suggestions off</string>
     <string name="candidate_label_format">%1$d %2$s</string>
     <string name="host_status_ready">Android IME host connected</string>
+    <string name="host_status_secure">Secure input · candidates, voice, and handwriting are disabled</string>
     <string name="keyboard_drawer_title">Keyboard input</string>
     <string name="voice_drawer_title">Voice input</string>
     <string name="handwrite_drawer_title">Handwrite input</string>
@@ -37,5 +53,12 @@
     <string name="handwrite_status_committed">Committed current handwriting seed</string>
     <string name="handwrite_use_seed">Use seed</string>
     <string name="handwrite_clear">Clear</string>
-    <string name="tool_settings_pending">Settings drawer coming next</string>
+    <string name="settings_drawer_title">Keyboard settings</string>
+    <string name="settings_auto_capitalization">Automatic capitalization</string>
+    <string name="settings_number_row">Always show number row</string>
+    <string name="settings_haptic_feedback">Haptic feedback on key press</string>
+    <string name="settings_saved">Changes are saved automatically</string>
+    <string name="settings_defaults_restored">Default settings restored</string>
+    <string name="settings_diagnostics">Diagnostics</string>
+    <string name="settings_reset">Reset</string>
 </resources>

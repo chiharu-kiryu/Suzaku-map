@@ -2,6 +2,7 @@ use crate::ime::gpu::VoicePermissionState;
 use crate::platform::linux;
 
 #[cfg(target_os = "linux")]
+#[derive(Debug)]
 pub struct LinuxSpeechBridge;
 
 #[cfg(target_os = "linux")]

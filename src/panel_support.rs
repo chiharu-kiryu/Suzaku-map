@@ -95,198 +95,69 @@ const NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_MS: u64 = 800;
 const NEXT_TOKEN_OPEN_SOURCE_MODEL_TEMPERATURE_TENTHS: u32 = 3;
 const NEXT_TOKEN_OPEN_SOURCE_MODEL_BONUS: i32 = 560;
 const NEXT_TOKEN_CONTEXT_HINTS: &[(&str, &[&str])] = &[
-    (
-        "thanks",
-        &["🙏", "😊", "👍", ":)", "<3"],
-    ),
-    (
-        "thank you",
-        &["🙏", "😊", "😄", ":D"],
-    ),
-    (
-        "sorry",
-        &["🙇", "😅", "😢", ":)"],
-    ),
-    (
-        "happy",
-        &["😄", "🎉", ":-)", "😊"],
-    ),
-    (
-        "love",
-        &["❤️", "🥹", "😍", ":')"],
-    ),
-    (
-        "congrats",
-        &["🎉", "👏", "👏🏽", "😀"],
-    ),
-    (
-        "good job",
-        &["👏", "🎉", "👍", "😊"],
-    ),
-    (
-        "great job",
-        &["🎉", "👏", "🙌", "😄"],
-    ),
-    (
-        "happy birthday",
-        &["🎉", "🎂", "🎊", "😊"],
-    ),
-    (
-        "you are welcome",
-        &["😊", "🙂", "🙌", "😄"],
-    ),
-    (
-        "good morning",
-        &["🌞", "☀️", "👋", "😀"],
-    ),
-    (
-        "good night",
-        &["🌙", "😴", "💤", "🛌"],
-    ),
-    (
-        "see you",
-        &["🙂", "👍", "🙌", "😁"],
-    ),
-    (
-        "what's up",
-        &["🙂", "😄", "😉", "😌"],
-    ),
-    (
-        "how are you",
-        &["🙂", "😊", "😄", "🙌"],
-    ),
-    (
-        "well done",
-        &["👏", "🎉", "🙌", "✅"],
-    ),
-    (
-        "no problem",
-        &["🙂", "👌", "😊", "👍"],
-    ),
-    (
-        "nice to",
-        &["😊", "😄", "🙌", "😌"],
-    ),
-    (
-        "good to",
-        &["😊", "🙌", "😁", "😄"],
-    ),
-    (
-        "good luck",
-        &["🍀", "✨", "🙌", "🤞"],
-    ),
-    (
-        "all the best",
-        &["🍀", "✨", "💪", "🙌"],
-    ),
-    (
-        "see you later",
-        &["🙂", "👋", "😄", "👍"],
-    ),
-    (
-        "get well",
-        &["🌱", "😌", "🙌", "💪"],
-    ),
-    (
-        "you know",
-        &["🙂", "😅", "🤔", "🙄"],
-    ),
-    (
-        "i mean",
-        &["🤔", "😅", "🙂", "😌"],
-    ),
-    (
-        "what if",
-        &["🤔", "😄", "🤩", "🙈"],
-    ),
-    (
-        "asap",
-        &["⏱️", "🙂", "📌", "💬"],
-    ),
-    (
-        "for real",
-        &["😄", "🙂", "🎯", "🙌"],
-    ),
-    (
-        "thank you 吧",
-        &["🙏", "😄", "🙂", "👍"],
-    ),
-    (
-        "thanks 吧",
-        &["🙂", "😄", "🙏", "👍"],
-    ),
-    (
-        "no problem 吧",
-        &["🙂", "👌", "🙌", "😄"],
-    ),
-    (
-        "good job 吧",
-        &["👏", "🙌", "😄", "👍"],
-    ),
-    (
-        "谢谢",
-        &["🙏", "🙂", "😊", "😄"],
-    ),
-    (
-        "不客气",
-        &["🙂", "🙌", "😊", "👍"],
-    ),
-    (
-        "加油",
-        &["💪", "🔥", "👍", "🙌"],
-    ),
-    (
-        "辛苦",
-        &["🙏", "❤️", "🙂", "😌"],
-    ),
-    (
-        "对吧",
-        &["🙂", "😄", "😊", "👍"],
-    ),
-    (
-        "可以吧",
-        &["🙂", "😄", "👍", "🙌"],
-    ),
-    (
-        "行吧",
-        &["🙂", "😄", "👍", "🙌"],
-    ),
-    (
-        "好的",
-        &["🙂", "👌", "👍", "😊"],
-    ),
-    (
-        "真的吗",
-        &["😮", "🤔", "😄", "🙄"],
-    ),
-    (
-        "哈哈",
-        &["😄", "😂", "😁", "😌"],
-    ),
-    (
-        "没事的",
-        &["🙂", "👍", "🙌", "😄"],
-    ),
-    (
-        "辛苦了",
-        &["🙏", "❤️", "💪", "🙌"],
-    ),
+    ("thanks", &["🙏", "😊", "👍", ":)", "<3"]),
+    ("thank you", &["🙏", "😊", "😄", ":D"]),
+    ("sorry", &["🙇", "😅", "😢", ":)"]),
+    ("happy", &["😄", "🎉", ":-)", "😊"]),
+    ("love", &["❤️", "🥹", "😍", ":')"]),
+    ("congrats", &["🎉", "👏", "👏🏽", "😀"]),
+    ("good job", &["👏", "🎉", "👍", "😊"]),
+    ("great job", &["🎉", "👏", "🙌", "😄"]),
+    ("happy birthday", &["🎉", "🎂", "🎊", "😊"]),
+    ("you are welcome", &["😊", "🙂", "🙌", "😄"]),
+    ("good morning", &["🌞", "☀️", "👋", "😀"]),
+    ("good night", &["🌙", "😴", "💤", "🛌"]),
+    ("see you", &["🙂", "👍", "🙌", "😁"]),
+    ("what's up", &["🙂", "😄", "😉", "😌"]),
+    ("how are you", &["🙂", "😊", "😄", "🙌"]),
+    ("well done", &["👏", "🎉", "🙌", "✅"]),
+    ("no problem", &["🙂", "👌", "😊", "👍"]),
+    ("nice to", &["😊", "😄", "🙌", "😌"]),
+    ("good to", &["😊", "🙌", "😁", "😄"]),
+    ("good luck", &["🍀", "✨", "🙌", "🤞"]),
+    ("all the best", &["🍀", "✨", "💪", "🙌"]),
+    ("see you later", &["🙂", "👋", "😄", "👍"]),
+    ("get well", &["🌱", "😌", "🙌", "💪"]),
+    ("you know", &["🙂", "😅", "🤔", "🙄"]),
+    ("i mean", &["🤔", "😅", "🙂", "😌"]),
+    ("what if", &["🤔", "😄", "🤩", "🙈"]),
+    ("asap", &["⏱️", "🙂", "📌", "💬"]),
+    ("for real", &["😄", "🙂", "🎯", "🙌"]),
+    ("thank you 吧", &["🙏", "😄", "🙂", "👍"]),
+    ("thanks 吧", &["🙂", "😄", "🙏", "👍"]),
+    ("no problem 吧", &["🙂", "👌", "🙌", "😄"]),
+    ("good job 吧", &["👏", "🙌", "😄", "👍"]),
+    ("谢谢", &["🙏", "🙂", "😊", "😄"]),
+    ("不客气", &["🙂", "🙌", "😊", "👍"]),
+    ("加油", &["💪", "🔥", "👍", "🙌"]),
+    ("辛苦", &["🙏", "❤️", "🙂", "😌"]),
+    ("对吧", &["🙂", "😄", "😊", "👍"]),
+    ("可以吧", &["🙂", "😄", "👍", "🙌"]),
+    ("行吧", &["🙂", "😄", "👍", "🙌"]),
+    ("好的", &["🙂", "👌", "👍", "😊"]),
+    ("真的吗", &["😮", "🤔", "😄", "🙄"]),
+    ("哈哈", &["😄", "😂", "😁", "😌"]),
+    ("没事的", &["🙂", "👍", "🙌", "😄"]),
+    ("辛苦了", &["🙏", "❤️", "💪", "🙌"]),
 ];
 
-fn handwriting_speed_profile(
-    distance: f32,
-    previous_distance: f32,
-) -> (f32, f32, f32) {
+fn handwriting_speed_profile(distance: f32, previous_distance: f32) -> (f32, f32, f32) {
     let speed_hint = (distance.max(0.0) + previous_distance.max(0.0) * 0.65) * 0.5;
     let speed_ratio = (speed_hint / HANDWRITING_SPEED_REFERENCE)
         .clamp(HANDWRITING_SPEED_MIN, HANDWRITING_SPEED_MAX);
 
-    let resample_distance = (HANDWRITING_RESAMPLE_DISTANCE / speed_ratio)
-        .clamp(HANDWRITING_RESAMPLE_DISTANCE_MIN, HANDWRITING_RESAMPLE_DISTANCE_MAX);
-    let denoise_distance = (HANDWRITING_DENOISE_DISTANCE / speed_ratio)
-        .clamp(HANDWRITING_DENOISE_DISTANCE_MIN, HANDWRITING_DENOISE_DISTANCE_MAX);
-    let smooth_alpha = (HANDWRITING_PREPROCESS_SMOOTH_ALPHA * speed_ratio.sqrt())
-        .clamp(HANDWRITING_PREPROCESS_ALPHA_MIN, HANDWRITING_PREPROCESS_ALPHA_MAX);
+    let resample_distance = (HANDWRITING_RESAMPLE_DISTANCE / speed_ratio).clamp(
+        HANDWRITING_RESAMPLE_DISTANCE_MIN,
+        HANDWRITING_RESAMPLE_DISTANCE_MAX,
+    );
+    let denoise_distance = (HANDWRITING_DENOISE_DISTANCE / speed_ratio).clamp(
+        HANDWRITING_DENOISE_DISTANCE_MIN,
+        HANDWRITING_DENOISE_DISTANCE_MAX,
+    );
+    let smooth_alpha = (HANDWRITING_PREPROCESS_SMOOTH_ALPHA * speed_ratio.sqrt()).clamp(
+        HANDWRITING_PREPROCESS_ALPHA_MIN,
+        HANDWRITING_PREPROCESS_ALPHA_MAX,
+    );
 
     (denoise_distance, resample_distance, smooth_alpha)
 }
@@ -329,9 +200,7 @@ fn normalize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> Vec<Vec<[f32; 2]>
                     ]
                 };
                 let [prev_x, prev_y] = *normalized_stroke.last().unwrap();
-                if (candidate[0] - prev_x).hypot(candidate[1] - prev_y)
-                    >= denoise_distance * 0.8
-                {
+                if (candidate[0] - prev_x).hypot(candidate[1] - prev_y) >= denoise_distance * 0.8 {
                     normalized_stroke.push(candidate);
                 }
             }
@@ -380,13 +249,9 @@ pub fn derive_next_token_candidates(
             .and_then(|raw| normalize_candidate_token(raw))
             .filter(|token| !seed_tokens.iter().any(|existing| existing == token))
             .map(|token| {
-                let score =
-                    score_next_token_candidate(source_index, true, 0) + next_token_expression_bonus(&token);
-                (
-                    token,
-                    score,
-                    prefix_len,
-                )
+                let score = score_next_token_candidate(source_index, true, 0)
+                    + next_token_expression_bonus(&token);
+                (token, score, prefix_len)
             });
 
         if let Some((token, score, source_position)) = immediate_token {
@@ -401,9 +266,8 @@ pub fn derive_next_token_candidates(
                 continue;
             }
             let distance = candidate_index.saturating_sub(prefix_len + 1);
-            let score =
-                score_next_token_candidate(source_index, false, distance)
-                    + next_token_expression_bonus(&token);
+            let score = score_next_token_candidate(source_index, false, distance)
+                + next_token_expression_bonus(&token);
             push_ranked_token(&mut ranked, token, score, candidate_index);
         }
     }
@@ -477,7 +341,8 @@ fn contextual_expression_hints(seed_tokens: &[String]) -> Vec<String> {
     if normalized_seed_tokens.is_empty() {
         return hints;
     }
-    let normalized_seed_refs: Vec<&str> = normalized_seed_tokens.iter().map(String::as_str).collect();
+    let normalized_seed_refs: Vec<&str> =
+        normalized_seed_tokens.iter().map(String::as_str).collect();
     let seed_len = normalized_seed_tokens.len();
 
     for (trigger, candidates) in NEXT_TOKEN_CONTEXT_HINTS.iter() {
@@ -547,7 +412,7 @@ fn next_token_model_candidates(
         seed_text,
         limit,
         timeout,
-);
+    );
 
     let address = format!("{}:{}", endpoint_parsed.host, endpoint_parsed.port);
     let mut stream = match TcpStream::connect(address) {
@@ -580,7 +445,7 @@ fn build_next_token_model_request(
         escape_json_string(&next_token_model_prompt(seed_text, limit)),
         NEXT_TOKEN_OPEN_SOURCE_MODEL_TEMPERATURE_TENTHS as f32 / 10.0,
         NEXT_TOKEN_OPEN_SOURCE_MODEL_MAX_TOKENS
-);
+    );
     let endpoint_host = endpoint
         .strip_prefix("http://")
         .or_else(|| endpoint.strip_prefix("https://"))
@@ -695,7 +560,8 @@ fn is_loopback_host(host: &str) -> bool {
     if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
         return true;
     }
-    host.parse::<std::net::IpAddr>().map_or(false, |ip| ip.is_loopback())
+    host.parse::<std::net::IpAddr>()
+        .map_or(false, |ip| ip.is_loopback())
 }
 
 fn consume_json_string(input: &str) -> Option<(String, &str)> {
@@ -753,9 +619,7 @@ fn looks_like_emoji_token(raw: &str) -> bool {
                 | 0x1FA70..=0x1FAFF
                 | 0x2600..=0x27BF
                 | 0x1F190..=0x1F251
-                | 0x1F1E6..=0x1F1FF
-        )
-            || ch == '❤'
+        ) || ch == '❤'
     })
 }
 
@@ -782,46 +646,100 @@ fn matching_prefix_len_str(seed_tokens: &[&str], words: &[&str]) -> usize {
 fn is_kaomoji_face_like_char(ch: char) -> bool {
     matches!(
         ch,
-        '^' | 'o' | 'O' | 'T' | 'x' | 'X' | 'V' | 'v' | 'w' | 'W' | 'ω' | '°' | '•'
-            | '◉' | '◕' | '◔' | '◯' | '◠' | '◡' | 'ツ' | 'ಠ' | 'ಥ' | 'ʖ' | 'ᴗ' | '0'
-        | '3'
-        | '7'
-        | '9'
-        | '_'
-        | '‿'
-        | '¬'
-        | 'ᕕ'
-        | 'ᕗ'
-        | 'ᐛ'
-        | 'ʘ'
-        | '◴'
-        | '◷'
-        | '◶'
-        | '◵'
-        | '┌'
-        | '┐'
-        | '└'
-        | '┘'
-        | '₍'
-        | '╯'
-        | '╰'
-        | '╭'
-        | '╮'
-        | '□'
-        | '・'
-        | '⊂'
-        | 'ヽ'
-        | 'ノ'
-        | '￣'
+        '^' | 'o'
+            | 'O'
+            | 'T'
+            | 'x'
+            | 'X'
+            | 'V'
+            | 'v'
+            | 'w'
+            | 'W'
+            | 'ω'
+            | '°'
+            | '•'
+            | '◉'
+            | '◕'
+            | '◔'
+            | '◯'
+            | '◠'
+            | '◡'
+            | 'ツ'
+            | 'ಠ'
+            | 'ಥ'
+            | 'ʖ'
+            | 'ᴗ'
+            | '0'
+            | '3'
+            | '7'
+            | '9'
+            | '_'
+            | '‿'
+            | '¬'
+            | 'ᕕ'
+            | 'ᕗ'
+            | 'ᐛ'
+            | 'ʘ'
+            | '◴'
+            | '◷'
+            | '◶'
+            | '◵'
+            | '┌'
+            | '┐'
+            | '└'
+            | '┘'
+            | '₍'
+            | '╯'
+            | '╰'
+            | '╭'
+            | '╮'
+            | '□'
+            | '・'
+            | '⊂'
+            | 'ヽ'
+            | 'ノ'
+            | '￣'
     )
 }
 
 fn is_kaomoji_connector(ch: char) -> bool {
     matches!(
         ch,
-        ':' | ';' | '=' | '-' | '_' | '.' | '/' | '\\' | '(' | ')' | '[' | ']' | '<' | '>' | '{'
-            | '}' | 'ノ' | '◡' | '︿' | '╲' | '╱' | '┐' | '┘' | '└' | '┌' | '◍' | '◉'
-            | 'ᕕ' | 'ᕗ' | '╭' | '╮' | '╰' | '╯' | '┻' | '┳' | '━' | '╯' | '╰'
+        ':' | ';'
+            | '='
+            | '-'
+            | '_'
+            | '.'
+            | '/'
+            | '\\'
+            | '('
+            | ')'
+            | '['
+            | ']'
+            | '<'
+            | '>'
+            | '{'
+            | '}'
+            | 'ノ'
+            | '◡'
+            | '︿'
+            | '╲'
+            | '╱'
+            | '┐'
+            | '┘'
+            | '└'
+            | '┌'
+            | '◍'
+            | '◉'
+            | 'ᕕ'
+            | 'ᕗ'
+            | '╭'
+            | '╮'
+            | '╰'
+            | '╯'
+            | '┻'
+            | '┳'
+            | '━'
     )
 }
 
@@ -839,10 +757,7 @@ fn looks_like_ascii_emoticon_token(raw: &str) -> bool {
 
     if let Some(head) = token.chars().next() {
         if (head == 'x' || head == 'X') && token.len() <= 5 {
-            return token
-                .chars()
-                .skip(1)
-                .all(|ch| ch == 'd' || ch == 'D');
+            return token.chars().skip(1).all(|ch| ch == 'd' || ch == 'D');
         }
 
         if !matches!(head, ':' | ';' | '<' | '>') {
@@ -866,18 +781,38 @@ fn looks_like_ascii_emoticon_token(raw: &str) -> bool {
         for ch in tail {
             if !matches!(
                 ch,
-                ':' | ')' | '(' | 'D' | 'd' | 'P' | 'p' | 'O' | 'o' | '3' | '/' | '\\' | '|'
+                ':' | ')'
+                    | '('
+                    | 'D'
+                    | 'd'
+                    | 'P'
+                    | 'p'
+                    | 'O'
+                    | 'o'
+                    | '3'
+                    | '/'
+                    | '\\'
+                    | '|'
                     | '*'
-                    | '_' | '.' | '<' | '>' | '[' | ']' | '¬'
+                    | '_'
+                    | '.'
+                    | '<'
+                    | '>'
+                    | '['
+                    | ']'
+                    | '¬'
                     | '\''
             ) {
                 return false;
             }
 
-            if matches!(ch, '/' | '\\' | '|' | '*' | '<' | '>' | '[' | ']' ) {
+            if matches!(ch, '/' | '\\' | '|' | '*' | '<' | '>' | '[' | ']') {
                 has_side_char = true;
             }
-            if matches!(ch, ')' | '(' | 'D' | 'd' | 'P' | 'p' | 'O' | 'o' | '3' | '0') {
+            if matches!(
+                ch,
+                ')' | '(' | 'D' | 'd' | 'P' | 'p' | 'O' | 'o' | '3' | '0'
+            ) {
                 has_face_char = true;
             }
             if ch != '/' {
@@ -1046,9 +981,7 @@ pub fn derive_sentence_candidates_with_indices(
             continue;
         }
         let normalized_signature = normalize_sentence_signature(&cleaned);
-        if normalized_signature.is_empty()
-            || !normalized_seen.insert(normalized_signature)
-        {
+        if normalized_signature.is_empty() || !normalized_seen.insert(normalized_signature) {
             continue;
         }
         derived.push((index, cleaned));
@@ -1108,7 +1041,10 @@ fn sentence_candidate_rank(
     let normalized_seed_tokens = normalized_candidate_tokens(seed_text);
     let normalized_seed = normalized_seed_tokens.join(" ");
     let normalized_sentence = sentence.to_lowercase();
-    let seed_tokens = normalized_seed_tokens.iter().map(String::as_str).collect::<Vec<_>>();
+    let seed_tokens = normalized_seed_tokens
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
     let sentence_tokens = normalized_sentence.split_whitespace().collect::<Vec<_>>();
     let token_count = normalized_sentence.split_whitespace().count();
     let ideal_length_delta = token_count.abs_diff((seed_tokens.len() + 6).clamp(6, 14));
@@ -1214,8 +1150,8 @@ fn clean_sentence_candidate(seed_text: &str, candidate: &str) -> String {
                 .unwrap_or_else(|| reduced_seed.to_string())
         ))
     } else if normalized_template_candidate.ends_with("now expands into a complete candidate") {
-        let prefix =
-            template_prefix("now expands into a complete candidate").unwrap_or_else(|| seed.to_string());
+        let prefix = template_prefix("now expands into a complete candidate")
+            .unwrap_or_else(|| seed.to_string());
         Some(format!("{prefix} now expands into a complete sentence."))
     } else {
         None
@@ -1416,7 +1352,14 @@ fn recognize_handwriting_candidates_base(strokes: &[Vec<[f32; 2]>]) -> Vec<Strin
 
     if straightness > 0.9 {
         if aspect < 0.55 {
-            return vec!["T_T".into(), "-_-".into(), "ಠ_ಠ".into(), "i".into(), "line".into(), "input".into()];
+            return vec![
+                "T_T".into(),
+                "-_-".into(),
+                "ಠ_ಠ".into(),
+                "i".into(),
+                "line".into(),
+                "input".into(),
+            ];
         }
         if aspect > 1.8 {
             return vec![
@@ -1502,13 +1445,11 @@ pub fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_next_token_candidates, derive_sentence_candidates,
-        derive_sentence_candidates_with_indices, normalize_candidate_token,
-        matching_prefix_len_str, normalize_handwriting_strokes, normalize_model_content_lines,
-        parse_http_endpoint, parse_next_token_model_candidates, consume_json_string,
-        finalize_sentence, tokenize_seed_words,
-        recognize_handwriting_candidates, sentence_candidate_style_label,
-        summarize_handwriting_strokes,
+        consume_json_string, derive_next_token_candidates, derive_sentence_candidates,
+        derive_sentence_candidates_with_indices, finalize_sentence, matching_prefix_len_str,
+        normalize_candidate_token, normalize_handwriting_strokes, normalize_model_content_lines,
+        parse_http_endpoint, parse_next_token_model_candidates, recognize_handwriting_candidates,
+        sentence_candidate_style_label, summarize_handwriting_strokes, tokenize_seed_words,
     };
 
     #[test]
@@ -1822,22 +1763,16 @@ mod tests {
 
     #[test]
     fn next_token_candidates_keep_emoji() {
-        let tokens = derive_next_token_candidates(
-            "hello",
-            &["hello 😀".into(), "hello world".into()],
-            6,
-        );
+        let tokens =
+            derive_next_token_candidates("hello", &["hello 😀".into(), "hello world".into()], 6);
 
         assert!(tokens.iter().any(|token| token == "😀"));
     }
 
     #[test]
     fn next_token_candidates_keep_multi_codepoint_emoji() {
-        let tokens = derive_next_token_candidates(
-            "hello",
-            &["hello 👨‍👩‍👧‍👦".into(), "hello there".into()],
-            6,
-        );
+        let tokens =
+            derive_next_token_candidates("hello", &["hello 👨‍👩‍👧‍👦".into(), "hello there".into()], 6);
 
         assert!(tokens.iter().any(|token| token == "👨‍👩‍👧‍👦"));
     }
@@ -1853,11 +1788,8 @@ mod tests {
         assert!(tokens.iter().any(|token| token == ":-)"));
         assert!(tokens.iter().any(|token| token == "then"));
 
-        let tokens = derive_next_token_candidates(
-            "wow",
-            &["wow >:) so far".into(), "wow there".into()],
-            8,
-        );
+        let tokens =
+            derive_next_token_candidates("wow", &["wow >:) so far".into(), "wow there".into()], 8);
         assert!(tokens.iter().any(|token| token == ">:)"));
 
         let tokens = derive_next_token_candidates(
@@ -1866,21 +1798,15 @@ mod tests {
             8,
         );
         assert!(tokens.iter().any(|token| token == ":'-)"));
-        let tokens = derive_next_token_candidates(
-            "chat",
-            &["chat >.< now".into(), "chat later".into()],
-            8,
-        );
+        let tokens =
+            derive_next_token_candidates("chat", &["chat >.< now".into(), "chat later".into()], 8);
         assert!(tokens.iter().any(|token| token == ">.<"));
     }
 
     #[test]
     fn next_token_candidates_prefers_expression_by_ranking() {
-        let tokens = derive_next_token_candidates(
-            "i",
-            &["i can".into(), "i 😀".into(), "i :-D".into()],
-            6,
-        );
+        let tokens =
+            derive_next_token_candidates("i", &["i can".into(), "i 😀".into(), "i :-D".into()], 6);
 
         assert_eq!(tokens.first(), Some(&"😀".to_string()));
         assert!(tokens.iter().any(|token| token == ":-D"));
@@ -1891,7 +1817,10 @@ mod tests {
     fn next_token_candidates_adds_contextual_expression_hints() {
         let tokens = derive_next_token_candidates(
             "thank you",
-            &["thank you".into(), "thank you is ready as the next full sentence".into()],
+            &[
+                "thank you".into(),
+                "thank you is ready as the next full sentence".into(),
+            ],
             8,
         );
 
@@ -1913,18 +1842,16 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_two_word_seed() {
-        let tokens = derive_next_token_candidates(
-            "see you",
-            &["see you".into(), "see you later".into()],
-            8,
-        );
+        let tokens =
+            derive_next_token_candidates("see you", &["see you".into(), "see you later".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "🙂"));
         assert!(tokens.iter().any(|token| token == "👍"));
     }
 
     #[test]
-    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed_with_punctuated_tokens() {
+    fn next_token_candidates_adds_contextual_expression_hints_for_three_word_seed_with_punctuated_tokens()
+     {
         let tokens = derive_next_token_candidates(
             "how are you",
             &["how are you".into(), "how are you doing".into()],
@@ -1997,11 +1924,7 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_seed() {
-        let tokens = derive_next_token_candidates(
-            "谢谢！",
-            &["谢谢".into(), "谢谢你".into()],
-            8,
-        );
+        let tokens = derive_next_token_candidates("谢谢！", &["谢谢".into(), "谢谢你".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "🙏"));
         assert!(tokens.iter().any(|token| token == "🙂"));
@@ -2009,11 +1932,7 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_phrase_with_particle() {
-        let tokens = derive_next_token_candidates(
-            "可以吧",
-            &["可以吧".into(), "可以吧".into()],
-            8,
-        );
+        let tokens = derive_next_token_candidates("可以吧", &["可以吧".into(), "可以吧".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "🙂"));
         assert!(tokens.iter().any(|token| token == "😄"));
@@ -2021,11 +1940,7 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_encouragement_phrase() {
-        let tokens = derive_next_token_candidates(
-            "加油",
-            &["加油".into(), "加油 继续".into()],
-            8,
-        );
+        let tokens = derive_next_token_candidates("加油", &["加油".into(), "加油 继续".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "💪"));
         assert!(tokens.iter().any(|token| token == "🔥"));
@@ -2033,11 +1948,8 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_friendly_endings() {
-        let tokens = derive_next_token_candidates(
-            "好的",
-            &["好的".into(), "好的 我知道".into()],
-            8,
-        );
+        let tokens =
+            derive_next_token_candidates("好的", &["好的".into(), "好的 我知道".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "🙂"));
         assert!(tokens.iter().any(|token| token == "👌"));
@@ -2045,11 +1957,7 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_filler_particles() {
-        let tokens = derive_next_token_candidates(
-            "行吧",
-            &["行吧".into(), "行吧 那就".into()],
-            8,
-        );
+        let tokens = derive_next_token_candidates("行吧", &["行吧".into(), "行吧 那就".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "🙂"));
         assert!(tokens.iter().any(|token| token == "😄"));
@@ -2057,11 +1965,8 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_laugh() {
-        let tokens = derive_next_token_candidates(
-            "哈哈",
-            &["哈哈".into(), "哈哈 太好了".into()],
-            8,
-        );
+        let tokens =
+            derive_next_token_candidates("哈哈", &["哈哈".into(), "哈哈 太好了".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "😄"));
         assert!(tokens.iter().any(|token| token == "😂"));
@@ -2069,11 +1974,7 @@ mod tests {
 
     #[test]
     fn next_token_candidates_adds_contextual_expression_hints_for_chinese_seed_with_punctuation() {
-        let tokens = derive_next_token_candidates(
-            "谢谢，",
-            &["谢谢".into(), "谢谢 你".into()],
-            8,
-        );
+        let tokens = derive_next_token_candidates("谢谢，", &["谢谢".into(), "谢谢 你".into()], 8);
 
         assert!(tokens.iter().any(|token| token == "🙏"));
         assert!(tokens.iter().any(|token| token == "🙂"));
@@ -2105,12 +2006,18 @@ mod tests {
 
     #[test]
     fn candidate_normalization_rejects_url_like_input_as_emoticon() {
-        assert_eq!(normalize_candidate_token("http://").as_deref(), Some("http"));
+        assert_eq!(
+            normalize_candidate_token("http://").as_deref(),
+            Some("http")
+        );
     }
 
     #[test]
     fn candidate_normalization_treats_non_emoticon_colon_prefix_as_word() {
-        assert_eq!(normalize_candidate_token(":alpha").as_deref(), Some("alpha"));
+        assert_eq!(
+            normalize_candidate_token(":alpha").as_deref(),
+            Some("alpha")
+        );
         assert_eq!(normalize_candidate_token("xD1").as_deref(), Some("xd1"));
     }
 
@@ -2147,17 +2054,41 @@ mod tests {
         assert_eq!(normalize_candidate_token("<3").as_deref(), Some("<3"));
         assert_eq!(normalize_candidate_token("ಠ_ಠ").as_deref(), Some("ಠ_ಠ"));
         assert_eq!(normalize_candidate_token("(>_<)").as_deref(), Some("(>_<)"));
-        assert_eq!(normalize_candidate_token("(╯°□°)╯").as_deref(), Some("(╯°□°)╯"));
-        assert_eq!(normalize_candidate_token("(╯°□°)╯︵").as_deref(), Some("(╯°□°)╯︵"));
+        assert_eq!(
+            normalize_candidate_token("(╯°□°)╯").as_deref(),
+            Some("(╯°□°)╯")
+        );
+        assert_eq!(
+            normalize_candidate_token("(╯°□°)╯︵").as_deref(),
+            Some("(╯°□°)╯︵")
+        );
         assert_eq!(normalize_candidate_token("ಠ_ಥ").as_deref(), Some("ಠ_ಥ"));
         assert_eq!(normalize_candidate_token("◉_◉").as_deref(), Some("◉_◉"));
-        assert_eq!(normalize_candidate_token("(ノಠ_ಠ)ノ").as_deref(), Some("(ノಠ_ಠ)ノ"));
-        assert_eq!(normalize_candidate_token("(╬ಠ益ಠ)").as_deref(), Some("(╬ಠ益ಠ)"));
-        assert_eq!(normalize_candidate_token("¯\\_(ツ)_/¯").as_deref(), Some("¯\\_(ツ)_/¯"));
-        assert_eq!(normalize_candidate_token("(ノಠ益ಠ)ノ").as_deref(), Some("(ノಠ益ಠ)ノ"));
-        assert_eq!(normalize_candidate_token("(￣﹏￣)").as_deref(), Some("(￣﹏￣)"));
+        assert_eq!(
+            normalize_candidate_token("(ノಠ_ಠ)ノ").as_deref(),
+            Some("(ノಠ_ಠ)ノ")
+        );
+        assert_eq!(
+            normalize_candidate_token("(╬ಠ益ಠ)").as_deref(),
+            Some("(╬ಠ益ಠ)")
+        );
+        assert_eq!(
+            normalize_candidate_token("¯\\_(ツ)_/¯").as_deref(),
+            Some("¯\\_(ツ)_/¯")
+        );
+        assert_eq!(
+            normalize_candidate_token("(ノಠ益ಠ)ノ").as_deref(),
+            Some("(ノಠ益ಠ)ノ")
+        );
+        assert_eq!(
+            normalize_candidate_token("(￣﹏￣)").as_deref(),
+            Some("(￣﹏￣)")
+        );
         assert_eq!(normalize_candidate_token("(^◡^)").as_deref(), Some("(^◡^)"));
-        assert_eq!(normalize_candidate_token("(^_^)!!").as_deref(), Some("(^_^)!!"));
+        assert_eq!(
+            normalize_candidate_token("(^_^)!!").as_deref(),
+            Some("(^_^)!!")
+        );
         assert_eq!(
             normalize_candidate_token("(╯°□°)╯︵┻━┻").as_deref(),
             Some("(╯°□°)╯︵┻━┻")
@@ -2166,15 +2097,15 @@ mod tests {
             normalize_candidate_token("ლ(ಠ益ಠ)ლ").as_deref(),
             Some("ლ(ಠ益ಠ)ლ")
         );
-        assert_eq!(normalize_candidate_token("ᕕ(ಠ‿ಠ)ᕗ").as_deref(), Some("ᕕ(ಠ‿ಠ)ᕗ"));
+        assert_eq!(
+            normalize_candidate_token("ᕕ(ಠ‿ಠ)ᕗ").as_deref(),
+            Some("ᕕ(ಠ‿ಠ)ᕗ")
+        );
     }
 
     #[test]
     fn candidate_normalization_keeps_family_emoji_with_trailing_punctuation() {
-        assert_eq!(
-            normalize_candidate_token("👨‍👩‍👧‍👦,").as_deref(),
-            Some("👨‍👩‍👧‍👦")
-        );
+        assert_eq!(normalize_candidate_token("👨‍👩‍👧‍👦,").as_deref(), Some("👨‍👩‍👧‍👦"));
     }
 
     #[test]
@@ -2206,13 +2137,13 @@ mod tests {
             "alternative next token should be preserved for emoji seed"
         );
 
-        let sentences =
-            derive_sentence_candidates_with_indices(seed, &raw_candidates, 4);
+        let sentences = derive_sentence_candidates_with_indices(seed, &raw_candidates, 4);
 
         assert!(
             sentences
                 .iter()
-                .any(|(_, sentence)| sentence == "Hello there 😀 can continue with the next suggestion."),
+                .any(|(_, sentence)| sentence
+                    == "Hello there 😀 can continue with the next suggestion."),
             "template cleaning should keep emoji while reformatting continuation candidates"
         );
         assert!(
@@ -2236,7 +2167,11 @@ mod tests {
         assert!(next_tokens.iter().any(|token| token == "🇨🇦"));
 
         let sentences = derive_sentence_candidates_with_indices(seed, &raw_candidates, 4);
-        assert!(sentences.iter().any(|(_, sentence)| sentence == "Hello world 👍🏽 is ready."));
+        assert!(
+            sentences
+                .iter()
+                .any(|(_, sentence)| sentence == "Hello world 👍🏽 is ready.")
+        );
         assert!(
             sentences
                 .iter()
@@ -2304,19 +2239,14 @@ mod tests {
 
         assert_eq!(
             candidates,
-            vec![
-                ":-)".to_string(),
-                "world".to_string(),
-                "family".to_string()
-            ]
+            vec![":-)".to_string(), "world".to_string(), "family".to_string()]
         );
     }
 
     #[test]
     fn consume_json_string_unescapes_common_sequences() {
         let source = r#""line1\nline2\"x\t" trailing"#;
-        let (decoded, rest) = consume_json_string(source)
-            .expect("json string should decode");
+        let (decoded, rest) = consume_json_string(source).expect("json string should decode");
 
         assert_eq!(decoded, "line1\nline2\"x\t");
         assert_eq!(rest, " trailing");

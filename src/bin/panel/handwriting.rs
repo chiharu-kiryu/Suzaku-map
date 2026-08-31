@@ -1,9 +1,9 @@
 use super::PanelState;
 use crate::helpers::point_in_rect;
-use suzaku_map::ime::gpu::{InputMode, InteractionKind};
-use suzaku_map::panel_support::{recognize_handwriting_candidates, summarize_handwriting_strokes};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+use suzaku_map::ime::gpu::{InputMode, InteractionKind};
+use suzaku_map::panel_support::{recognize_handwriting_candidates, summarize_handwriting_strokes};
 
 const HANDWRITING_EDGE_PADDING: f32 = 4.0;
 const HANDWRITING_MIN_POINT_DISTANCE_DEFAULT: f32 = 1.2;
@@ -180,15 +180,26 @@ fn read_handwriting_env_u64(key: &str, default_value: u64) -> u64 {
 fn clamp_handwriting_point(point: [f32; 2], rect: [f32; 4]) -> [f32; 2] {
     let params = handwriting_sampling_params();
     [
-        point[0].clamp(rect[0] + params.edge_padding, rect[0] + rect[2] - params.edge_padding),
-        point[1].clamp(rect[1] + params.edge_padding, rect[1] + rect[3] - params.edge_padding),
+        point[0].clamp(
+            rect[0] + params.edge_padding,
+            rect[0] + rect[2] - params.edge_padding,
+        ),
+        point[1].clamp(
+            rect[1] + params.edge_padding,
+            rect[1] + rect[3] - params.edge_padding,
+        ),
     ]
 }
 
-fn handwriting_speed_profile(distance: f32, previous_distance: f32, is_touch: bool) -> (f32, f32, f32) {
+fn handwriting_speed_profile(
+    distance: f32,
+    previous_distance: f32,
+    is_touch: bool,
+) -> (f32, f32, f32) {
     let params = handwriting_sampling_params();
     let speed_hint = (distance.max(0.0) + previous_distance.max(0.0) * 0.65) * 0.5;
-    let speed_ratio = (speed_hint / params.speed_reference).clamp(params.speed_ratio_min, params.speed_ratio_max);
+    let speed_ratio =
+        (speed_hint / params.speed_reference).clamp(params.speed_ratio_min, params.speed_ratio_max);
 
     let interpolation_scale = if is_touch {
         params.touch_interpolation_scale
@@ -203,9 +214,7 @@ fn handwriting_speed_profile(distance: f32, previous_distance: f32, is_touch: bo
     } else {
         1.0
     };
-    let min_point_distance = (params.min_point_distance
-        * min_distance_scale
-        / speed_ratio)
+    let min_point_distance = (params.min_point_distance * min_distance_scale / speed_ratio)
         .clamp(params.min_distance_min, params.min_distance_max);
 
     let smooth_factor = if is_touch {
@@ -213,9 +222,7 @@ fn handwriting_speed_profile(distance: f32, previous_distance: f32, is_touch: bo
     } else {
         1.0
     };
-    let smooth_alpha = (params.smooth_alpha
-        * speed_ratio.sqrt()
-        * smooth_factor)
+    let smooth_alpha = (params.smooth_alpha * speed_ratio.sqrt() * smooth_factor)
         .clamp(params.smooth_alpha_min, params.smooth_alpha_max);
 
     (min_point_distance, interpolation_step, smooth_alpha)
@@ -282,7 +289,8 @@ impl PanelState {
             } else {
                 1.0
             };
-        base.max(params.min_distance_min).min(params.min_distance_max)
+        base.max(params.min_distance_min)
+            .min(params.min_distance_max)
     }
 
     fn should_sample_handwriting_point(&mut self, next: [f32; 2]) -> bool {
@@ -296,8 +304,7 @@ impl PanelState {
         if let Some(last_point) = self.interaction.handwriting_last_sample_position {
             let moved_distance = (next[0] - last_point[0]).hypot(next[1] - last_point[1]);
             if moved_distance < min_distance {
-                if now
-                    .duration_since(self.interaction.handwriting_last_sample.unwrap_or(now))
+                if now.duration_since(self.interaction.handwriting_last_sample.unwrap_or(now))
                     < self.handwriting_sample_interval()
                 {
                     return false;
@@ -392,7 +399,9 @@ impl PanelState {
     }
 
     pub(super) fn extend_handwriting_stroke(&mut self) {
-        if !self.interaction.handwriting_dragging || self.chrome.active_input_mode != InputMode::Handwriting {
+        if !self.interaction.handwriting_dragging
+            || self.chrome.active_input_mode != InputMode::Handwriting
+        {
             return;
         }
         let Some((x, y)) = self.cursor_position else {

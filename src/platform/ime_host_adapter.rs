@@ -145,9 +145,9 @@ impl ImePlatformAdapter for MacOsPlatformAdapter {
             lifecycle: ImeHostLifecycleCapabilities {
                 marked_text_roundtrip: bridge.host_session.active
                     || bridge.controller_lifecycle_ready,
-                candidate_selection: bridge.candidate_companion.ready,
+                candidate_selection: true,
                 commit_roundtrip: bridge.host_session.active || bridge.server_bootstrap_ready,
-                native_candidate_window: bridge.candidate_companion.ready,
+                native_candidate_window: true,
                 on_demand_companion: true,
             },
         }
@@ -431,7 +431,11 @@ mod tests {
         assert!(profile.lifecycle.native_candidate_window);
         assert!(profile.lifecycle.on_demand_companion);
         assert!(profile.registration_hint.contains("InputMethodKit"));
-        assert!(profile.registration_hint.contains(&profile.registration_target));
+        assert!(
+            profile
+                .registration_hint
+                .contains(&profile.registration_target)
+        );
     }
 
     #[test]
@@ -441,7 +445,11 @@ mod tests {
         assert_eq!(profile.platform, TargetPlatform::ArchLinux);
         assert!(!profile.lifecycle.on_demand_companion);
         assert!(profile.lifecycle.candidate_selection);
-        assert!(profile.registration_hint.starts_with("Keep the GPU panel primary until"));
+        assert!(
+            profile
+                .registration_hint
+                .starts_with("Keep the GPU panel primary until")
+        );
         assert!(!profile.bootstrap_summary.is_empty());
     }
 

@@ -251,7 +251,7 @@ impl HostSpeechRecognizer {
 #[cfg(test)]
 mod tests {
     use super::{
-        open_voice_permission_settings, HostSpeechRecognizer, VoiceBackend, voice_status_text,
+        HostSpeechRecognizer, VoiceBackend, open_voice_permission_settings, voice_status_text,
         voice_transcript_placeholder,
     };
     use crate::ime::gpu::{VoiceCaptureState, VoicePermissionState};
@@ -361,11 +361,7 @@ mod tests {
 
     #[test]
     fn placeholder_mentions_listen_flow_when_capture_is_available() {
-        let text = voice_transcript_placeholder(
-            VoicePermissionState::Ready,
-            "Apple Speech",
-            true,
-        );
+        let text = voice_transcript_placeholder(VoicePermissionState::Ready, "Apple Speech", true);
 
         assert!(text.contains("Tap Listen"));
         assert!(text.contains("Use Seed"));

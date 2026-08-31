@@ -225,13 +225,7 @@ pub(crate) fn create_font_atlas(
     font_scale: f32,
 ) -> FontAtlas {
     let atlas_scale = font_scale.max(1.0).min(2.5);
-    create_bitmap_font_atlas(
-        device,
-        queue,
-        bind_group_layout,
-        atlas_scale,
-        smoothing,
-    )
+    create_bitmap_font_atlas(device, queue, bind_group_layout, atlas_scale, smoothing)
 }
 
 fn create_bitmap_font_atlas(
@@ -398,9 +392,7 @@ fn atlas_lookup_char(ch: char) -> char {
 }
 
 fn emoji_glyph_range() -> Vec<char> {
-    (0x1F300u32..=0x1FAFF)
-        .filter_map(char::from_u32)
-        .collect()
+    (0x1F300u32..=0x1FAFF).filter_map(char::from_u32).collect()
 }
 
 #[cfg(test)]

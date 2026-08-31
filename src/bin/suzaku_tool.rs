@@ -1,9 +1,9 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, exit};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitStatus, exit};
 
 const CONNECTION_NAME: &str = "dev.suzaku.linux.ime";
 const FCITX_CONFIG_NAME: &str = "dev_suzaku_linux_ime.conf";
@@ -129,7 +129,9 @@ fn repo_root() -> Result<PathBuf, String> {
 }
 
 fn run_status(mut cmd: Command) -> Result<(), String> {
-    let status = cmd.status().map_err(|e| format!("failed to spawn command: {e}"))?;
+    let status = cmd
+        .status()
+        .map_err(|e| format!("failed to spawn command: {e}"))?;
     if status.success() {
         Ok(())
     } else {
@@ -165,6 +167,11 @@ impl LinuxFramework {
 }
 
 fn linux_register(args: &[String]) -> i32 {
+    let args = if args.first().is_some_and(|arg| arg == "--") {
+        &args[1..]
+    } else {
+        args
+    };
     let action = args.first().map(String::as_str).unwrap_or("install");
     let framework = LinuxFramework::from_env();
     let rc = match action {
@@ -204,8 +211,10 @@ fn fcitx_config_paths(home: &Path) -> Vec<PathBuf> {
     vec![
         home.join(".local/share/fcitx5/inputmethod")
             .join(FCITX_CONFIG_NAME),
-        home.join(".config/fcitx/inputmethod").join(FCITX_CONFIG_NAME),
-        home.join(".config/fcitx5/inputmethod").join(FCITX_CONFIG_NAME),
+        home.join(".config/fcitx/inputmethod")
+            .join(FCITX_CONFIG_NAME),
+        home.join(".config/fcitx5/inputmethod")
+            .join(FCITX_CONFIG_NAME),
     ]
 }
 
@@ -241,7 +250,10 @@ fn linux_install(framework: LinuxFramework) -> i32 {
             for path in fcitx_config_paths(&home) {
                 if let Some(parent) = path.parent() {
                     if let Err(err) = fs::create_dir_all(parent) {
-                        eprintln!("failed to create marker directory {}: {err}", parent.display());
+                        eprintln!(
+                            "failed to create marker directory {}: {err}",
+                            parent.display()
+                        );
                         return 1;
                     }
                 }
@@ -275,16 +287,15 @@ fn linux_status(framework: LinuxFramework) -> i32 {
             } else {
                 println!("IBus: marker not found at {}", marker.display());
             }
-        if command_exists("ibus") {
+            if command_exists("ibus") {
                 match command("ibus") {
                     Some(mut cmd) => match cmd.arg("list-engine").output() {
                         Ok(response) => {
                             if response.status.success() {
                                 let stdout = String::from_utf8_lossy(&response.stdout);
-                                if stdout
-                                    .lines()
-                                    .any(|line| line.trim().split_whitespace().next() == Some(CONNECTION_NAME))
-                                {
+                                if stdout.lines().any(|line| {
+                                    line.trim().split_whitespace().next() == Some(CONNECTION_NAME)
+                                }) {
                                     println!("IBus runtime list contains {CONNECTION_NAME}.");
                                 } else {
                                     println!(
@@ -299,9 +310,9 @@ fn linux_status(framework: LinuxFramework) -> i32 {
                     },
                     None => println!("ibus command unavailable; skipped runtime list check."),
                 }
-        } else {
-            println!("ibus command unavailable; skipped runtime list check.");
-        }
+            } else {
+                println!("ibus command unavailable; skipped runtime list check.");
+            }
         }
         LinuxFramework::Fcitx => {
             let mut found = false;
@@ -354,16 +365,21 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
             if marker_ok {
                 println!("✓ IBus marker file exists: {}", marker_path.display());
             } else {
-                println!("⚠ IBus marker file missing or invalid: {}", marker_path.display());
+                println!(
+                    "⚠ IBus marker file missing or invalid: {}",
+                    marker_path.display()
+                );
             }
 
             let runtime_ok = if command_exists("ibus") {
-                if let Some(output) = command("ibus").and_then(|mut cmd| cmd.arg("list-engine").output().ok()) {
+                if let Some(output) =
+                    command("ibus").and_then(|mut cmd| cmd.arg("list-engine").output().ok())
+                {
                     if output.status.success() {
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        let found = stdout
-                            .lines()
-                            .any(|line| line.trim().split_whitespace().next() == Some(CONNECTION_NAME));
+                        let found = stdout.lines().any(|line| {
+                            line.trim().split_whitespace().next() == Some(CONNECTION_NAME)
+                        });
                         if found {
                             println!("✓ IBus runtime exposes {CONNECTION_NAME}.");
                         } else {
@@ -410,7 +426,9 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
             if daemon_ok {
                 println!("✓ Fcitx daemon process found.");
             } else {
-                println!("⚠ Fcitx daemon process not found (you may need to start it, e.g., fcitx5 -r).");
+                println!(
+                    "⚠ Fcitx daemon process not found (you may need to start it, e.g., fcitx5 -r)."
+                );
             }
 
             let mut marker_ok = false;
@@ -511,7 +529,11 @@ fn process_running(name: &str) -> bool {
         return false;
     }
     if let Some(mut cmd) = command("pgrep") {
-        cmd.arg("-x").arg(name).status().map(|status| status.success()).unwrap_or(false)
+        cmd.arg("-x")
+            .arg(name)
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
     } else {
         false
     }
@@ -532,11 +554,7 @@ fn detect_latest_ndk(sdk_root: &Path) -> Result<PathBuf, String> {
         .filter_map(|entry| {
             entry.ok().and_then(|e| {
                 let path = e.path();
-                if path.is_dir() {
-                    Some(path)
-                } else {
-                    None
-                }
+                if path.is_dir() { Some(path) } else { None }
             })
         })
         .collect();
@@ -544,6 +562,31 @@ fn detect_latest_ndk(sdk_root: &Path) -> Result<PathBuf, String> {
     versions
         .pop()
         .ok_or_else(|| "no ndk folder found under $ANDROID_SDK_ROOT/ndk".to_string())
+}
+
+fn resolve_java_home() -> PathBuf {
+    if let Some(java_home) = env::var_os("JAVA_HOME")
+        .map(PathBuf::from)
+        .filter(|path| is_jdk_home(path))
+    {
+        return java_home;
+    }
+
+    ["javac", "java"]
+        .into_iter()
+        .find_map(java_home_from_command)
+        .filter(|path| is_jdk_home(path))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_JAVA_HOME))
+}
+
+fn java_home_from_command(command: &str) -> Option<PathBuf> {
+    resolve_command_path(command)
+        .and_then(|path| fs::canonicalize(path).ok())
+        .and_then(|path| path.parent()?.parent().map(Path::to_path_buf))
+}
+
+fn is_jdk_home(path: &Path) -> bool {
+    is_executable_file(&path.join("bin/java")) && is_executable_file(&path.join("bin/javac"))
 }
 
 fn resolve_android_env() -> Result<AndroidEnv, String> {
@@ -555,9 +598,12 @@ fn resolve_android_env() -> Result<AndroidEnv, String> {
         return Err(format!("ANDROID_SDK_ROOT not found: {android_sdk_root}"));
     }
 
-    let java_home = env::var("JAVA_HOME").unwrap_or_else(|_| DEFAULT_JAVA_HOME.to_string());
-    if !Path::new(&java_home).is_dir() {
-        return Err(format!("JAVA_HOME not found: {java_home}"));
+    let java_home = resolve_java_home();
+    if !is_jdk_home(&java_home) {
+        return Err(format!(
+            "JDK not found (both java and javac are required): {}",
+            java_home.display()
+        ));
     }
 
     let android_ndk_home = detect_latest_ndk(Path::new(&android_sdk_root))?;
@@ -584,7 +630,7 @@ fn resolve_android_env() -> Result<AndroidEnv, String> {
     Ok(AndroidEnv {
         android_sdk_root: PathBuf::from(android_sdk_root),
         android_home: PathBuf::from(android_home),
-        java_home: PathBuf::from(java_home),
+        java_home,
         android_ndk_home,
         suzaku_android_ndk_bin,
     })
@@ -604,8 +650,15 @@ fn android_env(args: &[String]) -> i32 {
     println!("export ANDROID_HOME={}", env.android_home.display());
     println!("export JAVA_HOME={}", env.java_home.display());
     println!("export ANDROID_NDK_HOME={}", env.android_ndk_home.display());
-    println!("export SUZAKU_ANDROID_NDK_BIN={}", env.suzaku_android_ndk_bin.display());
-    println!("export PATH={}:{}", env.java_home.join("bin").display(), env_var_path());
+    println!(
+        "export SUZAKU_ANDROID_NDK_BIN={}",
+        env.suzaku_android_ndk_bin.display()
+    );
+    println!(
+        "export PATH={}:{}",
+        env.java_home.join("bin").display(),
+        env_var_path()
+    );
     0
 }
 
@@ -648,7 +701,12 @@ fn run_android_build_native_with_flags(release_flag: bool) -> i32 {
             "armv7a-linux-androideabi29-clang",
             "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER",
         ),
-        ("x86", "i686-linux-android", "i686-linux-android29-clang", "CARGO_TARGET_I686_LINUX_ANDROID_LINKER"),
+        (
+            "x86",
+            "i686-linux-android",
+            "i686-linux-android29-clang",
+            "CARGO_TARGET_I686_LINUX_ANDROID_LINKER",
+        ),
         (
             "x86_64",
             "x86_64-linux-android",
@@ -687,7 +745,9 @@ fn run_android_one_target(
     linker_var: &str,
     release_flag: bool,
 ) -> Result<(), String> {
-    let target_path = root.join(format!("target/{rust_target}/{profile}")).join("libsuzaku_map.so");
+    let target_path = root
+        .join(format!("target/{rust_target}/{profile}"))
+        .join("libsuzaku_map.so");
     let out_dir = root.join("android/app/src/main/jniLibs").join(abi);
     fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
 
@@ -713,7 +773,10 @@ fn run_android_one_target(
     check_exit_status(&status_cmd, &format!("cargo build for {abi}"))?;
 
     if !target_path.exists() {
-        return Err(format!("expected Rust library missing: {}", target_path.display()));
+        return Err(format!(
+            "expected Rust library missing: {}",
+            target_path.display()
+        ));
     }
     fs::copy(&target_path, out_dir.join("libsuzaku_map.so"))
         .map_err(|e| format!("copy library to {} failed: {e}", out_dir.display()))
@@ -807,7 +870,10 @@ fn resolve_android_apk_path(root: &Path) -> Result<PathBuf, String> {
         .and_then(|ext| ext.to_str())
         .is_none_or(|ext| ext.to_ascii_lowercase() != "apk")
     {
-        return Err(format!("Invalid APK path (must be *.apk): {}", canonical.display()));
+        return Err(format!(
+            "Invalid APK path (must be *.apk): {}",
+            canonical.display()
+        ));
     }
     Ok(canonical)
 }
@@ -908,11 +974,7 @@ fn macos_build_app_for(target: MacTarget) -> i32 {
     };
 
     let (binary, app_name, plist) = match target {
-        MacTarget::Panel => (
-            "panel",
-            "Suzaku Panel",
-            "src/macos/SuzakuPanel-Info.plist",
-        ),
+        MacTarget::Panel => ("panel", "Suzaku Panel", "src/macos/SuzakuPanel-Info.plist"),
         MacTarget::Ime => (
             "macos_ime_host",
             "Suzaku Input Method",
@@ -927,7 +989,11 @@ fn macos_build_app_for(target: MacTarget) -> i32 {
             return 1;
         }
     };
-    build.current_dir(&root).arg("build").arg("--bin").arg(binary);
+    build
+        .current_dir(&root)
+        .arg("build")
+        .arg("--bin")
+        .arg(binary);
     if matches!(target, MacTarget::Panel) {
         build.arg("--features").arg("gpu");
     }

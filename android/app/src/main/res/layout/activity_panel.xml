@@ -19,10 +19,114 @@
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/bootstrapStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setup_intro"
+            android:textColor="#526B84"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/setupStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
+            android:background="@drawable/gboard_compose_surface"
+            android:padding="14dp"
+            android:text="@string/setup_status_disabled"
+            android:textColor="#173B63"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/openImeSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:minHeight="48dp"
+            android:text="@string/setup_open_system_settings" />
+
+        <Button
+            android:id="@+id/showImePickerButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:minHeight="48dp"
+            android:text="@string/setup_choose_keyboard" />
+
+        <Button
+            android:id="@+id/refreshSetupButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:minHeight="48dp"
+            android:text="@string/setup_refresh" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/setup_preferences_title"
+            android:textColor="#173B63"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/panelSettingsAutoCapitalization"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/settings_auto_capitalization"
+            android:textColor="#254A72" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/panelSettingsNumberRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/settings_number_row"
+            android:textColor="#254A72" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/panelSettingsHapticFeedback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/settings_haptic_feedback"
+            android:textColor="#254A72" />
+
+        <TextView
+            android:id="@+id/panelSettingsStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/setup_settings_loaded"
+            android:textColor="#60758D"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/panelSettingsResetButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/settings_reset" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/setup_diagnostics_title"
+            android:textColor="#173B63"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/bootstrapStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:textColor="#415A77"
             android:textSize="15sp" />
 

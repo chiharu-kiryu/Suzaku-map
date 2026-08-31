@@ -104,7 +104,7 @@ mod tests {
             draft_text: String::new(),
         };
 
-        let title = window_title(&scene, "", true, "system") ;
+        let title = window_title(&scene, "", true, "system");
 
         assert!(title.contains("selected: no candidate"));
         assert!(title.contains("draft: "));

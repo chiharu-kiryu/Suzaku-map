@@ -25,10 +25,9 @@ fn compute_restored_expanded_position(
     let max_y = monitor_position.y + monitor_size.height as i32 - restored_height - margin;
 
     let target = match (compact_pos, compact_dock_edge) {
-        (Some(pos), Some(DockEdge::Left)) => PhysicalPosition::new(
-            min_x.max(pos.x),
-            pos.y.clamp(min_y, max_y.max(min_y)),
-        ),
+        (Some(pos), Some(DockEdge::Left)) => {
+            PhysicalPosition::new(min_x.max(pos.x), pos.y.clamp(min_y, max_y.max(min_y)))
+        }
         (Some(pos), Some(DockEdge::Right)) => PhysicalPosition::new(
             (pos.x + compact_width - restored_width).clamp(min_x, max_x.max(min_x)),
             pos.y.clamp(min_y, max_y.max(min_y)),
@@ -136,10 +135,7 @@ fn scale_base_size_from_expanded(
     logical_size: LogicalSize<f64>,
     scale: f32,
 ) -> Option<LogicalSize<f64>> {
-    if !logical_size.width.is_finite()
-        || !logical_size.height.is_finite()
-        || !scale.is_finite()
-    {
+    if !logical_size.width.is_finite() || !logical_size.height.is_finite() || !scale.is_finite() {
         return None;
     }
     if logical_size.width <= 0.0 || logical_size.height <= 0.0 || scale <= 0.0 {
@@ -196,7 +192,9 @@ fn compact_snap_for_position(
         ),
     ];
 
-    let Some((distance, edge, snapped_pos)) = distances.into_iter().min_by_key(|(distance, _, _)| *distance)
+    let Some((distance, edge, snapped_pos)) = distances
+        .into_iter()
+        .min_by_key(|(distance, _, _)| *distance)
     else {
         return (None, current);
     };
@@ -287,20 +285,26 @@ impl PanelState {
     }
 
     pub(super) fn update_compact_hover(&mut self) {
-        self.interaction.compact_hovered = if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
-            match self.cursor_position {
-                Some((x, y)) => {
-                    let snapshot = self.engine.snapshot();
-                    self.renderer
-                        .build_compact_scene(&snapshot, &self.chrome, false, self.interaction.compact_dragging)
-                        .hit_interaction(x, y)
-                        == Some(suzaku_map::ime::gpu::InteractionKind::ToggleCompactMode)
+        self.interaction.compact_hovered =
+            if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
+                match self.cursor_position {
+                    Some((x, y)) => {
+                        let snapshot = self.engine.snapshot();
+                        self.renderer
+                            .build_compact_scene(
+                                &snapshot,
+                                &self.chrome,
+                                false,
+                                self.interaction.compact_dragging,
+                            )
+                            .hit_interaction(x, y)
+                            == Some(suzaku_map::ime::gpu::InteractionKind::ToggleCompactMode)
+                    }
+                    None => false,
                 }
-                None => false,
-            }
-        } else {
-            false
-        };
+            } else {
+                false
+            };
     }
 
     pub(super) fn end_compact_drag(&mut self) -> bool {
@@ -441,7 +445,8 @@ impl PanelState {
         if self.chrome.compact_mode {
             return;
         }
-        self.chrome.settings_scroll_offset = offset.clamp(0.0, self.interaction.settings_scroll_max_offset);
+        self.chrome.settings_scroll_offset =
+            offset.clamp(0.0, self.interaction.settings_scroll_max_offset);
     }
 
     pub(super) fn begin_settings_scroll_drag(&mut self) {
@@ -459,9 +464,7 @@ impl PanelState {
     }
 
     pub(super) fn update_settings_scroll_drag(&mut self, cursor_y: f32) {
-        if !self.interaction.settings_scroll_dragging
-            || self.chrome.compact_mode
-        {
+        if !self.interaction.settings_scroll_dragging || self.chrome.compact_mode {
             return;
         }
         let Some(start_y) = self.interaction.settings_scroll_drag_start_y else {
@@ -473,7 +476,9 @@ impl PanelState {
         }
         let drag_delta = cursor_y - start_y;
         let offset_delta = (drag_delta / drag_range) * self.interaction.settings_scroll_max_offset;
-        self.set_settings_scroll_offset(self.interaction.settings_scroll_drag_start_offset + offset_delta);
+        self.set_settings_scroll_offset(
+            self.interaction.settings_scroll_drag_start_offset + offset_delta,
+        );
     }
 
     pub(super) fn end_settings_scroll_drag(&mut self) {
@@ -495,7 +500,10 @@ impl PanelState {
     }
 
     pub(super) fn update_window_scale_drag(&mut self, cursor_x: f32) {
-        if !self.interaction.scale_dragging || self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+        if !self.interaction.scale_dragging
+            || self.kind != PanelWindowKind::Main
+            || self.chrome.compact_mode
+        {
             return;
         }
         let Some(start_x) = self.interaction.scale_drag_start_cursor_x else {
@@ -945,14 +953,21 @@ mod tests {
 
     fn run_scale_base_size_from_expanded_cases(cases: &[ScaleBaseSizeCase]) {
         for case in cases {
-            let result =
-                scale_base_size_from_expanded(case.logical_size, case.scale);
+            let result = scale_base_size_from_expanded(case.logical_size, case.scale);
             match case.expected {
                 ScaleBaseExpectation::None => assert!(result.is_none(), "{}", case.name),
                 ScaleBaseExpectation::SomeSize { width, height } => {
                     let base = result.expect(case.name);
-                    assert!((base.width - width).abs() < 1e-6, "{} width mismatch", case.name);
-                    assert!((base.height - height).abs() < 1e-6, "{} height mismatch", case.name);
+                    assert!(
+                        (base.width - width).abs() < 1e-6,
+                        "{} width mismatch",
+                        case.name
+                    );
+                    assert!(
+                        (base.height - height).abs() < 1e-6,
+                        "{} height mismatch",
+                        case.name
+                    );
                     if case.assert_idempotent {
                         let again = scale_base_size_from_expanded(case.logical_size, case.scale);
                         assert_eq!(base, again.expect(case.name), "{}", case.name);

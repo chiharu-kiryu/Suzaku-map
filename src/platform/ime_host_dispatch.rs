@@ -117,7 +117,8 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
                 platform,
                 tier: support.tier,
                 backend: ImeHostBackendKind::LinuxIbusFcitx,
-                system_ime_host: support.capabilities.system_ime_host || bootstrap.host_registration_ready,
+                system_ime_host: support.capabilities.system_ime_host
+                    || bootstrap.host_registration_ready,
                 marked_text_roundtrip: bootstrap.marked_text_roundtrip_ready,
                 commit_roundtrip: bootstrap.commit_roundtrip_ready,
                 native_candidate_window: bootstrap.native_candidate_window_ready,
@@ -143,7 +144,7 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
 #[cfg(test)]
 mod tests {
     use super::{ImeHostBackendKind, current_ime_host_dispatch, dispatch_for};
-    use crate::platform::{host_platform, test_env, TargetPlatform};
+    use crate::platform::{TargetPlatform, host_platform, test_env};
 
     fn describe_mentions_roundtrip_capabilities(dispatch: &super::ImeHostDispatch) -> bool {
         let text = dispatch.describe();
@@ -247,5 +248,4 @@ mod tests {
             assert_eq!(dispatch.system_ime_host, false);
         });
     }
-
 }

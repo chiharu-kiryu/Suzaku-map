@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::net::IpAddr;
+use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -357,7 +357,10 @@ mod tests {
     fn default_provider_config_exposes_expected_defaults() {
         let config = LlamaProviderConfig::default();
 
-        assert_eq!(config.endpoint, "http://127.0.0.1:11434/v1/chat/completions");
+        assert_eq!(
+            config.endpoint,
+            "http://127.0.0.1:11434/v1/chat/completions"
+        );
         assert_eq!(config.model, "llama3.2:3b");
         assert_eq!(
             config.system_prompt,
@@ -377,7 +380,13 @@ mod tests {
         let provider = OpenAiCompatibleLlamaProvider::new(config.clone());
 
         assert_eq!(provider.config(), &config);
-        assert_eq!(provider.parsed_endpoint().as_ref().map(|endpoint| endpoint.path.clone()), Some("/custom/v1".to_string()));
+        assert_eq!(
+            provider
+                .parsed_endpoint()
+                .as_ref()
+                .map(|endpoint| endpoint.path.clone()),
+            Some("/custom/v1".to_string())
+        );
         assert_eq!(provider.provider_id(), "llama-openai-compatible");
     }
 
@@ -430,7 +439,11 @@ mod tests {
         assert_eq!(custom.display_name(), "Llama English");
     }
 
-    fn serve_local_llama_response(listener: TcpListener, expected_request_body: &'static str, response_body: String) {
+    fn serve_local_llama_response(
+        listener: TcpListener,
+        expected_request_body: &'static str,
+        response_body: String,
+    ) {
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("local llama client");
             let mut raw = String::new();
@@ -506,14 +519,14 @@ mod tests {
         let expected_request_body = "Seed: canary";
         let address = listener.local_addr().expect("listen address");
 
-        serve_local_llama_response(
-            listener,
-            expected_request_body,
-            response_body.clone(),
-        );
+        serve_local_llama_response(listener, expected_request_body, response_body.clone());
 
         let provider = OpenAiCompatibleLlamaProvider::new(LlamaProviderConfig {
-            endpoint: format!("http://{}:{}/v1/chat/completions", address.ip(), address.port()),
+            endpoint: format!(
+                "http://{}:{}/v1/chat/completions",
+                address.ip(),
+                address.port()
+            ),
             timeout_ms: 200,
             ..LlamaProviderConfig::default()
         });
@@ -610,6 +623,9 @@ mod tests {
         let body = r#"{"choices":[{"message":{"role":"assistant","content":"1. one\\n2. two\\n3. three"}}]}"#;
         let parsed = parse_chat_completion_candidates(body);
 
-        assert_eq!(parsed, vec!["one".to_string(), "two".to_string(), "three".to_string()]);
+        assert_eq!(
+            parsed,
+            vec!["one".to_string(), "two".to_string(), "three".to_string()]
+        );
     }
 }

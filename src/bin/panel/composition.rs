@@ -1,16 +1,16 @@
 use super::{CommitAttempt, PanelState};
 use crate::render::create_font_atlas;
 use std::time::{Duration, Instant};
-use suzaku_map::ime::SignalState;
 use suzaku_map::ime::InputSource;
+use suzaku_map::ime::SignalState;
 use suzaku_map::ime::gpu::InteractionKind;
-use suzaku_map::platform::ime_host_adapter::shared_session_bridge;
-use suzaku_map::platform::ime_host_adapter::ImeHostSessionBridge;
-use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
 use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
 use suzaku_map::panel_support::{
     derive_next_token_candidates, derive_sentence_candidates_with_indices,
 };
+use suzaku_map::platform::ime_host_adapter::ImeHostSessionBridge;
+use suzaku_map::platform::ime_host_adapter::shared_session_bridge;
+use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
 
 const COMMIT_INPUT_REPEAT_WINDOW: Duration = Duration::from_millis(260);
 const ACTION_REPEAT_WINDOW: Duration = Duration::from_millis(260);
@@ -194,7 +194,9 @@ impl PanelState {
         }
 
         let next_token_scroll_index = self.interaction.next_token_candidate_scroll_index;
-        if !next_token_scroll_index.is_none_or(|index| index < self.chrome.next_token_candidates.len()) {
+        if !next_token_scroll_index
+            .is_none_or(|index| index < self.chrome.next_token_candidates.len())
+        {
             self.interaction.next_token_candidate_scroll_index = None;
             self.interaction.next_token_candidate_scroll_started_at = None;
         }
@@ -315,7 +317,9 @@ fn should_accept_input_char(ch: char) -> bool {
 }
 
 fn sanitize_text_input(text: &str) -> String {
-    text.chars().filter(|ch| should_accept_input_char(*ch)).collect()
+    text.chars()
+        .filter(|ch| should_accept_input_char(*ch))
+        .collect()
 }
 
 fn can_process_text_input(
@@ -351,10 +355,7 @@ mod tests {
 
     #[test]
     fn text_input_keeps_skin_tone_and_flag_emojis() {
-        assert_eq!(
-            sanitize_text_input("👍🏽 hello 🇨🇦"),
-            "👍🏽 hello 🇨🇦"
-        );
+        assert_eq!(sanitize_text_input("👍🏽 hello 🇨🇦"), "👍🏽 hello 🇨🇦");
     }
 
     #[test]
@@ -409,7 +410,10 @@ mod tests {
         let expected = chrome.seed_text.clone();
         let snapshot = chrome.caret_index;
 
-        if can_process_text_input(suzaku_map::ime::gpu::InputMode::Handwriting, chrome.input_focused) {
+        if can_process_text_input(
+            suzaku_map::ime::gpu::InputMode::Handwriting,
+            chrome.input_focused,
+        ) {
             let accepted = sanitize_text_input(" 🐶");
             if !accepted.is_empty() {
                 chrome.insert_text(&accepted);
@@ -453,12 +457,7 @@ mod tests {
             timestamp: now - Duration::from_millis(120),
         };
 
-        assert!(is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -470,12 +469,7 @@ mod tests {
             timestamp: now - Duration::from_millis(120),
         };
 
-        assert!(!is_commit_input_repeat(
-            2,
-            "world",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(2, "world", &last, now,));
     }
 
     #[test]
@@ -487,12 +481,7 @@ mod tests {
             timestamp: now - Duration::from_millis(120),
         };
 
-        assert!(!is_commit_input_repeat(
-            2,
-            "Hello",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(2, "Hello", &last, now,));
     }
 
     #[test]
@@ -504,12 +493,7 @@ mod tests {
             timestamp: now - COMMIT_INPUT_REPEAT_WINDOW,
         };
 
-        assert!(!is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -521,12 +505,7 @@ mod tests {
             timestamp: now - Duration::from_millis(261),
         };
 
-        assert!(!is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -538,12 +517,7 @@ mod tests {
             timestamp: now,
         };
 
-        assert!(is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -555,12 +529,7 @@ mod tests {
             timestamp: now - Duration::from_millis(10),
         };
 
-        assert!(!is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -572,12 +541,7 @@ mod tests {
             timestamp: now - Duration::from_millis(80),
         };
 
-        assert!(is_commit_input_repeat(
-            3,
-            "😀 emoji",
-            &last,
-            now,
-        ));
+        assert!(is_commit_input_repeat(3, "😀 emoji", &last, now,));
     }
 
     #[test]
@@ -589,12 +553,7 @@ mod tests {
             timestamp: now - Duration::from_millis(259),
         };
 
-        assert!(is_commit_input_repeat(
-            0,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(is_commit_input_repeat(0, "hello", &last, now,));
     }
 
     #[test]
@@ -656,10 +615,7 @@ mod tests {
     #[test]
     fn interaction_repeat_is_true_at_zero_elapsed() {
         let now = Instant::now();
-        let last = Some((
-            suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
-            now,
-        ));
+        let last = Some((suzaku_map::ime::gpu::InteractionKind::RewindNextToken, now));
 
         assert!(is_action_repeat(
             suzaku_map::ime::gpu::InteractionKind::RewindNextToken,
@@ -707,12 +663,7 @@ mod tests {
             timestamp: now - Duration::from_millis(260),
         };
 
-        assert!(!is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -724,12 +675,7 @@ mod tests {
             timestamp: now,
         };
 
-        assert!(is_commit_input_repeat(
-            2,
-            "hello",
-            &last,
-            now,
-        ));
+        assert!(is_commit_input_repeat(2, "hello", &last, now,));
     }
 
     #[test]
@@ -771,12 +717,7 @@ mod tests {
             timestamp: now - Duration::from_millis(120),
         };
 
-        assert!(!is_commit_input_repeat(
-            1,
-            " hello",
-            &last,
-            now,
-        ));
+        assert!(!is_commit_input_repeat(1, " hello", &last, now,));
     }
 
     #[test]

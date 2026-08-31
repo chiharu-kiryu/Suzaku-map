@@ -2,14 +2,14 @@
 
 Suzaku Map is a multimodal IME project.
 
-Current release: **0.4.0**.
+Current release: **0.4.8**.
 
-### 0.4.0 Highlights
+### 0.4.8 Highlights
 
 - Scaled-aware text rendering pipeline for clearer zoomed desktop UI.
 - Performance-safe font atlas rebuild behavior on window scale changes.
 - Updated font atlas and sampling defaults to improve readability at larger scales.
-- Tunable handwritten-stroke sampling and smoothing via environment variables, enabling faster on-device touch calibration for 0.4.0.
+- Tunable handwritten-stroke sampling and smoothing via environment variables, enabling faster on-device touch calibration for 0.4.8.
 - Added theme presets for desktop panel visuals.
   - Supported values in `panel-settings.toml` (`theme_preset`):
     - `daylight`
@@ -29,11 +29,11 @@ The repository currently contains three layers that evolve together:
 
 The codebase is no longer a single-file prototype. The current shape is:
 
-- Shared engine: [/Users/Shared/chroot/dev/Suzaku-map/src/ime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime.rs)
-- Host session contract: [/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs)
-- Platform adapters: [/Users/Shared/chroot/dev/Suzaku-map/src/platform](/Users/Shared/chroot/dev/Suzaku-map/src/platform)
-- Desktop GPU companion: [/Users/Shared/chroot/dev/Suzaku-map/src/bin/panel.rs](/Users/Shared/chroot/dev/Suzaku-map/src/bin/panel.rs)
-- Android IME app: [/Users/Shared/chroot/dev/Suzaku-map/android](/Users/Shared/chroot/dev/Suzaku-map/android)
+- Shared engine: [src/ime.rs](src/ime.rs)
+- Host session contract: [src/ime_host.rs](src/ime_host.rs)
+- Platform adapters: [src/platform](src/platform)
+- Desktop GPU companion: [src/bin/panel.rs](src/bin/panel.rs)
+- Android IME app: [android](android)
 
 ## Architecture
 
@@ -49,11 +49,11 @@ The shared IME core owns:
 
 Key files:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/ime/core_engine.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime/core_engine.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/languages/mod.rs](/Users/Shared/chroot/dev/Suzaku-map/src/languages/mod.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/languages/english.rs](/Users/Shared/chroot/dev/Suzaku-map/src/languages/english.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/languages/llm.rs](/Users/Shared/chroot/dev/Suzaku-map/src/languages/llm.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/languages/llama.rs](/Users/Shared/chroot/dev/Suzaku-map/src/languages/llama.rs)
+- [src/ime/core_engine.rs](src/ime/core_engine.rs)
+- [src/languages/mod.rs](src/languages/mod.rs)
+- [src/languages/english.rs](src/languages/english.rs)
+- [src/languages/llm.rs](src/languages/llm.rs)
+- [src/languages/llama.rs](src/languages/llama.rs)
 
 ### 2. System IME Host Layer
 
@@ -61,19 +61,19 @@ The host layer is where platform-native IME lifecycles connect to the shared ses
 
 Core contract:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs)
+- [src/ime_host.rs](src/ime_host.rs)
 
 Adapter and lifecycle contract:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs)
+- [src/platform/ime_host_adapter.rs](src/platform/ime_host_adapter.rs)
 
 Dispatch and capability map:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/mod.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/mod.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_dispatch.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_dispatch.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/panel_companion_dispatch.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/panel_companion_dispatch.rs)
+- [src/platform/mod.rs](src/platform/mod.rs)
+- [src/platform/ime_host_adapter.rs](src/platform/ime_host_adapter.rs)
+- [src/platform/ime_host_dispatch.rs](src/platform/ime_host_dispatch.rs)
+- [src/platform/ime_host_runtime.rs](src/platform/ime_host_runtime.rs)
+- [src/platform/panel_companion_dispatch.rs](src/platform/panel_companion_dispatch.rs)
 
 Current platform direction:
 
@@ -91,52 +91,52 @@ The project uses two kinds of companion UI:
 
 Desktop GPU scene builders live in:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/ime/gpu](/Users/Shared/chroot/dev/Suzaku-map/src/ime/gpu)
+- [src/ime/gpu](src/ime/gpu)
 
 Companion style lives in:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/companion_style.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/companion_style.rs)
+- [src/platform/companion_style.rs](src/platform/companion_style.rs)
 
 ## Repository Layout
 
 ### Core Rust
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/lib.rs](/Users/Shared/chroot/dev/Suzaku-map/src/lib.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/ime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs](/Users/Shared/chroot/dev/Suzaku-map/src/ime_host.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_adapter.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/ime_host_runtime.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/panel_support.rs](/Users/Shared/chroot/dev/Suzaku-map/src/panel_support.rs)
+- [src/lib.rs](src/lib.rs)
+- [src/ime.rs](src/ime.rs)
+- [src/ime_host.rs](src/ime_host.rs)
+- [src/platform/ime_host_adapter.rs](src/platform/ime_host_adapter.rs)
+- [src/platform/ime_host_runtime.rs](src/platform/ime_host_runtime.rs)
+- [src/panel_support.rs](src/panel_support.rs)
 
 ### Desktop Panel
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/bin/panel.rs](/Users/Shared/chroot/dev/Suzaku-map/src/bin/panel.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/bin/panel](/Users/Shared/chroot/dev/Suzaku-map/src/bin/panel)
+- [src/bin/panel.rs](src/bin/panel.rs)
+- [src/bin/panel](src/bin/panel)
 
 ### macOS
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/macos_ime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/macos_ime.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/macos/ime_host_bridge.m](/Users/Shared/chroot/dev/Suzaku-map/src/macos/ime_host_bridge.m)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/macos/speech_bridge.m](/Users/Shared/chroot/dev/Suzaku-map/src/macos/speech_bridge.m)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/macos/text_output_bridge.m](/Users/Shared/chroot/dev/Suzaku-map/src/macos/text_output_bridge.m)
+- [src/platform/macos_ime.rs](src/platform/macos_ime.rs)
+- [src/macos/ime_host_bridge.m](src/macos/ime_host_bridge.m)
+- [src/macos/speech_bridge.m](src/macos/speech_bridge.m)
+- [src/macos/text_output_bridge.m](src/macos/text_output_bridge.m)
 
 ### Android
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/android_ime.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/android_ime.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/platform/android_jni_bridge.rs](/Users/Shared/chroot/dev/Suzaku-map/src/platform/android_jni_bridge.rs)
-- [/Users/Shared/chroot/dev/Suzaku-map/android/app/src/main/java/dev/suzaku/android/ime](/Users/Shared/chroot/dev/Suzaku-map/android/app/src/main/java/dev/suzaku/android/ime)
+- [src/platform/android_ime.rs](src/platform/android_ime.rs)
+- [src/platform/android_jni_bridge.rs](src/platform/android_jni_bridge.rs)
+- [android/app/src/main/java/dev/suzaku/android/ime](android/app/src/main/java/dev/suzaku/android/ime)
 
 ### Concept Notes
 
 The original system notes are still part of the repository and now serve as background design documents:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/src/00-Map.md](/Users/Shared/chroot/dev/Suzaku-map/src/00-Map.md)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/01-Signal.md](/Users/Shared/chroot/dev/Suzaku-map/src/01-Signal.md)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/02-Control.md](/Users/Shared/chroot/dev/Suzaku-map/src/02-Control.md)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/03-Resilience.md](/Users/Shared/chroot/dev/Suzaku-map/src/03-Resilience.md)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/04-Coordination.md](/Users/Shared/chroot/dev/Suzaku-map/src/04-Coordination.md)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/05-Expression.md](/Users/Shared/chroot/dev/Suzaku-map/src/05-Expression.md)
-- [/Users/Shared/chroot/dev/Suzaku-map/src/06-IME-XR-Tablet.md](/Users/Shared/chroot/dev/Suzaku-map/src/06-IME-XR-Tablet.md)
+- [src/00-Map.md](src/00-Map.md)
+- [src/01-Signal.md](src/01-Signal.md)
+- [src/02-Control.md](src/02-Control.md)
+- [src/03-Resilience.md](src/03-Resilience.md)
+- [src/04-Coordination.md](src/04-Coordination.md)
+- [src/05-Expression.md](src/05-Expression.md)
+- [src/06-IME-XR-Tablet.md](src/06-IME-XR-Tablet.md)
 
 ## Main Commands
 
@@ -236,11 +236,11 @@ cargo android-doctor
 Linux registration helper:
 
 ```bash
-cargo linux-register -- install
-cargo linux-register -- status
-cargo linux-register -- uninstall
-cargo linux-register -- verify
-cargo linux-register -- diag
+cargo linux-register install
+cargo linux-register status
+cargo linux-register uninstall
+cargo linux-register verify
+cargo linux-register diag
 ```
 
 Rust-side host bootstrap:
@@ -253,7 +253,7 @@ cargo android-ime-host
 Native helper actions (Rust-native runner):
 
 ```bash
-cargo android-env
+eval "$(cargo android-env)"
 cargo android-build-native
 cd android && ./gradlew assembleDebug
 cargo android-install-debug
@@ -293,16 +293,16 @@ SUZAKU_HANDWRITING_TOUCH_SAMPLE_MS=6 SUZAKU_HANDWRITING_TOUCH_MIN_DISTANCE_SCALE
 Recommended default entry (no script dependency):
 
 ```bash
-cargo android-env
+eval "$(cargo android-env)"
 cargo android-build-native
 cargo android-install-debug
 cargo android-enable-ime
-cargo linux-register -- install
+cargo linux-register install
 ```
 
 APK output:
 
-- [/Users/Shared/chroot/dev/Suzaku-map/android/app/build/outputs/apk/debug/app-debug.apk](/Users/Shared/chroot/dev/Suzaku-map/android/app/build/outputs/apk/debug/app-debug.apk)
+- [android/app/build/outputs/apk/debug/app-debug.apk](android/app/build/outputs/apk/debug/app-debug.apk)
 
 ## Current Platform Status
 
@@ -335,7 +335,15 @@ Available:
 
 - InputMethodService app
 - shared HostImeSession integration
+- adaptive letter, number, and symbol keyboard layouts
+- one-shot Shift, Caps Lock, editor actions, and Unicode-safe repeating backspace
+- context-aware email/URI shortcuts, dedicated numeric/phone/date-time pads, and action labels
+- system keyboard switching plus candidate-boundary spaces, punctuation, and Enter actions
+- app-provided Android completions and stale-composition cancellation on cursor movement
+- persistent Android controls for auto-capitalization, a dedicated number row, and haptics
+- a setup/settings hub for enabling Suzaku, choosing it, sharing preferences, and diagnostics
 - keyboard, voice, and handwrite drawers
+- secure password-field input with candidates, voice, and handwriting disabled
 - compact-bubble-first activation flow
 - in-panel candidate strip
 
@@ -356,11 +364,11 @@ System-host direction is moving from scaffold to registration-aware status repor
     - `SUZAKU_LINUX_IME_COMMIT=1|0`
     - `SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW=1|0`
 - quick bootstrap and local registration command:
-  - `cargo linux-register -- install`
-  - `cargo linux-register -- status`
-  - `cargo linux-register -- uninstall`
-  - `cargo linux-register -- verify`
-  - `cargo linux-register -- diag`
+  - `cargo linux-register install`
+  - `cargo linux-register status`
+  - `cargo linux-register uninstall`
+  - `cargo linux-register verify`
+  - `cargo linux-register diag`
   - this is native Rust logic in `suzaku_tool`
 
 The command writes minimal host markers for the selected framework:

@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use crate::ime_host::host_bridge_snapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -399,6 +400,7 @@ fn candidate_companion_window_ready() -> bool {
     unsafe { suzaku_input_methodkit_candidate_companion_window_ready() }
 }
 
+#[cfg(target_os = "macos")]
 fn host_session_debug_state() -> MacOsImeHostSessionDebugState {
     let snapshot = host_bridge_snapshot();
     MacOsImeHostSessionDebugState {

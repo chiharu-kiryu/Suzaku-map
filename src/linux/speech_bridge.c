@@ -74,6 +74,10 @@ bool suzaku_linux_speech_pipewire_available(void) {
 }
 
 static void suzaku_linux_apply_debug_state(void) {
+    if (suzaku_linux_flag_enabled("SUZAKU_LINUX_VOICE_FORCE_READY")) {
+        suzaku_linux_state = 1;
+        return;
+    }
     if (suzaku_linux_flag_enabled("SUZAKU_LINUX_VOICE_FORCE_DENIED")) {
         suzaku_linux_state = 4;
         return;

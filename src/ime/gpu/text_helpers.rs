@@ -43,8 +43,13 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
 
     for (idx, line) in lines.iter_mut().enumerate() {
         let add_suffix = force_ellipsis && idx == last_line_index;
-        let (fitted, changed) =
-            fit_text_to_width(line, block.max_width, block.pixel_size, glyph_advance, add_suffix);
+        let (fitted, changed) = fit_text_to_width(
+            line,
+            block.max_width,
+            block.pixel_size,
+            glyph_advance,
+            add_suffix,
+        );
         *line = fitted;
         truncated |= changed;
     }
@@ -180,8 +185,9 @@ fn fit_text_with_suffix(
 }
 
 fn estimate_line_width(text: &str, pixel_size: f32, glyph_advance: f32) -> f32 {
-    text.chars()
-        .fold(0.0_f32, |acc, ch| acc + glyph_advance_width(ch, pixel_size, glyph_advance))
+    text.chars().fold(0.0_f32, |acc, ch| {
+        acc + glyph_advance_width(ch, pixel_size, glyph_advance)
+    })
 }
 
 fn glyph_advance_width(ch: char, pixel_size: f32, glyph_advance: f32) -> f32 {
@@ -245,12 +251,12 @@ pub(super) fn wrap_text(text: &str, max_chars_per_line: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::TextAlign;
+    use super::TextBlock;
+    use crate::ime::gpu::TextRole;
     use crate::panel_support::{
         derive_next_token_candidates, derive_sentence_candidates_with_indices,
     };
-    use super::TextAlign;
-    use super::{TextBlock};
-    use crate::ime::gpu::TextRole;
 
     #[test]
     fn layout_preserves_emoji_in_atlas_glyphs() {
@@ -269,10 +275,7 @@ mod tests {
 
         let layout = block.layout();
 
-        assert!(layout
-            .atlas_glyphs
-            .iter()
-            .any(|glyph| glyph.ch == '😀'));
+        assert!(layout.atlas_glyphs.iter().any(|glyph| glyph.ch == '😀'));
     }
 
     #[test]
@@ -348,14 +351,10 @@ mod tests {
             .expect("next-token chain should include can for emoji seed");
 
         let composed_seed = format!("{seed} {can_token}");
-        let sentence = derive_sentence_candidates_with_indices(
-            &composed_seed,
-            &base_candidates,
-            4,
-        )
-        .first()
-        .map(|(_, sentence)| sentence.clone())
-        .expect("sentence derivation should return a completed candidate");
+        let sentence = derive_sentence_candidates_with_indices(&composed_seed, &base_candidates, 4)
+            .first()
+            .map(|(_, sentence)| sentence.clone())
+            .expect("sentence derivation should return a completed candidate");
 
         let block = TextBlock {
             text: sentence,

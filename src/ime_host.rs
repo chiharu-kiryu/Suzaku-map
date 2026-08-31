@@ -350,9 +350,9 @@ mod tests {
         suzaku_host_ime_activate, suzaku_host_ime_candidate_count,
         suzaku_host_ime_candidate_label_utf8, suzaku_host_ime_clear_marked_text,
         suzaku_host_ime_commit_selected, suzaku_host_ime_deactivate,
-        suzaku_host_ime_display_text_utf8, suzaku_host_ime_free_utf8, suzaku_host_ime_move_selection,
-        suzaku_host_ime_primary_candidate_utf8, suzaku_host_ime_select_candidate,
-        suzaku_host_ime_replace_marked_text_utf8,
+        suzaku_host_ime_display_text_utf8, suzaku_host_ime_free_utf8,
+        suzaku_host_ime_move_selection, suzaku_host_ime_primary_candidate_utf8,
+        suzaku_host_ime_replace_marked_text_utf8, suzaku_host_ime_select_candidate,
         suzaku_host_ime_selected_index, suzaku_host_ime_take_last_committed_text_utf8,
     };
     use crate::ime::{CommitOptions, EngineConfig, InputSource, SignalState};
@@ -622,7 +622,10 @@ mod tests {
         let with_prefix = b"ni hao\0ignored\0".as_ptr() as *const c_char;
         let blank = b"\0".as_ptr() as *const c_char;
 
-        assert_eq!(super::read_optional_utf8(with_prefix), Some("ni hao".to_string()));
+        assert_eq!(
+            super::read_optional_utf8(with_prefix),
+            Some("ni hao".to_string())
+        );
         assert_eq!(super::read_optional_utf8(blank), None);
     }
 

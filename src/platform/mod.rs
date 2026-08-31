@@ -42,10 +42,6 @@ pub fn host_platform() -> TargetPlatform {
     {
         return TargetPlatform::Windows;
     }
-    #[cfg(all(target_os = "linux", not(any())))]
-    {
-        return TargetPlatform::Ubuntu;
-    }
     #[cfg(target_os = "linux")]
     {
         return TargetPlatform::Ubuntu;
@@ -103,12 +99,23 @@ pub const PLATFORM_SUPPORT_ROADMAP: [PlatformSupport; 6] = [
 
 #[cfg(test)]
 mod platform_tests {
-    use super::{host_platform, support_for, TargetPlatform, SupportTier, support_for_const, PLATFORM_SUPPORT_ROADMAP};
+    use super::{
+        PLATFORM_SUPPORT_ROADMAP, SupportTier, TargetPlatform, host_platform, support_for,
+        support_for_const,
+    };
 
     #[test]
     fn host_platform_returns_a_supported_target() {
         let platform = host_platform();
-        assert!(matches!(platform, TargetPlatform::MacOs | TargetPlatform::Windows | TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs | TargetPlatform::Android));
+        assert!(matches!(
+            platform,
+            TargetPlatform::MacOs
+                | TargetPlatform::Windows
+                | TargetPlatform::Ubuntu
+                | TargetPlatform::ArchLinux
+                | TargetPlatform::SteamOs
+                | TargetPlatform::Android
+        ));
     }
 
     #[test]

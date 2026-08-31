@@ -33,7 +33,10 @@ fn voice_fallback_allowed_with_unavailable_bridge_always_true() {
         VoicePermissionState::Pending,
         false
     ));
-    assert!(PanelState::voice_fallback_allowed(VoicePermissionState::Denied, false));
+    assert!(PanelState::voice_fallback_allowed(
+        VoicePermissionState::Denied,
+        false
+    ));
     assert!(PanelState::voice_fallback_allowed(
         VoicePermissionState::Error,
         false
@@ -50,12 +53,9 @@ fn voice_fallback_allowed_with_unavailable_bridge_always_true() {
 
 #[test]
 fn suzaku_bird_svg_asset_exists() {
-    assert!(
-        std::path::Path::new(
-            "/Users/Shared/chroot/dev/Suzaku-map/src/assets/icons/suzaku-bird.svg"
-        )
-        .exists()
-    );
+    let icon_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/assets/icons/suzaku-bird.svg");
+    assert!(icon_path.exists(), "missing {}", icon_path.display());
 }
 
 #[test]
