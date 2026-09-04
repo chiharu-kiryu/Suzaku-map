@@ -1,4 +1,6 @@
-use super::{PanelState, PanelWindowKind};
+use super::{
+    PanelState, PanelWindowKind, advance_commit_feedback_state, next_vertex_buffer_capacity,
+};
 use crate::app_state::{
     PersistedDisplaySettings, apply_display_settings, normalize_pointer_stability_settings,
     save_display_settings,
@@ -7,21 +9,44 @@ use crate::helpers::point_in_rect;
 use crate::helpers::window_title;
 use crate::render::{build_shape_vertices, build_text_vertices};
 use std::time::{Duration, Instant};
-use suzaku_map::ime::CommitOptions;
 use suzaku_map::ime::gpu::{
     InputMode, InteractionKind, RenderScene, SettingsScrollMetadata, VirtualKeyboardKey,
     VoiceCaptureState, VoicePermissionState,
 };
+use suzaku_map::ime::{CommitOptions, Snapshot};
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
 use suzaku_map::platform::ime_host_adapter::{ImeHostSessionBridge, shared_session_bridge};
 use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
-use suzaku_map::platform::text_output_host::{
-    HostTextOutputResult, HostTextOutputStatus, commit_text_to_active_target,
-};
+#[cfg(not(target_os = "linux"))]
+use suzaku_map::platform::text_output_host::HostTextOutputStatus;
+use suzaku_map::platform::text_output_host::{HostTextOutputResult, commit_text_to_active_target};
 use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
-use wgpu::util::DeviceExt;
 use winit::keyboard::{KeyCode, PhysicalKey};
+
+fn upload_vertex_data(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    buffer: &mut wgpu::Buffer,
+    capacity: &mut usize,
+    label: &'static str,
+    bytes: &[u8],
+) {
+    if bytes.is_empty() {
+        return;
+    }
+    let next_capacity = next_vertex_buffer_capacity(*capacity, bytes.len());
+    if next_capacity != *capacity {
+        *buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(label),
+            size: next_capacity as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        *capacity = next_capacity;
+    }
+    queue.write_buffer(buffer, 0, bytes);
+}
 
 fn host_commit_fallback_text(fallback_text: &str, committed: Option<String>) -> String {
     committed
@@ -48,6 +73,56 @@ fn commit_feedback_ticks_for_delivery(delivered: bool) -> u8 {
 }
 
 impl PanelState {
+    fn voice_frame_active(&self) -> bool {
+        self.kind == PanelWindowKind::Main
+            && (self.is_focused || self.runs_without_window_focus)
+            && self.chrome.active_input_mode == InputMode::Dictation
+            && self.chrome.voice_state == VoiceCaptureState::Listening
+    }
+
+    fn has_timed_scene_animation(&self) -> bool {
+        self.interaction
+            .sentence_candidate_scroll_started_at
+            .is_some()
+            || self
+                .interaction
+                .next_token_candidate_scroll_started_at
+                .is_some()
+            || self
+                .interaction
+                .handwriting_candidate_scroll_started_at
+                .is_some()
+            || self
+                .interaction
+                .settings_option_text_scroll_started_at
+                .is_some()
+    }
+
+    pub(super) fn needs_periodic_frame(&self) -> bool {
+        self.voice_frame_active()
+            || self.chrome.voice_visual_phase != 0
+            || self.commit_feedback_ticks > 0
+            || self.has_timed_scene_animation()
+    }
+
+    pub(super) fn advance_periodic_frame(&mut self) {
+        if self.voice_frame_active() {
+            self.poll_voice_bridge();
+        }
+        if self.voice_frame_active() {
+            self.chrome.voice_visual_phase = self.chrome.voice_visual_phase.wrapping_add(1) % 24;
+        } else {
+            self.chrome.voice_visual_phase = 0;
+        }
+
+        let (next_ticks, should_clear_feedback) =
+            advance_commit_feedback_state(self.commit_feedback_ticks);
+        self.commit_feedback_ticks = next_ticks;
+        if should_clear_feedback {
+            self.last_commit_feedback = None;
+        }
+    }
+
     pub(super) fn dispatch_input<F, R>(&mut self, handler: F) -> Option<R>
     where
         F: FnOnce(&mut Self) -> R,
@@ -114,10 +189,16 @@ impl PanelState {
             .filter(|text: &String| !text.trim().is_empty());
         let committed = host_commit_fallback_text(fallback_text, committed);
 
-        Some(HostTextOutputResult {
+        #[cfg(target_os = "linux")]
+        let output = commit_text_to_active_target(&committed);
+
+        #[cfg(not(target_os = "linux"))]
+        let output = HostTextOutputResult {
             status: HostTextOutputStatus::Delivered,
             message: format!("Sent to active app via IME host: {committed}"),
-        })
+        };
+
+        Some(output)
     }
 
     pub(super) fn set_window_focus(&mut self, focused: bool) {
@@ -144,13 +225,13 @@ impl PanelState {
             self.interaction.touch_start_position = None;
             self.interaction.scale_dragging = false;
             self.interaction.scale_drag_start_cursor_x = None;
-            self.interaction.compact_dragging = false;
-            self.interaction.compact_drag_moved = false;
+            self.interaction.panel_dragging = false;
+            self.interaction.panel_drag_moved = false;
             self.interaction.compact_hovered = false;
-            self.interaction.compact_drag_start_cursor = None;
-            self.interaction.compact_drag_start_window_pos = None;
+            self.interaction.panel_drag_start_cursor = None;
+            self.interaction.panel_drag_start_window_pos = None;
             self.interaction.last_input_was_touch = false;
-            self.interaction.compact_drag_start_instant = None;
+            self.interaction.panel_drag_start_instant = None;
             if self.chrome.voice_state == VoiceCaptureState::Listening {
                 self.stop_voice_capture();
             }
@@ -167,12 +248,12 @@ impl PanelState {
         self.interaction.scale_dragging = false;
         self.interaction.scale_drag_start_cursor_x = None;
         self.interaction.scale_drag_start_scale = self.window_scale;
-        self.interaction.compact_dragging = false;
-        self.interaction.compact_drag_moved = false;
+        self.interaction.panel_dragging = false;
+        self.interaction.panel_drag_moved = false;
         self.interaction.compact_hovered = false;
-        self.interaction.compact_drag_start_cursor = None;
-        self.interaction.compact_drag_start_window_pos = None;
-        self.interaction.compact_drag_start_instant = None;
+        self.interaction.panel_drag_start_cursor = None;
+        self.interaction.panel_drag_start_window_pos = None;
+        self.interaction.panel_drag_start_instant = None;
         self.interaction.handwriting_dragging = false;
         if self.chrome.active_input_mode == InputMode::Handwriting {
             self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
@@ -367,12 +448,20 @@ impl PanelState {
     }
 
     pub(super) fn persist_display_settings(&self) {
+        if self.kind == PanelWindowKind::Settings {
+            return;
+        }
         let mut settings = PersistedDisplaySettings::from(&self.chrome);
         settings.window_scale = self.window_scale;
         let _ = save_display_settings(&settings);
     }
 
     pub(super) fn current_scene(&mut self) -> RenderScene {
+        let snapshot = self.engine.snapshot();
+        self.current_scene_with_snapshot(&snapshot)
+    }
+
+    fn current_scene_with_snapshot(&mut self, snapshot: &Snapshot) -> RenderScene {
         let mut scene = match self.kind {
             PanelWindowKind::Main => {
                 let mut chrome = self.chrome.clone();
@@ -418,14 +507,14 @@ impl PanelState {
                     });
                 if chrome.compact_mode {
                     self.renderer.build_compact_scene(
-                        &self.engine.snapshot(),
+                        snapshot,
                         &chrome,
                         self.interaction.compact_hovered,
-                        self.interaction.compact_dragging,
+                        self.interaction.panel_dragging,
                     )
                 } else {
                     self.renderer.build_panel_scene(
-                        &self.engine.snapshot(),
+                        snapshot,
                         &chrome,
                         sentence_candidate_scroll,
                         next_token_candidate_scroll,
@@ -487,29 +576,42 @@ impl PanelState {
             .clamp(0.0, self.interaction.settings_scroll_max_offset);
     }
 
-    pub(super) fn adopt_settings_from(&mut self, other: &suzaku_map::ime::gpu::PanelChromeState) {
+    pub(super) fn adopt_settings_from(
+        &mut self,
+        other: &suzaku_map::ime::gpu::PanelChromeState,
+    ) -> bool {
+        let current_settings = PersistedDisplaySettings::from(&self.chrome);
+        let incoming_settings = PersistedDisplaySettings::from(other);
+        let settings_changed = current_settings != incoming_settings;
         let needs_font_rebuild = self.chrome.font_face != other.font_face
             || self.chrome.text_smoothing != other.text_smoothing;
         let needs_llm_reconfigure = self.chrome.llm_enabled != other.llm_enabled
             || self.chrome.llm_model != other.llm_model
             || self.chrome.llm_temperature != other.llm_temperature;
 
-        apply_display_settings(&mut self.chrome, &PersistedDisplaySettings::from(other));
-        self.persist_display_settings();
+        if settings_changed {
+            apply_display_settings(&mut self.chrome, &incoming_settings);
+            self.persist_display_settings();
+        }
         self.chrome.settings_search_query = other.settings_search_query.clone();
         self.chrome.settings_search_focused = other.settings_search_focused;
         self.chrome.settings_collapsed_sections = other.settings_collapsed_sections.clone();
+        self.chrome.settings_scroll_offset = other.settings_scroll_offset;
 
-        if needs_font_rebuild {
+        if settings_changed && needs_font_rebuild {
             self.rebuild_font_atlas();
         }
-        if self.kind == PanelWindowKind::Main && needs_llm_reconfigure {
+        if settings_changed && self.kind == PanelWindowKind::Main && needs_llm_reconfigure {
             self.reconfigure_llama_plugin();
         }
+        settings_changed
     }
 
     pub(super) fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
+            return;
+        }
+        if self.size.width == width && self.size.height == height {
             return;
         }
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
@@ -525,43 +627,50 @@ impl PanelState {
         self.renderer =
             suzaku_map::ime::gpu::WgpuCandidateRenderer::new(width as f32, height as f32);
         self.surface.configure(&self.device, &self.config);
+        self.last_scene = None;
     }
 
     pub(super) fn render(&mut self) -> Result<(), SurfaceError> {
         let snapshot = self.engine.snapshot();
-        let scene = self.current_scene();
-        match self.kind {
-            PanelWindowKind::Main => self.window.set_title(&window_title(
+        let scene = self.current_scene_with_snapshot(&snapshot);
+        let next_window_title = match self.kind {
+            PanelWindowKind::Main => window_title(
                 &scene,
                 &snapshot.committed_text,
                 self.font_atlas.uses_runtime_font,
                 &self.font_atlas.font_label,
-            )),
-            PanelWindowKind::Settings => self.window.set_title("Suzaku Panel Settings"),
+            ),
+            PanelWindowKind::Settings => "Suzaku Panel Settings".to_string(),
+        };
+        if next_window_title != self.last_window_title {
+            self.window.set_title(&next_window_title);
+            self.last_window_title = next_window_title;
         }
 
         let shape_vertices =
             build_shape_vertices(&scene, self.config.width as f32, self.config.height as f32);
-        let shape_vertex_buffer =
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("suzaku-panel-shape-vertices"),
-                    contents: bytemuck::cast_slice(&shape_vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
         let text_vertices = build_text_vertices(
             &scene.atlas_glyphs,
             &self.font_atlas,
             self.config.width as f32,
             self.config.height as f32,
         );
-        let text_vertex_buffer =
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("suzaku-panel-text-vertices"),
-                    contents: bytemuck::cast_slice(&text_vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
+        upload_vertex_data(
+            &self.device,
+            &self.queue,
+            &mut self.shape_vertex_buffer,
+            &mut self.shape_vertex_capacity,
+            "suzaku-panel-shape-vertices",
+            bytemuck::cast_slice(&shape_vertices),
+        );
+        upload_vertex_data(
+            &self.device,
+            &self.queue,
+            &mut self.text_vertex_buffer,
+            &mut self.text_vertex_capacity,
+            "suzaku-panel-text-vertices",
+            bytemuck::cast_slice(&text_vertices),
+        );
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -643,19 +752,88 @@ impl PanelState {
             });
 
             pass.set_pipeline(&self.shape_pipeline);
-            pass.set_vertex_buffer(0, shape_vertex_buffer.slice(..));
+            pass.set_vertex_buffer(0, self.shape_vertex_buffer.slice(..));
             pass.draw(0..shape_vertices.len() as u32, 0..1);
             if !text_vertices.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_bind_group(0, &self.font_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, text_vertex_buffer.slice(..));
+                pass.set_vertex_buffer(0, self.text_vertex_buffer.slice(..));
                 pass.draw(0..text_vertices.len() as u32, 0..1);
             }
         }
 
         self.queue.submit([encoder.finish()]);
         output.present();
+        self.last_scene = Some(scene);
         Ok(())
+    }
+
+    fn interaction_target_at(
+        &mut self,
+        x: f32,
+        y: f32,
+    ) -> (Option<InteractionKind>, Option<[f32; 4]>) {
+        let read_target = |scene: &RenderScene| {
+            let interaction = scene.hit_interaction(x, y);
+            let rect = interaction.and_then(|target| {
+                scene
+                    .interactive_targets
+                    .iter()
+                    .find(|candidate| candidate.kind == target)
+                    .map(|candidate| candidate.rect)
+            });
+            (interaction, rect)
+        };
+        if let Some(scene) = self.last_scene.as_ref() {
+            read_target(scene)
+        } else {
+            let scene = self.current_scene();
+            read_target(&scene)
+        }
+    }
+
+    pub(super) fn hit_interaction_at(&mut self, x: f32, y: f32) -> Option<InteractionKind> {
+        self.interaction_target_at(x, y).0
+    }
+
+    fn selectable_interaction_at(&mut self, x: f32, y: f32) -> Option<(InteractionKind, bool)> {
+        let read_interaction = |scene: &RenderScene| {
+            let kind = scene.hit_interaction(x, y)?;
+            let is_truncated = match kind {
+                InteractionKind::SelectNextToken(index) => {
+                    scene.next_token_candidate_truncated.contains(&index)
+                }
+                InteractionKind::UseHandwritingCandidate(index) => {
+                    scene.handwriting_candidate_truncated.contains(&index)
+                }
+                InteractionKind::Candidate(index) => {
+                    scene.sentence_candidate_truncated.contains(&index)
+                }
+                _ => scene.settings_option_truncated.contains(&kind),
+            };
+            Some((kind, is_truncated))
+        };
+        if let Some(scene) = self.last_scene.as_ref() {
+            read_interaction(scene)
+        } else {
+            let scene = self.current_scene();
+            read_interaction(&scene)
+        }
+    }
+
+    pub(super) fn interaction_rect(&mut self, kind: InteractionKind) -> Option<[f32; 4]> {
+        if let Some(scene) = self.last_scene.as_ref() {
+            return scene
+                .interactive_targets
+                .iter()
+                .find(|target| target.kind == kind)
+                .map(|target| target.rect);
+        }
+        self.current_scene()
+            .interactive_targets
+            .iter()
+            .find(|target| target.kind == kind)
+            .map(|target| target.rect)
     }
 
     pub(super) fn select_at_cursor(&mut self) {
@@ -663,12 +841,16 @@ impl PanelState {
             return;
         };
 
-        let scene = self.current_scene();
-        if let Some(kind) = scene.hit_interaction(x, y) {
+        if let Some((kind, interaction_is_truncated)) = self.selectable_interaction_at(x, y) {
             match kind {
                 InteractionKind::SeedInput => {
                     self.chrome.focus_input();
                     self.chrome.move_caret_to_end();
+                }
+                InteractionKind::DragWindow => {}
+                InteractionKind::ClosePanel => {
+                    self.close_requested = true;
+                    self.window.set_visible(false);
                 }
                 InteractionKind::ToggleCompactMode => {
                     self.apply_compact_mode(!self.chrome.compact_mode);
@@ -785,7 +967,7 @@ impl PanelState {
                 }
                 InteractionKind::SetTextScale(scale) => {
                     let action = InteractionKind::SetTextScale(scale);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -810,7 +992,7 @@ impl PanelState {
                 }
                 InteractionKind::SetCandidateDensity(density) => {
                     let action = InteractionKind::SetCandidateDensity(density);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -835,7 +1017,7 @@ impl PanelState {
                 }
                 InteractionKind::SetPreviewStyle(style) => {
                     let action = InteractionKind::SetPreviewStyle(style);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -860,7 +1042,7 @@ impl PanelState {
                 }
                 InteractionKind::SetFontFace(font_face) => {
                     let action = InteractionKind::SetFontFace(font_face);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -886,7 +1068,7 @@ impl PanelState {
                 }
                 InteractionKind::SetTextSpacing(spacing) => {
                     let action = InteractionKind::SetTextSpacing(spacing);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -911,7 +1093,7 @@ impl PanelState {
                 }
                 InteractionKind::SetTextSmoothing(smoothing) => {
                     let action = InteractionKind::SetTextSmoothing(smoothing);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -937,7 +1119,7 @@ impl PanelState {
                 }
                 InteractionKind::SetThemePreset(theme) => {
                     let action = InteractionKind::SetThemePreset(theme);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -968,7 +1150,7 @@ impl PanelState {
                 }
                 InteractionKind::SetLlmEnabled(enabled) => {
                     let action = InteractionKind::SetLlmEnabled(enabled);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -994,7 +1176,7 @@ impl PanelState {
                 }
                 InteractionKind::SetPointerTapSlopTenths(value) => {
                     let action = InteractionKind::SetPointerTapSlopTenths(value);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -1020,7 +1202,7 @@ impl PanelState {
                 }
                 InteractionKind::SetPointerTapMaxMs(value) => {
                     let action = InteractionKind::SetPointerTapMaxMs(value);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -1046,7 +1228,7 @@ impl PanelState {
                 }
                 InteractionKind::SetPointerTargetSlopTenths(value) => {
                     let action = InteractionKind::SetPointerTargetSlopTenths(value);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -1072,7 +1254,7 @@ impl PanelState {
                 }
                 InteractionKind::SetVoiceAutoInsert(enabled) => {
                     let action = InteractionKind::SetVoiceAutoInsert(enabled);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -1097,7 +1279,7 @@ impl PanelState {
                 }
                 InteractionKind::SetLlmModel(model) => {
                     let action = InteractionKind::SetLlmModel(model);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -1123,7 +1305,7 @@ impl PanelState {
                 }
                 InteractionKind::SetLlmTemperature(temp) => {
                     let action = InteractionKind::SetLlmTemperature(temp);
-                    let is_truncated = scene.settings_option_truncated.contains(&action);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.settings_option_text_scroll_target
                         == Some(action)
                         && self
@@ -1149,7 +1331,7 @@ impl PanelState {
                 }
                 InteractionKind::SelectNextToken(index) => {
                     let action = InteractionKind::SelectNextToken(index);
-                    let is_truncated = scene.next_token_candidate_truncated.contains(&index);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.next_token_candidate_scroll_index
                         == Some(index)
                         && self
@@ -1215,7 +1397,7 @@ impl PanelState {
                 InteractionKind::ClearHandwriting => self.clear_handwriting(),
                 InteractionKind::UseHandwritingCandidate(index) => {
                     let action = InteractionKind::UseHandwritingCandidate(index);
-                    let is_truncated = scene.handwriting_candidate_truncated.contains(&index);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.handwriting_candidate_scroll_index
                         == Some(index)
                         && self
@@ -1259,7 +1441,7 @@ impl PanelState {
                 }
                 InteractionKind::Candidate(index) => {
                     let action = InteractionKind::Candidate(index);
-                    let is_truncated = scene.sentence_candidate_truncated.contains(&index);
+                    let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.sentence_candidate_scroll_index
                         == Some(index)
                         && self
@@ -1285,13 +1467,14 @@ impl PanelState {
         }
     }
 
-    pub(super) fn update_hovered_interaction(&mut self) {
+    pub(super) fn update_hovered_interaction(&mut self) -> bool {
+        let previous = self.interaction.hovered_interaction;
         let Some((x, y)) = self.cursor_position else {
             self.interaction.hovered_interaction = None;
-            return;
+            return previous.is_some();
         };
-        let scene = self.current_scene();
-        self.interaction.hovered_interaction = scene.hit_interaction(x, y);
+        self.interaction.hovered_interaction = self.hit_interaction_at(x, y);
+        self.interaction.hovered_interaction != previous
     }
 
     pub(super) fn update_pressed_interaction(&mut self) {
@@ -1302,16 +1485,9 @@ impl PanelState {
             self.interaction.press_start_instant = None;
             return;
         };
-        let scene = self.current_scene();
-        self.interaction.pressed_interaction = scene.hit_interaction(x, y);
-        self.interaction.press_target_rect =
-            self.interaction.pressed_interaction.and_then(|target| {
-                scene
-                    .interactive_targets
-                    .iter()
-                    .find(|candidate| candidate.kind == target)
-                    .map(|candidate| candidate.rect)
-            });
+        let (pressed_interaction, press_target_rect) = self.interaction_target_at(x, y);
+        self.interaction.pressed_interaction = pressed_interaction;
+        self.interaction.press_target_rect = press_target_rect;
         self.interaction.press_start_cursor = Some((x, y));
         self.interaction.press_start_instant = Some(Instant::now());
     }
@@ -1338,9 +1514,15 @@ impl PanelState {
         if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
                 self.interaction.touch_tap_pending = false;
-                self.begin_compact_drag();
+                self.begin_panel_drag();
                 return;
             }
+        }
+
+        if self.interaction.pressed_interaction == Some(InteractionKind::DragWindow) {
+            self.interaction.touch_tap_pending = false;
+            self.begin_panel_drag();
+            return;
         }
 
         if self.interaction.pressed_interaction == Some(InteractionKind::DragWindowScale) {
@@ -1371,9 +1553,9 @@ impl PanelState {
             }
             return;
         }
-        if self.interaction.compact_dragging {
+        if self.interaction.panel_dragging {
             if let Some((x, y)) = self.cursor_position {
-                self.record_compact_drag_motion(x, y);
+                self.update_panel_drag_motion(x, y);
             }
             return;
         }
@@ -1403,12 +1585,14 @@ impl PanelState {
 
         if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
-                if !self.end_compact_drag() && selected_from_pressed {
+                if !self.end_panel_drag() && selected_from_pressed {
                     self.select_at_cursor();
                 }
             } else if selected_from_pressed {
                 self.select_at_cursor();
             }
+        } else if self.interaction.panel_dragging {
+            self.end_panel_drag();
         } else if self.interaction.settings_scroll_dragging {
             self.end_settings_scroll_drag();
         } else if self.interaction.scale_dragging {
@@ -1451,12 +1635,12 @@ impl PanelState {
         if self.interaction.settings_scroll_dragging {
             self.end_settings_scroll_drag();
         }
-        if self.interaction.compact_dragging {
-            self.interaction.compact_dragging = false;
-            self.interaction.compact_drag_moved = false;
-            self.interaction.compact_drag_start_cursor = None;
-            self.interaction.compact_drag_start_window_pos = None;
-            self.interaction.compact_drag_start_instant = None;
+        if self.interaction.panel_dragging {
+            self.interaction.panel_dragging = false;
+            self.interaction.panel_drag_moved = false;
+            self.interaction.panel_drag_start_cursor = None;
+            self.interaction.panel_drag_start_window_pos = None;
+            self.interaction.panel_drag_start_instant = None;
             self.update_compact_hover();
         }
         if self.interaction.scale_dragging {
@@ -1504,8 +1688,7 @@ impl PanelState {
                 return false;
             }
         }
-        let scene = self.current_scene();
-        scene.hit_interaction(x, y) == Some(expected)
+        self.hit_interaction_at(x, y) == Some(expected)
     }
 
     fn effective_tap_slop_tenths(&self) -> f32 {

@@ -71,6 +71,8 @@ pub mod ime_host_adapter;
 pub mod ime_host_dispatch;
 pub mod ime_host_runtime;
 pub mod linux;
+#[cfg(all(target_os = "linux", feature = "linux-ibus"))]
+pub mod linux_ibus_host;
 pub mod linux_ime;
 pub mod linux_voice;
 pub mod macos;

@@ -14,14 +14,7 @@ pub(super) fn handle_panel_window_event(
 ) {
     let _ = state.dispatch_input(|state| {
         if !state.is_focused
-            && !matches!(
-                &event,
-                WindowEvent::Focused(_)
-                    | WindowEvent::CloseRequested
-                    | WindowEvent::Resized(_)
-                    | WindowEvent::ScaleFactorChanged { .. }
-                    | WindowEvent::RedrawRequested
-            )
+            && !event_is_safe_while_unfocused(&event, state.runs_without_window_focus)
         {
             return;
         }
@@ -29,10 +22,14 @@ pub(super) fn handle_panel_window_event(
         match event {
             WindowEvent::CloseRequested => {
                 if allow_exit {
-                    event_loop.exit();
+                    state.close_requested = true;
                 }
             }
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::Resized(size) => {
+                state.resize(size.width, size.height);
+                state.window.request_redraw();
+            }
+            WindowEvent::Moved(_) => state.constrain_expanded_window_position(),
             WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
             WindowEvent::Focused(focused) => {
                 state.set_window_focus(focused);
@@ -50,22 +47,42 @@ pub(super) fn handle_panel_window_event(
             }
             WindowEvent::CursorMoved { position, .. } => {
                 state.cursor_position = Some((position.x as f32, position.y as f32));
-                if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                let mut needs_redraw = false;
+                if state.interaction.panel_dragging {
                     if let Some((x, y)) = state.cursor_position {
-                        state.record_compact_drag_motion(x, y);
+                        state.update_panel_drag_motion(x, y);
                     }
-                    state.update_compact_hover();
+                    needs_redraw = true;
+                } else if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                    needs_redraw |= state.update_compact_hover();
                 } else if state.interaction.scale_dragging {
                     state.update_window_scale_drag(position.x as f32);
+                    needs_redraw = true;
                 } else if state.interaction.settings_scroll_dragging {
                     state.update_settings_scroll_drag(position.y as f32);
+                    needs_redraw = true;
                 } else if state.kind == PanelWindowKind::Main {
+                    needs_redraw |= state.interaction.handwriting_dragging;
                     state.extend_handwriting_stroke();
                 }
-                if !state.interaction.handwriting_dragging {
-                    state.update_hovered_interaction();
+                if !state.interaction.handwriting_dragging && !state.interaction.panel_dragging {
+                    needs_redraw |= state.update_hovered_interaction();
                 }
-                state.window.request_redraw();
+                if needs_redraw {
+                    state.window.request_redraw();
+                }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                state.cursor_position = None;
+                let hover_changed =
+                    if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
+                        state.update_compact_hover()
+                    } else {
+                        state.update_hovered_interaction()
+                    };
+                if hover_changed {
+                    state.window.request_redraw();
+                }
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 state.modifiers = modifiers.state();
@@ -414,4 +431,60 @@ pub(super) fn handle_panel_window_event(
             _ => {}
         }
     });
+}
+
+fn event_is_safe_while_unfocused(event: &WindowEvent, non_focusing_panel: bool) -> bool {
+    matches!(
+        event,
+        WindowEvent::Focused(_)
+            | WindowEvent::CloseRequested
+            | WindowEvent::Resized(_)
+            | WindowEvent::Moved(_)
+            | WindowEvent::ScaleFactorChanged { .. }
+            | WindowEvent::RedrawRequested
+    ) || (non_focusing_panel
+        && matches!(
+            event,
+            WindowEvent::CursorMoved { .. }
+                | WindowEvent::CursorEntered { .. }
+                | WindowEvent::CursorLeft { .. }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::MouseWheel { .. }
+                | WindowEvent::Touch(_)
+                | WindowEvent::PinchGesture { .. }
+                | WindowEvent::DoubleTapGesture { .. }
+        ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::event_is_safe_while_unfocused;
+    use winit::dpi::PhysicalPosition;
+    use winit::event::{DeviceId, WindowEvent};
+
+    #[test]
+    fn pointer_events_require_the_non_focusing_panel_mode_when_unfocused() {
+        let pointer_event = WindowEvent::CursorLeft {
+            device_id: DeviceId::dummy(),
+        };
+
+        assert!(event_is_safe_while_unfocused(&pointer_event, true));
+        assert!(!event_is_safe_while_unfocused(&pointer_event, false));
+    }
+
+    #[test]
+    fn lifecycle_and_redraw_events_remain_safe_while_unfocused() {
+        assert!(event_is_safe_while_unfocused(
+            &WindowEvent::RedrawRequested,
+            false,
+        ));
+        assert!(event_is_safe_while_unfocused(
+            &WindowEvent::RedrawRequested,
+            true,
+        ));
+        assert!(event_is_safe_while_unfocused(
+            &WindowEvent::Moved(PhysicalPosition::new(240, 160)),
+            false,
+        ));
+    }
 }

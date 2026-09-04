@@ -398,10 +398,10 @@
                 if chars.is_empty() || max_width <= 0.0 {
                     return "…".to_string();
                 }
-                let glyph_advance = (pixel_size * 6.5 + letter_spacing).max(pixel_size * 4.0);
+                let glyph_advance = text_glyph_advance(pixel_size, letter_spacing);
                 let width_for_char = |ch: char| {
                     if ch == ' ' {
-                        pixel_size * 4.0
+                        text_space_advance(pixel_size)
                     } else {
                         glyph_advance
                     }

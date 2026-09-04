@@ -262,3 +262,34 @@ fn commit_feedback_tick_stays_cleared_after_zero() {
     assert_eq!(ticks, 0);
     assert!(!clear_feedback);
 }
+
+#[test]
+fn periodic_frame_schedule_starts_immediately_then_waits_for_deadline() {
+    let now = Instant::now();
+    let (should_advance, next) = periodic_frame_schedule(now, None);
+    assert!(should_advance);
+    assert_eq!(next, now + UI_FRAME_INTERVAL);
+
+    let before_deadline = now + Duration::from_millis(5);
+    let (should_advance, scheduled) = periodic_frame_schedule(before_deadline, Some(next));
+    assert!(!should_advance);
+    assert_eq!(scheduled, next);
+}
+
+#[test]
+fn periodic_frame_schedule_recovers_from_a_late_wakeup_without_bursting() {
+    let now = Instant::now();
+    let stale_deadline = now - Duration::from_millis(80);
+    let (should_advance, next) = periodic_frame_schedule(now, Some(stale_deadline));
+
+    assert!(should_advance);
+    assert_eq!(next, now + UI_FRAME_INTERVAL);
+}
+
+#[test]
+fn streaming_vertex_capacity_only_grows_and_uses_power_of_two_buckets() {
+    assert_eq!(next_vertex_buffer_capacity(256, 128), 256);
+    assert_eq!(next_vertex_buffer_capacity(256, 256), 256);
+    assert_eq!(next_vertex_buffer_capacity(256, 257), 512);
+    assert_eq!(next_vertex_buffer_capacity(512, 1_025), 2_048);
+}

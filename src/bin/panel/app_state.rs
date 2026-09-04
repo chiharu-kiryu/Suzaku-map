@@ -15,8 +15,8 @@ const MIN_POINTER_TAP_MAX_MS: u16 = 120;
 const MAX_POINTER_TAP_MAX_MS: u16 = 1200;
 const MIN_POINTER_TARGET_SLOP_TENTHS: u16 = 10;
 const MAX_POINTER_TARGET_SLOP_TENTHS: u16 = 120;
-pub(crate) const DEFAULT_WINDOW_SCALE: f32 = 1.3;
-pub(crate) const FIRST_LAUNCH_WINDOW_SCALE: f32 = 1.35;
+pub(crate) const DEFAULT_WINDOW_SCALE: f32 = 1.0;
+pub(crate) const FIRST_LAUNCH_WINDOW_SCALE: f32 = 1.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PersistedDisplaySettings {

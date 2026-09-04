@@ -120,8 +120,9 @@ impl WgpuCandidateRenderer {
             ThemePreset::DeviceDark => [0.32, 0.60, 0.98, 1.0],
             ThemePreset::HighContrast => [0.14, 0.82, 1.0, 1.0],
         };
-        let responsive_scale =
-            (self.responsive_scale() * chrome.window_scale * 1.12).clamp(0.9, 2.4);
+        // The window dimensions already include `window_scale`. Applying it again here made
+        // controls and text grow quadratically, which squeezed the candidate stack out of view.
+        let responsive_scale = (self.responsive_scale() * 1.12).clamp(0.9, 2.4);
         let input_value_px = match chrome.text_scale {
             DisplayTextScale::Small => 2.4,
             DisplayTextScale::Medium => 3.4,
@@ -240,6 +241,7 @@ impl WgpuCandidateRenderer {
             responsive_scale,
             chrome,
             visible_sentence_candidates.len(),
+            hero_cards_enabled,
         );
         let narrow_layout_scale = if metrics.panel_width < 680.0 {
             0.90
@@ -470,7 +472,7 @@ impl WgpuCandidateRenderer {
                     panel_x + 16.0 * responsive_scale,
                     input_box_y + 9.0 * responsive_scale,
                 ],
-                max_width: (panel_width - 58.0 * responsive_scale).max(0.0),
+                max_width: (panel_width - 190.0 * responsive_scale).max(0.0),
                 pixel_size: title_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -490,7 +492,7 @@ impl WgpuCandidateRenderer {
                     panel_x + 16.0 * responsive_scale,
                     input_box_y + 25.6 * responsive_scale,
                 ],
-                max_width: (panel_width - 58.0 * responsive_scale).max(0.0),
+                max_width: (panel_width - 190.0 * responsive_scale).max(0.0),
                 pixel_size: input_value_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -533,15 +535,63 @@ impl WgpuCandidateRenderer {
             });
         }
 
-        let compact_button_rect = [
+        let close_button_rect = [
             panel_x + panel_width - 32.0 * responsive_scale,
             input_box_y + 6.0 * responsive_scale,
             20.0 * responsive_scale,
             20.0 * responsive_scale,
         ];
+        let compact_button_rect = [
+            close_button_rect[0] - 25.0 * responsive_scale,
+            close_button_rect[1],
+            close_button_rect[2],
+            close_button_rect[3],
+        ];
+        let window_drag_rect = [
+            panel_x + panel_width * 0.5 - 34.0 * responsive_scale,
+            input_box_y + 1.8 * responsive_scale,
+            68.0 * responsive_scale,
+            10.0 * responsive_scale,
+        ];
+        let (window_drag_hovered, window_drag_pressed) =
+            interaction_state(InteractionKind::DragWindow);
+        if window_drag_hovered || window_drag_pressed {
+            append_rounded_rect_quads(
+                &mut quads,
+                window_drag_rect,
+                if window_drag_pressed {
+                    press_surface
+                } else {
+                    hover_surface
+                },
+                5.0 * responsive_scale,
+            );
+        }
+        append_rounded_rect_quads(
+            &mut quads,
+            [
+                window_drag_rect[0] + 20.0 * responsive_scale,
+                window_drag_rect[1] + 3.7 * responsive_scale,
+                window_drag_rect[2] - 40.0 * responsive_scale,
+                2.0 * responsive_scale,
+            ],
+            if window_drag_pressed {
+                accent
+            } else if window_drag_hovered {
+                text_secondary
+            } else {
+                text_muted
+            },
+            responsive_scale,
+        );
+        interactive_targets.push(InteractiveTarget {
+            kind: InteractionKind::DragWindow,
+            rect: window_drag_rect,
+        });
         let scale_button_size = 15.6 * responsive_scale;
         let scale_button_spacing = 3.2 * responsive_scale;
-        let scale_label_width = 25.0 * responsive_scale;
+        // Four digits (for example `100%`) need more room with the runtime system-font atlas.
+        let scale_label_width = 38.0 * responsive_scale;
         let scale_plus_rect = [
             compact_button_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
@@ -665,6 +715,62 @@ impl WgpuCandidateRenderer {
             layouts: vec![compact_icon],
         });
         append_chevron_icon_quads(&mut quads, compact_button_rect, text_secondary, false);
+
+        let (close_hovered, close_pressed) = interaction_state(InteractionKind::ClosePanel);
+        let close_visual_rect = animated_rect(close_button_rect, close_hovered, close_pressed);
+        append_soft_card_quads(
+            &mut quads,
+            close_visual_rect,
+            if close_pressed {
+                press_surface
+            } else if close_hovered {
+                hover_surface
+            } else {
+                surface_alt
+            },
+            if close_hovered || close_pressed {
+                hover_border
+            } else {
+                border_dark
+            },
+            animated_shadow(soft_shadow, close_hovered, close_pressed),
+            if chrome.input_focused {
+                input_focus_surface
+            } else {
+                input_surface
+            },
+            panel_tool_button_radius,
+        );
+        interactive_targets.push(InteractiveTarget {
+            kind: InteractionKind::ClosePanel,
+            rect: interaction_hit_rect(close_button_rect),
+        });
+        let close_icon = TextBlock {
+            text: "X".to_string(),
+            origin: [
+                close_visual_rect[0] + 4.0 * responsive_scale,
+                close_visual_rect[1] + 3.8 * responsive_scale,
+            ],
+            max_width: (close_visual_rect[2] - 8.0 * responsive_scale).max(0.0),
+            pixel_size: (micro_px * 1.04).max(1.8 * responsive_scale),
+            letter_spacing: ui_tracking,
+            line_gap: base_line_gap,
+            max_lines: 1,
+            color: if close_hovered || close_pressed {
+                [0.82, 0.25, 0.28, 1.0]
+            } else {
+                text_secondary
+            },
+            align: TextAlign::Center,
+            role: TextRole::ToolButton,
+        }
+        .layout();
+        text_quads.extend(close_icon.quads.iter().copied());
+        atlas_glyphs.extend(close_icon.atlas_glyphs.iter().cloned());
+        text_sections.push(TextSection {
+            role: TextRole::ToolButton,
+            layouts: vec![close_icon],
+        });
 
         let (decrease_hovered, decrease_pressed) = if can_decrease_scale {
             interaction_state(InteractionKind::DecreaseWindowScale)

@@ -113,6 +113,16 @@
                 android:src="@android:drawable/ic_menu_edit" />
 
             <ImageButton
+                android:id="@+id/toolClipboard"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/tool_button_bg"
+                android:contentDescription="@string/clipboard_input"
+                android:padding="9dp"
+                android:src="@drawable/ic_clipboard" />
+
+            <ImageButton
                 android:id="@+id/toolSettings"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
@@ -360,6 +370,68 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:text="@string/handwrite_clear" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/clipboardDrawer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/clipboard_drawer_title"
+                    android:textColor="#173B63"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/clipboardPreview"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/gboard_compose_surface"
+                    android:maxLines="3"
+                    android:minHeight="64dp"
+                    android:padding="12dp"
+                    android:text="@string/clipboard_empty"
+                    android:textColor="#254A72"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/clipboardStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/clipboard_privacy_note"
+                    android:textColor="#60758D"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    style="?android:attr/buttonBarStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="end"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/clipboardRefreshButton"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/clipboard_refresh" />
+
+                    <Button
+                        android:id="@+id/clipboardPasteButton"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/clipboard_paste" />
                 </LinearLayout>
             </LinearLayout>
 

@@ -8,12 +8,17 @@ use crate::ime::InputSource;
 use crate::platform::ime_host_adapter::{ImeHostSessionBridge, shared_session_bridge};
 use std::ffi::{CString, c_char};
 
+#[cfg(any(target_os = "android", test))]
+use crate::ime_host::HostImeBridgeSnapshot;
 #[cfg(target_os = "android")]
 use jni::JNIEnv;
 #[cfg(target_os = "android")]
-use jni::objects::{JClass, JString};
+use jni::objects::{JClass, JObject, JObjectArray, JString};
 #[cfg(target_os = "android")]
-use jni::sys::{jboolean, jint, jstring};
+use jni::sys::{jboolean, jint, jobjectArray, jstring};
+
+#[cfg(any(target_os = "android", test))]
+const ANDROID_RENDER_CANDIDATE_LIMIT: usize = 6;
 
 #[cfg(target_os = "android")]
 const JNI_FALSE: jboolean = 0;
@@ -30,6 +35,40 @@ fn into_java_string(env: &mut JNIEnv<'_>, value: impl AsRef<str>) -> jstring {
     env.new_string(value.as_ref())
         .expect("android jni string allocation failed")
         .into_raw()
+}
+
+#[cfg(target_os = "android")]
+fn into_java_string_array(env: &mut JNIEnv<'_>, values: Vec<String>) -> jobjectArray {
+    let array: JObjectArray<'_> = env
+        .new_object_array(values.len() as jint, "java/lang/String", JObject::null())
+        .expect("android jni string array allocation failed");
+    for (index, value) in values.into_iter().enumerate() {
+        let string = env
+            .new_string(value)
+            .expect("android jni snapshot string allocation failed");
+        env.set_object_array_element(&array, index as jint, string)
+            .expect("android jni snapshot array write failed");
+    }
+    array.into_raw()
+}
+
+#[cfg(any(target_os = "android", test))]
+fn render_snapshot_payload(snapshot: HostImeBridgeSnapshot) -> Vec<String> {
+    let display_text = if snapshot.draft_text.is_empty() {
+        snapshot.marked_text
+    } else {
+        snapshot.draft_text
+    };
+    let mut payload = Vec::with_capacity(ANDROID_RENDER_CANDIDATE_LIMIT + 2);
+    payload.push(display_text);
+    payload.push(snapshot.selected_index.to_string());
+    payload.extend(
+        snapshot
+            .candidate_labels
+            .into_iter()
+            .take(ANDROID_RENDER_CANDIDATE_LIMIT),
+    );
+    payload
 }
 
 #[cfg(target_os = "android")]
@@ -242,6 +281,16 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeDisp
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeRenderSnapshot(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jobjectArray {
+    let payload = render_snapshot_payload(shared_session_bridge().snapshot());
+    into_java_string_array(&mut env, payload)
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeTakeLastCommittedText(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
@@ -262,5 +311,49 @@ pub extern "C" fn suzaku_android_string_free(ptr: *mut c_char) {
 
     unsafe {
         let _ = CString::from_raw(ptr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_snapshot_payload;
+    use crate::ime_host::HostImeBridgeSnapshot;
+
+    fn snapshot(
+        draft_text: &str,
+        marked_text: &str,
+        candidates: Vec<String>,
+    ) -> HostImeBridgeSnapshot {
+        HostImeBridgeSnapshot {
+            active: true,
+            marked_text: marked_text.to_string(),
+            draft_text: draft_text.to_string(),
+            committed_text: String::new(),
+            candidate_count: candidates.len(),
+            primary_candidate: candidates.first().cloned(),
+            candidate_labels: candidates,
+            selected_index: 2,
+        }
+    }
+
+    #[test]
+    fn render_payload_prefers_draft_and_carries_selection() {
+        let payload = render_snapshot_payload(snapshot(
+            "draft",
+            "marked",
+            vec!["one".to_string(), "two".to_string()],
+        ));
+
+        assert_eq!(payload, vec!["draft", "2", "one", "two"]);
+    }
+
+    #[test]
+    fn render_payload_falls_back_to_marked_text_and_limits_candidates() {
+        let candidates = (0..8).map(|index| format!("candidate-{index}")).collect();
+        let payload = render_snapshot_payload(snapshot("", "marked", candidates));
+
+        assert_eq!(payload[0], "marked");
+        assert_eq!(payload.len(), 8);
+        assert_eq!(payload.last().map(String::as_str), Some("candidate-5"));
     }
 }

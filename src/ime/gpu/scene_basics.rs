@@ -289,3 +289,119 @@ impl WgpuCandidateRenderer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ime::{EngineConfig, XRTabletImeEngine};
+
+    #[test]
+    fn scaled_expanded_panel_keeps_text_inside_the_viewport() {
+        let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+        engine.seed("ni hao");
+        let snapshot = engine.snapshot();
+        let chrome = PanelChromeState {
+            seed_text: "ni hao".to_string(),
+            caret_index: "ni hao".chars().count(),
+            input_modes_expanded: true,
+            window_scale: 1.4,
+            next_token_candidates: vec![
+                "how".to_string(),
+                "you".to_string(),
+                "new".to_string(),
+                "is".to_string(),
+            ],
+            sentence_candidates: snapshot.candidate_labels.iter().take(4).cloned().collect(),
+            sentence_candidate_source_indices: (0..snapshot.candidate_labels.len())
+                .take(4)
+                .collect(),
+            ..PanelChromeState::default()
+        };
+        let renderer = WgpuCandidateRenderer::new(1_260.0, 728.0);
+        let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
+
+        let lowest_glyph = scene
+            .atlas_glyphs
+            .iter()
+            .max_by(|left, right| {
+                (left.rect[1] + left.rect[3]).total_cmp(&(right.rect[1] + right.rect[3]))
+            })
+            .expect("rendered text");
+        let lowest_text_edge = lowest_glyph.rect[1] + lowest_glyph.rect[3];
+        let lowest_layout = scene
+            .text_sections
+            .iter()
+            .flat_map(|section| section.layouts.iter())
+            .max_by(|left, right| {
+                (left.bounds[1] + left.bounds[3]).total_cmp(&(right.bounds[1] + right.bounds[3]))
+            })
+            .expect("text layout");
+        assert!(
+            lowest_text_edge <= renderer.scene_height + 0.01,
+            "glyph {:?} extends to {lowest_text_edge}, beyond {} (rect {:?}); lowest layout role {:?}, bounds {:?}",
+            lowest_glyph.ch,
+            renderer.scene_height,
+            lowest_glyph.rect,
+            lowest_layout.role,
+            lowest_layout.bounds,
+        );
+
+        let drag_target = scene
+            .interactive_targets
+            .iter()
+            .find(|target| target.kind == InteractionKind::DragWindow)
+            .expect("expanded panel drag target");
+        let drag_center_x = drag_target.rect[0] + drag_target.rect[2] * 0.5;
+        let drag_center_y = drag_target.rect[1] + drag_target.rect[3] * 0.5;
+        assert_eq!(
+            scene.hit_interaction(drag_center_x, drag_center_y),
+            Some(InteractionKind::DragWindow)
+        );
+    }
+
+    #[test]
+    fn default_panel_spans_an_unpaired_candidate_across_the_last_row() {
+        let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+        engine.seed("ni hao");
+        let snapshot = engine.snapshot();
+        let chrome = PanelChromeState {
+            seed_text: "ni hao".to_string(),
+            input_modes_expanded: true,
+            next_token_candidates: vec!["how".to_string(), "you".to_string()],
+            sentence_candidates: snapshot.candidate_labels.iter().take(4).cloned().collect(),
+            sentence_candidate_source_indices: (0..snapshot.candidate_labels.len())
+                .take(4)
+                .collect(),
+            ..PanelChromeState::default()
+        };
+        let renderer = WgpuCandidateRenderer::new(900.0, 480.0);
+        let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
+        assert!(scene.hit_targets.len() >= 4, "four sentence candidates");
+
+        let hero = scene.hit_targets[0].rect;
+        let first_alternate = scene.hit_targets[1].rect;
+        let second_alternate = scene.hit_targets[2].rect;
+        let last_alternate = scene.hit_targets[3].rect;
+        assert!((first_alternate[1] - second_alternate[1]).abs() < 0.01);
+        assert!(last_alternate[1] > first_alternate[1]);
+        assert!((last_alternate[0] - hero[0]).abs() < 0.01);
+        assert!((last_alternate[2] - hero[2]).abs() < 0.01);
+        assert!(hero[0] <= 16.0, "left gutter should stay compact");
+        assert!(
+            900.0 - hero[0] - hero[2] <= 16.0,
+            "right gutter should stay compact"
+        );
+
+        let close_target = scene
+            .interactive_targets
+            .iter()
+            .find(|target| target.kind == InteractionKind::ClosePanel)
+            .expect("expanded panel close target");
+        let close_center_x = close_target.rect[0] + close_target.rect[2] * 0.5;
+        let close_center_y = close_target.rect[1] + close_target.rect[3] * 0.5;
+        assert_eq!(
+            scene.hit_interaction(close_center_x, close_center_y),
+            Some(InteractionKind::ClosePanel)
+        );
+    }
+}

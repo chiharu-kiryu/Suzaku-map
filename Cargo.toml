@@ -1,20 +1,25 @@
 [package]
 name = "suzaku-map"
-version = "0.4.8"
+version = "0.4.9"
 edition = "2024"
 license = "MIT"
 description = "TDD-driven XR and tablet IME engine prototype in Rust"
 
 [features]
 default = []
-gpu = ["dep:wgpu", "dep:bytemuck", "dep:pollster", "dep:winit"]
+gpu = ["dep:wgpu", "dep:bytemuck", "dep:fontdue", "dep:pollster", "dep:winit", "dep:ksni"]
+linux-ibus = ["gpu"]
 
 [dependencies]
 bytemuck = { version = "1.24.0", features = ["derive"], optional = true }
+fontdue = { version = "0.9.4", optional = true }
 jni = "0.21.1"
 pollster = { version = "0.4.0", optional = true }
 wgpu = { version = "27.0.1", optional = true, default-features = false, features = ["dx12", "gles", "vulkan", "wgsl", "metal"] }
 winit = { version = "0.30.12", optional = true, default-features = false, features = ["android-native-activity", "rwh_06", "x11", "wayland", "wayland-dlopen"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3.6", optional = true, features = ["blocking"] }
 
 [lib]
 name = "suzaku_map"
@@ -42,6 +47,16 @@ path = "src/bin/macos_ime_host.rs"
 name = "ime_host"
 path = "src/bin/ime_host.rs"
 required-features = ["gpu"]
+
+[[bin]]
+name = "linux_ime_host"
+path = "src/bin/linux_ime_host.rs"
+required-features = ["linux-ibus"]
+
+[[bin]]
+name = "linux_ime_probe"
+path = "src/bin/linux_ime_probe.rs"
+required-features = ["linux-ibus"]
 
 [[bin]]
 name = "android_ime_host"

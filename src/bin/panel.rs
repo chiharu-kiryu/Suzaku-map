@@ -2,7 +2,7 @@
 
 use std::error::Error;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[path = "panel/app_state.rs"]
 mod app_state;
@@ -18,11 +18,15 @@ mod handwriting;
 mod helpers;
 #[path = "panel/input.rs"]
 mod input;
+#[path = "panel/instance.rs"]
+mod instance;
 #[path = "panel/render.rs"]
 mod render;
 #[cfg(test)]
 #[path = "panel/tests.rs"]
 mod tests;
+#[path = "panel/tray.rs"]
+mod tray;
 #[path = "panel/voice.rs"]
 mod voice;
 #[path = "panel/windowing.rs"]
@@ -33,7 +37,9 @@ use crate::app_state::{
     normalize_pointer_stability_settings,
 };
 use crate::input::handle_panel_window_event;
+use crate::instance::{InstanceLaunch, SingleInstanceGuard, claim_single_instance};
 use crate::render::{FontAtlas, PanelVertex, TextVertex, create_font_atlas};
+use crate::tray::{SystemTray, start_system_tray};
 use suzaku_map::ime::gpu::{
     CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind, LlmModelPreset,
     LlmTemperaturePreset, PANEL_SCALE_MAX, PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelChromeState,
@@ -43,25 +49,47 @@ use suzaku_map::ime::gpu::{
 use suzaku_map::ime::{EngineConfig, InputSource, SignalState, XRTabletImeEngine};
 use suzaku_map::platform::gpu_host::{
     configure_event_loop_builder, decorate_main_window_attributes,
-    decorate_settings_window_attributes,
+    decorate_settings_window_attributes, finish_main_window_creation,
+    finish_settings_window_creation, main_window_runs_without_focus,
 };
 use suzaku_map::platform::panel_companion_dispatch::current_panel_companion_dispatch;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::dpi::PhysicalPosition;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowAttributes, WindowId};
 
 const DEFAULT_PANEL_INNER_WIDTH: f64 = 900.0;
-const DEFAULT_PANEL_INNER_HEIGHT: f64 = 520.0;
+const DEFAULT_PANEL_INNER_HEIGHT: f64 = 480.0;
 const MIN_PANEL_INNER_WIDTH: f64 = 420.0;
 const MIN_PANEL_INNER_HEIGHT: f64 = 300.0;
 const MAX_PANEL_INNER_WIDTH: f64 = 1395.0;
 const MAX_PANEL_INNER_HEIGHT: f64 = 806.0;
 const COMPACT_PANEL_INNER_WIDTH: f64 = 92.0;
 const COMPACT_PANEL_INNER_HEIGHT: f64 = 92.0;
+const UI_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+const MIN_STREAMING_VERTEX_BUFFER_CAPACITY: usize = 256;
+
+fn periodic_frame_schedule(now: Instant, scheduled: Option<Instant>) -> (bool, Instant) {
+    let deadline = scheduled.unwrap_or(now);
+    if now >= deadline {
+        (true, now + UI_FRAME_INTERVAL)
+    } else {
+        (false, deadline)
+    }
+}
+
+fn next_vertex_buffer_capacity(current: usize, required: usize) -> usize {
+    if required <= current {
+        current
+    } else {
+        required
+            .max(MIN_STREAMING_VERTEX_BUFFER_CAPACITY)
+            .next_power_of_two()
+    }
+}
 
 fn advance_commit_feedback_state(ticks: u8) -> (u8, bool) {
     if ticks == 0 {
@@ -69,6 +97,15 @@ fn advance_commit_feedback_state(ticks: u8) -> (u8, bool) {
     }
     let next = ticks - 1;
     (next, next == 0)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PanelUserEvent {
+    ShowPanel,
+    HidePanel,
+    OpenSettings,
+    ResetPanelPosition,
+    Quit,
 }
 
 const SHADER: &str = r#"
@@ -130,13 +167,22 @@ fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let event_loop = build_event_loop()?;
-    let mut app = PanelApp::default();
+    let event_proxy = event_loop.create_proxy();
+    let instance = match claim_single_instance(event_proxy.clone()) {
+        Ok(InstanceLaunch::Primary(instance)) => Some(instance),
+        Ok(InstanceLaunch::ExistingSignaled) => return Ok(()),
+        Err(error) => {
+            eprintln!("Suzaku single-instance control unavailable: {error}");
+            None
+        }
+    };
+    let mut app = PanelApp::new(event_proxy, instance);
     event_loop.run_app(&mut app)?;
     Ok(())
 }
 
-fn build_event_loop() -> Result<EventLoop<()>, winit::error::EventLoopError> {
-    let mut builder = EventLoop::builder();
+fn build_event_loop() -> Result<EventLoop<PanelUserEvent>, winit::error::EventLoopError> {
+    let mut builder = EventLoop::<PanelUserEvent>::with_user_event();
     configure_event_loop_builder(&mut builder);
     builder.build()
 }
@@ -170,6 +216,7 @@ fn settings_window_attributes() -> WindowAttributes {
     let attrs = WindowAttributes::default()
         .with_title("Suzaku Panel Settings")
         .with_inner_size(LogicalSize::new(520.0, 340.0))
+        .with_visible(false)
         .with_resizable(true);
     decorate_settings_window_attributes(attrs)
 }
@@ -195,10 +242,103 @@ struct CommitAttempt {
     timestamp: Instant,
 }
 
-#[derive(Default)]
 struct PanelApp {
     panel: Option<PanelState>,
     settings: Option<PanelState>,
+    next_frame_at: Option<Instant>,
+    event_proxy: EventLoopProxy<PanelUserEvent>,
+    instance: Option<SingleInstanceGuard>,
+    tray: Option<SystemTray>,
+    panel_visible: bool,
+}
+
+impl PanelApp {
+    fn new(
+        event_proxy: EventLoopProxy<PanelUserEvent>,
+        instance: Option<SingleInstanceGuard>,
+    ) -> Self {
+        Self {
+            panel: None,
+            settings: None,
+            next_frame_at: None,
+            event_proxy,
+            instance,
+            tray: None,
+            panel_visible: false,
+        }
+    }
+
+    fn set_panel_visible(&mut self, visible: bool) {
+        let Some(panel) = self.panel.as_mut() else {
+            return;
+        };
+
+        panel.close_requested = false;
+        panel.window.set_visible(visible);
+        self.panel_visible = visible;
+        if visible {
+            panel.constrain_expanded_window_position();
+            panel.window.request_redraw();
+        } else {
+            panel.chrome.settings_open = false;
+            self.settings = None;
+            self.next_frame_at = None;
+        }
+        if let Some(tray) = self.tray.as_ref() {
+            tray.set_panel_visible(visible);
+        }
+    }
+
+    fn reset_panel_position(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(panel) = self.panel.as_mut() else {
+            return;
+        };
+
+        panel.close_requested = false;
+        panel.chrome.settings_open = false;
+        self.settings = None;
+        finish_main_window_creation(&panel.window, event_loop);
+        panel.note_expanded_window_position();
+        panel.window.set_visible(true);
+        panel.window.request_redraw();
+        self.panel_visible = true;
+        if let Some(tray) = self.tray.as_ref() {
+            tray.set_panel_visible(true);
+        }
+    }
+
+    fn open_settings(&mut self, event_loop: &ActiveEventLoop) {
+        self.set_panel_visible(true);
+        let Some(panel) = self.panel.as_mut() else {
+            return;
+        };
+
+        if panel.chrome.compact_mode {
+            panel.apply_compact_mode(false);
+        }
+        panel.chrome.settings_open = true;
+        panel.window.request_redraw();
+        let chrome = panel.chrome.clone();
+        if let Some(settings) = self.settings.as_mut() {
+            if settings.chrome != chrome {
+                settings.chrome = chrome;
+                settings.window.request_redraw();
+            }
+            settings.window.set_visible(true);
+            return;
+        }
+
+        let window = Arc::new(
+            event_loop
+                .create_window(settings_window_attributes())
+                .expect("create settings window"),
+        );
+        let settings = pollster::block_on(PanelState::new_settings(window, chrome))
+            .expect("initialize settings window");
+        finish_settings_window_creation(&settings.window, &panel.window, event_loop);
+        settings.window.request_redraw();
+        self.settings = Some(settings);
+    }
 }
 
 #[derive(Default)]
@@ -212,11 +352,11 @@ struct PanelInteractionState {
     touch_start_position: Option<(f32, f32)>,
     handwriting_dragging: bool,
     compact_hovered: bool,
-    compact_dragging: bool,
-    compact_drag_moved: bool,
-    compact_drag_start_cursor: Option<(f32, f32)>,
-    compact_drag_start_instant: Option<Instant>,
-    compact_drag_start_window_pos: Option<PhysicalPosition<i32>>,
+    panel_dragging: bool,
+    panel_drag_moved: bool,
+    panel_drag_start_cursor: Option<(f32, f32)>,
+    panel_drag_start_instant: Option<Instant>,
+    panel_drag_start_window_pos: Option<PhysicalPosition<i32>>,
     scale_dragging: bool,
     scale_drag_start_cursor_x: Option<f32>,
     scale_drag_start_scale: f32,
@@ -242,7 +382,7 @@ struct PanelInteractionState {
     settings_scroll_content_height: f32,
 }
 
-impl ApplicationHandler for PanelApp {
+impl ApplicationHandler<PanelUserEvent> for PanelApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.panel.is_some() {
             return;
@@ -253,8 +393,16 @@ impl ApplicationHandler for PanelApp {
                 .create_window(panel_window_attributes())
                 .expect("create panel window"),
         );
-        let state = pollster::block_on(PanelState::new(window)).expect("initialize panel state");
+        let mut state =
+            pollster::block_on(PanelState::new(window)).expect("initialize panel state");
+        finish_main_window_creation(&state.window, event_loop);
+        state.note_expanded_window_position();
+        state.window.request_redraw();
         self.panel = Some(state);
+        self.panel_visible = true;
+        if self.tray.is_none() {
+            self.tray = start_system_tray(self.event_proxy.clone(), true);
+        }
     }
 
     fn window_event(
@@ -267,38 +415,53 @@ impl ApplicationHandler for PanelApp {
             return;
         };
 
-        if let Some(settings) = self.settings.as_mut() {
-            if settings.window.id() == window_id {
-                match event {
-                    WindowEvent::CloseRequested => {
-                        panel.chrome.settings_open = false;
-                        self.settings = None;
-                    }
-                    _ => {
-                        handle_panel_window_event(settings, event_loop, event, false);
-                        panel.chrome.settings_open = settings.chrome.settings_open;
-                        panel.adopt_settings_from(&settings.chrome);
+        if let Some(settings) = self.settings.as_mut()
+            && settings.window.id() == window_id
+        {
+            match event {
+                WindowEvent::CloseRequested => {
+                    panel.chrome.settings_open = false;
+                    self.settings = None;
+                    panel.window.request_redraw();
+                }
+                _ => {
+                    handle_panel_window_event(settings, event_loop, event, false);
+                    panel.chrome.settings_open = settings.chrome.settings_open;
+                    if panel.adopt_settings_from(&settings.chrome) {
                         panel.window.request_redraw();
-                        if panel.chrome.settings_open {
+                    }
+                    if panel.chrome.settings_open {
+                        if settings.chrome != panel.chrome {
                             settings.chrome = panel.chrome.clone();
                             settings.window.request_redraw();
-                        } else {
-                            self.settings = None;
                         }
+                    } else {
+                        self.settings = None;
                     }
                 }
-                return;
             }
+            return;
         }
 
         if panel.window.id() != window_id {
             return;
         }
 
-        let should_exit = matches!(event, WindowEvent::CloseRequested);
         handle_panel_window_event(panel, event_loop, event, true);
-        if should_exit {
-            event_loop.exit();
+        if panel.close_requested {
+            panel.close_requested = false;
+            if self.tray.is_some() {
+                panel.chrome.settings_open = false;
+                panel.window.set_visible(false);
+                self.settings = None;
+                self.next_frame_at = None;
+                self.panel_visible = false;
+                if let Some(tray) = self.tray.as_ref() {
+                    tray.set_panel_visible(false);
+                }
+            } else {
+                event_loop.exit();
+            }
             return;
         }
 
@@ -314,41 +477,73 @@ impl ApplicationHandler for PanelApp {
             let settings =
                 pollster::block_on(PanelState::new_settings(window, panel.chrome.clone()))
                     .expect("initialize settings window");
+            finish_settings_window_creation(&settings.window, &panel.window, event_loop);
+            settings.window.request_redraw();
             self.settings = Some(settings);
         } else if !panel.chrome.settings_open {
             self.settings = None;
         }
-        if let Some(settings) = self.settings.as_mut() {
+        if let Some(settings) = self.settings.as_mut()
+            && settings.chrome != panel.chrome
+        {
             settings.chrome = panel.chrome.clone();
             settings.window.request_redraw();
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(panel) = self.panel.as_mut() {
-            if panel.is_focused {
-                panel.poll_voice_bridge();
-            }
-            let (next_ticks, should_clear_feedback) =
-                advance_commit_feedback_state(panel.commit_feedback_ticks);
-            panel.commit_feedback_ticks = next_ticks;
-            if should_clear_feedback {
-                panel.last_commit_feedback = None;
-            }
-            if panel.chrome.active_input_mode == InputMode::Dictation
-                && panel.chrome.voice_state == VoiceCaptureState::Listening
-            {
-                panel.chrome.voice_visual_phase =
-                    panel.chrome.voice_visual_phase.wrapping_add(1) % 24;
-            } else {
-                panel.chrome.voice_visual_phase = 0;
-            }
-            panel.window.request_redraw();
-            if let Some(settings) = self.settings.as_mut() {
-                settings.chrome = panel.chrome.clone();
-                settings.window.request_redraw();
-            }
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: PanelUserEvent) {
+        match event {
+            PanelUserEvent::ShowPanel => self.set_panel_visible(true),
+            PanelUserEvent::HidePanel => self.set_panel_visible(false),
+            PanelUserEvent::OpenSettings => self.open_settings(event_loop),
+            PanelUserEvent::ResetPanelPosition => self.reset_panel_position(event_loop),
+            PanelUserEvent::Quit => event_loop.exit(),
         }
+    }
+
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(tray) = self.tray.take() {
+            tray.shutdown();
+        }
+        if let Some(instance) = self.instance.take() {
+            instance.shutdown();
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let panel_needs_frame = self.panel_visible
+            && self
+                .panel
+                .as_ref()
+                .is_some_and(PanelState::needs_periodic_frame);
+        let settings_needs_frame = self
+            .settings
+            .as_ref()
+            .is_some_and(PanelState::needs_periodic_frame);
+        if !panel_needs_frame && !settings_needs_frame {
+            self.next_frame_at = None;
+            event_loop.set_control_flow(ControlFlow::Wait);
+            return;
+        }
+
+        let now = Instant::now();
+        let (should_advance, next_frame_at) = periodic_frame_schedule(now, self.next_frame_at);
+        if should_advance
+            && panel_needs_frame
+            && let Some(panel) = self.panel.as_mut()
+        {
+            panel.advance_periodic_frame();
+            panel.window.request_redraw();
+        }
+        if should_advance
+            && settings_needs_frame
+            && let Some(settings) = self.settings.as_mut()
+        {
+            settings.advance_periodic_frame();
+            settings.window.request_redraw();
+        }
+        self.next_frame_at = Some(next_frame_at);
+        event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame_at));
     }
 }
 
@@ -361,6 +556,10 @@ struct PanelState {
     config: wgpu::SurfaceConfiguration,
     shape_pipeline: wgpu::RenderPipeline,
     text_pipeline: wgpu::RenderPipeline,
+    shape_vertex_buffer: wgpu::Buffer,
+    shape_vertex_capacity: usize,
+    text_vertex_buffer: wgpu::Buffer,
+    text_vertex_capacity: usize,
     font_atlas: FontAtlas,
     size: winit::dpi::PhysicalSize<u32>,
     renderer: WgpuCandidateRenderer,
@@ -384,9 +583,13 @@ struct PanelState {
     compact_dock_edge: Option<DockEdge>,
     last_compact_toggle: Option<Instant>,
     is_focused: bool,
+    runs_without_window_focus: bool,
     input_dispatch_guard: bool,
     last_commit_attempt: Option<CommitAttempt>,
     last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
+    last_scene: Option<suzaku_map::ime::gpu::RenderScene>,
+    last_window_title: String,
+    close_requested: bool,
 }
 
 impl PanelState {
@@ -426,6 +629,8 @@ impl PanelState {
             None
         };
         let is_focused = window.has_focus();
+        let runs_without_window_focus =
+            kind == PanelWindowKind::Main && main_window_runs_without_focus();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(window.clone())?;
         let adapter = instance
@@ -656,6 +861,19 @@ impl PanelState {
         });
         engine.seed("ni hao");
 
+        let shape_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("suzaku-panel-shape-vertices"),
+            size: MIN_STREAMING_VERTEX_BUFFER_CAPACITY as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let text_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("suzaku-panel-text-vertices"),
+            size: MIN_STREAMING_VERTEX_BUFFER_CAPACITY as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         let composition_base_seed = chrome.seed_text.clone();
         let mut state = Self {
             kind,
@@ -666,6 +884,10 @@ impl PanelState {
             config: config.clone(),
             shape_pipeline,
             text_pipeline,
+            shape_vertex_buffer,
+            shape_vertex_capacity: MIN_STREAMING_VERTEX_BUFFER_CAPACITY,
+            text_vertex_buffer,
+            text_vertex_capacity: MIN_STREAMING_VERTEX_BUFFER_CAPACITY,
             font_atlas,
             size,
             renderer: WgpuCandidateRenderer::new(config.width as f32, config.height as f32),
@@ -692,9 +914,13 @@ impl PanelState {
             compact_dock_edge: None,
             last_compact_toggle: None,
             is_focused,
+            runs_without_window_focus,
             input_dispatch_guard: false,
             last_commit_attempt: None,
             last_interaction_action: None,
+            last_scene: None,
+            last_window_title: String::new(),
+            close_requested: false,
         };
         if kind == PanelWindowKind::Main {
             if (initial_window_scale - 1.0).abs() > f32::EPSILON {

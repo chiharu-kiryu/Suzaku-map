@@ -24,5 +24,6 @@ object SuzakuNativeBridge {
     external fun nativeSelectedIndex(): Int
     external fun nativeCandidateLabel(index: Int): String
     external fun nativeDisplayText(): String
+    external fun nativeRenderSnapshot(): Array<String>
     external fun nativeTakeLastCommittedText(): String
 }

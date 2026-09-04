@@ -136,6 +136,7 @@ impl PanelSceneMetrics {
         responsive_scale: f32,
         chrome: &PanelChromeState,
         sentence_count: usize,
+        hero_cards_enabled: bool,
     ) -> Self {
         let collapsed_daily_mode = !chrome.input_modes_expanded;
         let scene_margin = (4.2 * responsive_scale).max(3.0);
@@ -143,7 +144,7 @@ impl PanelSceneMetrics {
         let min_panel_width = (max_panel_width * 0.78)
             .clamp(190.0, 310.0)
             .min(max_panel_width);
-        let desired_panel_width = (scene_width - 220.0).clamp(190.0, 1200.0);
+        let desired_panel_width = (scene_width - 24.0 * responsive_scale).clamp(190.0, 1360.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);
@@ -166,7 +167,7 @@ impl PanelSceneMetrics {
 
         let expanded_input_panel_h = if chrome.input_modes_expanded {
             match chrome.active_input_mode {
-                crate::ime::gpu::InputMode::VirtualKeyboard => 156.0 * responsive_scale,
+                crate::ime::gpu::InputMode::VirtualKeyboard => 145.0 * responsive_scale,
                 crate::ime::gpu::InputMode::Dictation => 170.0 * responsive_scale,
                 crate::ime::gpu::InputMode::Handwriting => 173.0 * responsive_scale,
             }
@@ -178,9 +179,9 @@ impl PanelSceneMetrics {
         let mut tools_content_h = expanded_input_panel_h;
         let mut item_height = match (chrome.candidate_density, chrome.preview_style) {
             (CandidateDensity::Compact, PreviewStyle::Compact) => 48.0,
-            (CandidateDensity::Compact, PreviewStyle::Full) => 60.0,
+            (CandidateDensity::Compact, PreviewStyle::Full) => 66.0,
             (CandidateDensity::Cozy, PreviewStyle::Compact) => 54.0,
-            (CandidateDensity::Cozy, PreviewStyle::Full) => 71.0,
+            (CandidateDensity::Cozy, PreviewStyle::Full) => 72.0,
         } * responsive_scale;
 
         let mut hero_item_height = item_height + 10.0 * responsive_scale;
@@ -202,9 +203,16 @@ impl PanelSceneMetrics {
             (if stacked_token_header { 45.0 } else { 72.0 }) * responsive_scale
         };
 
+        let alternate_count = if hero_cards_enabled {
+            sentence_count.saturating_sub(1)
+        } else {
+            sentence_count
+        };
         let sentence_columns = if collapsed_daily_mode {
             sentence_count.clamp(1, 4)
-        } else if panel_width >= 748.0 && sentence_count > 2 {
+        } else if panel_width >= 900.0 && alternate_count >= 3 {
+            3
+        } else if panel_width >= 520.0 && alternate_count >= 2 {
             2
         } else {
             1
@@ -212,10 +220,8 @@ impl PanelSceneMetrics {
 
         let sentence_rows = if collapsed_daily_mode {
             if sentence_count == 0 { 0 } else { 1 }
-        } else if sentence_count == 0 {
-            0
         } else {
-            (sentence_count - 1).div_ceil(sentence_columns)
+            alternate_count.div_ceil(sentence_columns)
         };
 
         let mut sentence_height = if collapsed_daily_mode {
@@ -224,17 +230,19 @@ impl PanelSceneMetrics {
             } else {
                 43.0 * responsive_scale
             }
-        } else if sentence_rows == 0 {
-            if sentence_count == 0 {
-                0.0
-            } else {
-                hero_item_height
-            }
-        } else {
+        } else if sentence_count == 0 {
+            0.0
+        } else if hero_cards_enabled {
             hero_item_height
-                + item_gap
-                + sentence_rows as f32 * item_height
-                + (sentence_rows as f32 - 1.0) * item_gap
+                + if sentence_rows == 0 {
+                    0.0
+                } else {
+                    item_gap
+                        + sentence_rows as f32 * item_height
+                        + (sentence_rows as f32 - 1.0) * item_gap
+                }
+        } else {
+            sentence_rows as f32 * item_height + (sentence_rows as f32 - 1.0) * item_gap
         };
 
         let fixed_without_sentence = input_box_h
@@ -300,24 +308,26 @@ impl PanelSceneMetrics {
                     } else {
                         (43.0 * responsive_scale).max((40.0 * height_scale).max(item_height))
                     }
-                } else if sentence_rows == 0 {
-                    if sentence_count == 0 {
-                        0.0
-                    } else {
-                        hero_item_height
-                    }
-                } else {
+                } else if sentence_count == 0 {
+                    0.0
+                } else if hero_cards_enabled {
                     hero_item_height
-                        + item_gap
-                        + sentence_rows as f32 * item_height
-                        + (sentence_rows as f32 - 1.0) * item_gap
+                        + if sentence_rows == 0 {
+                            0.0
+                        } else {
+                            item_gap
+                                + sentence_rows as f32 * item_height
+                                + (sentence_rows as f32 - 1.0) * item_gap
+                        }
+                } else {
+                    sentence_rows as f32 * item_height + (sentence_rows as f32 - 1.0) * item_gap
                 };
             }
         }
 
         let panel_height = (fixed_without_sentence + sentence_height).min(stack_cap);
         let panel_y = if panel_height < scene_height - scene_margin * 2.0 {
-            scene_margin
+            ((scene_height - panel_height) * 0.5).max(scene_margin)
         } else {
             0.0
         };

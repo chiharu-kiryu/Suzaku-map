@@ -40,8 +40,11 @@ pub fn dispatch_for(platform: TargetPlatform) -> PanelCompanionDispatch {
     let support = support_for(platform);
     let system_ime_host = match platform {
         TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs => {
+            let bootstrap = linux_ime::bootstrap_status(platform);
             support.capabilities.system_ime_host
-                || linux_ime::bootstrap_status(platform).host_registration_ready
+                || (bootstrap.host_registration_ready
+                    && bootstrap.runtime_engine_visible
+                    && bootstrap.host_service_ready)
         }
         _ => support.capabilities.system_ime_host,
     };
@@ -111,6 +114,8 @@ mod tests {
         ] {
             test_env::with_test_env(|env: &mut ScopedEnv| {
                 env.set_var("SUZAKU_LINUX_IME_REGISTERED", "0");
+                env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "0");
+                env.set_var("SUZAKU_LINUX_IME_HOST_READY", "0");
 
                 assert_eq!(
                     dispatch_for(platform).role,
@@ -121,7 +126,7 @@ mod tests {
     }
 
     #[test]
-    fn linux_targets_switch_to_debug_companion_when_registered() {
+    fn linux_targets_switch_to_debug_companion_when_host_is_live() {
         for platform in [
             TargetPlatform::Ubuntu,
             TargetPlatform::ArchLinux,
@@ -130,6 +135,8 @@ mod tests {
             test_env::with_test_env(|env: &mut ScopedEnv| {
                 env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
                 env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+                env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "1");
+                env.set_var("SUZAKU_LINUX_IME_HOST_READY", "1");
 
                 assert_eq!(
                     dispatch_for(platform).role,

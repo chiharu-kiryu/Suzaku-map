@@ -115,9 +115,17 @@ pub(crate) fn measure_text_prefix_width(
 ) -> f32 {
     text.chars().take(char_count).fold(0.0, |acc, ch| {
         acc + if ch == ' ' {
-            pixel_size * 4.0
+            text_space_advance(pixel_size)
         } else {
-            pixel_size * 6.5 + letter_spacing
+            text_glyph_advance(pixel_size, letter_spacing)
         }
     })
+}
+
+pub(crate) fn text_glyph_advance(pixel_size: f32, letter_spacing: f32) -> f32 {
+    (pixel_size * 4.65 + letter_spacing).max(pixel_size * 4.05)
+}
+
+pub(crate) fn text_space_advance(pixel_size: f32) -> f32 {
+    pixel_size * 2.8
 }

@@ -218,7 +218,7 @@ impl ImePlatformAdapter for LinuxPlatformAdapter {
             registration_target: bootstrap.recommended_connection_name.clone(),
             bootstrap_summary: bootstrap.describe(),
             registration_hint: format!(
-                "Keep the GPU panel primary until {} is registered through {:?}.",
+                "Keep the GPU panel primary until {} is registered, runtime-visible, and served through {:?}.",
                 bootstrap.recommended_connection_name, bootstrap.framework
             ),
             lifecycle: ImeHostLifecycleCapabilities {
@@ -301,7 +301,7 @@ mod tests {
         suzaku_host_platform_registration_ready, suzaku_host_platform_registration_target_utf8,
     };
     use crate::ime::InputSource;
-    use crate::platform::TargetPlatform;
+    use crate::platform::{TargetPlatform, test_env};
     use std::ffi::{CStr, CString};
     use std::os::raw::c_char;
 
@@ -379,19 +379,21 @@ mod tests {
 
     #[test]
     fn platform_api_exposes_registration_summary_fields() {
-        let profile = current_adapter_profile();
-        let target = c_string_to_owned(suzaku_host_platform_registration_target_utf8());
-        let hint = c_string_to_owned(suzaku_host_platform_registration_hint_utf8());
-        assert!(!target.unwrap_or_default().is_empty());
-        assert!(!hint.unwrap_or_default().is_empty());
-        assert_eq!(
-            suzaku_host_platform_registration_ready(),
-            profile.registration_ready
-        );
-        assert_eq!(
-            suzaku_host_platform_on_demand_companion(),
-            profile.lifecycle.on_demand_companion
-        );
+        test_env::with_test_env(|_| {
+            let profile = current_adapter_profile();
+            let target = c_string_to_owned(suzaku_host_platform_registration_target_utf8());
+            let hint = c_string_to_owned(suzaku_host_platform_registration_hint_utf8());
+            assert!(!target.unwrap_or_default().is_empty());
+            assert!(!hint.unwrap_or_default().is_empty());
+            assert_eq!(
+                suzaku_host_platform_registration_ready(),
+                profile.registration_ready
+            );
+            assert_eq!(
+                suzaku_host_platform_on_demand_companion(),
+                profile.lifecycle.on_demand_companion
+            );
+        });
     }
 
     #[test]
@@ -455,10 +457,12 @@ mod tests {
 
     #[test]
     fn current_adapter_profile_matches_host_platform_profile() {
-        assert_eq!(
-            current_adapter_profile(),
-            adapter_profile_for(super::host_platform())
-        );
+        test_env::with_test_env(|_| {
+            assert_eq!(
+                current_adapter_profile(),
+                adapter_profile_for(super::host_platform())
+            );
+        });
     }
 
     #[test]

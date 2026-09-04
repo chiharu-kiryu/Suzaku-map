@@ -1,4 +1,7 @@
-use super::{AtlasGlyph, CandidateQuad, TextAlign, TextBlock, TextLayout, glyph_bitmap};
+use super::{
+    AtlasGlyph, CandidateQuad, TextAlign, TextBlock, TextLayout, glyph_bitmap, text_glyph_advance,
+    text_space_advance,
+};
 
 pub(super) fn point_in_rect(x: f32, y: f32, rect: [f32; 4]) -> bool {
     let [rx, ry, rw, rh] = rect;
@@ -30,10 +33,14 @@ pub(super) fn sample_stroke_points(stroke: &[[f32; 2]]) -> Vec<[f32; 2]> {
 }
 
 pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
-    let glyph_advance = (block.pixel_size * 6.5 + block.letter_spacing).max(block.pixel_size * 4.0);
+    let glyph_advance = text_glyph_advance(block.pixel_size, block.letter_spacing);
     let line_height = block.pixel_size * 7.0 + block.line_gap;
-    let max_chars_per_line = ((block.max_width / glyph_advance).floor() as usize).max(1);
-    let mut lines = wrap_text(&block.text, max_chars_per_line);
+    let mut lines = wrap_text(
+        &block.text,
+        block.max_width,
+        block.pixel_size,
+        glyph_advance,
+    );
     let force_ellipsis = lines.len() > block.max_lines;
     if force_ellipsis {
         lines.truncate(block.max_lines);
@@ -73,7 +80,7 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
 
         for ch in line.chars() {
             if ch == ' ' {
-                cursor_x += block.pixel_size * 4.0;
+                cursor_x += text_space_advance(block.pixel_size);
                 continue;
             }
 
@@ -82,7 +89,7 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
                 rect: [
                     cursor_x,
                     cursor_y,
-                    block.pixel_size * 5.0,
+                    block.pixel_size * 4.4,
                     block.pixel_size * 7.0,
                 ],
                 color: block.color,
@@ -192,50 +199,45 @@ fn estimate_line_width(text: &str, pixel_size: f32, glyph_advance: f32) -> f32 {
 
 fn glyph_advance_width(ch: char, pixel_size: f32, glyph_advance: f32) -> f32 {
     if ch == ' ' {
-        pixel_size * 4.0
+        text_space_advance(pixel_size)
     } else {
         glyph_advance
     }
 }
 
-pub(super) fn wrap_text(text: &str, max_chars_per_line: usize) -> Vec<String> {
+fn wrap_text(text: &str, max_width: f32, pixel_size: f32, glyph_advance: f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
+    let mut current_width = 0.0_f32;
+    let space_width = text_space_advance(pixel_size);
 
-    for word in text.split_whitespace() {
-        let pending_len = if current.is_empty() {
-            word.chars().count()
-        } else {
-            current.chars().count() + 1 + word.chars().count()
+    let push_word =
+        |word: &str, lines: &mut Vec<String>, current: &mut String, current_width: &mut f32| {
+            for ch in word.chars() {
+                let char_width = glyph_advance_width(ch, pixel_size, glyph_advance);
+                if !current.is_empty() && *current_width + char_width > max_width {
+                    lines.push(std::mem::take(current));
+                    *current_width = 0.0;
+                }
+                current.push(ch);
+                *current_width += char_width;
+            }
         };
 
-        if pending_len <= max_chars_per_line {
-            if !current.is_empty() {
-                current.push(' ');
-            }
-            current.push_str(word);
-            continue;
-        }
+    for word in text.split_whitespace() {
+        let word_width = estimate_line_width(word, pixel_size, glyph_advance);
 
-        if !current.is_empty() {
-            lines.push(current.clone());
-            current.clear();
+        if current.is_empty() {
+            push_word(word, &mut lines, &mut current, &mut current_width);
+        } else if current_width + space_width + word_width <= max_width {
+            current.push(' ');
+            current_width += space_width;
+            push_word(word, &mut lines, &mut current, &mut current_width);
+        } else {
+            lines.push(std::mem::take(&mut current));
+            current_width = 0.0;
+            push_word(word, &mut lines, &mut current, &mut current_width);
         }
-
-        if word.chars().count() <= max_chars_per_line {
-            current.push_str(word);
-            continue;
-        }
-
-        let mut chunk = String::new();
-        for ch in word.chars() {
-            if chunk.chars().count() >= max_chars_per_line {
-                lines.push(chunk.clone());
-                chunk.clear();
-            }
-            chunk.push(ch);
-        }
-        current = chunk;
     }
 
     if !current.is_empty() {
@@ -251,12 +253,33 @@ pub(super) fn wrap_text(text: &str, max_chars_per_line: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::TextAlign;
-    use super::TextBlock;
+    use super::{TextAlign, TextBlock, text_glyph_advance, text_space_advance, wrap_text};
     use crate::ime::gpu::TextRole;
     use crate::panel_support::{
         derive_next_token_candidates, derive_sentence_candidates_with_indices,
     };
+
+    #[test]
+    fn wrapping_accounts_for_narrow_spaces() {
+        let pixel_size = 4.0;
+        let glyph_advance = text_glyph_advance(pixel_size, 0.0);
+        let text = "Apple can continue with the next suggestion.";
+        let actual_width = text
+            .chars()
+            .map(|ch| {
+                if ch == ' ' {
+                    text_space_advance(pixel_size)
+                } else {
+                    glyph_advance
+                }
+            })
+            .sum::<f32>();
+
+        assert_eq!(
+            wrap_text(text, actual_width + 0.01, pixel_size, glyph_advance),
+            vec![text]
+        );
+    }
 
     #[test]
     fn layout_preserves_emoji_in_atlas_glyphs() {

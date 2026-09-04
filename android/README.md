@@ -16,10 +16,14 @@ It currently provides:
 - a system keyboard switch key with long-press picker access and candidate-boundary
   punctuation handling
 - app-provided autocomplete candidates and cursor-safe composition cancellation
+- a transient current-clipboard paste drawer that stores no history, hides previews marked
+  sensitive by Android, and is unavailable in secure fields
 - persistent settings in both the IME drawer and system-facing settings activity for
   automatic capitalization, number-row visibility, and key-press haptics
 - secure password-field handling that bypasses candidates and disables voice and
   handwriting input while the field is active
+- a latency-focused render path with one-shot native snapshots, reused keyboard and
+  candidate views, interruption-safe panel animation, and frame-aligned handwriting
 - a Rust `cdylib` bridge target through `libsuzaku_map.so`
 - an Android pre-build hook that compiles Rust `.so` outputs into `android/app/src/main/jniLibs`
 

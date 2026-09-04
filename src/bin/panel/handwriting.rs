@@ -368,11 +368,7 @@ impl PanelState {
     }
 
     fn handwriting_canvas_rect(&mut self) -> Option<[f32; 4]> {
-        self.current_scene()
-            .interactive_targets
-            .iter()
-            .find(|target| matches!(target.kind, InteractionKind::HandwritingCanvas))
-            .map(|target| target.rect)
+        self.interaction_rect(InteractionKind::HandwritingCanvas)
     }
 
     pub(super) fn try_begin_handwriting_stroke(&mut self) -> bool {

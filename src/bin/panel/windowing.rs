@@ -154,6 +154,48 @@ fn compact_drag_exceeded_threshold(start: (f32, f32), current: (f32, f32)) -> bo
         || (cursor_y - start_y).abs() > COMPACT_DRAG_MOVE_PX
 }
 
+fn manual_window_drag_position(
+    current_window: PhysicalPosition<i32>,
+    anchor_cursor: (f32, f32),
+    current_cursor: (f32, f32),
+) -> PhysicalPosition<i32> {
+    let delta_x = (current_cursor.0 - anchor_cursor.0).round() as i64;
+    let delta_y = (current_cursor.1 - anchor_cursor.1).round() as i64;
+    PhysicalPosition::new(
+        (i64::from(current_window.x) + delta_x).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+            as i32,
+        (i64::from(current_window.y) + delta_y).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+            as i32,
+    )
+}
+
+fn clamp_window_position_to_monitor(
+    position: PhysicalPosition<i32>,
+    monitor_position: PhysicalPosition<i32>,
+    monitor_size: PhysicalSize<u32>,
+    window_size: PhysicalSize<u32>,
+    margin: i32,
+) -> PhysicalPosition<i32> {
+    let min_x = monitor_position.x.saturating_add(margin);
+    let min_y = monitor_position.y.saturating_add(margin);
+    let max_x = monitor_position
+        .x
+        .saturating_add(monitor_size.width as i32)
+        .saturating_sub(window_size.width as i32)
+        .saturating_sub(margin)
+        .max(min_x);
+    let max_y = monitor_position
+        .y
+        .saturating_add(monitor_size.height as i32)
+        .saturating_sub(window_size.height as i32)
+        .saturating_sub(margin)
+        .max(min_y);
+    PhysicalPosition::new(
+        position.x.clamp(min_x, max_x),
+        position.y.clamp(min_y, max_y),
+    )
+}
+
 fn compact_snap_for_position(
     current_x: i32,
     current_y: i32,
@@ -246,11 +288,11 @@ impl PanelState {
         }
         self.chrome.compact_mode = compact;
         self.interaction.compact_hovered = false;
-        self.interaction.compact_dragging = false;
-        self.interaction.compact_drag_moved = false;
-        self.interaction.compact_drag_start_cursor = None;
-        self.interaction.compact_drag_start_window_pos = None;
-        self.interaction.compact_drag_start_instant = None;
+        self.interaction.panel_dragging = false;
+        self.interaction.panel_drag_moved = false;
+        self.interaction.panel_drag_start_cursor = None;
+        self.interaction.panel_drag_start_window_pos = None;
+        self.interaction.panel_drag_start_instant = None;
         self.interaction.scale_dragging = false;
         self.interaction.scale_drag_start_cursor_x = None;
         self.interaction.scale_drag_start_scale = self.window_scale;
@@ -259,45 +301,53 @@ impl PanelState {
         self.last_compact_toggle = Some(std::time::Instant::now());
     }
 
-    pub(super) fn begin_compact_drag(&mut self) {
-        if self.kind != PanelWindowKind::Main || !self.chrome.compact_mode {
+    pub(super) fn begin_panel_drag(&mut self) {
+        if self.kind != PanelWindowKind::Main {
             return;
         }
-        self.interaction.compact_dragging = true;
-        self.interaction.compact_drag_moved = false;
-        self.interaction.compact_drag_start_cursor = self.cursor_position;
-        self.interaction.compact_drag_start_window_pos = self.window.outer_position().ok();
-        self.interaction.compact_drag_start_instant = Some(std::time::Instant::now());
-        let _ = self.window.drag_window();
+        self.interaction.panel_dragging = true;
+        self.interaction.panel_drag_moved = false;
+        self.interaction.panel_drag_start_cursor = self.cursor_position;
+        self.interaction.panel_drag_start_window_pos = self.window.outer_position().ok();
+        self.interaction.panel_drag_start_instant = Some(std::time::Instant::now());
+        if !self.runs_without_window_focus {
+            let _ = self.window.drag_window();
+        }
     }
 
-    pub(super) fn record_compact_drag_motion(&mut self, cursor_x: f32, cursor_y: f32) {
-        if !self.interaction.compact_dragging {
-            self.interaction.compact_drag_moved = false;
+    pub(super) fn update_panel_drag_motion(&mut self, cursor_x: f32, cursor_y: f32) {
+        if !self.interaction.panel_dragging {
+            self.interaction.panel_drag_moved = false;
             return;
         }
-        if let Some((start_x, start_y)) = self.interaction.compact_drag_start_cursor {
+        if let Some((start_x, start_y)) = self.interaction.panel_drag_start_cursor {
             let moved = compact_drag_exceeded_threshold((start_x, start_y), (cursor_x, cursor_y));
             if moved {
-                self.interaction.compact_drag_moved = true;
+                self.interaction.panel_drag_moved = true;
+            }
+            if self.runs_without_window_focus
+                && self.interaction.panel_drag_moved
+                && let Ok(current_window) = self.window.outer_position()
+            {
+                let target = manual_window_drag_position(
+                    current_window,
+                    (start_x, start_y),
+                    (cursor_x, cursor_y),
+                );
+                if target != current_window {
+                    self.window.set_outer_position(target);
+                }
             }
         }
     }
 
-    pub(super) fn update_compact_hover(&mut self) {
+    pub(super) fn update_compact_hover(&mut self) -> bool {
+        let previous = self.interaction.compact_hovered;
         self.interaction.compact_hovered =
             if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
                 match self.cursor_position {
                     Some((x, y)) => {
-                        let snapshot = self.engine.snapshot();
-                        self.renderer
-                            .build_compact_scene(
-                                &snapshot,
-                                &self.chrome,
-                                false,
-                                self.interaction.compact_dragging,
-                            )
-                            .hit_interaction(x, y)
+                        self.hit_interaction_at(x, y)
                             == Some(suzaku_map::ime::gpu::InteractionKind::ToggleCompactMode)
                     }
                     None => false,
@@ -305,41 +355,44 @@ impl PanelState {
             } else {
                 false
             };
+        self.interaction.compact_hovered != previous
     }
 
-    pub(super) fn end_compact_drag(&mut self) -> bool {
-        if !self.interaction.compact_dragging {
+    pub(super) fn end_panel_drag(&mut self) -> bool {
+        if !self.interaction.panel_dragging {
             return false;
         }
         let elapsed_ms = self
             .interaction
-            .compact_drag_start_instant
+            .panel_drag_start_instant
             .map(|instant| instant.elapsed().as_millis() as u64)
             .unwrap_or(u64::MAX);
         let moved = match (
-            self.interaction.compact_drag_start_window_pos,
+            self.interaction.panel_drag_start_window_pos,
             self.window.outer_position().ok(),
         ) {
             (Some(start), Some(end)) => compact_drag_gesture_is_valid(
                 Some(start),
                 Some(end),
                 elapsed_ms,
-                self.interaction.compact_drag_moved,
+                self.interaction.panel_drag_moved,
             ),
             _ => compact_drag_gesture_is_valid(
                 None,
                 None,
                 elapsed_ms,
-                self.interaction.compact_drag_moved,
+                self.interaction.panel_drag_moved,
             ),
         };
-        self.interaction.compact_dragging = false;
-        self.interaction.compact_drag_start_cursor = None;
-        self.interaction.compact_drag_start_window_pos = None;
-        self.interaction.compact_drag_start_instant = None;
-        self.interaction.compact_drag_moved = false;
-        if moved {
+        self.interaction.panel_dragging = false;
+        self.interaction.panel_drag_start_cursor = None;
+        self.interaction.panel_drag_start_window_pos = None;
+        self.interaction.panel_drag_start_instant = None;
+        self.interaction.panel_drag_moved = false;
+        if moved && self.chrome.compact_mode {
             self.snap_compact_window_to_edge();
+        } else if moved {
+            self.constrain_expanded_window_position();
         }
         self.update_compact_hover();
         moved
@@ -413,6 +466,30 @@ impl PanelState {
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
             self.expanded_window_pos = self.window.outer_position().ok();
         }
+    }
+
+    pub(super) fn constrain_expanded_window_position(&mut self) {
+        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+        let Ok(position) = self.window.outer_position() else {
+            return;
+        };
+        let Some(monitor) = self.window.current_monitor() else {
+            self.expanded_window_pos = Some(position);
+            return;
+        };
+        let target = clamp_window_position_to_monitor(
+            position,
+            monitor.position(),
+            monitor.size(),
+            self.window.outer_size(),
+            18,
+        );
+        if target != position {
+            self.window.set_outer_position(target);
+        }
+        self.expanded_window_pos = Some(target);
     }
 
     pub(super) fn adjust_window_scale(&mut self, step_delta: i32) {
@@ -761,6 +838,48 @@ mod tests {
         ];
 
         run_compact_drag_threshold_cases(&cases);
+    }
+
+    #[test]
+    fn manual_window_drag_tracks_pointer_delta_in_root_coordinates() {
+        let current_window = PhysicalPosition::new(410, 260);
+
+        assert_eq!(
+            manual_window_drag_position(current_window, (42.0, 18.0), (57.4, 7.6)),
+            PhysicalPosition::new(425, 250)
+        );
+        assert_eq!(
+            manual_window_drag_position(current_window, (42.0, 18.0), (42.0, 18.0)),
+            current_window
+        );
+    }
+
+    #[test]
+    fn expanded_window_position_stays_fully_inside_the_monitor() {
+        let monitor_position = PhysicalPosition::new(0, 0);
+        let monitor_size = PhysicalSize::new(1_920, 1_080);
+        let window_size = PhysicalSize::new(900, 520);
+
+        assert_eq!(
+            clamp_window_position_to_monitor(
+                PhysicalPosition::new(-40, 568),
+                monitor_position,
+                monitor_size,
+                window_size,
+                18,
+            ),
+            PhysicalPosition::new(18, 542)
+        );
+        assert_eq!(
+            clamp_window_position_to_monitor(
+                PhysicalPosition::new(510, 300),
+                monitor_position,
+                monitor_size,
+                window_size,
+                18,
+            ),
+            PhysicalPosition::new(510, 300)
+        );
     }
 
     #[test]

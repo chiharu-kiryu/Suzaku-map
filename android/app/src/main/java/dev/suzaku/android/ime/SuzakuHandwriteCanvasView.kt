@@ -51,28 +51,38 @@ class SuzakuHandwriteCanvasView @JvmOverloads constructor(
                 currentPath = Path().apply { moveTo(event.x, event.y) }
                 currentStroke = mutableListOf(StrokePoint(event.x, event.y))
                 onStrokeStarted?.invoke()
-                invalidate()
+                postInvalidateOnAnimation()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                currentPath.lineTo(event.x, event.y)
-                currentStroke.add(StrokePoint(event.x, event.y))
-                invalidate()
+                for (index in 0 until event.historySize) {
+                    appendPoint(event.getHistoricalX(index), event.getHistoricalY(index))
+                }
+                appendPoint(event.x, event.y)
+                postInvalidateOnAnimation()
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                currentPath.lineTo(event.x, event.y)
-                currentStroke.add(StrokePoint(event.x, event.y))
+                appendPoint(event.x, event.y)
                 paths.add(currentPath)
                 strokes.add(currentStroke.toList())
                 currentPath = Path()
                 currentStroke = mutableListOf()
-                invalidate()
+                parent?.requestDisallowInterceptTouchEvent(false)
+                postInvalidateOnAnimation()
                 onStrokeFinished?.invoke(strokes.map { it.toList() })
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    performClick()
+                }
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     fun clearCanvas() {
@@ -80,8 +90,17 @@ class SuzakuHandwriteCanvasView @JvmOverloads constructor(
         strokes.clear()
         currentPath = Path()
         currentStroke.clear()
-        invalidate()
+        postInvalidateOnAnimation()
     }
 
     fun strokeGroups(): List<List<StrokePoint>> = strokes.map { it.toList() }
+
+    private fun appendPoint(x: Float, y: Float) {
+        val previous = currentStroke.lastOrNull()
+        if (previous?.x == x && previous.y == y) {
+            return
+        }
+        currentPath.lineTo(x, y)
+        currentStroke.add(StrokePoint(x, y))
+    }
 }

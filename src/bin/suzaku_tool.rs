@@ -4,8 +4,11 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, exit};
+use std::time::Duration;
 
 const CONNECTION_NAME: &str = "dev.suzaku.linux.ime";
+const IBUS_COMPONENT_NAME: &str = "org.freedesktop.IBus.Suzaku";
+const IBUS_USER_SERVICE_NAME: &str = "suzaku-ibus.service";
 const FCITX_CONFIG_NAME: &str = "dev_suzaku_linux_ime.conf";
 const DEFAULT_ANDROID_SDK_ROOT: &str = "/opt/homebrew/share/android-commandlinetools";
 const DEFAULT_JAVA_HOME: &str = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
@@ -53,6 +56,9 @@ fn print_help() {
     println!("Usage:");
     println!("  suzaku_tool linux-register [install|status|verify|uninstall|diag]");
     println!("  suzaku_tool linux-register-ime [install|status|verify|uninstall|diag]");
+    println!(
+        "  # Build native IBus host first: cargo build --features linux-ibus --bin linux_ime_host"
+    );
     println!("  suzaku_tool android env");
     println!("  suzaku_tool android build-native [--release]");
     println!("  suzaku_tool android install-debug");
@@ -174,7 +180,7 @@ fn linux_register(args: &[String]) -> i32 {
     };
     let action = args.first().map(String::as_str).unwrap_or("install");
     let framework = LinuxFramework::from_env();
-    let rc = match action {
+    match action {
         "install" => linux_install(framework),
         "status" => linux_status(framework),
         "verify" => linux_verify(framework),
@@ -192,8 +198,7 @@ fn linux_register(args: &[String]) -> i32 {
             print_help();
             1
         }
-    };
-    rc
+    }
 }
 
 fn linux_home_path() -> Result<PathBuf, String> {
@@ -227,35 +232,72 @@ fn linux_install(framework: LinuxFramework) -> i32 {
         }
     };
     match framework {
-        LinuxFramework::IBus => match write_ibus_marker(&home) {
-            Ok(_) => {
-                println!(
-                    "Wrote IBus marker: {}",
-                    ibus_component_path(&home).display()
-                );
-                if command_exists("ibus") {
-                    println!("Attempting to restart IBus runtime...");
-                    if let Some(mut cmd) = command("ibus") {
-                        let _ = cmd.arg("restart").status();
-                    }
+        LinuxFramework::IBus => {
+            let previous_engine =
+                ibus_current_engine().filter(|engine| should_restore_ibus_engine(engine));
+            let source_binary = match resolve_linux_ime_host_binary() {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("{error}");
+                    return 1;
                 }
-                0
-            }
-            Err(err) => {
-                eprintln!("{err}");
-                1
-            }
-        },
-        LinuxFramework::Fcitx => {
-            for path in fcitx_config_paths(&home) {
-                if let Some(parent) = path.parent() {
-                    if let Err(err) = fs::create_dir_all(parent) {
+            };
+            let host_binary = match install_linux_ime_host_binary(&home, &source_binary) {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("{error}");
+                    return 1;
+                }
+            };
+            match write_ibus_marker(&home, &host_binary) {
+                Ok(_) => {
+                    println!(
+                        "Wrote executable IBus component: {}",
+                        ibus_component_path(&home).display()
+                    );
+                    println!("  host: {}", host_binary.display());
+                    let service_result = install_ibus_user_service(&home, &host_binary);
+                    let restore_result = previous_engine
+                        .as_deref()
+                        .map(restore_ibus_engine)
+                        .unwrap_or(Ok(()));
+                    if let Err(error) = service_result {
+                        eprintln!("{error}");
+                        if let Err(restore_error) = restore_result {
+                            eprintln!(
+                                "Additionally failed to restore the IBus engine: {restore_error}"
+                            );
+                        }
+                        return 1;
+                    }
+                    if let Err(error) = restore_result {
                         eprintln!(
-                            "failed to create marker directory {}: {err}",
-                            parent.display()
+                            "IBus host was installed, but the previous engine could not be restored: {error}"
                         );
                         return 1;
                     }
+                    println!("Enabled user service: {IBUS_USER_SERVICE_NAME}");
+                    if let Some(engine) = previous_engine {
+                        println!("Preserved active IBus engine: {engine}");
+                    }
+                    0
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    1
+                }
+            }
+        }
+        LinuxFramework::Fcitx => {
+            for path in fcitx_config_paths(&home) {
+                if let Some(parent) = path.parent()
+                    && let Err(err) = fs::create_dir_all(parent)
+                {
+                    eprintln!(
+                        "failed to create marker directory {}: {err}",
+                        parent.display()
+                    );
+                    return 1;
                 }
 
                 let contents = "[Suzaku Linux IME]\nName=Suzaku IME\nExec=dev.suzaku.linux.ime\nDescription=Framework: Fcitx marker for Suzaku IME\n";
@@ -281,37 +323,49 @@ fn linux_status(framework: LinuxFramework) -> i32 {
     match framework {
         LinuxFramework::IBus => {
             let marker = ibus_component_path(&home);
-            if marker.exists() {
-                println!("IBus: marker exists");
+            if ibus_component_is_valid(&marker) {
+                println!("IBus: executable component is valid");
+                println!("  component: {}", marker.display());
+                match ibus_component_host_binary(&marker) {
+                    Some(binary) if is_executable_file(&binary) => {
+                        println!("  executable: {}", binary.display());
+                    }
+                    Some(binary) => {
+                        println!("  executable missing or not runnable: {}", binary.display());
+                    }
+                    None => println!("  executable: invalid <exec> entry"),
+                }
+            } else if marker.exists() {
+                println!("IBus: component exists but is incomplete or invalid");
                 println!("  {}", marker.display());
             } else {
-                println!("IBus: marker not found at {}", marker.display());
+                println!("IBus: component not found at {}", marker.display());
             }
-            if command_exists("ibus") {
-                match command("ibus") {
-                    Some(mut cmd) => match cmd.arg("list-engine").output() {
-                        Ok(response) => {
-                            if response.status.success() {
-                                let stdout = String::from_utf8_lossy(&response.stdout);
-                                if stdout.lines().any(|line| {
-                                    line.trim().split_whitespace().next() == Some(CONNECTION_NAME)
-                                }) {
-                                    println!("IBus runtime list contains {CONNECTION_NAME}.");
-                                } else {
-                                    println!(
-                                        "IBus runtime list does not include {CONNECTION_NAME} yet (file marker may still be enough)."
-                                    );
-                                }
-                            } else {
-                                println!("ibus list-engine returned non-zero exit.");
-                            }
-                        }
-                        Err(_) => println!("Failed to run ibus list-engine."),
-                    },
-                    None => println!("ibus command unavailable; skipped runtime list check."),
-                }
+
+            if ibus_runtime_has_engine() {
+                println!("IBus runtime exposes {CONNECTION_NAME}.");
             } else {
-                println!("ibus command unavailable; skipped runtime list check.");
+                println!("IBus runtime does not expose {CONNECTION_NAME}.");
+            }
+            match ibus_current_engine() {
+                Some(engine) if engine == CONNECTION_NAME => {
+                    println!("Suzaku is the active IBus engine.");
+                }
+                Some(engine) => println!("Active IBus engine: {engine}"),
+                None => println!("Active IBus engine could not be queried."),
+            }
+            if process_running("linux_ime_host") {
+                println!("Suzaku native host process is running.");
+            } else {
+                println!("Suzaku native host process is stopped.");
+            }
+            let unit = ibus_user_service_path(&home);
+            if ibus_user_service_active() {
+                println!("User service is active: {IBUS_USER_SERVICE_NAME}");
+            } else if unit.exists() {
+                println!("User service is installed but inactive: {}", unit.display());
+            } else {
+                println!("User service is not installed: {}", unit.display());
             }
         }
         LinuxFramework::Fcitx => {
@@ -358,55 +412,73 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
             }
 
             let marker_path = ibus_component_path(&home);
-            let marker_ok = marker_path.exists()
-                && fs::read_to_string(&marker_path)
-                    .map(|content| content.contains(CONNECTION_NAME))
-                    .unwrap_or(false);
+            let marker_ok = ibus_component_is_valid(&marker_path);
             if marker_ok {
-                println!("✓ IBus marker file exists: {}", marker_path.display());
+                println!("✓ IBus component file is valid: {}", marker_path.display());
             } else {
                 println!(
-                    "⚠ IBus marker file missing or invalid: {}",
+                    "⚠ IBus component file is missing or invalid: {}",
                     marker_path.display()
                 );
             }
 
-            let runtime_ok = if command_exists("ibus") {
-                if let Some(output) =
-                    command("ibus").and_then(|mut cmd| cmd.arg("list-engine").output().ok())
-                {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        let found = stdout.lines().any(|line| {
-                            line.trim().split_whitespace().next() == Some(CONNECTION_NAME)
-                        });
-                        if found {
-                            println!("✓ IBus runtime exposes {CONNECTION_NAME}.");
-                        } else {
-                            println!(
-                                "⚠ ibus runtime does not expose {CONNECTION_NAME} yet (file marker may still be enough)."
-                            );
-                        }
-                        found
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+            let executable_ok = ibus_component_host_binary(&marker_path)
+                .is_some_and(|binary| is_executable_file(&binary));
+            if executable_ok {
+                println!("✓ Component points to an executable native host.");
             } else {
-                println!("⚠ ibus command unavailable; cannot verify runtime list now.");
-                false
-            };
+                println!("⚠ Component host executable is missing or invalid.");
+            }
 
-            if (marker_ok || runtime_ok) && daemon_ok {
-                println!("Verdict: PASS (host registration ready).");
+            let runtime_ok = ibus_runtime_has_engine();
+            if runtime_ok {
+                println!("✓ IBus runtime exposes {CONNECTION_NAME}.");
+            } else {
+                println!("⚠ IBus runtime does not expose {CONNECTION_NAME} yet.");
+            }
+
+            let active = ibus_current_engine().is_some_and(|engine| engine == CONNECTION_NAME);
+            println!(
+                "{} Suzaku engine is {}active.",
+                if active { "✓" } else { "·" },
+                if active { "" } else { "not " }
+            );
+            let host_running = process_running("linux_ime_host");
+            println!(
+                "{} Native host process is {}running.",
+                if host_running { "✓" } else { "·" },
+                if host_running { "" } else { "not " }
+            );
+
+            let service_path = ibus_user_service_path(&home);
+            let service_installed = service_path.is_file();
+            let service_active = ibus_user_service_active();
+            println!(
+                "{} User service is {}installed and {}active.",
+                if service_installed && service_active {
+                    "✓"
+                } else {
+                    "⚠"
+                },
+                if service_installed { "" } else { "not " },
+                if service_active { "" } else { "not " }
+            );
+
+            if marker_ok
+                && executable_ok
+                && runtime_ok
+                && daemon_ok
+                && host_running
+                && service_installed
+                && service_active
+            {
+                println!("Verdict: PASS (native IBus registration is ready).");
                 0
             } else if marker_ok || runtime_ok {
-                println!("Verdict: PENDING (registration detected, but IME daemon not running).");
+                println!("Verdict: PENDING (component detected, but runtime setup is incomplete).");
                 2
             } else {
-                println!("Verdict: FAIL (no detectable registration marker/runtime).");
+                println!("Verdict: FAIL (no detectable executable component/runtime).");
                 1
             }
         }
@@ -473,6 +545,10 @@ fn linux_uninstall(framework: LinuxFramework) -> i32 {
     };
     match framework {
         LinuxFramework::IBus => {
+            if let Err(error) = uninstall_ibus_user_service(&home) {
+                eprintln!("{error}");
+                return 1;
+            }
             let marker = ibus_component_path(&home);
             if marker.exists() {
                 if let Err(err) = fs::remove_file(&marker) {
@@ -482,6 +558,14 @@ fn linux_uninstall(framework: LinuxFramework) -> i32 {
                 println!("Removed IBus marker: {}", marker.display());
             } else {
                 println!("IBus marker not present: {}", marker.display());
+            }
+            let installed_host = installed_linux_ime_host_path(&home);
+            if installed_host.exists() {
+                if let Err(error) = fs::remove_file(&installed_host) {
+                    eprintln!("failed to remove {}: {error}", installed_host.display());
+                    return 1;
+                }
+                println!("Removed installed IBus host: {}", installed_host.display());
             }
         }
         LinuxFramework::Fcitx => {
@@ -499,27 +583,372 @@ fn linux_uninstall(framework: LinuxFramework) -> i32 {
     0
 }
 
-fn write_ibus_marker(home: &Path) -> Result<(), String> {
+fn uninstall_ibus_user_service(home: &Path) -> Result<(), String> {
+    let unit_path = ibus_user_service_path(home);
+    if unit_path.exists() {
+        if let Some(mut systemctl) = command("systemctl") {
+            systemctl
+                .arg("--user")
+                .arg("disable")
+                .arg("--now")
+                .arg(IBUS_USER_SERVICE_NAME);
+            run_status(systemctl)?;
+        }
+        fs::remove_file(&unit_path)
+            .map_err(|error| format!("remove {}: {error}", unit_path.display()))?;
+        println!("Removed user service: {}", unit_path.display());
+    }
+
+    if let Some(mut systemctl) = command("systemctl") {
+        systemctl.arg("--user").arg("daemon-reload");
+        run_status(systemctl)?;
+    }
+    Ok(())
+}
+
+fn ibus_runtime_has_engine() -> bool {
+    let statically_registered = command("ibus")
+        .and_then(|mut command| command.arg("list-engine").output().ok())
+        .filter(|output| output.status.success())
+        .is_some_and(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .any(|line| line.split_whitespace().next() == Some(CONNECTION_NAME))
+        });
+    statically_registered || ibus_dynamic_registry_has_engine()
+}
+
+fn ibus_dynamic_registry_has_engine() -> bool {
+    let Some(address_output) =
+        command("ibus").and_then(|mut command| command.arg("address").output().ok())
+    else {
+        return false;
+    };
+    if !address_output.status.success() {
+        return false;
+    }
+    let address = String::from_utf8_lossy(&address_output.stdout);
+    let address = address.trim();
+    if address.is_empty() {
+        return false;
+    }
+
+    command("gdbus")
+        .and_then(|mut command| {
+            command
+                .arg("call")
+                .arg("--address")
+                .arg(address)
+                .arg("--dest")
+                .arg("org.freedesktop.IBus")
+                .arg("--object-path")
+                .arg("/org/freedesktop/IBus")
+                .arg("--method")
+                .arg("org.freedesktop.DBus.Properties.Get")
+                .arg("org.freedesktop.IBus")
+                .arg("ActiveEngines")
+                .output()
+                .ok()
+        })
+        .filter(|output| output.status.success())
+        .is_some_and(|output| String::from_utf8_lossy(&output.stdout).contains(CONNECTION_NAME))
+}
+
+fn ibus_current_engine() -> Option<String> {
+    let output = command("ibus")?.arg("engine").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let engine = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    (!engine.is_empty()).then_some(engine)
+}
+
+fn should_restore_ibus_engine(engine: &str) -> bool {
+    let engine = engine.trim();
+    !engine.is_empty() && engine != "dummy"
+}
+
+fn restore_ibus_engine(engine: &str) -> Result<(), String> {
+    const MAX_ATTEMPTS: usize = 40;
+    const RETRY_DELAY: Duration = Duration::from_millis(50);
+
+    if ibus_current_engine().as_deref() == Some(engine) {
+        return Ok(());
+    }
+
+    let mut last_error = "IBus did not report the requested engine".to_string();
+    for attempt in 0..MAX_ATTEMPTS {
+        if ibus_current_engine().as_deref() == Some(engine) {
+            return Ok(());
+        }
+
+        let mut ibus = command("ibus").ok_or_else(|| "ibus command not found".to_string())?;
+        let output = ibus
+            .arg("engine")
+            .arg(engine)
+            .output()
+            .map_err(|error| format!("failed to run `ibus engine`: {error}"))?;
+        if ibus_current_engine().as_deref() == Some(engine) {
+            return Ok(());
+        }
+
+        if output.status.success() {
+            last_error = "IBus accepted the engine switch but did not confirm it".to_string();
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_error = format!(
+                "`ibus engine {engine}` failed with {}: {}",
+                output.status,
+                stderr.trim()
+            );
+        }
+
+        if attempt + 1 < MAX_ATTEMPTS {
+            std::thread::sleep(RETRY_DELAY);
+        }
+    }
+
+    if ibus_current_engine().as_deref() == Some(engine) {
+        return Ok(());
+    }
+
+    Err(last_error)
+}
+
+fn ibus_component_is_valid(path: &Path) -> bool {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return false;
+    };
+    xml_tag_value(&contents, "name").as_deref() == Some(IBUS_COMPONENT_NAME)
+        && contents.contains(&format!("<name>{CONNECTION_NAME}</name>"))
+        && ibus_component_host_binary_from_contents(&contents).is_some()
+}
+
+fn ibus_component_host_binary(path: &Path) -> Option<PathBuf> {
+    let contents = fs::read_to_string(path).ok()?;
+    ibus_component_host_binary_from_contents(&contents)
+}
+
+fn ibus_component_host_binary_from_contents(contents: &str) -> Option<PathBuf> {
+    let command = xml_tag_value(contents, "exec")?;
+    let path = command.strip_suffix(" --ibus").unwrap_or(&command).trim();
+    (!path.is_empty()).then(|| PathBuf::from(xml_unescape(path)))
+}
+
+fn xml_tag_value(contents: &str, tag: &str) -> Option<String> {
+    let start_tag = format!("<{tag}>");
+    let end_tag = format!("</{tag}>");
+    let start = contents.find(&start_tag)? + start_tag.len();
+    let end = contents[start..].find(&end_tag)? + start;
+    Some(contents[start..end].trim().to_string())
+}
+
+fn xml_unescape(value: &str) -> String {
+    value
+        .replace("&apos;", "'")
+        .replace("&quot;", "\"")
+        .replace("&gt;", ">")
+        .replace("&lt;", "<")
+        .replace("&amp;", "&")
+}
+
+fn resolve_linux_ime_host_binary() -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+    if let Some(path) = env::var_os("SUZAKU_LINUX_IME_HOST_BIN") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Ok(current_exe) = env::current_exe()
+        && let Some(parent) = current_exe.parent()
+    {
+        candidates.push(parent.join("linux_ime_host"));
+    }
+    if let Ok(root) = repo_root() {
+        candidates.push(root.join("target/release/linux_ime_host"));
+        candidates.push(root.join("target/debug/linux_ime_host"));
+    }
+
+    for candidate in candidates {
+        if !is_executable_file(&candidate) {
+            continue;
+        }
+        return fs::canonicalize(&candidate)
+            .map_err(|error| format!("resolve {}: {error}", candidate.display()));
+    }
+
+    Err(
+        "linux_ime_host was not found. Build it first with `cargo build --features linux-ibus --bin linux_ime_host`, or set SUZAKU_LINUX_IME_HOST_BIN."
+            .to_string(),
+    )
+}
+
+fn ibus_user_service_path(home: &Path) -> PathBuf {
+    home.join(".config/systemd/user")
+        .join(IBUS_USER_SERVICE_NAME)
+}
+
+fn installed_linux_ime_host_path(home: &Path) -> PathBuf {
+    home.join(".local/libexec/suzaku/linux_ime_host")
+}
+
+fn install_linux_ime_host_binary(home: &Path, source: &Path) -> Result<PathBuf, String> {
+    let destination = installed_linux_ime_host_path(home);
+    if fs::canonicalize(source).ok().as_ref() == fs::canonicalize(&destination).ok().as_ref()
+        && is_executable_file(&destination)
+    {
+        return Ok(destination);
+    }
+
+    let Some(parent) = destination.parent() else {
+        return Err("unable to resolve Linux IME host install directory".to_string());
+    };
+    fs::create_dir_all(parent).map_err(|error| format!("create {}: {error}", parent.display()))?;
+    let temporary = parent.join(format!("linux_ime_host.new.{}", std::process::id()));
+    fs::copy(source, &temporary).map_err(|error| {
+        format!(
+            "copy {} to {}: {error}",
+            source.display(),
+            temporary.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        let mut permissions = fs::metadata(&temporary)
+            .map_err(|error| format!("read {} permissions: {error}", temporary.display()))?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&temporary, permissions)
+            .map_err(|error| format!("set {} executable: {error}", temporary.display()))?;
+    }
+    fs::rename(&temporary, &destination).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!(
+            "install {} as {}: {error}",
+            source.display(),
+            destination.display()
+        )
+    })?;
+    Ok(destination)
+}
+
+fn systemd_quote(value: &str) -> String {
+    format!(
+        "\"{}\"",
+        value
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('%', "%%")
+    )
+}
+
+fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), String> {
+    let unit_path = ibus_user_service_path(home);
+    let Some(parent) = unit_path.parent() else {
+        return Err("unable to resolve systemd user unit directory".to_string());
+    };
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "create systemd user unit directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let executable = host_binary.to_str().ok_or_else(|| {
+        format!(
+            "IBus host path is not valid UTF-8: {}",
+            host_binary.display()
+        )
+    })?;
+    let unit = format!(
+        "[Unit]\nDescription=Suzaku native IBus engine host\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={} --ibus\nRestart=always\nRestartSec=1\nTimeoutStopSec=5\n\n[Install]\nWantedBy=default.target\n",
+        systemd_quote(executable)
+    );
+    fs::write(&unit_path, unit)
+        .map_err(|error| format!("write {}: {error}", unit_path.display()))?;
+
+    let mut reload = command("systemctl")
+        .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
+    reload.arg("--user").arg("daemon-reload");
+    run_status(reload)?;
+
+    let mut enable = command("systemctl")
+        .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
+    enable
+        .arg("--user")
+        .arg("enable")
+        .arg(IBUS_USER_SERVICE_NAME);
+    run_status(enable)?;
+
+    let mut restart = command("systemctl")
+        .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
+    restart
+        .arg("--user")
+        .arg("restart")
+        .arg(IBUS_USER_SERVICE_NAME);
+    run_status(restart)
+}
+
+fn ibus_user_service_active() -> bool {
+    command("systemctl")
+        .and_then(|mut command| {
+            command
+                .arg("--user")
+                .arg("is-active")
+                .arg("--quiet")
+                .arg(IBUS_USER_SERVICE_NAME)
+                .output()
+                .ok()
+        })
+        .is_some_and(|output| output.status.success())
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn write_ibus_marker(home: &Path, host_binary: &Path) -> Result<(), String> {
     let path = ibus_component_path(home);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create dir {}: {e}", parent.display()))?;
     }
+    let host_binary = host_binary.to_str().ok_or_else(|| {
+        format!(
+            "IBus host path is not valid UTF-8: {}",
+            host_binary.display()
+        )
+    })?;
     let marker = format!(
-        r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <component>
-  <name>Suzaku IME</name>
-  <description>Framework: IBus host marker for {CONNECTION_NAME}</description>
+  <name>{IBUS_COMPONENT_NAME}</name>
+  <description>Suzaku adaptive input method</description>
+  <exec>{host_binary} --ibus</exec>
+  <version>{version}</version>
+  <author>Suzaku contributors</author>
+  <license>MIT</license>
+  <homepage>https://github.com/chiharu-kiryu/Suzaku-map</homepage>
+  <textdomain>suzaku-map</textdomain>
   <engines>
     <engine>
       <name>{CONNECTION_NAME}</name>
-      <description>Suzaku IME</description>
-      <language>all</language>
+      <longname>Suzaku</longname>
+      <description>Suzaku adaptive candidate engine</description>
+      <language>zh</language>
+      <license>MIT</license>
+      <author>Suzaku contributors</author>
+      <layout>default</layout>
       <icon>input-keyboard</icon>
       <rank>80</rank>
+      <symbol>朱</symbol>
     </engine>
   </engines>
 </component>
 "#,
+        host_binary = xml_escape(host_binary),
+        version = env!("CARGO_PKG_VERSION"),
     );
     fs::write(&path, marker).map_err(|e| format!("write {}: {e}", path.display()))
 }
@@ -531,8 +960,8 @@ fn process_running(name: &str) -> bool {
     if let Some(mut cmd) = command("pgrep") {
         cmd.arg("-x")
             .arg(name)
-            .status()
-            .map(|status| status.success())
+            .output()
+            .map(|output| output.status.success())
             .unwrap_or(false)
     } else {
         false
@@ -1078,4 +1507,94 @@ fn macos_open_app_for(target: MacTarget) -> i32 {
     }
     println!("{}", app.display());
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CONNECTION_NAME, IBUS_COMPONENT_NAME, ibus_component_host_binary, ibus_component_is_valid,
+        install_linux_ime_host_binary, should_restore_ibus_engine, write_ibus_marker, xml_escape,
+        xml_unescape,
+    };
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("suzaku-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn xml_escape_round_trips_component_paths() {
+        let path = "/tmp/Suzaku & friends/'host'";
+        assert_eq!(xml_unescape(&xml_escape(path)), path);
+    }
+
+    #[test]
+    fn only_real_ibus_engines_are_preserved_during_service_restart() {
+        assert!(should_restore_ibus_engine("rime"));
+        assert!(should_restore_ibus_engine("xkb:us::eng"));
+        assert!(should_restore_ibus_engine("  rime  "));
+        assert!(!should_restore_ibus_engine(""));
+        assert!(!should_restore_ibus_engine("   "));
+        assert!(!should_restore_ibus_engine("dummy"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ibus_component_contains_real_factory_executable() {
+        let home = unique_test_dir("ibus-component");
+        let host = home.join("bin/linux_ime_host");
+        fs::create_dir_all(host.parent().expect("host parent")).expect("create host parent");
+        fs::write(&host, b"test host").expect("write test host");
+        let mut permissions = fs::metadata(&host).expect("host metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&host, permissions).expect("make test host executable");
+
+        write_ibus_marker(&home, &host).expect("write component");
+        let component = home
+            .join(".local/share/ibus/component")
+            .join(format!("{CONNECTION_NAME}.xml"));
+        let contents = fs::read_to_string(&component).expect("read component");
+
+        assert!(ibus_component_is_valid(&component));
+        assert_eq!(ibus_component_host_binary(&component), Some(host));
+        assert!(contents.contains(&format!("<name>{IBUS_COMPONENT_NAME}</name>")));
+        assert!(contents.contains(&format!("<name>{CONNECTION_NAME}</name>")));
+        assert!(contents.contains("<exec>"));
+        assert!(!contents.contains("\\\""));
+
+        fs::remove_dir_all(home).expect("remove test home");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linux_ime_host_installs_into_user_libexec() {
+        let home = unique_test_dir("ibus-host-install");
+        let source = home.join("build/linux_ime_host");
+        fs::create_dir_all(source.parent().expect("source parent")).expect("create source parent");
+        fs::write(&source, b"native host binary").expect("write source host");
+        let mut permissions = fs::metadata(&source)
+            .expect("source metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&source, permissions).expect("make source executable");
+
+        let installed = install_linux_ime_host_binary(&home, &source).expect("install native host");
+
+        assert_eq!(installed, home.join(".local/libexec/suzaku/linux_ime_host"));
+        assert_eq!(
+            fs::read(&installed).expect("read installed host"),
+            b"native host binary"
+        );
+        assert!(fs::metadata(&installed).unwrap().permissions().mode() & 0o111 != 0);
+
+        fs::remove_dir_all(home).expect("remove test home");
+    }
 }

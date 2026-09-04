@@ -113,20 +113,29 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
         }
         TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs => {
             let bootstrap = linux_ime::bootstrap_status(platform);
+            let live_system_host = bootstrap.host_registration_ready
+                && bootstrap.runtime_engine_visible
+                && bootstrap.host_service_ready;
             ImeHostDispatch {
                 platform,
                 tier: support.tier,
                 backend: ImeHostBackendKind::LinuxIbusFcitx,
-                system_ime_host: support.capabilities.system_ime_host
-                    || bootstrap.host_registration_ready,
+                system_ime_host: support.capabilities.system_ime_host || live_system_host,
                 marked_text_roundtrip: bootstrap.marked_text_roundtrip_ready,
                 commit_roundtrip: bootstrap.commit_roundtrip_ready,
                 native_candidate_window: bootstrap.native_candidate_window_ready,
-                notes: if bootstrap.host_registration_ready {
+                notes: if live_system_host {
                     format!(
-                        "Linux {:?} host bootstrap is registered and running alongside the existing {} voice backend.",
+                        "Linux {:?} host is registered, runtime-visible, and running alongside the existing {} voice backend.",
                         bootstrap.framework,
                         linux::linux_voice_backend_label()
+                    )
+                } else if bootstrap.host_registration_ready {
+                    format!(
+                        "Linux {:?} registration is present, but runtime visibility is {} and host service readiness is {}; the GPU panel remains primary.",
+                        bootstrap.framework,
+                        bootstrap.runtime_engine_visible,
+                        bootstrap.host_service_ready
                     )
                 } else {
                     format!(
@@ -201,6 +210,8 @@ mod tests {
             env.set_var("SUZAKU_LINUX_IME_FRAMEWORK", "fcitx");
             env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
             env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+            env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "1");
+            env.set_var("SUZAKU_LINUX_IME_HOST_READY", "1");
             env.set_var("SUZAKU_LINUX_IME_MARKED_TEXT", "0");
             env.set_var("SUZAKU_LINUX_IME_COMMIT", "0");
             env.set_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW", "0");
@@ -223,6 +234,8 @@ mod tests {
             env.set_var("SUZAKU_LINUX_IME_FRAMEWORK", "ibus");
             env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
             env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+            env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "1");
+            env.set_var("SUZAKU_LINUX_IME_HOST_READY", "1");
             env.set_var("SUZAKU_LINUX_IME_MARKED_TEXT", "1");
             env.set_var("SUZAKU_LINUX_IME_COMMIT", "1");
             env.set_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW", "1");
@@ -239,8 +252,10 @@ mod tests {
     #[test]
     fn linux_dispatch_uses_system_host_hint_when_unregistered() {
         test_env::with_test_env(|env| {
-            env.remove_var("SUZAKU_LINUX_IME_REGISTERED");
-            env.remove_var("SUZAKU_LINUX_IME_DAEMON_READY");
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "0");
+            env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "0");
+            env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "0");
+            env.set_var("SUZAKU_LINUX_IME_HOST_READY", "0");
 
             let dispatch = dispatch_for(TargetPlatform::SteamOs);
             assert_eq!(dispatch.platform, TargetPlatform::SteamOs);

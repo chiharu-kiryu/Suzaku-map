@@ -362,19 +362,26 @@ fn panel_chrome_state_clamps_caret_before_backspace_after_text_normalization() {
 #[cfg(feature = "gpu")]
 #[test]
 fn render_scene_centers_compact_panel_in_large_viewport() {
-    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+    use suzaku_map::ime::gpu::{InteractionKind, PanelChromeState, WgpuCandidateRenderer};
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     let snapshot = engine.seed("apple");
     let renderer = WgpuCandidateRenderer::new(1200.0, 900.0);
-    let scene = renderer.build_scene(&snapshot);
-
-    let min_x = scene
-        .quads
+    let chrome = PanelChromeState {
+        compact_mode: true,
+        ..PanelChromeState::default()
+    };
+    let scene = renderer.build_compact_scene(&snapshot, &chrome, false, false);
+    let compact_target = scene
+        .interactive_targets
         .iter()
-        .map(|quad| quad.rect[0])
-        .fold(f32::INFINITY, f32::min);
-    assert!(min_x > 100.0);
+        .find(|target| target.kind == InteractionKind::ToggleCompactMode)
+        .expect("compact bubble target");
+
+    let center_x = compact_target.rect[0] + compact_target.rect[2] * 0.5;
+    let center_y = compact_target.rect[1] + compact_target.rect[3] * 0.5;
+    assert!((center_x - renderer.scene_width * 0.5).abs() < 0.01);
+    assert!((center_y - renderer.scene_height * 0.5).abs() < 0.01);
 }
 
 #[cfg(feature = "gpu")]

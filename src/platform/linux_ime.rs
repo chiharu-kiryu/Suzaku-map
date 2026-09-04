@@ -1,5 +1,10 @@
 use super::TargetPlatform;
 
+#[cfg(not(test))]
+use std::sync::{Mutex, OnceLock};
+#[cfg(not(test))]
+use std::time::{Duration, Instant};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LinuxImeFramework {
     IBus,
@@ -12,6 +17,9 @@ pub struct LinuxImeBootstrap {
     pub host_platform: TargetPlatform,
     pub daemon_detected: bool,
     pub host_registration_ready: bool,
+    pub runtime_engine_visible: bool,
+    pub engine_active: bool,
+    pub host_service_ready: bool,
     pub marked_text_roundtrip_ready: bool,
     pub commit_roundtrip_ready: bool,
     pub native_candidate_window_ready: bool,
@@ -21,11 +29,14 @@ pub struct LinuxImeBootstrap {
 impl LinuxImeBootstrap {
     pub fn describe(&self) -> String {
         format!(
-            "framework: {:?} | platform: {:?} | daemon detected: {} | host registration ready: {} | marked text: {} | commit: {} | native candidates: {} | recommended connection: {}",
+            "framework: {:?} | platform: {:?} | daemon detected: {} | host registration ready: {} | runtime visible: {} | engine active: {} | host service ready: {} | marked text: {} | commit: {} | native candidates: {} | recommended connection: {}",
             self.framework,
             self.host_platform,
             self.daemon_detected,
             self.host_registration_ready,
+            self.runtime_engine_visible,
+            self.engine_active,
+            self.host_service_ready,
             self.marked_text_roundtrip_ready,
             self.commit_roundtrip_ready,
             self.native_candidate_window_ready,
@@ -38,18 +49,47 @@ pub fn recommended_connection_name() -> String {
     "dev.suzaku.linux.ime".to_string()
 }
 
+pub fn recommended_component_name() -> String {
+    "org.freedesktop.IBus.Suzaku".to_string()
+}
+
+#[cfg(test)]
 pub fn bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
+    bootstrap_status_uncached(platform)
+}
+
+#[cfg(not(test))]
+pub fn bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
+    cached_bootstrap_status(platform)
+}
+
+fn bootstrap_status_uncached(platform: TargetPlatform) -> LinuxImeBootstrap {
     let framework = detected_framework();
     let recommended_connection_name = recommended_connection_name();
     let daemon_detected = framework_daemon_detected(&framework);
+    let runtime_engine_visible = env_flag_override("SUZAKU_LINUX_IME_RUNTIME_VISIBLE")
+        .unwrap_or_else(|| {
+            framework_runtime_engine_visible(&framework, &recommended_connection_name)
+        });
+    let engine_active = env_flag_override("SUZAKU_LINUX_IME_ACTIVE")
+        .unwrap_or_else(|| framework_engine_active(&framework, &recommended_connection_name));
     let host_registration_ready =
-        framework_host_registered(&framework, &recommended_connection_name);
-    let roundtrip_capable = host_registration_ready && daemon_detected;
+        env_flag_override("SUZAKU_LINUX_IME_REGISTERED").unwrap_or_else(|| {
+            runtime_engine_visible
+                || framework_registration_marker(&framework, &recommended_connection_name)
+        });
+    let host_service_ready = env_flag_override("SUZAKU_LINUX_IME_HOST_READY")
+        .unwrap_or_else(|| framework_host_service_detected(&framework));
+    let roundtrip_capable =
+        daemon_detected && host_registration_ready && runtime_engine_visible && host_service_ready;
     LinuxImeBootstrap {
         framework,
         host_platform: platform,
         daemon_detected,
         host_registration_ready,
+        runtime_engine_visible,
+        engine_active,
+        host_service_ready,
         marked_text_roundtrip_ready: env_flag_override_or("SUZAKU_LINUX_IME_MARKED_TEXT")
             .unwrap_or(roundtrip_capable),
         commit_roundtrip_ready: env_flag_override_or("SUZAKU_LINUX_IME_COMMIT")
@@ -60,6 +100,27 @@ pub fn bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
         .unwrap_or(roundtrip_capable),
         recommended_connection_name,
     }
+}
+
+#[cfg(not(test))]
+fn cached_bootstrap_status(platform: TargetPlatform) -> LinuxImeBootstrap {
+    const CACHE_LIFETIME: Duration = Duration::from_secs(3);
+    type CacheEntry = (Instant, TargetPlatform, LinuxImeBootstrap);
+    static CACHE: OnceLock<Mutex<Option<CacheEntry>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((checked_at, cached_platform, bootstrap)) = guard.as_ref()
+        && *cached_platform == platform
+        && checked_at.elapsed() < CACHE_LIFETIME
+    {
+        return bootstrap.clone();
+    }
+
+    let bootstrap = bootstrap_status_uncached(platform);
+    *guard = Some((Instant::now(), platform, bootstrap.clone()));
+    bootstrap
 }
 
 fn detected_framework() -> LinuxImeFramework {
@@ -90,14 +151,31 @@ fn framework_daemon_detected(framework: &LinuxImeFramework) -> bool {
     }
 }
 
-fn framework_host_registered(framework: &LinuxImeFramework, connection: &str) -> bool {
-    if let Some(override_ready) = env_flag_override("SUZAKU_LINUX_IME_REGISTERED") {
-        return override_ready;
-    }
-
+fn framework_registration_marker(framework: &LinuxImeFramework, connection: &str) -> bool {
     match framework {
-        LinuxImeFramework::IBus => ibus_engine_registered(connection),
-        LinuxImeFramework::Fcitx => fcitx_engine_registered(connection),
+        LinuxImeFramework::IBus => has_ibus_component_marker(connection),
+        LinuxImeFramework::Fcitx => has_fcitx_registration_marker(connection),
+    }
+}
+
+fn framework_runtime_engine_visible(framework: &LinuxImeFramework, connection: &str) -> bool {
+    match framework {
+        LinuxImeFramework::IBus => ibus_runtime_has_engine(connection),
+        LinuxImeFramework::Fcitx => fcitx_active_engine(connection),
+    }
+}
+
+fn framework_engine_active(framework: &LinuxImeFramework, connection: &str) -> bool {
+    match framework {
+        LinuxImeFramework::IBus => ibus_active_engine(connection),
+        LinuxImeFramework::Fcitx => fcitx_active_engine(connection),
+    }
+}
+
+fn framework_host_service_detected(framework: &LinuxImeFramework) -> bool {
+    match framework {
+        LinuxImeFramework::IBus => process_has_name("linux_ime_host"),
+        LinuxImeFramework::Fcitx => false,
     }
 }
 
@@ -122,29 +200,47 @@ fn process_has_name(process_name: &str) -> bool {
     std::process::Command::new("pgrep")
         .arg("-x")
         .arg(process_name)
-        .status()
-        .is_ok_and(|status| status.success())
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
-fn ibus_engine_registered(connection_name: &str) -> bool {
-    let output = std::process::Command::new("ibus")
-        .arg("list-engine")
-        .output();
+fn ibus_runtime_has_engine(connection_name: &str) -> bool {
+    command_stdout("ibus", &["list-engine"]).is_some_and(|stdout| {
+        stdout
+            .lines()
+            .any(|line| line.split_whitespace().next() == Some(connection_name))
+    }) || ibus_dynamic_registry_has_engine(connection_name)
+}
 
-    if let Ok(response) = &output
-        && response.status.success()
-    {
-        if let Ok(stdout) = String::from_utf8(response.stdout.clone()) {
-            if stdout
-                .lines()
-                .any(|line| line.trim().split_whitespace().next().unwrap_or("") == connection_name)
-            {
-                return true;
-            }
-        }
+fn ibus_dynamic_registry_has_engine(connection_name: &str) -> bool {
+    let Some(address) = command_stdout("ibus", &["address"]) else {
+        return false;
+    };
+    let address = address.trim();
+    if address.is_empty() {
+        return false;
     }
+    command_stdout(
+        "gdbus",
+        &[
+            "call",
+            "--address",
+            address,
+            "--dest",
+            "org.freedesktop.IBus",
+            "--object-path",
+            "/org/freedesktop/IBus",
+            "--method",
+            "org.freedesktop.DBus.Properties.Get",
+            "org.freedesktop.IBus",
+            "ActiveEngines",
+        ],
+    )
+    .is_some_and(|stdout| stdout.contains(connection_name))
+}
 
-    has_ibus_component_marker(connection_name)
+fn ibus_active_engine(connection_name: &str) -> bool {
+    command_stdout("ibus", &["engine"]).is_some_and(|stdout| stdout.trim() == connection_name)
 }
 
 fn has_ibus_component_marker(connection_name: &str) -> bool {
@@ -168,7 +264,11 @@ fn has_ibus_component_marker(connection_name: &str) -> bool {
         let Ok(contents) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if contents.contains(connection_name) {
+        if contents.contains(connection_name)
+            && contents.contains(&recommended_component_name())
+            && contents.contains("<exec>")
+            && contents.contains("</exec>")
+        {
             return true;
         }
     }
@@ -176,18 +276,18 @@ fn has_ibus_component_marker(connection_name: &str) -> bool {
     false
 }
 
-#[allow(clippy::unused_io_amount)]
-fn _output_contains_connection(response: std::process::Output, connection_name: &str) -> bool {
-    String::from_utf8(response.stdout)
-        .ok()
-        .is_some_and(|stdout| {
-            stdout
-                .lines()
-                .any(|line| line.trim().split_whitespace().next().unwrap_or("") == connection_name)
-        })
+fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
+    let response = std::process::Command::new(command)
+        .args(args)
+        .output()
+        .ok()?;
+    if !response.status.success() {
+        return None;
+    }
+    String::from_utf8(response.stdout).ok()
 }
 
-fn fcitx_engine_registered(connection_name: &str) -> bool {
+fn has_fcitx_registration_marker(connection_name: &str) -> bool {
     if has_fcitx_config_containing(".local/share/fcitx5/inputmethod")
         || has_fcitx_config_containing(".config/fcitx")
         || has_fcitx_config_containing(".config/fcitx5/inputmethod")
@@ -196,6 +296,13 @@ fn fcitx_engine_registered(connection_name: &str) -> bool {
     }
 
     has_fcitx_config_file_named(connection_name)
+}
+
+fn fcitx_active_engine(connection_name: &str) -> bool {
+    command_stdout("fcitx5-remote", &["-n"]).is_some_and(|stdout| {
+        let active = stdout.trim();
+        active == connection_name || active.eq_ignore_ascii_case("suzaku")
+    })
 }
 
 fn has_fcitx_config_containing(relative_path: &str) -> bool {
@@ -217,10 +324,10 @@ fn has_fcitx_config_containing(relative_path: &str) -> bool {
             continue;
         }
 
-        if let Ok(contents) = std::fs::read_to_string(&path) {
-            if contents.contains("suzaku") || contents.contains("Suzaku") {
-                return true;
-            }
+        if let Ok(contents) = std::fs::read_to_string(&path)
+            && (contents.contains("suzaku") || contents.contains("Suzaku"))
+        {
+            return true;
         }
     }
 
@@ -250,7 +357,10 @@ fn has_fcitx_config_file_named(connection_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{LinuxImeFramework, bootstrap_status, recommended_connection_name};
+    use super::{
+        LinuxImeFramework, bootstrap_status, recommended_component_name,
+        recommended_connection_name,
+    };
     use crate::platform::TargetPlatform;
     use crate::platform::test_env;
     use crate::platform::test_env::ScopedEnv;
@@ -258,6 +368,7 @@ mod tests {
     #[test]
     fn linux_ime_connection_name_stays_stable() {
         assert_eq!(recommended_connection_name(), "dev.suzaku.linux.ime");
+        assert_eq!(recommended_component_name(), "org.freedesktop.IBus.Suzaku");
     }
 
     #[test]
@@ -297,8 +408,12 @@ mod tests {
         test_env::with_test_env(|env: &mut ScopedEnv| {
             env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
             env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+            env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "1");
+            env.set_var("SUZAKU_LINUX_IME_HOST_READY", "1");
 
             let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert!(bootstrap.runtime_engine_visible);
+            assert!(bootstrap.host_service_ready);
             assert!(bootstrap.marked_text_roundtrip_ready);
             assert!(bootstrap.commit_roundtrip_ready);
             assert!(bootstrap.native_candidate_window_ready);
@@ -308,6 +423,27 @@ mod tests {
             env.set_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW", "0");
 
             let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert!(!bootstrap.marked_text_roundtrip_ready);
+            assert!(!bootstrap.commit_roundtrip_ready);
+            assert!(!bootstrap.native_candidate_window_ready);
+        });
+    }
+
+    #[test]
+    fn registration_marker_and_daemon_do_not_imply_roundtrip_readiness() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_IME_REGISTERED", "1");
+            env.set_var("SUZAKU_LINUX_IME_DAEMON_READY", "1");
+            env.set_var("SUZAKU_LINUX_IME_RUNTIME_VISIBLE", "0");
+            env.set_var("SUZAKU_LINUX_IME_HOST_READY", "0");
+            env.remove_var("SUZAKU_LINUX_IME_MARKED_TEXT");
+            env.remove_var("SUZAKU_LINUX_IME_COMMIT");
+            env.remove_var("SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW");
+
+            let bootstrap = bootstrap_status(TargetPlatform::Ubuntu);
+            assert!(bootstrap.host_registration_ready);
+            assert!(!bootstrap.runtime_engine_visible);
+            assert!(!bootstrap.host_service_ready);
             assert!(!bootstrap.marked_text_roundtrip_ready);
             assert!(!bootstrap.commit_roundtrip_ready);
             assert!(!bootstrap.native_candidate_window_ready);

@@ -2,8 +2,11 @@ package dev.suzaku.android.ime
 
 import android.animation.LayoutTransition
 import android.annotation.SuppressLint
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.graphics.Color
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.text.InputType
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -20,8 +23,50 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
 
-private enum class DrawerMode { KEYBOARD, VOICE, HANDWRITE, SETTINGS }
+private enum class DrawerMode { KEYBOARD, VOICE, HANDWRITE, CLIPBOARD, SETTINGS }
 private const val MAX_EDITOR_COMPLETIONS = 6
+
+private data class ClipboardRead(
+    val text: String?,
+    val sensitive: Boolean,
+    val hasContent: Boolean,
+)
+
+private enum class CandidateRenderMode {
+    SECURE,
+    DIRECT,
+    EDITOR_WAITING,
+    EDITOR_COMPLETIONS,
+    EMPTY,
+    NATIVE,
+}
+
+private data class CandidateRenderState(
+    val mode: CandidateRenderMode,
+    val labels: List<String>,
+    val selectedIndex: Int = -1,
+)
+
+private data class CandidateChipBinding(
+    val text: String,
+    val primary: Boolean,
+    val selected: Boolean,
+    val index: Int,
+    val continuous: Boolean,
+)
+
+private data class DrawerRenderState(
+    val mode: DrawerMode,
+    val panelExpanded: Boolean,
+    val secureInput: Boolean,
+    val suggestionsEnabled: Boolean,
+    val voicePhase: SuzakuVoicePhase,
+    val voiceListening: Boolean,
+    val voiceAvailable: Boolean,
+    val clipboardCanPaste: Boolean,
+    val selectedHandwriteSeed: String?,
+    val handwriteStatus: String,
+)
 
 class SuzakuInputMethodService : InputMethodService() {
     private lateinit var composePreview: TextView
@@ -30,6 +75,7 @@ class SuzakuInputMethodService : InputMethodService() {
     private lateinit var keyboardDrawer: View
     private lateinit var voiceDrawer: View
     private lateinit var handwriteDrawer: View
+    private lateinit var clipboardDrawer: View
     private lateinit var settingsDrawer: View
     private lateinit var keyboardRows: LinearLayout
     private lateinit var voiceStatus: TextView
@@ -38,9 +84,12 @@ class SuzakuInputMethodService : InputMethodService() {
     private lateinit var handwriteStatus: TextView
     private lateinit var handwriteCanvas: SuzakuHandwriteCanvasView
     private lateinit var handwriteCandidateStrip: LinearLayout
+    private lateinit var clipboardPreview: TextView
+    private lateinit var clipboardStatus: TextView
     private lateinit var toolKeyboard: ImageButton
     private lateinit var toolVoice: ImageButton
     private lateinit var toolHandwrite: ImageButton
+    private lateinit var toolClipboard: ImageButton
     private lateinit var toolSettings: ImageButton
     private lateinit var toolCollapse: ImageButton
     private lateinit var voiceListenButton: Button
@@ -49,6 +98,8 @@ class SuzakuInputMethodService : InputMethodService() {
     private lateinit var voiceClearButton: Button
     private lateinit var handwriteApplyButton: Button
     private lateinit var handwriteClearButton: Button
+    private lateinit var clipboardPasteButton: Button
+    private lateinit var clipboardRefreshButton: Button
     private lateinit var settingsAutoCapitalization: SwitchCompat
     private lateinit var settingsNumberRow: SwitchCompat
     private lateinit var settingsHapticFeedback: SwitchCompat
@@ -65,9 +116,15 @@ class SuzakuInputMethodService : InputMethodService() {
     private var voicePhase = SuzakuVoicePhase.IDLE
     private var editorPolicy = SuzakuEditorPolicy.from(InputType.TYPE_CLASS_TEXT)
     private var editorCompletions: List<CompletionInfo> = emptyList()
+    private var lastCandidateRenderState: CandidateRenderState? = null
+    private var lastDrawerRenderState: DrawerRenderState? = null
+    private var cachedHostDescription: String? = null
+    private var nativeRenderSnapshotAvailable = true
+    private var clipboardSnapshot = SuzakuClipboardPolicy.inspect(null, secureInput = false)
     private var imeSettings = SuzakuImeSettings()
     private var syncingSettingsControls = false
     private val keyboardState = SuzakuKeyboardState()
+    private var lastKeyboardRows: List<List<SuzakuSoftKey>>? = null
     private val backspaceRepeatState = SuzakuKeyRepeatState()
     private var backspaceRepeatView: View? = null
     private val backspaceRepeatRunnable = object : Runnable {
@@ -82,16 +139,44 @@ class SuzakuInputMethodService : InputMethodService() {
             view.postDelayed(this, nextDelay)
         }
     }
+    private val softKeyClickListener = View.OnClickListener { view ->
+        val key = view.tag as? SuzakuSoftKey ?: return@OnClickListener
+        if (imeSettings.hapticFeedback) {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+        handleSoftKeyPress(key)
+    }
+    private val nativeCandidateClickListener = View.OnClickListener { view ->
+        val index = (view.tag as? CandidateChipBinding)?.index ?: return@OnClickListener
+        if (index < 0) {
+            return@OnClickListener
+        }
+        SuzakuNativeBridge.nativeSelectCandidate(index)
+        commitSelected(force = true)
+        refreshImeUi()
+    }
     private lateinit var settingsStore: SuzakuImeSettingsStore
     private lateinit var panelAnimator: SuzakuImePanelAnimator
     private lateinit var voiceLevelMeter: SuzakuVoiceLevelMeter
     private lateinit var voiceRecognizer: SuzakuVoiceRecognizer
+    private lateinit var clipboardManager: ClipboardManager
+    private val clipboardChangedListener = ClipboardManager.OnPrimaryClipChangedListener {
+        if (
+            ::clipboardPreview.isInitialized &&
+            imePanelExpanded &&
+            drawerMode == DrawerMode.CLIPBOARD
+        ) {
+            refreshClipboardDrawer()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         settingsStore = SuzakuImeSettingsStore(this)
         imeSettings = settingsStore.load()
         keyboardState.setNumberRowEnabled(imeSettings.numberRow)
+        clipboardManager = getSystemService(ClipboardManager::class.java)
+        clipboardManager.addPrimaryClipChangedListener(clipboardChangedListener)
     }
 
     override fun onCreateInputView(): View {
@@ -102,6 +187,7 @@ class SuzakuInputMethodService : InputMethodService() {
         configureToolButtons()
         configureVoiceDrawer()
         configureHandwriteDrawer()
+        configureClipboardDrawer()
         configureSettingsDrawer()
         collapseIme()
         refreshImeUi()
@@ -145,14 +231,18 @@ class SuzakuInputMethodService : InputMethodService() {
         }
         stopBackspaceRepeat(updateAutomaticShift = false)
         editorCompletions = emptyList()
+        clearClipboardPreview()
         SuzakuNativeBridge.nativeClearMarkedText()
         SuzakuNativeBridge.nativeDeactivateSession()
     }
     override fun onDestroy() {
-        super.onDestroy()
         stopBackspaceRepeat(updateAutomaticShift = false)
         editorCompletions = emptyList()
+        if (::clipboardManager.isInitialized) {
+            clipboardManager.removePrimaryClipChangedListener(clipboardChangedListener)
+        }
         if (::voiceRecognizer.isInitialized) voiceRecognizer.destroy()
+        super.onDestroy()
     }
 
     override fun onDisplayCompletions(completions: Array<out CompletionInfo>?) {
@@ -164,6 +254,7 @@ class SuzakuInputMethodService : InputMethodService() {
         } else {
             emptyList()
         }
+        lastCandidateRenderState = null
         if (::imePanel.isInitialized) {
             refreshImeUi()
         }
@@ -219,6 +310,7 @@ class SuzakuInputMethodService : InputMethodService() {
         keyboardDrawer = root.findViewById(R.id.keyboardDrawer)
         voiceDrawer = root.findViewById(R.id.voiceDrawer)
         handwriteDrawer = root.findViewById(R.id.handwriteDrawer)
+        clipboardDrawer = root.findViewById(R.id.clipboardDrawer)
         settingsDrawer = root.findViewById(R.id.settingsDrawer)
         keyboardRows = root.findViewById(R.id.keyboardRows)
         voiceStatus = root.findViewById(R.id.voiceStatus)
@@ -227,9 +319,12 @@ class SuzakuInputMethodService : InputMethodService() {
         handwriteStatus = root.findViewById(R.id.handwriteStatus)
         handwriteCanvas = root.findViewById(R.id.handwriteCanvas)
         handwriteCandidateStrip = root.findViewById(R.id.handwriteCandidateStrip)
+        clipboardPreview = root.findViewById(R.id.clipboardPreview)
+        clipboardStatus = root.findViewById(R.id.clipboardStatus)
         toolKeyboard = root.findViewById(R.id.toolKeyboard)
         toolVoice = root.findViewById(R.id.toolVoice)
         toolHandwrite = root.findViewById(R.id.toolHandwrite)
+        toolClipboard = root.findViewById(R.id.toolClipboard)
         toolSettings = root.findViewById(R.id.toolSettings)
         toolCollapse = root.findViewById(R.id.toolCollapse)
         voiceListenButton = root.findViewById(R.id.voiceListenButton)
@@ -238,6 +333,8 @@ class SuzakuInputMethodService : InputMethodService() {
         voiceClearButton = root.findViewById(R.id.voiceClearButton)
         handwriteApplyButton = root.findViewById(R.id.handwriteApplyButton)
         handwriteClearButton = root.findViewById(R.id.handwriteClearButton)
+        clipboardPasteButton = root.findViewById(R.id.clipboardPasteButton)
+        clipboardRefreshButton = root.findViewById(R.id.clipboardRefreshButton)
         settingsAutoCapitalization = root.findViewById(R.id.settingsAutoCapitalization)
         settingsNumberRow = root.findViewById(R.id.settingsNumberRow)
         settingsHapticFeedback = root.findViewById(R.id.settingsHapticFeedback)
@@ -254,19 +351,23 @@ class SuzakuInputMethodService : InputMethodService() {
             ),
         )
         panelAnimator = SuzakuImePanelAnimator(imePanel, compactBubbleShell)
-        candidateStrip.layoutTransition = buildStripTransition()
+        lastCandidateRenderState = null
+        lastDrawerRenderState = null
+        lastKeyboardRows = null
         handwriteCandidateStrip.layoutTransition = buildStripTransition()
     }
     private fun configureToolButtons() {
         styleToolButton(toolKeyboard)
         styleToolButton(toolVoice)
         styleToolButton(toolHandwrite)
+        styleToolButton(toolClipboard)
         styleToolButton(toolSettings)
         styleToolButton(toolCollapse)
         styleToolButton(compactBubbleButton)
         toolKeyboard.setOnClickListener { expandIme(DrawerMode.KEYBOARD) }
         toolVoice.setOnClickListener { expandIme(DrawerMode.VOICE) }
         toolHandwrite.setOnClickListener { expandIme(DrawerMode.HANDWRITE) }
+        toolClipboard.setOnClickListener { expandIme(DrawerMode.CLIPBOARD) }
         toolSettings.setOnClickListener { expandIme(DrawerMode.SETTINGS) }
         toolCollapse.setOnClickListener { collapseIme() }
         compactBubbleButton.setOnClickListener { expandIme(drawerMode) }
@@ -291,8 +392,7 @@ class SuzakuInputMethodService : InputMethodService() {
                 voiceTranscriptInput.setSelection(transcript.length)
                 if (transcript.isNotBlank() && editorPolicy.suggestionsEnabled) {
                     SuzakuNativeBridge.nativeReplaceMarkedText(transcript)
-                    syncComposingText()
-                    refreshCandidateStrip(candidateStrip)
+                    refreshImeUi()
                 }
             },
             onPhaseChanged = { phase ->
@@ -322,7 +422,6 @@ class SuzakuInputMethodService : InputMethodService() {
             if (transcript.isNotEmpty()) {
                 if (editorPolicy.suggestionsEnabled) {
                     SuzakuNativeBridge.nativeReplaceMarkedText(transcript)
-                    syncComposingText()
                 } else {
                     currentInputConnection?.commitText(transcript, 1)
                 }
@@ -399,6 +498,14 @@ class SuzakuInputMethodService : InputMethodService() {
         }
     }
 
+    private fun configureClipboardDrawer() {
+        styleActionButton(clipboardRefreshButton, compact = true)
+        styleActionButton(clipboardPasteButton, compact = true)
+        clipboardRefreshButton.setOnClickListener { refreshClipboardDrawer() }
+        clipboardPasteButton.setOnClickListener { pasteClipboard() }
+        clearClipboardPreview()
+    }
+
     private fun configureSettingsDrawer() {
         styleActionButton(settingsDiagnosticsButton, compact = true)
         styleActionButton(settingsResetButton, compact = true)
@@ -468,9 +575,42 @@ class SuzakuInputMethodService : InputMethodService() {
 
     private fun configureKeyboardRows(container: LinearLayout) {
         stopBackspaceRepeat(updateAutomaticShift = false)
-        container.removeAllViews()
-        keyboardState.rows().forEach { row ->
-            container.addView(buildKeyboardRow(row))
+        val rows = keyboardState.rows()
+        if (rows == lastKeyboardRows) {
+            return
+        }
+
+        container.suppressLayout(true)
+        try {
+            if (canReuseKeyboardRows(container, rows)) {
+                rows.forEachIndexed { rowIndex, keys ->
+                    val row = container.getChildAt(rowIndex) as LinearLayout
+                    keys.forEachIndexed { keyIndex, key ->
+                        bindKeyboardButton(row.getChildAt(keyIndex) as Button, key)
+                    }
+                }
+            } else {
+                container.removeAllViews()
+                rows.forEach { row -> container.addView(buildKeyboardRow(row)) }
+            }
+            lastKeyboardRows = rows
+        } finally {
+            container.suppressLayout(false)
+            container.requestLayout()
+        }
+    }
+
+    private fun canReuseKeyboardRows(
+        container: LinearLayout,
+        rows: List<List<SuzakuSoftKey>>,
+    ): Boolean {
+        if (container.childCount != rows.size) {
+            return false
+        }
+        return rows.indices.all { rowIndex ->
+            val row = container.getChildAt(rowIndex) as? LinearLayout ?: return@all false
+            row.childCount == rows[rowIndex].size &&
+                (0 until row.childCount).all { row.getChildAt(it) is Button }
         }
     }
 
@@ -485,45 +625,69 @@ class SuzakuInputMethodService : InputMethodService() {
         }
 
         keys.forEach { key ->
-            row.addView(
-                Button(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, dp(46), key.weight).apply {
-                        marginEnd = dp(6)
-                    }
-                    text = key.label
-                    contentDescription = key.accessibilityLabel
-                    isAllCaps = false
-                    setBackgroundResource(
-                        if (key.active) R.drawable.candidate_chip_selected
-                        else R.drawable.gboard_key_bg
-                    )
-                    setTextColor(Color.parseColor(if (key.active) "#123A63" else "#24476C"))
-                    textSize = if (
-                        key.action == SuzakuSoftKeyAction.INSERT ||
-                        key.action == SuzakuSoftKeyAction.COMMIT_LITERAL
-                    ) 19f else 16f
-                    minHeight = dp(46)
-                    setOnClickListener { view ->
-                        if (imeSettings.hapticFeedback) {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        }
-                        handleSoftKeyPress(key)
-                    }
-                    when (key.action) {
-                        SuzakuSoftKeyAction.BACKSPACE -> configureBackspaceRepeat(this)
-                        SuzakuSoftKeyAction.SWITCH_INPUT_METHOD -> {
-                            setOnLongClickListener {
-                                showInputMethodPicker()
-                                true
-                            }
-                        }
-                        else -> Unit
-                    }
-                }
-            )
+            row.addView(Button(this).also { bindKeyboardButton(it, key) })
         }
 
         return row
+    }
+
+    // Reused Button instances keep normal click accessibility; touch handling is only swapped
+    // in for backspace hold-to-repeat and removed again when a slot changes action.
+    @SuppressLint("ClickableViewAccessibility")
+    private fun bindKeyboardButton(button: Button, key: SuzakuSoftKey) {
+        val previousKey = button.tag as? SuzakuSoftKey
+        val params = button.layoutParams as? LinearLayout.LayoutParams
+        if (params == null) {
+            button.layoutParams = LinearLayout.LayoutParams(0, dp(46), key.weight).apply {
+                marginEnd = dp(6)
+            }
+        } else if (params.weight != key.weight) {
+            params.weight = key.weight
+            button.layoutParams = params
+        }
+        setTextIfChanged(button, key.label)
+        if (button.contentDescription != key.accessibilityLabel) {
+            button.contentDescription = key.accessibilityLabel
+        }
+        button.tag = key
+        if (previousKey == null) {
+            button.isAllCaps = false
+            button.minHeight = dp(46)
+            button.setOnClickListener(softKeyClickListener)
+        }
+        if (previousKey == null || previousKey.active != key.active) {
+            button.setBackgroundResource(
+                if (key.active) R.drawable.candidate_chip_selected else R.drawable.gboard_key_bg
+            )
+            button.setTextColor(Color.parseColor(if (key.active) "#123A63" else "#24476C"))
+        }
+        val textSize = if (
+            key.action == SuzakuSoftKeyAction.INSERT ||
+            key.action == SuzakuSoftKeyAction.COMMIT_LITERAL
+        ) 19f else 16f
+        val previousUsesLargeText = previousKey?.action == SuzakuSoftKeyAction.INSERT ||
+            previousKey?.action == SuzakuSoftKeyAction.COMMIT_LITERAL
+        val nextUsesLargeText = key.action == SuzakuSoftKeyAction.INSERT ||
+            key.action == SuzakuSoftKeyAction.COMMIT_LITERAL
+        if (previousKey == null || previousUsesLargeText != nextUsesLargeText) {
+            button.textSize = textSize
+        }
+
+        if (previousKey?.action != key.action) {
+            button.setOnTouchListener(null)
+            button.setOnLongClickListener(null)
+            button.isLongClickable = false
+            when (key.action) {
+                SuzakuSoftKeyAction.BACKSPACE -> configureBackspaceRepeat(button)
+                SuzakuSoftKeyAction.SWITCH_INPUT_METHOD -> {
+                    button.setOnLongClickListener {
+                        showInputMethodPicker()
+                        true
+                    }
+                }
+                else -> Unit
+            }
+        }
     }
 
     // Quick taps delegate to performClick(); the touch listener only adds hold-to-repeat timing.
@@ -648,7 +812,6 @@ class SuzakuInputMethodService : InputMethodService() {
         }
         val current = SuzakuNativeBridge.nativeDisplayText()
         SuzakuNativeBridge.nativeReplaceMarkedText(current + key)
-        syncComposingText()
     }
 
     private fun deleteLastCharacter() {
@@ -668,8 +831,123 @@ class SuzakuInputMethodService : InputMethodService() {
             currentInputConnection?.finishComposingText()
         } else {
             SuzakuNativeBridge.nativeReplaceMarkedText(updated)
-            syncComposingText()
         }
+    }
+
+    private fun refreshClipboardDrawer() {
+        val clipboard = readClipboard()
+        clipboardSnapshot = SuzakuClipboardPolicy.inspect(
+            text = clipboard.text,
+            secureInput = editorPolicy.secureInput,
+            sensitiveContent = clipboard.sensitive,
+            contentAvailable = clipboard.hasContent,
+        )
+        renderClipboardSnapshot(clipboardSnapshot)
+    }
+
+    private fun pasteClipboard() {
+        val clipboard = readClipboard(includeSensitiveText = true)
+        val snapshot = SuzakuClipboardPolicy.inspect(
+            text = clipboard.text,
+            secureInput = editorPolicy.secureInput,
+            sensitiveContent = clipboard.sensitive,
+            contentAvailable = clipboard.hasContent,
+        )
+        clipboardSnapshot = snapshot
+        renderClipboardSnapshot(snapshot)
+        val text = clipboard.text
+        if (!snapshot.canPaste || text.isNullOrEmpty()) {
+            return
+        }
+        val connection = currentInputConnection ?: return
+
+        connection.beginBatchEdit()
+        val pasted = try {
+            commitSelected(force = true)
+            editorCompletions = emptyList()
+            selectedHandwriteSeed = null
+            connection.commitText(text, 1)
+        } finally {
+            connection.endBatchEdit()
+        }
+        renderClipboardSnapshot(
+            snapshot,
+            statusText = getString(
+                if (pasted) R.string.clipboard_pasted else R.string.clipboard_paste_failed
+            ),
+        )
+        refreshImeUi()
+        refreshAutomaticShift()
+    }
+
+    private fun readClipboard(
+        includeSensitiveText: Boolean = false,
+    ): ClipboardRead = runCatching {
+        val clip = clipboardManager.primaryClip
+            ?: return@runCatching ClipboardRead(
+                text = null,
+                sensitive = false,
+                hasContent = false,
+            )
+        if (clip.itemCount == 0) {
+            return@runCatching ClipboardRead(
+                text = null,
+                sensitive = false,
+                hasContent = false,
+            )
+        }
+        val sensitive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            clip.description.extras?.getBoolean(
+                ClipDescription.EXTRA_IS_SENSITIVE,
+                false,
+            ) == true
+        val text = if (sensitive && !includeSensitiveText) {
+            null
+        } else {
+            clip.getItemAt(0).coerceToText(this)?.toString()
+        }
+        ClipboardRead(
+            text = text,
+            sensitive = sensitive,
+            hasContent = if (sensitive && !includeSensitiveText) {
+                true
+            } else {
+                !text.isNullOrEmpty()
+            },
+        )
+    }.getOrDefault(
+        ClipboardRead(
+            text = null,
+            sensitive = false,
+            hasContent = false,
+        )
+    )
+
+    private fun renderClipboardSnapshot(
+        snapshot: SuzakuClipboardSnapshot,
+        statusText: String = getString(R.string.clipboard_privacy_note),
+    ) {
+        if (!::clipboardPreview.isInitialized) {
+            return
+        }
+        clipboardPreview.text = when (snapshot.availability) {
+            SuzakuClipboardAvailability.BLOCKED -> getString(R.string.clipboard_secure)
+            SuzakuClipboardAvailability.EMPTY -> getString(R.string.clipboard_empty)
+            SuzakuClipboardAvailability.SENSITIVE -> getString(R.string.clipboard_sensitive)
+            SuzakuClipboardAvailability.READY -> snapshot.preview
+                ?: getString(R.string.clipboard_whitespace)
+        }
+        clipboardStatus.text = statusText
+        clipboardPasteButton.isEnabled = snapshot.canPaste
+        clipboardPasteButton.alpha = if (snapshot.canPaste) 1f else 0.45f
+    }
+
+    private fun clearClipboardPreview() {
+        clipboardSnapshot = SuzakuClipboardPolicy.inspect(
+            text = null,
+            secureInput = editorPolicy.secureInput,
+        )
+        renderClipboardSnapshot(clipboardSnapshot)
     }
 
     private fun resetKeyboardForEditor(attribute: EditorInfo?) {
@@ -740,62 +1018,84 @@ class SuzakuInputMethodService : InputMethodService() {
         if (::handwriteCandidateStrip.isInitialized) {
             handwriteCandidateStrip.removeAllViews()
         }
-        if (drawerMode == DrawerMode.VOICE || drawerMode == DrawerMode.HANDWRITE) {
+        if (
+            drawerMode == DrawerMode.VOICE ||
+            drawerMode == DrawerMode.HANDWRITE ||
+            drawerMode == DrawerMode.CLIPBOARD
+        ) {
             drawerMode = DrawerMode.KEYBOARD
         }
+        clearClipboardPreview()
     }
 
     private fun refreshImeUi() {
-        val displayText = if (editorPolicy.suggestionsEnabled) {
-            SuzakuNativeBridge.nativeDisplayText()
+        val snapshot = if (editorPolicy.suggestionsEnabled) {
+            readImeRenderSnapshot()
         } else {
-            ""
+            SuzakuImeRenderSnapshot.EMPTY
         }
-        composePreview.text = when {
+        val preview = when {
             editorPolicy.secureInput -> getString(R.string.secure_input_placeholder)
             !editorPolicy.suggestionsEnabled -> getString(R.string.direct_input_placeholder)
-            displayText.isEmpty() -> getString(R.string.compose_placeholder)
-            else -> displayText
+            snapshot.displayText.isEmpty() -> getString(R.string.compose_placeholder)
+            else -> snapshot.displayText
         }
-        hostStatus.text = if (editorPolicy.secureInput) {
+        setTextIfChanged(composePreview, preview)
+        val status = if (editorPolicy.secureInput) {
             getString(R.string.host_status_secure)
         } else {
-            SuzakuNativeBridge.nativeDescribeImeHost()
+            cachedHostDescription ?: SuzakuNativeBridge.nativeDescribeImeHost().also {
+                cachedHostDescription = it
+            }
         }
-        refreshCandidateStrip(candidateStrip)
-        refreshPanelVisibility()
+        setTextIfChanged(hostStatus, status)
+        refreshCandidateStrip(candidateStrip, snapshot)
         val hasCandidateActivity = when {
             editorPolicy.editorCompletionsEnabled -> editorCompletions.isNotEmpty()
             editorPolicy.suggestionsEnabled ->
-                SuzakuNativeBridge.nativeCandidateCount() > 0 || displayText.isNotEmpty()
+                snapshot.candidateLabels.isNotEmpty() || snapshot.displayText.isNotEmpty()
             else -> false
         }
-        compactBubbleDot.visibility = if (hasCandidateActivity) View.VISIBLE else View.GONE
+        setVisibilityIfChanged(
+            compactBubbleDot,
+            if (hasCandidateActivity) View.VISIBLE else View.GONE,
+        )
         refreshDrawerVisibility()
-        syncComposingText()
+        if (editorPolicy.suggestionsEnabled) {
+            syncComposingText(snapshot.displayText)
+        }
+    }
+
+    private fun readImeRenderSnapshot(): SuzakuImeRenderSnapshot {
+        if (nativeRenderSnapshotAvailable) {
+            runCatching { SuzakuNativeBridge.nativeRenderSnapshot() }
+                .onSuccess { payload ->
+                    return SuzakuImeRenderSnapshot.fromNativePayload(payload)
+                }
+                .onFailure { nativeRenderSnapshotAvailable = false }
+        }
+
+        val count = SuzakuNativeBridge.nativeCandidateCount().coerceAtMost(6)
+        return SuzakuImeRenderSnapshot(
+            displayText = SuzakuNativeBridge.nativeDisplayText(),
+            selectedIndex = SuzakuNativeBridge.nativeSelectedIndex(),
+            candidateLabels = (0 until count).map(SuzakuNativeBridge::nativeCandidateLabel),
+        )
     }
 
     private fun refreshDrawerVisibility() {
         if (
             editorPolicy.secureInput &&
-            (drawerMode == DrawerMode.VOICE || drawerMode == DrawerMode.HANDWRITE)
+            (
+                drawerMode == DrawerMode.VOICE ||
+                    drawerMode == DrawerMode.HANDWRITE ||
+                    drawerMode == DrawerMode.CLIPBOARD
+            )
         ) {
             drawerMode = DrawerMode.KEYBOARD
         }
-        keyboardDrawer.visibility = if (drawerMode == DrawerMode.KEYBOARD) View.VISIBLE else View.GONE
-        voiceDrawer.visibility = if (drawerMode == DrawerMode.VOICE) View.VISIBLE else View.GONE
-        handwriteDrawer.visibility = if (drawerMode == DrawerMode.HANDWRITE) View.VISIBLE else View.GONE
-        settingsDrawer.visibility = if (drawerMode == DrawerMode.SETTINGS) View.VISIBLE else View.GONE
-        val multimodalInputEnabled = !editorPolicy.secureInput
-        toolVoice.isEnabled = multimodalInputEnabled
-        toolVoice.alpha = if (multimodalInputEnabled) 1f else 0.38f
-        toolHandwrite.isEnabled = multimodalInputEnabled
-        toolHandwrite.alpha = if (multimodalInputEnabled) 1f else 0.38f
-        handwriteCanvas.isEnabled = multimodalInputEnabled
-        handwriteApplyButton.isEnabled = multimodalInputEnabled
-        handwriteClearButton.isEnabled = multimodalInputEnabled
-        voiceCommitButton.isEnabled = multimodalInputEnabled && editorPolicy.suggestionsEnabled
-        if (!::voiceRecognizer.isInitialized || !voiceRecognizer.isListening) {
+        val voiceListening = ::voiceRecognizer.isInitialized && voiceRecognizer.isListening
+        if (!voiceListening) {
             voicePhase = if (voiceTranscriptInput.text?.isNotBlank() == true) {
                 SuzakuVoicePhase.READY
             } else if (voicePhase == SuzakuVoicePhase.ERROR) {
@@ -804,88 +1104,224 @@ class SuzakuInputMethodService : InputMethodService() {
                 SuzakuVoicePhase.IDLE
             }
         }
+        val nextHandwriteStatus = when {
+            selectedHandwriteSeed != null ->
+                getString(R.string.handwrite_status_ready, selectedHandwriteSeed)
+            handwriteStatus.text == getString(R.string.handwrite_status_writing) ->
+                handwriteStatus.text.toString()
+            handwriteStatus.text == getString(R.string.handwrite_status_recognizing) ->
+                handwriteStatus.text.toString()
+            else -> getString(R.string.handwrite_status_idle)
+        }
+        val state = DrawerRenderState(
+            mode = drawerMode,
+            panelExpanded = imePanelExpanded,
+            secureInput = editorPolicy.secureInput,
+            suggestionsEnabled = editorPolicy.suggestionsEnabled,
+            voicePhase = voicePhase,
+            voiceListening = voiceListening,
+            voiceAvailable = ::voiceRecognizer.isInitialized && voiceRecognizer.isAvailable(),
+            clipboardCanPaste = clipboardSnapshot.canPaste,
+            selectedHandwriteSeed = selectedHandwriteSeed,
+            handwriteStatus = nextHandwriteStatus,
+        )
+        if (state == lastDrawerRenderState) {
+            return
+        }
+        lastDrawerRenderState = state
+        setVisibilityIfChanged(
+            keyboardDrawer,
+            if (drawerMode == DrawerMode.KEYBOARD) View.VISIBLE else View.GONE,
+        )
+        setVisibilityIfChanged(
+            voiceDrawer,
+            if (drawerMode == DrawerMode.VOICE) View.VISIBLE else View.GONE,
+        )
+        setVisibilityIfChanged(
+            handwriteDrawer,
+            if (drawerMode == DrawerMode.HANDWRITE) View.VISIBLE else View.GONE,
+        )
+        setVisibilityIfChanged(
+            clipboardDrawer,
+            if (drawerMode == DrawerMode.CLIPBOARD) View.VISIBLE else View.GONE,
+        )
+        setVisibilityIfChanged(
+            settingsDrawer,
+            if (drawerMode == DrawerMode.SETTINGS) View.VISIBLE else View.GONE,
+        )
+        val multimodalInputEnabled = !editorPolicy.secureInput
+        setEnabledState(toolVoice, multimodalInputEnabled, disabledAlpha = 0.38f)
+        setEnabledState(toolHandwrite, multimodalInputEnabled, disabledAlpha = 0.38f)
+        setEnabledState(toolClipboard, multimodalInputEnabled, disabledAlpha = 0.38f)
+        setEnabledState(
+            clipboardPasteButton,
+            multimodalInputEnabled && clipboardSnapshot.canPaste,
+            disabledAlpha = 0.45f,
+        )
+        setEnabledState(handwriteCanvas, multimodalInputEnabled)
+        setEnabledState(handwriteApplyButton, multimodalInputEnabled)
+        setEnabledState(handwriteClearButton, multimodalInputEnabled)
+        setEnabledState(
+            voiceCommitButton,
+            multimodalInputEnabled && editorPolicy.suggestionsEnabled,
+        )
         syncVoiceStatusFromPhase()
         updateVoiceListenButton()
         refreshVoiceLevelMeter()
-        handwriteStatus.text = when {
-            selectedHandwriteSeed != null -> getString(R.string.handwrite_status_ready, selectedHandwriteSeed)
-            handwriteStatus.text == getString(R.string.handwrite_status_writing) -> handwriteStatus.text
-            handwriteStatus.text == getString(R.string.handwrite_status_recognizing) -> handwriteStatus.text
-            else -> getString(R.string.handwrite_status_idle)
-        }
+        setTextIfChanged(handwriteStatus, nextHandwriteStatus)
     }
 
     private fun updateVoiceListenButton() {
         if (!::voiceRecognizer.isInitialized) {
             return
         }
-        voiceListenButton.text = getString(
-            if (voiceRecognizer.isListening) R.string.voice_stop else R.string.voice_listen
+        setTextIfChanged(
+            voiceListenButton,
+            getString(
+                if (voiceRecognizer.isListening) R.string.voice_stop else R.string.voice_listen
+            ),
         )
-        voiceListenButton.isEnabled = !editorPolicy.secureInput && voiceRecognizer.isAvailable()
+        setEnabledState(
+            voiceListenButton,
+            !editorPolicy.secureInput && voiceRecognizer.isAvailable(),
+        )
     }
 
-    private fun refreshCandidateStrip(strip: LinearLayout?) {
+    private fun refreshCandidateStrip(
+        strip: LinearLayout?,
+        snapshot: SuzakuImeRenderSnapshot,
+    ) {
         strip ?: return
-        strip.removeAllViews()
-        if (editorPolicy.secureInput) {
-            strip.addView(
-                buildCandidateChip(
-                    getString(R.string.candidate_secure_input),
-                    primary = false,
-                    selected = false,
-                    index = -1,
-                )
-            )
+        val state = candidateRenderState(snapshot)
+        if (state == lastCandidateRenderState) {
             return
         }
-        if (editorPolicy.editorCompletionsEnabled) {
-            refreshEditorCompletions(strip)
-            return
-        }
-        if (!editorPolicy.suggestionsEnabled) {
-            strip.addView(
-                buildCandidateChip(
-                    getString(R.string.candidate_direct_input),
-                    primary = false,
-                    selected = false,
-                    index = -1,
-                )
-            )
-            return
-        }
-        val count = SuzakuNativeBridge.nativeCandidateCount()
-        val selected = SuzakuNativeBridge.nativeSelectedIndex()
-
-        if (count <= 0) {
-            strip.addView(buildCandidateChip(getString(R.string.candidate_empty), false, false, -1))
-            return
-        }
-
-        for (index in 0 until count.coerceAtMost(6)) {
-            val label = SuzakuNativeBridge.nativeCandidateLabel(index)
-            if (index > 0) {
-                strip.addView(View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(1), dp(22)).apply {
-                        marginStart = dp(2)
-                        marginEnd = dp(2)
-                        gravity = Gravity.CENTER_VERTICAL
-                    }
-                    setBackgroundColor(Color.parseColor("#C8D7E7"))
-                    alpha = 0.55f
-                })
+        lastCandidateRenderState = state
+        strip.suppressLayout(true)
+        try {
+            when (state.mode) {
+                CandidateRenderMode.EDITOR_COMPLETIONS -> {
+                    strip.removeAllViews()
+                    refreshEditorCompletions(strip)
+                }
+                CandidateRenderMode.NATIVE -> renderNativeCandidates(strip, state)
+                else -> renderStaticCandidate(strip, state.labels.single())
             }
-            strip.addView(
-                buildCandidateChip(
-                    getString(R.string.candidate_label_format, index + 1, label),
-                    index == 0,
-                    index == selected,
-                    index,
-                    continuous = true,
-                )
-            )
+        } finally {
+            strip.suppressLayout(false)
+            strip.requestLayout()
         }
     }
+
+    private fun candidateRenderState(snapshot: SuzakuImeRenderSnapshot): CandidateRenderState =
+        when {
+            editorPolicy.secureInput -> CandidateRenderState(
+                CandidateRenderMode.SECURE,
+                listOf(getString(R.string.candidate_secure_input)),
+            )
+            editorPolicy.editorCompletionsEnabled && editorCompletions.isEmpty() ->
+                CandidateRenderState(
+                    CandidateRenderMode.EDITOR_WAITING,
+                    listOf(getString(R.string.candidate_editor_completion_waiting)),
+                )
+            editorPolicy.editorCompletionsEnabled -> CandidateRenderState(
+                CandidateRenderMode.EDITOR_COMPLETIONS,
+                editorCompletions.map(::editorCompletionLabel),
+            )
+            !editorPolicy.suggestionsEnabled -> CandidateRenderState(
+                CandidateRenderMode.DIRECT,
+                listOf(getString(R.string.candidate_direct_input)),
+            )
+            snapshot.candidateLabels.isEmpty() -> CandidateRenderState(
+                CandidateRenderMode.EMPTY,
+                listOf(getString(R.string.candidate_empty)),
+            )
+            else -> CandidateRenderState(
+                CandidateRenderMode.NATIVE,
+                snapshot.candidateLabels,
+                snapshot.selectedIndex,
+            )
+        }
+
+    private fun renderNativeCandidates(strip: LinearLayout, state: CandidateRenderState) {
+        var childIndex = 0
+        state.labels.forEachIndexed { index, label ->
+            if (index > 0) {
+                ensureCandidateSeparator(strip, childIndex)
+                childIndex += 1
+            }
+            bindCandidateChip(
+                ensureCandidateChip(strip, childIndex),
+                CandidateChipBinding(
+                    text = getString(R.string.candidate_label_format, index + 1, label),
+                    primary = index == 0,
+                    selected = index == state.selectedIndex,
+                    index = index,
+                    continuous = true,
+                ),
+            )
+            childIndex += 1
+        }
+        trimCandidateChildren(strip, childIndex)
+    }
+
+    private fun renderStaticCandidate(strip: LinearLayout, text: String) {
+        bindCandidateChip(
+            ensureCandidateChip(strip, 0),
+            CandidateChipBinding(
+                text = text,
+                primary = false,
+                selected = false,
+                index = -1,
+                continuous = false,
+            ),
+        )
+        trimCandidateChildren(strip, 1)
+    }
+
+    private fun ensureCandidateChip(strip: LinearLayout, index: Int): TextView {
+        val current = strip.getChildAt(index)
+        if (current is TextView) {
+            return current
+        }
+        if (current != null) {
+            strip.removeViewAt(index)
+        }
+        return TextView(this).also { strip.addView(it, index) }
+    }
+
+    private fun ensureCandidateSeparator(strip: LinearLayout, index: Int) {
+        val current = strip.getChildAt(index)
+        if (current != null && current !is TextView) {
+            return
+        }
+        if (current != null) {
+            strip.removeViewAt(index)
+        }
+        strip.addView(buildCandidateSeparator(), index)
+    }
+
+    private fun trimCandidateChildren(strip: LinearLayout, desiredCount: Int) {
+        while (strip.childCount > desiredCount) {
+            strip.removeViewAt(strip.childCount - 1)
+        }
+    }
+
+    private fun buildCandidateSeparator(): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(1), dp(22)).apply {
+            marginStart = dp(2)
+            marginEnd = dp(2)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        setBackgroundColor(Color.parseColor("#C8D7E7"))
+        alpha = 0.55f
+    }
+
+    private fun editorCompletionLabel(completion: CompletionInfo): String =
+        completion.label
+            ?.toString()
+            ?.takeIf { it.isNotBlank() }
+            ?: completion.text.toString()
 
     private fun refreshEditorCompletions(strip: LinearLayout) {
         if (editorCompletions.isEmpty()) {
@@ -901,12 +1337,8 @@ class SuzakuInputMethodService : InputMethodService() {
         }
 
         editorCompletions.forEachIndexed { index, completion ->
-            val text = completion.label
-                ?.toString()
-                ?.takeIf { it.isNotBlank() }
-                ?: completion.text.toString()
             val chip = buildCandidateChip(
-                text = text,
+                text = editorCompletionLabel(completion),
                 primary = index == 0,
                 selected = false,
                 index = -1,
@@ -945,6 +1377,7 @@ class SuzakuInputMethodService : InputMethodService() {
                 primary = index == 0,
                 selected = seed == selectedHandwriteSeed,
                 index = -1,
+                animateAppearance = true,
             )
             chip.setOnClickListener {
                 applyHandwriteSeed(seed, auto = false)
@@ -978,43 +1411,92 @@ class SuzakuInputMethodService : InputMethodService() {
         selected: Boolean,
         index: Int,
         continuous: Boolean = false,
+        animateAppearance: Boolean = false,
     ): TextView {
-        return TextView(this).apply {
-            val horizontal = if (primary) dp(18) else if (continuous) dp(10) else dp(14)
-            val vertical = if (primary) dp(11) else if (continuous) dp(8) else dp(10)
-            setPadding(horizontal, vertical, horizontal, vertical)
-            this.text = text
-            textSize = if (primary) 17f else if (continuous) 14f else 15f
-            minWidth = if (primary) dp(104) else dp(0)
-            setTextColor(
+        val chip = TextView(this)
+        bindCandidateChip(
+            chip,
+            CandidateChipBinding(text, primary, selected, index, continuous),
+        )
+        if (animateAppearance) {
+            chip.alpha = 0f
+            chip.translationY = dp(4).toFloat()
+            chip.post { chip.animate().alpha(1f).translationY(0f).setDuration(120L).start() }
+        }
+        return chip
+    }
+
+    private fun bindCandidateChip(view: TextView, binding: CandidateChipBinding) {
+        val previous = view.tag as? CandidateChipBinding
+        if (previous == binding) {
+            return
+        }
+        view.animate().cancel()
+        setTextIfChanged(view, binding.text)
+        val horizontal = if (binding.primary) dp(18) else if (binding.continuous) dp(10) else dp(14)
+        val vertical = if (binding.primary) dp(11) else if (binding.continuous) dp(8) else dp(10)
+        if (
+            view.paddingLeft != horizontal ||
+            view.paddingTop != vertical ||
+            view.paddingRight != horizontal ||
+            view.paddingBottom != vertical
+        ) {
+            view.setPadding(horizontal, vertical, horizontal, vertical)
+        }
+        val textSize = if (binding.primary) 17f else if (binding.continuous) 14f else 15f
+        val previousTextSize = when {
+            previous?.primary == true -> 17f
+            previous?.continuous == true -> 14f
+            else -> 15f
+        }
+        if (previous == null || previousTextSize != textSize) {
+            view.textSize = textSize
+        }
+        val minWidth = if (binding.primary) dp(104) else dp(0)
+        if (view.minWidth != minWidth) {
+            view.minWidth = minWidth
+        }
+        if (
+            previous == null ||
+            previous.selected != binding.selected ||
+            previous.primary != binding.primary ||
+            previous.continuous != binding.continuous
+        ) {
+            view.setTextColor(
                 when {
-                    selected -> 0xFF163A61.toInt()
-                    primary -> 0xFF173B63.toInt()
+                    binding.selected -> 0xFF163A61.toInt()
+                    binding.primary -> 0xFF173B63.toInt()
                     else -> 0xFF254A72.toInt()
                 }
             )
-            background = getDrawable(
+            view.setBackgroundResource(
                 when {
-                    selected && !primary -> R.drawable.candidate_chip_selected
-                    selected || primary -> R.drawable.candidate_chip_primary
-                    continuous -> R.drawable.candidate_chip_flat
+                    binding.selected && !binding.primary -> R.drawable.candidate_chip_selected
+                    binding.selected || binding.primary -> R.drawable.candidate_chip_primary
+                    binding.continuous -> R.drawable.candidate_chip_flat
                     else -> R.drawable.candidate_chip_secondary
                 }
             )
-            layoutParams = LinearLayout.LayoutParams(
+        }
+        val params = view.layoutParams as? LinearLayout.LayoutParams
+        val marginEnd = if (binding.continuous) dp(0) else dp(8)
+        if (params == null) {
+            view.layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { marginEnd = if (continuous) dp(0) else dp(8) }
-            alpha = 0f
-            translationY = dp(4).toFloat()
-            post { animate().alpha(1f).translationY(0f).setDuration(140L).start() }
-            if (index >= 0) {
-                setOnClickListener {
-                    SuzakuNativeBridge.nativeSelectCandidate(index)
-                    commitSelected(force = true)
-                    refreshImeUi()
-                }
-            }
+            ).apply { this.marginEnd = marginEnd }
+        } else if (params.marginEnd != marginEnd) {
+            params.marginEnd = marginEnd
+            view.layoutParams = params
+        }
+        view.alpha = 1f
+        view.translationY = 0f
+        view.tag = binding
+        if (binding.index >= 0) {
+            view.setOnClickListener(nativeCandidateClickListener)
+        } else {
+            view.setOnClickListener(null)
+            view.isClickable = false
         }
     }
 
@@ -1038,17 +1520,46 @@ class SuzakuInputMethodService : InputMethodService() {
         return true
     }
 
-    private fun syncComposingText() {
+    private fun syncComposingText(
+        displayText: String = SuzakuNativeBridge.nativeDisplayText(),
+    ) {
         val connection = currentInputConnection ?: return
         if (!editorPolicy.suggestionsEnabled) {
             connection.finishComposingText()
             return
         }
-        val text = SuzakuNativeBridge.nativeDisplayText()
-        if (text.isEmpty()) {
+        if (displayText.isEmpty()) {
             connection.finishComposingText()
         } else {
-            connection.setComposingText(text, 1)
+            connection.setComposingText(displayText, 1)
+        }
+    }
+
+    private fun setTextIfChanged(view: TextView, value: CharSequence) {
+        if (view.text.toString() != value.toString()) {
+            view.text = value
+        }
+    }
+
+    private fun setVisibilityIfChanged(view: View, visibility: Int) {
+        if (view.visibility != visibility) {
+            view.visibility = visibility
+        }
+    }
+
+    private fun setEnabledState(
+        view: View,
+        enabled: Boolean,
+        disabledAlpha: Float? = null,
+    ) {
+        if (view.isEnabled != enabled) {
+            view.isEnabled = enabled
+        }
+        disabledAlpha?.let { alpha ->
+            val nextAlpha = if (enabled) 1f else alpha
+            if (view.alpha != nextAlpha) {
+                view.alpha = nextAlpha
+            }
         }
     }
 
@@ -1082,7 +1593,7 @@ class SuzakuInputMethodService : InputMethodService() {
     }
 
     private fun syncVoiceStatusFromPhase() {
-        voiceStatus.text = when (voicePhase) {
+        val status = when (voicePhase) {
             SuzakuVoicePhase.IDLE -> getString(R.string.voice_status_idle)
             SuzakuVoicePhase.STARTING -> getString(R.string.voice_status_starting)
             SuzakuVoicePhase.LISTENING -> getString(R.string.voice_status_listening)
@@ -1092,6 +1603,7 @@ class SuzakuInputMethodService : InputMethodService() {
             SuzakuVoicePhase.ERROR -> voiceStatus.text?.takeIf { it.isNotBlank() }
                 ?: getString(R.string.voice_status_idle)
         }
+        setTextIfChanged(voiceStatus, status)
     }
 
     private fun refreshVoiceLevelMeter() =
@@ -1104,7 +1616,11 @@ class SuzakuInputMethodService : InputMethodService() {
     private fun expandIme(mode: DrawerMode) {
         drawerMode = if (
             editorPolicy.secureInput &&
-            (mode == DrawerMode.VOICE || mode == DrawerMode.HANDWRITE)
+            (
+                mode == DrawerMode.VOICE ||
+                    mode == DrawerMode.HANDWRITE ||
+                    mode == DrawerMode.CLIPBOARD
+            )
         ) {
             DrawerMode.KEYBOARD
         } else {
@@ -1114,10 +1630,15 @@ class SuzakuInputMethodService : InputMethodService() {
         imePanelExpanded = true
         if (!wasExpanded) panelAnimator.expand()
         refreshImeUi()
+        if (drawerMode == DrawerMode.CLIPBOARD) {
+            refreshClipboardDrawer()
+        }
     }
 
     private fun collapseIme() {
         stopBackspaceRepeat()
+        clearClipboardPreview()
+        lastDrawerRenderState = null
         val wasExpanded = imePanelExpanded
         imePanelExpanded = false
         if (wasExpanded) panelAnimator.collapse()

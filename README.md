@@ -2,7 +2,20 @@
 
 Suzaku Map is a multimodal IME project.
 
-Current release: **0.4.8**.
+Current release: **0.4.9**.
+
+### 0.4.9 Highlights
+
+- Added a native Linux IBus engine host, user-service installer, runtime diagnostics, and a
+  private panel-to-host commit channel.
+- Added a Suzaku system tray with show/hide, settings, position reset, and quit actions, plus
+  per-session single-instance activation.
+- Refined the Ubuntu / GNOME Wayland panel with non-focusing input, monitor-bound dragging,
+  close-to-tray behavior, compact outer spacing, and correctly positioned settings windows.
+- Reduced desktop input latency through idle-aware redraw scheduling, reusable GPU buffers,
+  cached system-font atlases, displayed-scene hit testing, and width-aware candidate wrapping.
+- Improved the Android IME with clipboard privacy controls, batched native render snapshots,
+  interruption-safe animations, and frame-aligned handwriting updates.
 
 ### 0.4.8 Highlights
 
@@ -80,7 +93,7 @@ Current platform direction:
 - macOS: InputMethodKit host path is the most complete
 - Windows: TSF skeleton is present
 - Android: InputMethodService app path is active
-- Linux: IBus/Fcitx direction is scaffolded
+- Linux: native IBus engine host is available; Fcitx remains a registration scaffold
 
 ### 3. Companion UIs
 
@@ -165,6 +178,27 @@ Or use one-command launcher:
 ./scripts/panel-gpu.sh release
 ./scripts/panel-gpu.sh build-release
 ```
+
+#### Current local priority: Ubuntu / Wayland
+
+The desktop GPU companion is the primary development path on the current workstation. Its event
+loop sleeps while the UI is idle, wakes at frame cadence only for active voice/feedback/text-scroll
+animation, reuses streaming GPU vertex buffers, and uses the last displayed scene for pointer hit
+testing. Installed platform fonts are rasterized into a cached GPU atlas, with the built-in bitmap
+font retained only as a startup fallback. On GNOME Wayland with XWayland available, the main panel
+automatically uses a non-focusing X11 override-redirect window. It opens at the bottom center,
+continues to accept pointer/touch input, and leaves IBus focus in the target application while
+candidates are clicked. The top-center grip provides manual drag handling for this unmanaged window,
+keeps the panel inside the active monitor, and preserves its expanded position. The default 100%
+layout uses a compact outer gutter, a dedicated close-to-tray button, and readable two-column
+candidates with an unpaired candidate spanning the final row. A native StatusNotifierItem with a
+Suzaku red-and-gold icon remains available after the panel is hidden: click it to show or hide the
+panel, or use its menu to open settings, reset the window position, and quit the process. The
+settings window is placed above the main panel and clamped to the active monitor. Tray-state updates
+run off the UI thread. Launching the panel again signals the existing process to show its window
+rather than creating duplicate windows or tray icons. Set
+`SUZAKU_LINUX_PANEL_BACKEND=wayland` to force the native Wayland window path.
+Cross-platform adapters remain in the tree, but local desktop behavior is validated first.
 
 ### GPU smoke test profile
 
@@ -340,49 +374,83 @@ Available:
 - context-aware email/URI shortcuts, dedicated numeric/phone/date-time pads, and action labels
 - system keyboard switching plus candidate-boundary spaces, punctuation, and Enter actions
 - app-provided Android completions and stale-composition cancellation on cursor movement
+- transient clipboard paste drawer with sensitive-preview protection and no saved history
 - persistent Android controls for auto-capitalization, a dedicated number row, and haptics
 - a setup/settings hub for enabling Suzaku, choosing it, sharing preferences, and diagnostics
 - keyboard, voice, and handwrite drawers
 - secure password-field input with candidates, voice, and handwriting disabled
 - compact-bubble-first activation flow
 - in-panel candidate strip
+- batched native render snapshots, reused keyboard/candidate views, interruption-safe panel
+  animation, and frame-aligned handwriting redraws for a smoother input loop
 
 ### Linux
 
-System-host direction is moving from scaffold to registration-aware status reporting.
+Current workstation-first path: the Rust GPU companion and native IBus host on Ubuntu / GNOME
+Wayland.
 
+- event-driven desktop redraw with idle suspension and bounded animation wakeups
+- reusable GPU vertex buffers and displayed-scene pointer hit testing
+- platform-font GPU atlas rendering with a deterministic bitmap fallback
+- settings-window synchronization without redraw loops or repeated idle config writes
+- bottom-centered, pointer-active, non-focusing XWayland panel mode on GNOME Wayland, with an
+  explicit native-Wayland override, visible drag grip, and monitor-bound position clamping
+- StatusNotifierItem system tray with a built-in Suzaku icon, show/hide activation, position reset,
+  direct settings access, close-to-tray behavior, and an explicit quit action
+- per-session single-instance control that reopens the existing panel on a repeated launch
 - Ubuntu / Arch / SteamOS capability profiles
 - Linux voice backend and probe path
-- Linux IME host direction for IBus / Fcitx
-- runtime registration status for Linux IME host hooks:
+- native IBus `Factory`/`Engine` host backed by the shared Rust candidate engine
+- IBus preedit, lookup-table navigation, numeric selection, candidate clicks, and commit
+- local user-only panel-to-IBus commit channel at `$XDG_RUNTIME_DIR/suzaku-ime/host.sock`
+- truthful runtime registration status:
   - bootstrap reads `SUZAKU_LINUX_IME_FRAMEWORK=fcitx` to switch to Fcitx checks
-  - registration status is marked ready when `ibus list-engine` contains `dev.suzaku.linux.ime` (IBus) or Fcitx-side config references are detected
+  - a component marker alone does not imply marked-text or commit readiness
+  - IBus static and dynamically registered engines are probed separately from daemon and host state
   - quick local override for staging: `SUZAKU_LINUX_IME_REGISTERED=1`
   - lifecycle simulation overrides for host checks:
     - `SUZAKU_LINUX_IME_DAEMON_READY=1|0`
+    - `SUZAKU_LINUX_IME_RUNTIME_VISIBLE=1|0`
+    - `SUZAKU_LINUX_IME_ACTIVE=1|0`
+    - `SUZAKU_LINUX_IME_HOST_READY=1|0`
     - `SUZAKU_LINUX_IME_MARKED_TEXT=1|0`
     - `SUZAKU_LINUX_IME_COMMIT=1|0`
     - `SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW=1|0`
-- quick bootstrap and local registration command:
-  - `cargo linux-register install`
-  - `cargo linux-register status`
-  - `cargo linux-register uninstall`
-  - `cargo linux-register verify`
-  - `cargo linux-register diag`
-  - this is native Rust logic in `suzaku_tool`
 
-The command writes minimal host markers for the selected framework:
+Build and install the native host without root:
 
-- IBus: `~/.local/share/ibus/component/dev.suzaku.linux.ime.xml`
-- Fcitx: `~/.local/share/fcitx5/inputmethod/dev_suzaku_linux_ime.conf` and `~/.config/fcitx/inputmethod/dev_suzaku_linux_ime.conf`
+```bash
+# Normally install the build headers once through your distribution:
+# sudo apt install libibus-1.0-dev
+cargo build --release --features linux-ibus --bin linux_ime_host --bin suzaku_tool
+SUZAKU_LINUX_IME_HOST_BIN="$PWD/target/release/linux_ime_host" \
+  target/release/suzaku_tool linux-register install
+target/release/suzaku_tool linux-register verify
+```
+
+The installer copies the host to `~/.local/libexec/suzaku/linux_ime_host`, enables
+`~/.config/systemd/user/suzaku-ibus.service`, and dynamically registers
+`dev.suzaku.linux.ime` with the running IBus daemon. During a host upgrade it records and restores
+the active IBus engine, so restarting the service does not leave the desktop on an empty engine.
+`linux-register uninstall` disables the user service and removes the installed host and component
+metadata.
+
+Useful commands:
+
+- `cargo linux-register install`
+- `cargo linux-register status`
+- `cargo linux-register uninstall`
+- `cargo linux-register verify`
+- `cargo linux-register diag`
+- `cargo run --features linux-ibus --bin linux_ime_probe -- ni`
+- `cargo run --features linux-ibus --bin linux_ime_probe -- --ipc "panel commit probe"`
 
 Framework selection is shared with bootstrap:
 
 - `SUZAKU_LINUX_IME_FRAMEWORK=fcitx` to register and check Fcitx layout
 - default remains IBus when not set
 
-Production path target is still pending:
-- packaging and installer integration with system policy/paths
+Fcitx currently retains marker/status support; a native Fcitx engine service is still pending.
 
 ## Refactor Policy
 

@@ -19,7 +19,9 @@ impl PanelState {
             return;
         };
 
-        let estimated_width = (text.chars().count() as f32 * 8.0 + 16.0).clamp(72.0, 260.0);
+        // Runtime system fonts advance farther than the original bitmap atlas. Give short
+        // tooltips enough width to stay on one line instead of obscuring the control below.
+        let estimated_width = (text.chars().count() as f32 * 10.0 + 20.0).clamp(84.0, 320.0);
         let origin_x = (x + 14.0).min(self.renderer.scene_width - estimated_width - 12.0);
         let origin_y = if y > self.renderer.scene_height - 54.0 {
             y - 26.0
@@ -146,6 +148,8 @@ impl PanelState {
             InteractionKind::InputModeButton(suzaku_map::ime::gpu::InputMode::Handwriting) => {
                 Some("Handwriting input".to_string())
             }
+            InteractionKind::DragWindow => Some("Drag to move panel".to_string()),
+            InteractionKind::ClosePanel => Some("Hide panel to system tray".to_string()),
             InteractionKind::SettingsToggle => Some("Panel settings".to_string()),
             InteractionKind::SetTextScale(scale) => {
                 Some(format!("Text size: {}", display_text_scale_label(scale)))

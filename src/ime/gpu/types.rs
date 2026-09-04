@@ -324,6 +324,8 @@ impl PanelChromeState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InteractionKind {
     SeedInput,
+    DragWindow,
+    ClosePanel,
     ToggleCompactMode,
     InputModesToggle,
     InputModeButton(InputMode),

@@ -114,6 +114,24 @@ pub fn linux_voice_backend_label() -> &'static str {
     }
 }
 
+pub fn linux_panel_uses_x11_no_focus() -> bool {
+    match env::var("SUZAKU_LINUX_PANEL_BACKEND")
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "wayland" => return false,
+        "x11" | "xwayland" | "x11-nofocus" => return true,
+        _ => {}
+    }
+
+    env::var("XDG_SESSION_TYPE").is_ok_and(|session| session.eq_ignore_ascii_case("wayland"))
+        && env::var("XDG_CURRENT_DESKTOP")
+            .is_ok_and(|desktop| desktop.to_ascii_lowercase().contains("gnome"))
+        && env::var_os("DISPLAY").is_some()
+}
+
 pub fn linux_voice_sample_env_keys() -> [&'static str; 2] {
     ["SUZAKU_LINUX_VOICE_SAMPLE", "SUZAKU_UBUNTU_VOICE_SAMPLE"]
 }
@@ -167,9 +185,10 @@ fn has_executable_in_path(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        LinuxHostFlavor, detect_linux_host_flavor, linux_voice_backend_label,
-        linux_voice_pipewire_available, linux_voice_portal_available, linux_voice_sample_env_keys,
-        ubuntu_preferred_font_paths, ubuntu_settings_directory_name, ubuntu_support_profile,
+        LinuxHostFlavor, detect_linux_host_flavor, linux_panel_uses_x11_no_focus,
+        linux_voice_backend_label, linux_voice_pipewire_available, linux_voice_portal_available,
+        linux_voice_sample_env_keys, ubuntu_preferred_font_paths, ubuntu_settings_directory_name,
+        ubuntu_support_profile,
     };
     use crate::ime::gpu::FontFaceChoice;
     use crate::platform::test_env;
@@ -242,6 +261,30 @@ mod tests {
             env.set_var("SUZAKU_LINUX_HOST", "ArCh");
 
             assert_eq!(detect_linux_host_flavor(), LinuxHostFlavor::Arch);
+        });
+    }
+
+    #[test]
+    fn gnome_wayland_prefers_non_focusing_xwayland_panel() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.remove_var("SUZAKU_LINUX_PANEL_BACKEND");
+            env.set_var("XDG_SESSION_TYPE", "wayland");
+            env.set_var("XDG_CURRENT_DESKTOP", "ubuntu:GNOME");
+            env.set_var("DISPLAY", ":0");
+
+            assert!(linux_panel_uses_x11_no_focus());
+        });
+    }
+
+    #[test]
+    fn explicit_wayland_panel_override_wins_on_gnome() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            env.set_var("SUZAKU_LINUX_PANEL_BACKEND", "wayland");
+            env.set_var("XDG_SESSION_TYPE", "wayland");
+            env.set_var("XDG_CURRENT_DESKTOP", "ubuntu:GNOME");
+            env.set_var("DISPLAY", ":0");
+
+            assert!(!linux_panel_uses_x11_no_focus());
         });
     }
 

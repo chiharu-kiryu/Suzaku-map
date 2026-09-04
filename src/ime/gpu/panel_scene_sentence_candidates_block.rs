@@ -11,10 +11,10 @@
             return "…".to_string();
         }
 
-        let glyph_advance = (pixel_size * 6.5 + letter_spacing).max(pixel_size * 4.0);
+        let glyph_advance = text_glyph_advance(pixel_size, letter_spacing);
         let width_for_char = |ch: char| {
             if ch == ' ' {
-                pixel_size * 4.0
+                text_space_advance(pixel_size)
             } else {
                 glyph_advance
             }
@@ -60,6 +60,10 @@
         7.0 * responsive_scale
     };
     let candidate_count = visible_sentence_candidates.len();
+    let has_hero_card = !collapsed_daily_mode
+        && hero_cards_enabled
+        && !visible_sentence_candidates.is_empty();
+    let alternate_count = candidate_count.saturating_sub(has_hero_card as usize);
     let candidate_count_f = candidate_count as f32;
     let min_candidate_w = 40.0 * responsive_scale;
     let collapsed_fallback_card_w = {
@@ -85,7 +89,7 @@
                 (collapsed_fallback_card_w, true)
             }
         }
-    } else if candidate_columns == 2 {
+    } else if candidate_columns > 1 {
         (0.0, false)
     } else {
         (0.0, false)
@@ -103,8 +107,9 @@
                 normal
             }
         }
-    } else if candidate_columns == 2 {
-        (panel_width - candidate_gap_x) / 2.0
+    } else if candidate_columns > 1 {
+        (panel_width - candidate_gap_x * (candidate_columns.saturating_sub(1) as f32))
+            / candidate_columns as f32
     } else {
         panel_width
     };
@@ -118,9 +123,7 @@
     } else {
         0.0
     };
-    let has_hero_card = !collapsed_daily_mode && hero_cards_enabled && !visible_sentence_candidates.is_empty();
     if !visible_sentence_candidates.is_empty() && available_sentence_area > 0.0 {
-        let alternate_count = visible_sentence_candidates.len().saturating_sub(1);
         let alternate_rows = if collapsed_daily_mode {
             0
         } else if alternate_count == 0 {
@@ -130,12 +133,17 @@
     };
     let sentence_section_h = if collapsed_daily_mode {
         42.0 * responsive_scale
-        } else if alternate_rows == 0 {
+        } else if has_hero_card {
             hero_card_height
+                + if alternate_rows == 0 {
+                    0.0
+                } else {
+                    metrics.item_gap
+                        + alternate_rows as f32 * metrics.item_height
+                        + (alternate_rows as f32 - 1.0).max(0.0) * metrics.item_gap
+                }
         } else {
-            hero_card_height
-                + metrics.item_gap
-                + alternate_rows as f32 * metrics.item_height
+            alternate_rows as f32 * metrics.item_height
                 + (alternate_rows as f32 - 1.0).max(0.0) * metrics.item_gap
         };
         let sentence_section_h = sentence_section_h.min(available_sentence_area);
@@ -217,10 +225,17 @@
             let alternate_index = display_index.saturating_sub(has_hero_card as usize);
             let column = alternate_index % candidate_columns;
             let row = alternate_index / candidate_columns;
+            let is_last_single_card = candidate_columns > 1
+                && alternate_count % candidate_columns == 1
+                && alternate_index + 1 == alternate_count;
             (
                 panel_x + column as f32 * (candidate_card_w + candidate_gap_x),
                 sentence_y + hero_row_offset + row as f32 * (metrics.item_height + metrics.item_gap),
-                candidate_card_w,
+                if is_last_single_card {
+                    panel_width
+                } else {
+                    candidate_card_w
+                },
                 metrics.item_height,
             )
         };
@@ -321,6 +336,9 @@
         hero_px
     } else if collapsed_daily_mode {
         chip_px * 1.02
+    } else if candidate_columns >= 3 {
+        // Preserve complete short sentences when the default desktop layout fills one row.
+        input_value_px * 0.80
     } else {
         input_value_px * 1.02
     };
@@ -340,6 +358,11 @@
             36.0 * responsive_scale
         })
         .max(4.0 * responsive_scale);
+    let primary_top_padding = if collapsed_daily_mode {
+        9.0 * responsive_scale
+    } else {
+        8.0 * responsive_scale
+    };
     let primary_origin = [
         visual_rect[0]
             + if collapsed_daily_mode {
@@ -347,20 +370,22 @@
             } else {
                 18.0 * responsive_scale
             },
-        visual_rect[1]
-            + if collapsed_daily_mode {
-                9.0 * responsive_scale
-            } else {
-                16.0 * responsive_scale
-            },
+        visual_rect[1] + primary_top_padding,
     ];
     let primary_color = if collapsed_primary || selected {
         accent_text
     } else {
         text_primary
     };
-    let primary_max_lines = {
-        if collapsed_daily_mode { 1 } else { 2 }
+    let single_line_height = primary_pixel_size * 7.0;
+    let primary_available_height =
+        (visual_rect[3] - primary_top_padding - 3.0 * responsive_scale).max(0.0);
+    let primary_max_lines = if !collapsed_daily_mode
+        && primary_available_height >= single_line_height * 2.0 + base_line_gap
+    {
+        2
+    } else {
+        1
     };
     let build_primary_layout = |text: &str, max_lines: usize| {
         TextBlock {
@@ -403,20 +428,7 @@
             primary_text = scrolled;
             primary_layout = TextBlock {
                 text: primary_text,
-                origin: [
-                    visual_rect[0]
-                        + if collapsed_daily_mode {
-                            10.0 * responsive_scale
-                        } else {
-                            18.0 * responsive_scale
-                        },
-                    visual_rect[1]
-                        + if collapsed_daily_mode {
-                            9.0 * responsive_scale
-                        } else {
-                            16.0 * responsive_scale
-                        },
-                ],
+                origin: primary_origin,
                 max_width: (visual_rect[2]
                     - if collapsed_daily_mode {
                         20.0 * responsive_scale
@@ -454,11 +466,13 @@
             format!("sentence {style_label} phrase · tap to commit")
         };
 
-        let preferred_meta_y = (primary_bottom + 8.0 * responsive_scale)
-            .max(visual_rect[1] + 46.0 * responsive_scale);
-        let meta_available_h =
-            (visual_rect[1] + visual_rect[3] - preferred_meta_y - 3.0 * responsive_scale).max(0.0);
-        let meta_max_lines = if meta_available_h >= 0.0 { 1 } else { 0 };
+        let meta_height = helper_px * 7.0;
+        let preferred_meta_y = visual_rect[1] + visual_rect[3]
+            - meta_height
+            - 1.5 * responsive_scale;
+        let meta_max_lines = usize::from(
+            preferred_meta_y >= primary_bottom + 2.0 * responsive_scale,
+        );
 
         if meta_max_lines > 0 {
             candidate_layouts.push(

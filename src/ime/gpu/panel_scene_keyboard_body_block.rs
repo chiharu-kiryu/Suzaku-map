@@ -1,6 +1,6 @@
 {
                     let keyboard_scale =
-                        (drawer_rect[3] / (194.0 * responsive_scale)).clamp(0.74, 1.0);
+                        (drawer_rect[3] / (150.0 * responsive_scale)).clamp(0.74, 1.0);
                     let keyboard_padding_x = 7.6 * responsive_scale * keyboard_scale;
                     let keyboard_content_left = drawer_rect[0] + keyboard_padding_x;
                     let keyboard_content_right = drawer_rect[0] + drawer_rect[2] - keyboard_padding_x;
@@ -33,10 +33,10 @@
                             text: "Tap to type".to_string(),
                             origin: [
                                 drawer_rect[0] + drawer_rect[2]
-                                    - (120.0 * responsive_scale * keyboard_scale),
+                                    - (142.0 * responsive_scale * keyboard_scale),
                                 keyboard_status_y,
                             ],
-                            max_width: (114.0 * responsive_scale * keyboard_scale).max(66.0),
+                            max_width: (136.0 * responsive_scale * keyboard_scale).max(76.0),
                             pixel_size: helper_px * keyboard_scale,
                             letter_spacing: ui_tracking * keyboard_scale,
                             line_gap: base_line_gap * keyboard_scale,
@@ -218,8 +218,9 @@
                                     VirtualKeyboardKey::Backspace
                                         | VirtualKeyboardKey::ToggleNumeric
                                         | VirtualKeyboardKey::ToggleAlphabetic
+                                        | VirtualKeyboardKey::Shift
                                 ) {
-                                    (chip_px * 0.9 * keyboard_scale).max(1.8 * responsive_scale)
+                                    (chip_px * 0.76 * keyboard_scale).max(1.8 * responsive_scale)
                                 } else {
                                     (chip_px * 1.1 * keyboard_scale)
                                         .max(2.05 * responsive_scale * keyboard_scale)
