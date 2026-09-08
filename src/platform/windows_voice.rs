@@ -1,6 +1,7 @@
 use crate::ime::gpu::VoicePermissionState;
 
 #[cfg(target_os = "windows")]
+#[derive(Debug)]
 pub struct WindowsSpeechBridge;
 
 #[cfg(target_os = "windows")]
@@ -182,6 +183,13 @@ mod tests {
     use crate::ime::gpu::VoicePermissionState;
     use crate::platform::test_env;
     use crate::platform::test_env::ScopedEnv;
+
+    #[test]
+    fn windows_bridge_supports_debug_formatting() {
+        let bridge = WindowsSpeechBridge::new();
+
+        assert!(format!("{bridge:?}").starts_with("WindowsSpeechBridge"));
+    }
 
     #[test]
     fn windows_bridge_starts_in_permission_pending_state() {
