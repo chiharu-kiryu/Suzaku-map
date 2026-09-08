@@ -168,6 +168,35 @@ Known repository-wide follow-ups remain: strict `cargo clippy --all-features --a
 is not clean (including existing GPU/FFI diagnostics), and no-GPU/default-feature builds still have
 UI-type/feature coupling. Use the feature-enabled commands above for this native/desktop build.
 
+### Continuous integration
+
+[GitHub Actions CI](https://github.com/chiharu-kiryu/Suzaku-map/actions/workflows/ci.yml)
+runs on pushes to `main`, pull requests targeting `main`, and manual dispatches. It uses Rust
+1.95.0 and the checked-in lockfile, with read-only repository permissions and pinned action commits.
+New commits cancel superseded runs on the same branch or pull request.
+
+- **Rust formatting** checks the entire workspace with `cargo fmt --all --check`.
+- **Linux** runs the complete feature-enabled test suite serially, then exercises real IBus
+  composition/candidate synchronization in a private D-Bus session. Separate Xvfb processes test
+  keyboard focus, content-fit resizing/dragging, and multilingual GPU readback using Mesa software
+  rendering and installed CJK fonts. The job also builds the four Linux release binaries.
+- **macOS and Windows** compile-check GPU-enabled desktop code and test targets on native runners;
+  these checks do not claim native input-method or graphical runtime coverage.
+
+The native checks use temporary settings and a deterministic local model fixture. They do not
+download Llama, contact a real model, capture the desktop, or change the desktop's input method.
+Reproduce them on Linux after installing the packages listed in `.github/workflows/ci.yml`:
+
+```bash
+bash scripts/test-linux-ci.sh ibus
+LIBGL_ALWAYS_SOFTWARE=1 bash scripts/test-linux-ci.sh ui
+```
+
+CI does not yet gate on the known strict-Clippy/default-feature issues above, package Android,
+publish releases, or claim real-model quality/latency coverage. A committed workflow is not proof
+of a passing run: GitHub Actions must be enabled, and reading private-repository results requires
+a GitHub connection authorized for this repository.
+
 ### 0.5.0 UI refinements
 
 - Allocate handwriting title, status, guidance, canvas and footer using full text line heights.
