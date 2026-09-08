@@ -7,6 +7,8 @@ pub struct LlmCompletionRequest {
     pub language_id: String,
     pub seed_text: String,
     pub normalized_phrase: String,
+    /// Only this focused session's own recent commits; never desktop-wide surrounding text.
+    pub context_before_cursor: String,
     pub confidence: f32,
     pub degraded: bool,
 }
@@ -17,10 +19,44 @@ pub struct LlmCompletion {
     pub score_bias: f32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LlmProviderError {
+    InvalidEndpoint,
+    Unavailable,
+    Timeout,
+    HttpStatus(u16),
+    InvalidResponse,
+    ResponseTooLarge,
+    NoCandidates,
+}
+
+impl std::fmt::Display for LlmProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::InvalidEndpoint => "模型地址无效，只允许本机 HTTP 服务",
+            Self::Unavailable => "本机模型服务未运行或连接已断开",
+            Self::Timeout => "模型请求超时，本地候选仍可使用",
+            Self::HttpStatus(404) => "模型或接口不存在，请检查已安装的 Llama 模型",
+            Self::HttpStatus(_) => "模型服务返回错误，请检查本机服务状态",
+            Self::InvalidResponse => "模型响应格式无效，已保留本地候选",
+            Self::ResponseTooLarge => "模型响应过大，已拒绝处理",
+            Self::NoCandidates => "模型未返回有效候选，已保留本地候选",
+        })
+    }
+}
+impl std::error::Error for LlmProviderError {}
+
 pub trait LlmCompletionProvider: Send + Sync {
     fn provider_id(&self) -> &str;
 
     fn generate(&self, request: &LlmCompletionRequest) -> Vec<LlmCompletion>;
+
+    fn generate_checked(
+        &self,
+        request: &LlmCompletionRequest,
+    ) -> Result<Vec<LlmCompletion>, LlmProviderError> {
+        Ok(self.generate(request))
+    }
 }
 
 #[derive(Clone)]
@@ -75,6 +111,7 @@ impl LanguagePlugin for LlmLanguagePlugin {
             language_id: self.language_id.clone(),
             seed_text: seed_text.to_string(),
             normalized_phrase: phrase.clone(),
+            context_before_cursor: String::new(),
             confidence,
             degraded: confidence < 0.45,
         };

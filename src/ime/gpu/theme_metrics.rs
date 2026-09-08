@@ -144,7 +144,7 @@ impl PanelSceneMetrics {
         let min_panel_width = (max_panel_width * 0.78)
             .clamp(190.0, 310.0)
             .min(max_panel_width);
-        let desired_panel_width = (scene_width - 24.0 * responsive_scale).clamp(190.0, 1360.0);
+        let desired_panel_width = (scene_width - 24.0 * responsive_scale).max(190.0);
         let panel_width = desired_panel_width
             .min(max_panel_width)
             .max(min_panel_width);
@@ -169,7 +169,8 @@ impl PanelSceneMetrics {
             match chrome.active_input_mode {
                 crate::ime::gpu::InputMode::VirtualKeyboard => 145.0 * responsive_scale,
                 crate::ime::gpu::InputMode::Dictation => 170.0 * responsive_scale,
-                crate::ime::gpu::InputMode::Handwriting => 173.0 * responsive_scale,
+                // Real title/hint line heights plus a readable footer and drawing area.
+                crate::ime::gpu::InputMode::Handwriting => 220.0 * responsive_scale,
             }
         } else {
             0.0
@@ -326,11 +327,9 @@ impl PanelSceneMetrics {
         }
 
         let panel_height = (fixed_without_sentence + sentence_height).min(stack_cap);
-        let panel_y = if panel_height < scene_height - scene_margin * 2.0 {
-            ((scene_height - panel_height) * 0.5).max(scene_margin)
-        } else {
-            0.0
-        };
+        // Anchor the top edge while the native window catches up with a content
+        // resize; never center a folded panel in the previous tall viewport.
+        let panel_y = scene_margin.min((scene_height - panel_height).max(0.0));
 
         let panel_x = if scene_width > panel_width + scene_margin * 2.0 {
             ((scene_width - panel_width) / 2.0).max(scene_margin)

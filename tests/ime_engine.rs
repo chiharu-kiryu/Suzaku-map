@@ -6,3 +6,5 @@ mod ime_engine_gpu_scene_a;
 mod ime_engine_gpu_scene_b;
 #[path = "ime_engine_gpu_scene_c.rs"]
 mod ime_engine_gpu_scene_c;
+#[path = "ime_engine_ui_alignment.rs"]
+mod ime_engine_ui_alignment;

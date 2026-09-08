@@ -1,11 +1,29 @@
 use super::{
-    AtlasGlyph, CandidateQuad, TextAlign, TextBlock, TextLayout, glyph_bitmap, text_glyph_advance,
-    text_space_advance,
+    AtlasGlyph, CandidateQuad, TextAlign, TextBlock, TextLayout, glyph_bitmap, text_char_width,
+    text_glyph_advance, text_space_advance,
 };
 
 pub(super) fn point_in_rect(x: f32, y: f32, rect: [f32; 4]) -> bool {
     let [rx, ry, rw, rh] = rect;
     x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
+}
+
+pub(super) fn intersect_rect(rect: [f32; 4], clip: [f32; 4]) -> [f32; 4] {
+    let left = rect[0].max(clip[0]).min(clip[0] + clip[2]);
+    let top = rect[1].max(clip[1]).min(clip[1] + clip[3]);
+    let right = (rect[0] + rect[2]).min(clip[0] + clip[2]);
+    let bottom = (rect[1] + rect[3]).min(clip[1] + clip[3]);
+    [left, top, (right - left).max(0.0), (bottom - top).max(0.0)]
+}
+
+pub(super) fn centered_icon_rect(rect: [f32; 4]) -> [f32; 4] {
+    let size = rect[2].min(rect[3]).max(0.0);
+    [
+        rect[0] + (rect[2] - size) * 0.5,
+        rect[1] + (rect[3] - size) * 0.5,
+        size,
+        size,
+    ]
 }
 
 pub(super) fn sample_stroke_points(stroke: &[[f32; 2]]) -> Vec<[f32; 2]> {
@@ -67,9 +85,16 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
     let max_content_width = block.max_width.max(0.0);
 
     for (line_index, line) in lines.iter().enumerate() {
-        let line_width = line.chars().fold(0.0_f32, |acc, ch| {
+        let advance_width = line.chars().fold(0.0_f32, |acc, ch| {
             acc + glyph_advance_width(ch, block.pixel_size, glyph_advance)
         });
+        // The final glyph has no trailing letter spacing. Center the visible glyph boxes.
+        let line_width = if let Some(ch) = line.chars().last().filter(|ch| *ch != ' ') {
+            advance_width - glyph_advance_width(ch, block.pixel_size, glyph_advance)
+                + text_char_width(ch, block.pixel_size)
+        } else {
+            advance_width
+        };
         max_line_width = max_line_width.max(line_width.min(max_content_width));
         let offset_x = match block.align {
             TextAlign::Left => 0.0,
@@ -89,10 +114,11 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
                 rect: [
                     cursor_x,
                     cursor_y,
-                    block.pixel_size * 4.4,
+                    text_char_width(ch, block.pixel_size),
                     block.pixel_size * 7.0,
                 ],
                 color: block.color,
+                clip_rect: None,
             });
 
             for (row, pattern) in glyph_bitmap(ch).iter().enumerate() {
@@ -100,9 +126,9 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
                     if (pattern >> (4 - col)) & 1 == 1 {
                         quads.push(CandidateQuad {
                             rect: [
-                                cursor_x + col as f32 * block.pixel_size,
+                                cursor_x + col as f32 * block.pixel_size * 0.88,
                                 cursor_y + row as f32 * block.pixel_size,
-                                block.pixel_size,
+                                block.pixel_size * 0.88,
                                 block.pixel_size,
                             ],
                             color: block.color,
@@ -111,7 +137,7 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
                 }
             }
 
-            cursor_x += glyph_advance;
+            cursor_x += glyph_advance_width(ch, block.pixel_size, glyph_advance);
         }
     }
 
@@ -126,7 +152,17 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
         atlas_glyphs,
         lines,
         truncated,
-        bounds: [block.origin[0], block.origin[1], max_line_width, height],
+        bounds: [
+            block.origin[0]
+                + if block.align == TextAlign::Center {
+                    ((block.max_width - max_line_width) * 0.5).max(0.0)
+                } else {
+                    0.0
+                },
+            block.origin[1],
+            max_line_width,
+            height,
+        ],
         role: block.role,
     }
 }
@@ -201,7 +237,7 @@ fn glyph_advance_width(ch: char, pixel_size: f32, glyph_advance: f32) -> f32 {
     if ch == ' ' {
         text_space_advance(pixel_size)
     } else {
-        glyph_advance
+        glyph_advance + (text_char_width(ch, pixel_size) - pixel_size * 4.4)
     }
 }
 
@@ -278,6 +314,50 @@ mod tests {
         assert_eq!(
             wrap_text(text, actual_width + 0.01, pixel_size, glyph_advance),
             vec![text]
+        );
+    }
+
+    #[test]
+    fn cjk_glyphs_use_square_boxes_and_matching_caret_and_wrap_widths() {
+        use crate::ime::{measure_text_prefix_width, text_char_advance};
+        for text in ["你好日本語", "こんにちは、世界", "hello 你好"] {
+            let pixel_size = 3.0;
+            let block = TextBlock {
+                text: text.into(),
+                origin: [0.0, 0.0],
+                max_width: 400.0,
+                pixel_size,
+                letter_spacing: 0.5,
+                line_gap: 0.0,
+                max_lines: 1,
+                color: [1.0; 4],
+                align: TextAlign::Left,
+                role: TextRole::CandidatePrimary,
+            };
+            let layout = block.layout();
+            for glyph in &layout.atlas_glyphs {
+                if unicode_width::UnicodeWidthChar::width(glyph.ch) == Some(2) {
+                    assert_eq!(
+                        glyph.rect[2], glyph.rect[3],
+                        "CJK must not be squeezed into a Latin cell"
+                    );
+                }
+            }
+            let last = layout.atlas_glyphs.last().unwrap();
+            let caret = measure_text_prefix_width(text, text.chars().count(), pixel_size, 0.5);
+            assert!(
+                (caret - last.rect[0] - text_char_advance(last.ch, pixel_size, 0.5)).abs() < 0.001
+            );
+        }
+        let advance = text_glyph_advance(3.0, 0.0);
+        assert_eq!(
+            wrap_text(
+                "你好世界",
+                2.0 * text_char_advance('你', 3.0, 0.0) + 0.01,
+                3.0,
+                advance
+            ),
+            ["你好", "世界"]
         );
     }
 

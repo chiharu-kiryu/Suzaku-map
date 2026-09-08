@@ -13,11 +13,7 @@
 
         let glyph_advance = text_glyph_advance(pixel_size, letter_spacing);
         let width_for_char = |ch: char| {
-            if ch == ' ' {
-                text_space_advance(pixel_size)
-            } else {
-                glyph_advance
-            }
+            text_char_advance(ch, pixel_size, letter_spacing)
         };
 
         let doubled: Vec<char> = chars.iter().chain(chars.iter()).cloned().collect();
@@ -71,7 +67,14 @@
         ((panel_width - candidate_gap_x * gap_count).max(0.0) / candidate_count_f.max(1.0))
             .max(min_candidate_w)
     };
-    let (collapsed_primary_w, collapsed_primary_uses_equal_width) = if collapsed_daily_mode {
+    let wide_candidate_text = visible_sentence_candidates.iter().any(|(_, label)|
+        label.chars().any(|ch| unicode_width::UnicodeWidthChar::width(ch) == Some(2)));
+    let word_candidates = visible_sentence_candidates.iter().all(|(_, label)|
+        label.split_whitespace().count() == 1 && label.chars().count() <= 24);
+    let (collapsed_primary_w, collapsed_primary_uses_equal_width) = if collapsed_daily_mode && (wide_candidate_text || word_candidates) {
+        // A Latin-sized trailing slot can otherwise contain only its number and ellipsis.
+        (collapsed_fallback_card_w, true)
+    } else if collapsed_daily_mode {
         let trailing_count = candidate_count.saturating_sub(1);
         if trailing_count == 0 {
             (panel_width, false)
@@ -199,7 +202,10 @@
     }
     for (display_index, (source_index, label)) in visible_sentence_candidates.iter().enumerate() {
         let is_hero = !collapsed_daily_mode && hero_cards_enabled && display_index == 0;
-        let style_label = crate::panel_support::sentence_candidate_style_label(label, is_hero);
+        let literal_english = snapshot.active_language == "en" && label == &snapshot.seed_text;
+        let style_label = if literal_english { "Typed" } else {
+            crate::panel_support::sentence_candidate_style_label(label, is_hero)
+        };
         let (x, y, mut card_width, card_height) = if is_hero {
             (panel_x, sentence_y, panel_width, hero_card_height)
     } else if collapsed_daily_mode {
@@ -456,7 +462,11 @@
     candidate_layouts.push(primary_layout);
 
     if !collapsed_daily_mode {
-        let meta_label = if selected && is_hero {
+        let meta_label = if literal_english {
+            "Keep typed text".to_string()
+        } else if snapshot.active_language == "en" && label.split_whitespace().count() == 1 {
+            "Word · tap to commit".to_string()
+        } else if selected && is_hero {
             "primary sentence selected".to_string()
         } else if selected {
             "alternate sentence selected".to_string()

@@ -11,11 +11,7 @@
 
         let glyph_advance = text_glyph_advance(pixel_size, letter_spacing);
         let width_for_char = |ch: char| {
-            if ch == ' ' {
-                text_space_advance(pixel_size)
-            } else {
-                glyph_advance
-            }
+            text_char_advance(ch, pixel_size, letter_spacing)
         };
 
         let doubled: Vec<char> = chars.iter().chain(chars.iter()).cloned().collect();
@@ -77,9 +73,9 @@
             let next_label_layouts = vec![
                 TextBlock {
                     text: if chrome.composed_tokens.is_empty() {
-                        "Next tokens".to_string()
+                        "Word suggestions".to_string()
                     } else {
-                        format!("Next tokens  |  {}", chrome.composed_tokens.join(" "))
+                        format!("Word suggestions  |  {}", chrome.composed_tokens.join(" "))
                     },
                     origin: [
                         panel_x + 6.0 * responsive_scale,
@@ -175,7 +171,7 @@
                 align: TextAlign::Center,
                 role: TextRole::NextTokenChip,
             }
-            .layout();
+            .layout_in_rect(visual_back_rect, [6.0 * responsive_scale, 2.0 * responsive_scale]);
             text_quads.extend(back_layout.quads.iter().copied());
             atlas_glyphs.extend(back_layout.atlas_glyphs.iter().cloned());
             text_sections.push(TextSection {
@@ -233,13 +229,15 @@
         for (index, token) in chrome.next_token_candidates.iter().take(6).enumerate() {
             let kind = InteractionKind::SelectNextToken(index);
             let (hovered, pressed) = interaction_state(kind);
-            let base_chip_w = if collapsed_daily_mode {
-                ((token.chars().count() as f32 * 10.0).max(52.0)
-                    + if index == 0 { 28.0 } else { 18.0 })
-                    * responsive_scale
-            } else {
-                ((token.chars().count() as f32 * 10.9).max(56.0) + 16.0) * responsive_scale
-            };
+            let display_text = if collapsed_daily_mode {
+                format!("{} {}", index + 1, token)
+            } else { token.clone() };
+            let chip_pixel_size = if collapsed_daily_mode { chip_px * 0.95 } else { chip_px };
+            // Measure the actual displayed text, including numbers and current text scale.
+            // A fixed per-letter estimate used to turn even "hello" into "hel…".
+            let text_width: f32 = display_text.chars()
+                .map(|ch| text_char_advance(ch, chip_pixel_size, ui_tracking)).sum();
+            let base_chip_w = (text_width + 16.0 * responsive_scale).max(72.0 * responsive_scale);
             if chip_x > chip_inner_x && chip_x + base_chip_w > chip_inner_right {
                 row += 1;
                 chip_x = chip_inner_x;
@@ -301,11 +299,7 @@
                 rect: interaction_hit_rect(rect),
             });
             let layout = TextBlock {
-                text: if collapsed_daily_mode {
-                    format!("{} {}", index + 1, token)
-                } else {
-                    token.clone()
-                },
+                text: display_text.clone(),
                 origin: [
                     visual_rect[0] + 7.2 * responsive_scale,
                     visual_rect[1] + 5.8 * responsive_scale,
@@ -319,15 +313,9 @@
                 align: TextAlign::Center,
                 role: TextRole::NextTokenChip,
             }
-            .layout();
+            .layout_in_rect(visual_rect, [7.0 * responsive_scale, 2.0 * responsive_scale]);
             let is_wrapped = layout.lines.len() > 1;
             let needs_single_line_truncate = layout.truncated || is_wrapped;
-
-            let display_text = if collapsed_daily_mode {
-                format!("{} {}", index + 1, token)
-            } else {
-                token.clone()
-            };
 
             let mut final_text = display_text;
             if needs_single_line_truncate {
@@ -360,7 +348,7 @@
                 align: TextAlign::Center,
                 role: TextRole::NextTokenChip,
             }
-            .layout();
+            .layout_in_rect(visual_rect, [7.0 * responsive_scale, 2.0 * responsive_scale]);
             text_quads.extend(layout.quads.iter().copied());
             atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
             chip_layouts.push(layout);

@@ -1,4 +1,4 @@
-use super::{layout_text_block, point_in_rect};
+use super::{intersect_rect, layout_text_block, point_in_rect};
 
 pub const PANEL_SCALE_STEP: f32 = 0.1;
 pub const PANEL_SCALE_MIN: f32 = 0.65;
@@ -438,9 +438,78 @@ pub struct AtlasGlyph {
     pub ch: char,
     pub rect: [f32; 4],
     pub color: [f32; 4],
+    /// Scene-space viewport; keeps partially visible scroll rows on their original baseline.
+    pub clip_rect: Option<[f32; 4]>,
+}
+
+impl TextLayout {
+    pub(super) fn clip_to_rect(&mut self, viewport: [f32; 4]) {
+        self.bounds = intersect_rect(self.bounds, viewport);
+        for quad in &mut self.quads {
+            quad.rect = intersect_rect(quad.rect, viewport);
+        }
+        for glyph in &mut self.atlas_glyphs {
+            glyph.clip_rect = Some(viewport);
+        }
+    }
 }
 
 impl RenderScene {
+    /// The lowest-priority target covers only space not owned by a control. Keeping
+    /// it in the scene makes mouse, touch, hover and resized layouts agree.
+    pub(super) fn with_window_drag_background(mut self, width: f32, height: f32) -> Self {
+        if width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0 {
+            self.interactive_targets.insert(
+                0,
+                InteractiveTarget {
+                    kind: InteractionKind::DragWindow,
+                    rect: [0.0, 0.0, width, height],
+                },
+            );
+        }
+        self
+    }
+
+    pub(super) fn translate(&mut self, offset: [f32; 2]) {
+        let shift = |rect: &mut [f32; 4]| {
+            rect[0] += offset[0];
+            rect[1] += offset[1];
+        };
+        for quad in self.quads.iter_mut().chain(&mut self.text_quads) {
+            shift(&mut quad.rect);
+        }
+        for glyph in &mut self.atlas_glyphs {
+            shift(&mut glyph.rect);
+            if let Some(clip) = &mut glyph.clip_rect {
+                shift(clip);
+            }
+        }
+        for section in &mut self.text_sections {
+            for layout in &mut section.layouts {
+                shift(&mut layout.bounds);
+                for quad in &mut layout.quads {
+                    shift(&mut quad.rect);
+                }
+                for glyph in &mut layout.atlas_glyphs {
+                    shift(&mut glyph.rect);
+                    if let Some(clip) = &mut glyph.clip_rect {
+                        shift(clip);
+                    }
+                }
+            }
+        }
+        for target in &mut self.hit_targets {
+            shift(&mut target.rect);
+        }
+        for target in &mut self.interactive_targets {
+            shift(&mut target.rect);
+        }
+        if let Some(scroll) = &mut self.settings_scroll_metadata {
+            shift(&mut scroll.track_rect);
+            shift(&mut scroll.handle_rect);
+        }
+    }
+
     pub fn hit_test(&self, x: f32, y: f32) -> Option<usize> {
         self.hit_targets
             .iter()
@@ -449,17 +518,57 @@ impl RenderScene {
     }
 
     pub fn hit_interaction(&self, x: f32, y: f32) -> Option<InteractionKind> {
+        self.hit_interactive_target(x, y).map(|target| target.kind)
+    }
+
+    /// Return the actual topmost rectangle, not the first rectangle with the same
+    /// action (the small drag handle and background share an action).
+    pub fn hit_interactive_target(&self, x: f32, y: f32) -> Option<InteractiveTarget> {
         self.interactive_targets
             .iter()
             .rev()
             .find(|target| point_in_rect(x, y, target.rect))
-            .map(|target| target.kind)
+            .copied()
     }
 }
 
 impl TextBlock {
     pub fn layout(&self) -> TextLayout {
         layout_text_block(self)
+    }
+
+    /// Lay out a control label inside its visible surface, including hover/press offsets.
+    pub fn layout_in_rect(&self, rect: [f32; 4], padding: [f32; 2]) -> TextLayout {
+        let inset_x = padding[0].max(0.0).min(rect[2].max(0.0) * 0.5);
+        let inset_y = padding[1].max(0.0).min(rect[3].max(0.0) * 0.5);
+        let available_height = (rect[3] - inset_y * 2.0).max(0.0);
+        let mut block = self.clone();
+        block.origin = [rect[0] + inset_x, rect[1] + inset_y];
+        block.max_width = (rect[2] - inset_x * 2.0).max(0.0);
+        block.pixel_size = block
+            .pixel_size
+            .min(available_height / 7.0)
+            .min(block.max_width / 4.65)
+            .max(0.0);
+        if block.max_width <= 0.0 || block.pixel_size <= 0.0 {
+            block.text.clear();
+        }
+        let line_height = block.pixel_size * 7.0 + block.line_gap;
+        // Fractional DPI arithmetic can turn an exactly allocated two-line row
+        // into 1.9999999 lines. Tolerate sub-pixel roundoff, not a missing line.
+        let fitting_lines = ((available_height + block.line_gap) / line_height.max(0.001) + 0.0001)
+            .floor() as usize;
+        block.max_lines = block.max_lines.min(fitting_lines.max(1));
+        let mut layout = block.layout();
+        let offset_y = (available_height - layout.bounds[3]).max(0.0) * 0.5;
+        for glyph in &mut layout.atlas_glyphs {
+            glyph.rect[1] += offset_y;
+        }
+        for quad in &mut layout.quads {
+            quad.rect[1] += offset_y;
+        }
+        layout.bounds[1] += offset_y;
+        layout
     }
 }
 

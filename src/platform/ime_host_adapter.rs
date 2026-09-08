@@ -314,6 +314,7 @@ mod tests {
 
     #[test]
     fn shared_bridge_round_trips_marked_text() {
+        let _guard = crate::ime_host::test_session_lock();
         let bridge = shared_session_bridge();
         assert!(bridge.activate_session());
         assert!(bridge.replace_marked_text("ni hao", InputSource::OnScreenPanel));
@@ -322,6 +323,7 @@ mod tests {
 
     #[test]
     fn shared_bridge_activation_toggles_session_state() {
+        let _guard = crate::ime_host::test_session_lock();
         let bridge = shared_session_bridge();
 
         bridge.deactivate_session();
@@ -336,6 +338,7 @@ mod tests {
 
     #[test]
     fn shared_bridge_selection_ops_are_noop_without_candidates() {
+        let _guard = crate::ime_host::test_session_lock();
         let bridge = shared_session_bridge();
 
         bridge.deactivate_session();

@@ -54,7 +54,7 @@ fn run_demo() -> DemoRun {
     });
     let after_signal = engine.snapshot();
 
-    let after_seed = engine.seed("ni hao xr");
+    let after_seed = engine.seed("hello");
     let after_selection = engine.move_selection(1);
     let default_commit = engine.commit(CommitOptions::default());
     let forced_commit = engine.commit(CommitOptions { force: true });
@@ -109,7 +109,7 @@ mod tests {
             demo.after_seed.mode,
             suzaku_map::ime::Mode::Composing
         ));
-        assert!(demo.after_seed.seed_text.starts_with("ni hao"));
+        assert_eq!(demo.after_seed.seed_text, "hello");
         assert_eq!(demo.after_selection.selected_index, 1);
         assert_eq!(
             demo.default_commit.reason,

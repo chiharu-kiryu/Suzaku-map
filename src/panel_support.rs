@@ -1,7 +1,3 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::time::Duration;
-
 const HANDWRITING_DENOISE_DISTANCE: f32 = 0.9;
 const HANDWRITING_RESAMPLE_DISTANCE: f32 = 3.6;
 const HANDWRITING_PREPROCESS_SMOOTH_ALPHA: f32 = 0.2;
@@ -86,14 +82,6 @@ const NEXT_TOKEN_CONTEXT_HINT_BONUS: i32 = 360;
 const MAX_CONTEXT_HINTS_PER_SEED: usize = 4;
 const MAX_CONTEXT_HINT_WORDS: usize = 3;
 const CONTEXT_HINT_PUNCTUATION: &str = "'\"!?.,;:-)()][？！；：、，。]";
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_ENDPOINT_ENV: &str = "IME_NEXT_TOKEN_MODEL_ENDPOINT";
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_NAME_ENV: &str = "IME_NEXT_TOKEN_MODEL_NAME";
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_ENV: &str = "IME_NEXT_TOKEN_MODEL_TIMEOUT_MS";
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_DEFAULT_NAME: &str = "llama3.2:3b";
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_MAX_TOKENS: u32 = 24;
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_MS: u64 = 800;
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_TEMPERATURE_TENTHS: u32 = 3;
-const NEXT_TOKEN_OPEN_SOURCE_MODEL_BONUS: i32 = 560;
 const NEXT_TOKEN_CONTEXT_HINTS: &[(&str, &[&str])] = &[
     ("thanks", &["🙏", "😊", "👍", ":)", "<3"]),
     ("thank you", &["🙏", "😊", "😄", ":D"]),
@@ -222,19 +210,125 @@ fn flatten_handwriting_points(strokes: &[Vec<[f32; 2]>]) -> Vec<[f32; 2]> {
         .collect()
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CompositionCandidatePreviews {
+    pub next_tokens: Vec<NextTokenCompletion>,
+    pub sentences: Vec<(usize, String)>,
+}
+
+/// A display word and its exact edit are inseparable: complete the partial word
+/// or append the next one. Never treat a display annotation as input text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NextTokenCompletion {
+    pub label: String,
+    pub seed_before: String,
+    pub seed_after: String,
+}
+
+#[derive(Debug, Default)]
+pub struct CompletionHistory {
+    edits: Vec<NextTokenCompletion>,
+}
+
+impl CompletionHistory {
+    pub fn clear(&mut self) {
+        self.edits.clear();
+    }
+    pub fn labels(&self) -> Vec<String> {
+        self.edits.iter().map(|edit| edit.label.clone()).collect()
+    }
+    pub fn apply(&mut self, current: &str, edit: &NextTokenCompletion) -> Option<String> {
+        if current != edit.seed_before || current == edit.seed_after {
+            return None;
+        }
+        if self.edits.len() == 32 {
+            self.edits.remove(0);
+        }
+        self.edits.push(edit.clone());
+        Some(edit.seed_after.clone())
+    }
+    pub fn undo(&mut self, current: &str) -> Option<String> {
+        if self.edits.last()?.seed_after != current {
+            self.clear();
+            return None;
+        }
+        self.edits.pop().map(|edit| edit.seed_before)
+    }
+}
+
+fn next_token_completion(seed: &str, candidate: &str) -> Option<NextTokenCompletion> {
+    let suffix = candidate.strip_prefix(seed)?;
+    if suffix.trim().is_empty() {
+        return None;
+    }
+    let (start, end) =
+        if seed.ends_with(char::is_whitespace) || suffix.starts_with(char::is_whitespace) {
+            let word = suffix.split_whitespace().next()?;
+            let start = candidate.len() - suffix.trim_start().len();
+            (start, start + word.len())
+        } else {
+            let prefix = crate::languages::english::english_word_prefix(seed)?;
+            let start = seed.len() - prefix.len();
+            let word = candidate[start..].split_whitespace().next()?;
+            (start, start + word.len())
+        };
+    Some(NextTokenCompletion {
+        label: candidate[start..end].to_owned(),
+        seed_before: seed.to_owned(),
+        seed_after: candidate[..end].to_owned(),
+    })
+}
+
+/// Preserve the engine's source indices and labels; never turn UI annotations into input text.
+pub fn composition_candidate_previews(
+    seed: &str,
+    language: &str,
+    candidates: &[crate::ime::Candidate],
+    next_token_limit: usize,
+    sentence_limit: usize,
+) -> CompositionCandidatePreviews {
+    if seed.trim().is_empty() {
+        return CompositionCandidatePreviews::default();
+    }
+    let english = crate::languages::BuiltinLanguage::resolve(language)
+        == Some(crate::languages::BuiltinLanguage::English);
+    let next_tokens = if english {
+        let mut seen = std::collections::HashSet::new();
+        candidates
+            .iter()
+            .filter_map(|candidate| next_token_completion(seed, &candidate.text))
+            .filter(|edit| seen.insert(edit.seed_after.clone()))
+            .take(next_token_limit)
+            .collect()
+    } else {
+        // Do not append English fallback words or split CJK conversions at invented spaces.
+        Vec::new()
+    };
+    let sentences = candidates
+        .iter()
+        .enumerate()
+        .take(sentence_limit)
+        .map(|(index, candidate)| (index, candidate.label.clone()))
+        .collect();
+    CompositionCandidatePreviews {
+        next_tokens,
+        sentences,
+    }
+}
+
+/// Derive display chips from already available text. Model I/O belongs to the async IME worker,
+/// never to a rendering helper or an environment-variable bypass of the user's LLM switch.
 pub fn derive_next_token_candidates(
     seed_text: &str,
     sentence_candidates: &[String],
     limit: usize,
 ) -> Vec<String> {
+    if limit == 0 {
+        return Vec::new();
+    }
     let seed_tokens = tokenize_seed_words(seed_text);
     let seed_token_refs = seed_tokens.iter().map(String::as_str).collect::<Vec<_>>();
     let mut ranked = Vec::<(String, i32, usize)>::new();
-    let model_limit = limit.min(4);
-    for token in next_token_model_candidates(seed_text, &seed_tokens, model_limit) {
-        let score = score_next_token_candidate(0, true, 0) + NEXT_TOKEN_OPEN_SOURCE_MODEL_BONUS;
-        push_ranked_token(&mut ranked, token, score, 0);
-    }
 
     for (source_index, sentence) in sentence_candidates.iter().enumerate() {
         let words: Vec<&str> = sentence.split_whitespace().collect();
@@ -292,13 +386,13 @@ pub fn derive_next_token_candidates(
         .collect::<Vec<_>>();
 
     for fallback in ["is", "can", "will", "for", "with", "next"] {
+        if next.len() >= limit {
+            break;
+        }
         if !seed_tokens.iter().any(|existing| existing == fallback)
             && !next.iter().any(|existing| existing == fallback)
         {
             next.push(fallback.to_string());
-        }
-        if next.len() >= limit {
-            break;
         }
     }
     next
@@ -375,239 +469,6 @@ fn contextual_expression_hints(seed_tokens: &[String]) -> Vec<String> {
     }
 
     hints
-}
-
-fn next_token_model_candidates(
-    seed_text: &str,
-    seed_tokens: &[String],
-    limit: usize,
-) -> Vec<String> {
-    if limit == 0 {
-        return Vec::new();
-    }
-
-    let endpoint = match std::env::var(NEXT_TOKEN_OPEN_SOURCE_MODEL_ENDPOINT_ENV) {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => return Vec::new(),
-    };
-    let model = std::env::var(NEXT_TOKEN_OPEN_SOURCE_MODEL_NAME_ENV)
-        .unwrap_or_else(|_| NEXT_TOKEN_OPEN_SOURCE_MODEL_DEFAULT_NAME.to_string());
-
-    let timeout = std::env::var(NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_ENV)
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(NEXT_TOKEN_OPEN_SOURCE_MODEL_TIMEOUT_MS);
-
-    let Some(endpoint_parsed) = parse_http_endpoint(&endpoint) else {
-        return Vec::new();
-    };
-    if !is_loopback_host(&endpoint_parsed.host) {
-        return Vec::new();
-    }
-
-    let request = build_next_token_model_request(
-        &endpoint,
-        &model,
-        &endpoint_parsed.path,
-        seed_text,
-        limit,
-        timeout,
-    );
-
-    let address = format!("{}:{}", endpoint_parsed.host, endpoint_parsed.port);
-    let mut stream = match TcpStream::connect(address) {
-        Ok(value) => value,
-        Err(_) => return Vec::new(),
-    };
-    let timeout = Some(Duration::from_millis(timeout));
-    let _ = stream.set_read_timeout(timeout);
-    let _ = stream.set_write_timeout(timeout);
-    let _ = stream.write_all(request.as_bytes());
-    let mut response = String::new();
-    let _ = stream.read_to_string(&mut response);
-
-    let body = response.split("\r\n\r\n").nth(1).unwrap_or("");
-    parse_next_token_model_candidates(body, seed_tokens, limit)
-}
-
-fn build_next_token_model_request(
-    endpoint: &str,
-    model: &str,
-    path: &str,
-    seed_text: &str,
-    limit: usize,
-    timeout_ms: u64,
-) -> String {
-    let body = format!(
-        "{{\"model\":\"{}\",\"messages\":[{{\"role\":\"system\",\"content\":\"{}\"}},{{\"role\":\"user\",\"content\":\"{}\"}}],\"temperature\":{},\"max_tokens\":{},\"stream\":false}}",
-        escape_json_string(model),
-        escape_json_string(&next_token_system_prompt()),
-        escape_json_string(&next_token_model_prompt(seed_text, limit)),
-        NEXT_TOKEN_OPEN_SOURCE_MODEL_TEMPERATURE_TENTHS as f32 / 10.0,
-        NEXT_TOKEN_OPEN_SOURCE_MODEL_MAX_TOKENS
-    );
-    let endpoint_host = endpoint
-        .strip_prefix("http://")
-        .or_else(|| endpoint.strip_prefix("https://"))
-        .unwrap_or(endpoint);
-    let _ = timeout_ms;
-    format!(
-        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
-        path,
-        endpoint_host,
-        body.len(),
-        body
-    )
-}
-
-fn next_token_system_prompt() -> &'static str {
-    "You are a next-token suggestion engine for an IME. Reply with token-level predictions only."
-}
-
-fn next_token_model_prompt(seed_text: &str, limit: usize) -> String {
-    format!(
-        "Seed: {seed_text}\nReturn {limit} concise next-token suggestions, one token per line, no numbering, no punctuation."
-    )
-}
-
-fn parse_next_token_model_candidates(
-    body: &str,
-    seed_tokens: &[String],
-    limit: usize,
-) -> Vec<String> {
-    if limit == 0 || body.trim().is_empty() {
-        return Vec::new();
-    }
-
-    let mut candidates = Vec::new();
-    let mut search = body;
-    let mut seen = std::collections::HashSet::new();
-    while let Some(start_index) = search.find("\"content\":\"") {
-        let start = start_index + "\"content\":\"".len();
-        let Some((raw_content, rest)) = consume_json_string(&search[start..]) else {
-            break;
-        };
-        for line in normalize_model_content_lines(&raw_content) {
-            if let Some(token) = model_line_to_token(seed_tokens, &line) {
-                if seen.insert(token.clone()) {
-                    candidates.push(token);
-                    if candidates.len() >= limit {
-                        return candidates;
-                    }
-                }
-            }
-        }
-        search = rest;
-    }
-    candidates
-}
-
-fn normalize_model_content_lines(content: &str) -> Vec<String> {
-    let normalized = content
-        .replace("\\n", "\n")
-        .replace("\\r", "\r")
-        .replace("\\t", "\t");
-    normalized
-        .lines()
-        .map(|line| {
-            line.trim()
-                .trim_start_matches(|ch: char| ch.is_ascii_digit() || ch == '.' || ch == '-')
-                .trim()
-                .to_string()
-        })
-        .filter(|line| !line.is_empty())
-        .collect()
-}
-
-fn model_line_to_token(seed_tokens: &[String], raw_line: &str) -> Option<String> {
-    let normalized_seed_tokens = seed_tokens.iter().collect::<std::collections::HashSet<_>>();
-    let line = raw_line
-        .trim()
-        .trim_matches(|ch: char| ch == '\"' || ch == '\'' || ch == '`');
-    if line.is_empty() {
-        return None;
-    }
-
-    let candidate = line.split_whitespace().next()?;
-    let normalized = normalize_candidate_token(candidate)?;
-    if normalized_seed_tokens.contains(&normalized) {
-        return None;
-    }
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized)
-    }
-}
-
-fn parse_http_endpoint(endpoint: &str) -> Option<ParsedHttpEndpoint> {
-    let without_scheme = endpoint.strip_prefix("http://")?;
-    let (host_port, path) = if let Some((head, tail)) = without_scheme.split_once('/') {
-        (head, format!("/{tail}"))
-    } else {
-        (without_scheme, "/v1/chat/completions".to_string())
-    };
-    let (host, port) = if let Some((host, port)) = host_port.rsplit_once(':') {
-        (host.to_string(), port.parse().ok()?)
-    } else {
-        (host_port.to_string(), 80)
-    };
-
-    Some(ParsedHttpEndpoint { host, port, path })
-}
-
-fn is_loopback_host(host: &str) -> bool {
-    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
-        return true;
-    }
-    host.parse::<std::net::IpAddr>()
-        .map_or(false, |ip| ip.is_loopback())
-}
-
-fn consume_json_string(input: &str) -> Option<(String, &str)> {
-    let input = input.strip_prefix('"').unwrap_or(input);
-    let mut output = String::new();
-    let mut chars = input.char_indices();
-    while let Some((index, ch)) = chars.next() {
-        match ch {
-            '\\' => {
-                let (_, escaped) = chars.next()?;
-                match escaped {
-                    '\\' => output.push('\\'),
-                    '"' => output.push('"'),
-                    'n' => output.push('\n'),
-                    'r' => output.push('\r'),
-                    't' => output.push('\t'),
-                    other => output.push(other),
-                }
-            }
-            '"' => return Some((output, &input[index + 1..])),
-            other => output.push(other),
-        }
-    }
-    None
-}
-
-fn escape_json_string(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '\\' => escaped.push_str("\\\\"),
-            '"' => escaped.push_str("\\\""),
-            '\n' => escaped.push_str("\\n"),
-            '\r' => escaped.push_str("\\r"),
-            '\t' => escaped.push_str("\\t"),
-            other => escaped.push(other),
-        }
-    }
-    escaped
-}
-
-#[derive(Debug, Clone)]
-struct ParsedHttpEndpoint {
-    host: String,
-    port: u16,
-    path: String,
 }
 
 fn looks_like_emoji_token(raw: &str) -> bool {
@@ -1445,12 +1306,171 @@ pub fn summarize_handwriting_strokes(strokes: &[Vec<[f32; 2]>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        consume_json_string, derive_next_token_candidates, derive_sentence_candidates,
+        composition_candidate_previews, derive_next_token_candidates, derive_sentence_candidates,
         derive_sentence_candidates_with_indices, finalize_sentence, matching_prefix_len_str,
-        normalize_candidate_token, normalize_handwriting_strokes, normalize_model_content_lines,
-        parse_http_endpoint, parse_next_token_model_candidates, recognize_handwriting_candidates,
+        normalize_candidate_token, normalize_handwriting_strokes, recognize_handwriting_candidates,
         sentence_candidate_style_label, summarize_handwriting_strokes, tokenize_seed_words,
     };
+
+    #[test]
+    fn word_chips_replace_partial_words_and_undo_each_exact_edit() {
+        let mut history = super::CompletionHistory::default();
+        let mut engine = crate::ime::XRTabletImeEngine::new(Default::default());
+        let mut seed = "hel".to_owned();
+        for (label, expected) in [("hello", "hello"), ("world", "hello world")] {
+            engine.seed(&seed);
+            let previews = composition_candidate_previews(&seed, "en", engine.candidates(), 6, 4);
+            assert!(
+                !previews.sentences.is_empty(),
+                "single-word candidates must remain visible"
+            );
+            let edit = previews
+                .next_tokens
+                .iter()
+                .find(|edit| edit.label == label)
+                .unwrap();
+            seed = history.apply(&seed, edit).unwrap();
+            assert_eq!(seed, expected);
+        }
+        assert_eq!(history.labels(), ["hello", "world"]);
+        seed = history.undo(&seed).unwrap();
+        assert_eq!(seed, "hello");
+        assert_eq!(history.undo(&seed).unwrap(), "hel");
+        assert!(history.undo("hel").is_none());
+    }
+
+    #[test]
+    fn completion_edits_preserve_spacing_and_never_append_later_phrase_words() {
+        for (seed, candidate, label, replacement) in [
+            (
+                "please sen",
+                "please send me the file",
+                "send",
+                "please send",
+            ),
+            ("hello  ", "hello  world again", "world", "hello  world"),
+            ("(Hel", "(Hello there", "Hello", "(Hello"),
+            ("don’", "don’t worry", "don’t", "don’t"),
+        ] {
+            let edit = super::next_token_completion(seed, candidate).unwrap();
+            assert_eq!(edit.label, label);
+            assert_eq!(edit.seed_before, seed);
+            assert_eq!(edit.seed_after, replacement);
+            let mut history = super::CompletionHistory::default();
+            assert!(history.apply("edited since preview", &edit).is_none());
+            assert_eq!(history.apply(seed, &edit).unwrap(), replacement);
+            assert_eq!(history.undo(replacement).unwrap(), seed);
+        }
+    }
+
+    #[test]
+    fn word_chips_are_deduplicated_and_have_no_arbitrary_filler() {
+        let texts = ["hel", "hello world", "hello there", "help me", "unrelated"];
+        let candidates: Vec<_> = texts
+            .iter()
+            .map(|text| crate::ime::Candidate {
+                text: (*text).into(),
+                label: format!("{text} · AI"),
+                score: 1.0,
+            })
+            .collect();
+        let previews = composition_candidate_previews("hel", "en", &candidates, 6, 4);
+        assert_eq!(
+            previews
+                .next_tokens
+                .iter()
+                .map(|edit| edit.label.as_str())
+                .collect::<Vec<_>>(),
+            ["hello", "help"]
+        );
+        for limit in 0..=6 {
+            assert!(
+                composition_candidate_previews("hel", "en", &candidates, limit, 4)
+                    .next_tokens
+                    .len()
+                    <= limit
+            );
+        }
+        assert!(
+            composition_candidate_previews("unrelated", "en", &candidates[4..], 6, 4)
+                .next_tokens
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn candidate_previews_do_not_turn_ai_badges_into_next_words() {
+        let candidates = vec![crate::ime::Candidate {
+            text: "hello world".into(),
+            label: "hello world · AI".into(),
+            score: 1.0,
+        }];
+        let previews = composition_candidate_previews("hello", "en", &candidates, 6, 4);
+        assert!(
+            previews
+                .next_tokens
+                .iter()
+                .any(|token| token.label == "world" && token.seed_after == "hello world")
+        );
+        assert!(
+            !previews
+                .next_tokens
+                .iter()
+                .any(|token| token.label.contains("AI") || token.seed_after.contains("AI"))
+        );
+    }
+
+    #[test]
+    fn cjk_previews_preserve_exact_labels_and_source_indices_without_english_fillers() {
+        for (language, seed, conversion) in
+            [("zh-Hans", "nihao", "你好"), ("ja", "nihongo", "日本語")]
+        {
+            let candidates = vec![
+                crate::ime::Candidate {
+                    text: conversion.into(),
+                    label: conversion.into(),
+                    score: 1.0,
+                },
+                crate::ime::Candidate {
+                    text: seed.into(),
+                    label: seed.into(),
+                    score: 0.8,
+                },
+            ];
+            let previews = composition_candidate_previews(seed, language, &candidates, 6, 4);
+            assert!(previews.next_tokens.is_empty());
+            assert_eq!(
+                previews.sentences,
+                [(0, conversion.into()), (1, seed.into())]
+            );
+            assert_eq!(
+                composition_candidate_previews("", language, &candidates, 6, 4),
+                Default::default()
+            );
+        }
+    }
+
+    #[test]
+    fn sentence_previews_do_not_rewrite_generated_text_or_add_punctuation() {
+        let candidates = vec![crate::ime::Candidate {
+            text: "thank you for reading".into(),
+            label: "thank you for reading · AI".into(),
+            score: 1.0,
+        }];
+        let previews = composition_candidate_previews("thank you", "en-US", &candidates, 6, 4);
+        assert_eq!(
+            previews.sentences,
+            [(0, "thank you for reading · AI".into())]
+        );
+    }
+
+    #[test]
+    fn next_word_derivation_never_exceeds_the_requested_limit() {
+        for limit in 0..=6 {
+            let candidates = derive_next_token_candidates("hello", &["hello world".into()], limit);
+            assert!(candidates.len() <= limit);
+        }
+    }
 
     #[test]
     fn next_token_derivation_advances_after_selected_token() {
@@ -2206,49 +2226,5 @@ mod tests {
                 .any(|(_, sentence)| sentence.contains("👨‍👩‍👧‍👦 can continue with the next suggestion")),
             "guided template cleaning should keep family emoji"
         );
-    }
-
-    #[test]
-    fn parse_http_endpoint_handles_default_path_and_ports() {
-        let parsed = parse_http_endpoint("http://127.0.0.1:11434").expect("endpoint should parse");
-
-        assert_eq!(parsed.host, "127.0.0.1");
-        assert_eq!(parsed.port, 11434);
-        assert_eq!(parsed.path, "/v1/chat/completions");
-    }
-
-    #[test]
-    fn parse_http_endpoint_rejects_non_http_scheme() {
-        assert!(parse_http_endpoint("https://127.0.0.1:11434/v1/chat/completions").is_none());
-    }
-
-    #[test]
-    fn normalize_model_content_lines_strips_numbered_and_bulleted_lines() {
-        let normalized = normalize_model_content_lines("1. hello\n- can\n2. :-)\n");
-
-        assert_eq!(normalized, vec!["hello", "can", ":-)"]);
-    }
-
-    #[test]
-    fn parse_next_token_model_candidates_extracts_and_filters_tokens() {
-        let body = r#"{
-            "choices":[{"message":{"role":"assistant","content":" hello\\n:-)\\n1. world\\nfamily 👨‍👩‍👧‍👦\\n"} }]}}
-        "#;
-        let seed_tokens = vec!["hello".to_string()];
-        let candidates = parse_next_token_model_candidates(body, &seed_tokens, 6);
-
-        assert_eq!(
-            candidates,
-            vec![":-)".to_string(), "world".to_string(), "family".to_string()]
-        );
-    }
-
-    #[test]
-    fn consume_json_string_unescapes_common_sequences() {
-        let source = r#""line1\nline2\"x\t" trailing"#;
-        let (decoded, rest) = consume_json_string(source).expect("json string should decode");
-
-        assert_eq!(decoded, "line1\nline2\"x\t");
-        assert_eq!(rest, " trailing");
     }
 }

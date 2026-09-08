@@ -19,6 +19,10 @@ pub(super) fn handle_panel_window_event(
             return;
         }
 
+        if dismisses_hover_tooltip(&event) && state.interaction.tooltip.dismiss() {
+            state.window.request_redraw();
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 if allow_exit {
@@ -46,6 +50,7 @@ pub(super) fn handle_panel_window_event(
                 state.window.request_redraw();
             }
             WindowEvent::CursorMoved { position, .. } => {
+                state.interaction.last_input_was_touch = false;
                 state.cursor_position = Some((position.x as f32, position.y as f32));
                 let mut needs_redraw = false;
                 if state.interaction.panel_dragging {
@@ -73,14 +78,7 @@ pub(super) fn handle_panel_window_event(
                 }
             }
             WindowEvent::CursorLeft { .. } => {
-                state.cursor_position = None;
-                let hover_changed =
-                    if state.kind == PanelWindowKind::Main && state.chrome.compact_mode {
-                        state.update_compact_hover()
-                    } else {
-                        state.update_hovered_interaction()
-                    };
-                if hover_changed {
+                if state.clear_pointer_hover() {
                     state.window.request_redraw();
                 }
             }
@@ -93,13 +91,11 @@ pub(super) fn handle_panel_window_event(
                 if !state.interaction.handwriting_dragging {
                     state.update_hovered_interaction();
                 }
-                if state.kind == PanelWindowKind::Main {
-                    match touch.phase {
-                        TouchPhase::Started => state.begin_primary_press(true),
-                        TouchPhase::Moved => state.update_touch_move_stability(),
-                        TouchPhase::Ended => state.complete_primary_release(true),
-                        TouchPhase::Cancelled => state.cancel_primary_interaction(),
-                    }
+                match touch.phase {
+                    TouchPhase::Started => state.begin_primary_press(true),
+                    TouchPhase::Moved => state.update_touch_move_stability(),
+                    TouchPhase::Ended => state.complete_primary_release(true),
+                    TouchPhase::Cancelled => state.cancel_primary_interaction(),
                 }
                 state.window.request_redraw();
             }
@@ -122,10 +118,19 @@ pub(super) fn handle_panel_window_event(
                 state.update_hovered_interaction();
                 state.window.request_redraw();
             }
-            WindowEvent::KeyboardInput { event, .. } => {
-                if event.state == ElementState::Pressed {
+            WindowEvent::Ime(event) => state.handle_ime_event(event),
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
+                if event.state == ElementState::Pressed && !is_synthetic {
+                    // IME preedit owns its editing keys; do not run panel shortcuts.
+                    if state.text_input.composing() {
+                        return;
+                    }
                     let scale_modifier =
-                        state.modifiers.control_key() || state.modifiers.super_key();
+                        super::keyboard::primary_shortcut_modifier(state.modifiers);
                     let scale_shortcut_handled = if scale_modifier {
                         match event.physical_key {
                             PhysicalKey::Code(KeyCode::Equal) if state.modifiers.shift_key() => {
@@ -158,7 +163,29 @@ pub(super) fn handle_panel_window_event(
                         return;
                     }
 
+                    if allow_exit && scale_modifier && state.is_quit_shortcut(&event.physical_key) {
+                        event_loop.exit();
+                        return;
+                    }
+                    if state.kind == PanelWindowKind::Main
+                        && !state.chrome.settings_open
+                        && state.chrome.input_focused
+                    {
+                        state.handle_editing_key(
+                            &event.logical_key,
+                            event.text.as_deref(),
+                            event.repeat,
+                        );
+                        state.window.request_redraw();
+                        return;
+                    }
+                    if !super::keyboard::text_modifiers_allowed(state.modifiers) {
+                        return;
+                    }
+
                     if event.repeat
+                        && state.kind == PanelWindowKind::Main
+                        && !state.chrome.settings_open
                         && matches!(
                             event.physical_key,
                             PhysicalKey::Code(KeyCode::Space)
@@ -180,10 +207,6 @@ pub(super) fn handle_panel_window_event(
                         return;
                     }
 
-                    if allow_exit && state.is_quit_shortcut(&event.physical_key) {
-                        event_loop.exit();
-                        return;
-                    }
                     if state.kind == PanelWindowKind::Settings
                         || (state.kind == PanelWindowKind::Main && state.chrome.settings_open)
                     {
@@ -231,7 +254,12 @@ pub(super) fn handle_panel_window_event(
                             return;
                         }
                     } else {
+                        // Chords such as AltGr are text only, never tab/voice commands.
+                        if !state.modifiers.is_empty() {
+                            return;
+                        }
                         match event.physical_key {
+                            PhysicalKey::Code(KeyCode::Escape) => state.finish_text_editing(),
                             PhysicalKey::Code(KeyCode::ArrowLeft) => state.chrome.move_caret_left(),
                             PhysicalKey::Code(KeyCode::ArrowRight) => {
                                 state.chrome.move_caret_right()
@@ -340,16 +368,9 @@ pub(super) fn handle_panel_window_event(
                                 }
                             }
                             PhysicalKey::Code(KeyCode::Space) => {
-                                if state.chrome.active_input_mode == InputMode::VirtualKeyboard
-                                    && state.chrome.input_focused
-                                {
-                                    state.handle_text_input(" ");
-                                } else {
-                                    let _ =
-                                        state.commit_selected_candidate_to_host(CommitOptions {
-                                            force: true,
-                                        });
-                                }
+                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
+                                    force: true,
+                                });
                             }
                             PhysicalKey::Code(KeyCode::Enter)
                             | PhysicalKey::Code(KeyCode::NumpadEnter) => {
@@ -365,9 +386,6 @@ pub(super) fn handle_panel_window_event(
                                 }
                             }
                             _ => {}
-                        }
-                        if let Some(text) = event.text.as_deref() {
-                            state.handle_text_input(text);
                         }
                     }
                     state.window.request_redraw();
@@ -431,12 +449,32 @@ pub(super) fn handle_panel_window_event(
             _ => {}
         }
     });
+    state.sync_text_input_state();
+    state.update_pointer_cursor();
+}
+
+fn dismisses_hover_tooltip(event: &WindowEvent) -> bool {
+    matches!(
+        event,
+        WindowEvent::MouseInput {
+            state: ElementState::Pressed,
+            ..
+        } | WindowEvent::KeyboardInput { .. }
+            | WindowEvent::Ime(_)
+            | WindowEvent::MouseWheel { .. }
+            | WindowEvent::Touch(_)
+            | WindowEvent::PinchGesture { .. }
+            | WindowEvent::DoubleTapGesture { .. }
+            | WindowEvent::Resized(_)
+            | WindowEvent::ScaleFactorChanged { .. }
+    )
 }
 
 fn event_is_safe_while_unfocused(event: &WindowEvent, non_focusing_panel: bool) -> bool {
     matches!(
         event,
         WindowEvent::Focused(_)
+            | WindowEvent::CursorLeft { .. }
             | WindowEvent::CloseRequested
             | WindowEvent::Resized(_)
             | WindowEvent::Moved(_)
@@ -458,18 +496,46 @@ fn event_is_safe_while_unfocused(event: &WindowEvent, non_focusing_panel: bool) 
 
 #[cfg(test)]
 mod tests {
-    use super::event_is_safe_while_unfocused;
+    use super::{dismisses_hover_tooltip, event_is_safe_while_unfocused};
     use winit::dpi::PhysicalPosition;
     use winit::event::{DeviceId, WindowEvent};
 
     #[test]
-    fn pointer_events_require_the_non_focusing_panel_mode_when_unfocused() {
+    fn scroll_or_press_hides_tooltips_but_redraw_does_not_cancel_pending_hints() {
+        use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase};
+        for event in [
+            WindowEvent::MouseInput {
+                device_id: DeviceId::dummy(),
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+            },
+            WindowEvent::MouseWheel {
+                device_id: DeviceId::dummy(),
+                delta: MouseScrollDelta::LineDelta(0.0, -1.0),
+                phase: TouchPhase::Moved,
+            },
+            WindowEvent::Resized(winit::dpi::PhysicalSize::new(420, 300)),
+        ] {
+            assert!(dismisses_hover_tooltip(&event));
+        }
+        assert!(!dismisses_hover_tooltip(&WindowEvent::RedrawRequested));
+    }
+
+    #[test]
+    fn pointer_exit_always_clears_stale_hover_when_unfocused() {
         let pointer_event = WindowEvent::CursorLeft {
             device_id: DeviceId::dummy(),
         };
 
         assert!(event_is_safe_while_unfocused(&pointer_event, true));
-        assert!(!event_is_safe_while_unfocused(&pointer_event, false));
+        assert!(event_is_safe_while_unfocused(&pointer_event, false));
+        let press = WindowEvent::MouseInput {
+            device_id: DeviceId::dummy(),
+            state: winit::event::ElementState::Pressed,
+            button: winit::event::MouseButton::Left,
+        };
+        assert!(event_is_safe_while_unfocused(&press, true));
+        assert!(!event_is_safe_while_unfocused(&press, false));
     }
 
     #[test]
@@ -486,5 +552,18 @@ mod tests {
             &WindowEvent::Moved(PhysicalPosition::new(240, 160)),
             false,
         ));
+    }
+
+    #[test]
+    fn non_focusing_mode_never_treats_unfocused_ime_events_as_panel_text() {
+        for non_focusing in [false, true] {
+            for event in [
+                WindowEvent::Ime(winit::event::Ime::Commit("日本語".into())),
+                WindowEvent::Ime(winit::event::Ime::Preedit("中文".into(), None)),
+                WindowEvent::ModifiersChanged(Default::default()),
+            ] {
+                assert!(!event_is_safe_while_unfocused(&event, non_focusing));
+            }
+        }
     }
 }

@@ -406,7 +406,7 @@ fn render_scene_uses_two_column_candidates_in_wide_viewports() {
     use suzaku_map::ime::gpu::WgpuCandidateRenderer;
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-    let snapshot = engine.seed("apple");
+    let snapshot = engine.seed("hello");
     let scene = WgpuCandidateRenderer::new(1440.0, 960.0).build_scene(&snapshot);
 
     assert!(scene.hit_targets.len() >= 2);

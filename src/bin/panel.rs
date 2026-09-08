@@ -12,14 +12,26 @@ mod composition;
 mod controller;
 #[path = "panel/controller_hints.rs"]
 mod controller_hints;
+#[path = "panel/font_atlas.rs"]
+mod font_atlas;
 #[path = "panel/handwriting.rs"]
 mod handwriting;
 #[path = "panel/helpers.rs"]
 mod helpers;
 #[path = "panel/input.rs"]
 mod input;
+#[cfg(target_os = "linux")]
+#[path = "panel/input_method.rs"]
+mod input_method;
 #[path = "panel/instance.rs"]
 mod instance;
+#[path = "panel/keyboard.rs"]
+mod keyboard;
+#[cfg(all(test, target_os = "linux"))]
+#[path = "panel/keyboard_native_test.rs"]
+mod keyboard_native_test;
+#[path = "panel/native_sync.rs"]
+mod native_sync;
 #[path = "panel/render.rs"]
 mod render;
 #[cfg(test)]
@@ -31,6 +43,9 @@ mod tray;
 mod voice;
 #[path = "panel/windowing.rs"]
 mod windowing;
+#[cfg(all(test, target_os = "linux"))]
+#[path = "panel/windowing_native_test.rs"]
+mod windowing_native_test;
 
 use crate::app_state::{
     FIRST_LAUNCH_WINDOW_SCALE, VoiceInputController, apply_display_settings, load_display_settings,
@@ -64,7 +79,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 const DEFAULT_PANEL_INNER_WIDTH: f64 = 900.0;
 const DEFAULT_PANEL_INNER_HEIGHT: f64 = 480.0;
 const MIN_PANEL_INNER_WIDTH: f64 = 420.0;
-const MIN_PANEL_INNER_HEIGHT: f64 = 300.0;
+const MIN_PANEL_INNER_HEIGHT: f64 = 72.0;
 const MAX_PANEL_INNER_WIDTH: f64 = 1395.0;
 const MAX_PANEL_INNER_HEIGHT: f64 = 806.0;
 const COMPACT_PANEL_INNER_WIDTH: f64 = 92.0;
@@ -99,12 +114,19 @@ fn advance_commit_feedback_state(ticks: u8) -> (u8, bool) {
     (next, next == 0)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum PanelUserEvent {
     ShowPanel,
     HidePanel,
     OpenSettings,
     ResetPanelPosition,
+    InputMethodSettingsChanged(suzaku_map::ime::settings::ImeSettings),
+    NativeCompositionReady,
+    NativeActionFinished {
+        host: String,
+        revision: u64,
+        result: Result<bool, String>,
+    },
     Quit,
 }
 
@@ -188,17 +210,28 @@ fn build_event_loop() -> Result<EventLoop<PanelUserEvent>, winit::error::EventLo
 }
 
 fn panel_window_attributes() -> WindowAttributes {
-    let scale = load_display_settings()
+    let settings = load_display_settings();
+    let scale = settings
         .as_ref()
         .map(|settings| settings.window_scale)
         .unwrap_or(FIRST_LAUNCH_WINDOW_SCALE)
         .clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
+    let mut chrome = PanelChromeState {
+        input_modes_expanded: true,
+        ..Default::default()
+    };
+    if let Some(settings) = settings.as_ref() {
+        apply_display_settings(&mut chrome, settings);
+    }
+    let width = DEFAULT_PANEL_INNER_WIDTH * scale as f64;
+    let height =
+        WgpuCandidateRenderer::new(width as f32, 1.0).preferred_input_panel_height(&chrome) as f64;
     let panel_dispatch = current_panel_companion_dispatch();
     let attrs = WindowAttributes::default()
         .with_title(panel_dispatch.default_panel_title())
         .with_inner_size(LogicalSize::new(
-            DEFAULT_PANEL_INNER_WIDTH * scale as f64,
-            DEFAULT_PANEL_INNER_HEIGHT * scale as f64,
+            width,
+            height.clamp(MIN_PANEL_INNER_HEIGHT, MAX_PANEL_INNER_HEIGHT),
         ))
         .with_max_inner_size(LogicalSize::new(
             MAX_PANEL_INNER_WIDTH,
@@ -250,6 +283,11 @@ struct PanelApp {
     instance: Option<SingleInstanceGuard>,
     tray: Option<SystemTray>,
     panel_visible: bool,
+    last_native_llm_enabled: Option<bool>,
+    last_native_ime_settings: Option<suzaku_map::ime::settings::ImeSettings>,
+    native_sync: Option<native_sync::NativeSync>,
+    native_auto_shown: bool,
+    native_hidden_context: Option<(String, u64)>,
 }
 
 impl PanelApp {
@@ -265,21 +303,36 @@ impl PanelApp {
             instance,
             tray: None,
             panel_visible: false,
+            last_native_llm_enabled: None,
+            last_native_ime_settings: None,
+            native_sync: None,
+            native_auto_shown: false,
+            native_hidden_context: None,
         }
     }
 
     fn set_panel_visible(&mut self, visible: bool) {
+        self.native_auto_shown = false;
         let Some(panel) = self.panel.as_mut() else {
             return;
         };
 
         panel.close_requested = false;
+        if visible {
+            self.native_hidden_context = None;
+        } else if let Some(frame) = panel.native.frame.as_ref().filter(|f| f.visible()) {
+            self.native_hidden_context = Some((frame.host.clone(), frame.context));
+        }
+        if !visible {
+            panel.finish_text_editing();
+        }
         panel.window.set_visible(visible);
         self.panel_visible = visible;
         if visible {
             panel.constrain_expanded_window_position();
             panel.window.request_redraw();
         } else {
+            panel.clear_pointer_hover();
             panel.chrome.settings_open = false;
             self.settings = None;
             self.next_frame_at = None;
@@ -344,6 +397,8 @@ impl PanelApp {
 #[derive(Default)]
 struct PanelInteractionState {
     hovered_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
+    pointer_cursor: winit::window::CursorIcon,
+    tooltip: controller_hints::HoverTooltipState,
     pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
     press_target_rect: Option<[f32; 4]>,
     press_start_cursor: Option<(f32, f32)>,
@@ -396,6 +451,8 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         let mut state =
             pollster::block_on(PanelState::new(window)).expect("initialize panel state");
         finish_main_window_creation(&state.window, event_loop);
+        self.native_sync = native_sync::start(self.event_proxy.clone());
+        state.native.sender = self.native_sync.as_ref().map(|sync| sync.sender.clone());
         state.note_expanded_window_position();
         state.window.request_redraw();
         self.panel = Some(state);
@@ -451,6 +508,12 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         if panel.close_requested {
             panel.close_requested = false;
             if self.tray.is_some() {
+                self.native_auto_shown = false;
+                if let Some(frame) = panel.native.frame.as_ref().filter(|f| f.visible()) {
+                    self.native_hidden_context = Some((frame.host.clone(), frame.context));
+                }
+                panel.finish_text_editing();
+                panel.clear_pointer_hover();
                 panel.chrome.settings_open = false;
                 panel.window.set_visible(false);
                 self.settings = None;
@@ -497,11 +560,86 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             PanelUserEvent::HidePanel => self.set_panel_visible(false),
             PanelUserEvent::OpenSettings => self.open_settings(event_loop),
             PanelUserEvent::ResetPanelPosition => self.reset_panel_position(event_loop),
+            PanelUserEvent::InputMethodSettingsChanged(ime_settings) => {
+                let language = ime_settings.language;
+                let enabled = ime_settings.llm_enabled;
+                let configuration_changed =
+                    self.last_native_ime_settings.as_ref() != Some(&ime_settings);
+                self.last_native_llm_enabled = Some(enabled);
+                self.last_native_ime_settings = Some(ime_settings);
+                if let Some(panel) = self.panel.as_mut() {
+                    if configuration_changed
+                        || panel.engine.snapshot().active_language != language.id()
+                        || panel.chrome.llm_enabled != enabled
+                    {
+                        panel.sync_manual_seed_base();
+                        panel.engine.set_language(language.id());
+                        panel.chrome.llm_enabled = enabled;
+                        panel.reconfigure_llama_plugin();
+                        if self.panel_visible {
+                            panel.window.request_redraw();
+                        }
+                    }
+                }
+                if let Some(settings) = self.settings.as_mut() {
+                    settings.chrome.llm_enabled = enabled;
+                    settings.window.request_redraw();
+                }
+            }
+            PanelUserEvent::NativeCompositionReady => {
+                if let Some(update) = self
+                    .native_sync
+                    .as_ref()
+                    .and_then(|sync| sync.take_update())
+                {
+                    if let Some(panel) = self.panel.as_mut() {
+                        let was_visible = panel
+                            .native
+                            .frame
+                            .as_ref()
+                            .is_some_and(|frame| frame.visible());
+                        panel.receive_native_frame(update);
+                        let visible = panel.native.showing
+                            && panel
+                                .native
+                                .frame
+                                .as_ref()
+                                .is_some_and(|frame| frame.visible());
+                        let manually_hidden = panel.native.frame.as_ref().is_some_and(|frame| {
+                            self.native_hidden_context.as_ref()
+                                == Some(&(frame.host.clone(), frame.context))
+                        });
+                        let can_show = !manually_hidden
+                            && panel.runs_without_window_focus
+                            && !panel.is_focused
+                            && !panel.chrome.settings_open;
+                        if visible && !was_visible && !self.panel_visible && can_show {
+                            self.set_panel_visible(true);
+                            self.native_auto_shown = true;
+                        } else if !visible && self.native_auto_shown {
+                            self.set_panel_visible(false);
+                        }
+                    }
+                }
+            }
+            PanelUserEvent::NativeActionFinished {
+                host,
+                revision,
+                result,
+            } => {
+                if let Some(panel) = self.panel.as_mut() {
+                    panel.native_action_finished(host, revision, result);
+                }
+            }
             PanelUserEvent::Quit => event_loop.exit(),
         }
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.native_sync = None;
+        if let Some(panel) = self.panel.as_mut() {
+            panel.finish_text_editing();
+        }
         if let Some(tray) = self.tray.take() {
             tray.shutdown();
         }
@@ -511,6 +649,39 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        if let (Some(panel), Some(tray), Some(previous)) =
+            (&self.panel, &self.tray, self.last_native_llm_enabled)
+        {
+            if panel.chrome.llm_enabled != previous {
+                self.last_native_llm_enabled = Some(panel.chrome.llm_enabled);
+                tray.set_prediction_enabled(panel.chrome.llm_enabled);
+            }
+        }
+        let mut tooltip_deadline = None;
+        for state in self
+            .panel
+            .iter_mut()
+            .filter(|_| self.panel_visible)
+            .chain(self.settings.iter_mut())
+        {
+            if !state.native.showing && state.engine.poll_prediction() {
+                state.refresh_composition_candidates();
+                state.window.request_redraw();
+            }
+            if !state.native.showing && state.engine.prediction_pending() {
+                tooltip_deadline = Some(now + Duration::from_millis(30));
+            }
+            state.fit_window_to_content();
+            if state.interaction.tooltip.advance(now) {
+                state.window.request_redraw();
+            }
+            if let Some(deadline) = state.interaction.tooltip.deadline() {
+                tooltip_deadline = Some(
+                    tooltip_deadline.map_or(deadline, |earlier: Instant| earlier.min(deadline)),
+                );
+            }
+        }
         let panel_needs_frame = self.panel_visible
             && self
                 .panel
@@ -522,11 +693,12 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             .is_some_and(PanelState::needs_periodic_frame);
         if !panel_needs_frame && !settings_needs_frame {
             self.next_frame_at = None;
-            event_loop.set_control_flow(ControlFlow::Wait);
+            event_loop.set_control_flow(
+                tooltip_deadline.map_or(ControlFlow::Wait, ControlFlow::WaitUntil),
+            );
             return;
         }
 
-        let now = Instant::now();
         let (should_advance, next_frame_at) = periodic_frame_schedule(now, self.next_frame_at);
         if should_advance
             && panel_needs_frame
@@ -543,7 +715,9 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             settings.window.request_redraw();
         }
         self.next_frame_at = Some(next_frame_at);
-        event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame_at));
+        event_loop.set_control_flow(ControlFlow::WaitUntil(
+            tooltip_deadline.map_or(next_frame_at, |deadline| deadline.min(next_frame_at)),
+        ));
     }
 }
 
@@ -574,16 +748,21 @@ struct PanelState {
     last_handwriting_summary: Option<String>,
     last_commit_feedback: Option<String>,
     commit_feedback_ticks: u8,
-    composition_base_seed: String,
-    selected_next_tokens: Vec<String>,
+    completion_history: suzaku_map::panel_support::CompletionHistory,
+    next_token_completions: Vec<suzaku_map::panel_support::NextTokenCompletion>,
     expanded_window_size: Option<LogicalSize<f64>>,
     expanded_window_base_size: Option<LogicalSize<f64>>,
     expanded_window_pos: Option<PhysicalPosition<i32>>,
+    expanded_window_decorations: bool,
     window_scale: f32,
+    window_resize_state: windowing::WindowResizeState,
     compact_dock_edge: Option<DockEdge>,
     last_compact_toggle: Option<Instant>,
     is_focused: bool,
     runs_without_window_focus: bool,
+    text_focus: suzaku_map::platform::panel_text_focus::PanelTextFocus,
+    text_input: keyboard::TextInputState,
+    native: native_sync::NativeView,
     input_dispatch_guard: bool,
     last_commit_attempt: Option<CommitAttempt>,
     last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
@@ -745,12 +924,12 @@ impl PanelState {
             });
         let voice: VoiceInputController = VoiceInputController::new();
         let mut chrome = initial_chrome.unwrap_or(PanelChromeState {
-            seed_text: "ni hao".into(),
+            seed_text: String::new(),
             compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
-            input_focused: true,
-            caret_index: "ni hao".chars().count(),
+            input_focused: is_focused,
+            caret_index: 0,
             keyboard_shifted: false,
             keyboard_numeric: false,
             settings_open: false,
@@ -859,7 +1038,7 @@ impl PanelState {
             host_intent_weight: 0.80,
             source_confidence: 0.70,
         });
-        engine.seed("ni hao");
+        engine.seed(&chrome.seed_text);
 
         let shape_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("suzaku-panel-shape-vertices"),
@@ -874,7 +1053,6 @@ impl PanelState {
             mapped_at_creation: false,
         });
 
-        let composition_base_seed = chrome.seed_text.clone();
         let mut state = Self {
             kind,
             window,
@@ -905,16 +1083,21 @@ impl PanelState {
             last_handwriting_summary: None,
             last_commit_feedback: None,
             commit_feedback_ticks: 0,
-            composition_base_seed,
-            selected_next_tokens: Vec::new(),
+            completion_history: Default::default(),
+            next_token_completions: Vec::new(),
             expanded_window_size: None,
             expanded_window_base_size: initial_base_size,
             expanded_window_pos: None,
+            expanded_window_decorations: true,
             window_scale: initial_window_scale,
+            window_resize_state: Default::default(),
             compact_dock_edge: None,
             last_compact_toggle: None,
             is_focused,
             runs_without_window_focus,
+            text_focus: Default::default(),
+            text_input: Default::default(),
+            native: Default::default(),
             input_dispatch_guard: false,
             last_commit_attempt: None,
             last_interaction_action: None,
@@ -931,6 +1114,7 @@ impl PanelState {
             state.reconfigure_llama_plugin();
         }
 
+        state.sync_text_input_state();
         Ok(state)
     }
 }

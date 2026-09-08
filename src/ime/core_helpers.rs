@@ -1,33 +1,7 @@
-use std::collections::{BTreeSet, HashMap};
-
 use super::Candidate;
 
 pub(crate) fn tokenize_seed(seed: &str) -> Vec<String> {
     seed.split_whitespace().map(ToString::to_string).collect()
-}
-
-pub(crate) fn expand_token_with_lexicon(
-    token: &str,
-    lexicon: &HashMap<String, Vec<String>>,
-    degraded: bool,
-) -> Vec<String> {
-    let key = token.to_lowercase();
-    let mut values = vec![token.to_string()];
-
-    if let Some(extra) = lexicon.get(&key) {
-        values.extend(extra.iter().cloned());
-    }
-
-    let mut ordered = Vec::new();
-    let mut seen = BTreeSet::new();
-    for value in values {
-        if seen.insert(value.clone()) {
-            ordered.push(value);
-        }
-    }
-
-    let limit = if degraded { 2 } else { 4 };
-    ordered.into_iter().take(limit).collect()
 }
 
 pub(crate) fn build_combinations(
@@ -103,10 +77,6 @@ where
         .collect()
 }
 
-pub(crate) fn contains_all(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().all(|needle| haystack.contains(needle))
-}
-
 pub(crate) fn measure_text_prefix_width(
     text: &str,
     char_count: usize,
@@ -114,12 +84,25 @@ pub(crate) fn measure_text_prefix_width(
     letter_spacing: f32,
 ) -> f32 {
     text.chars().take(char_count).fold(0.0, |acc, ch| {
-        acc + if ch == ' ' {
-            text_space_advance(pixel_size)
-        } else {
-            text_glyph_advance(pixel_size, letter_spacing)
-        }
+        acc + text_char_advance(ch, pixel_size, letter_spacing)
     })
+}
+
+pub(crate) fn text_char_width(ch: char, pixel_size: f32) -> f32 {
+    if unicode_width::UnicodeWidthChar::width(ch) == Some(2) {
+        pixel_size * 7.0
+    } else {
+        pixel_size * 4.4
+    }
+}
+
+pub(crate) fn text_char_advance(ch: char, pixel_size: f32, letter_spacing: f32) -> f32 {
+    if ch == ' ' {
+        text_space_advance(pixel_size)
+    } else {
+        text_glyph_advance(pixel_size, letter_spacing)
+            + (text_char_width(ch, pixel_size) - pixel_size * 4.4)
+    }
 }
 
 pub(crate) fn text_glyph_advance(pixel_size: f32, letter_spacing: f32) -> f32 {

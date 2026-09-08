@@ -24,7 +24,23 @@ fn builds_draft_candidates_from_seed_input() {
 fn engine_defaults_to_english_language_plugin() {
     let engine = XRTabletImeEngine::new(EngineConfig::default());
 
-    assert_eq!(engine.available_languages(), vec!["en".to_string()]);
+    assert_eq!(engine.available_languages(), vec!["en", "ja", "zh-Hans"]);
+}
+
+#[test]
+fn english_offline_completion_uses_only_current_session_context() {
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    engine.seed("good");
+    assert!(engine.commit(CommitOptions { force: true }).ok);
+    engine.seed("m");
+    assert_eq!(engine.candidates()[0].text, "m");
+    assert_eq!(engine.candidates()[1].text, "morning");
+    engine.clear_session_context();
+    engine.seed("m");
+    assert_ne!(engine.candidates()[1].text, "morning");
+    engine.seed("hello  ");
+    assert_eq!(engine.candidates()[0].text, "hello  ");
+    assert_eq!(engine.candidates()[1].text, "hello  world");
 }
 
 #[test]
@@ -152,7 +168,7 @@ fn supports_forced_commit_and_one_step_undo() {
 fn keeps_source_and_selection_flow_visible_for_xr_hosts() {
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     engine.set_source(InputSource::HandTracking);
-    engine.seed("ni hao xr");
+    engine.seed("hello");
     let snapshot = engine.select_candidate(1);
 
     assert_eq!(snapshot.active_source, InputSource::HandTracking);
@@ -162,7 +178,7 @@ fn keeps_source_and_selection_flow_visible_for_xr_hosts() {
 #[test]
 fn starts_from_base_candidate_and_offers_sentence_continuations() {
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-    let snapshot = engine.seed("ni hao");
+    let snapshot = engine.seed("thank you");
 
     assert!(
         snapshot
@@ -174,14 +190,14 @@ fn starts_from_base_candidate_and_offers_sentence_continuations() {
         snapshot
             .candidate_labels
             .iter()
-            .any(|candidate| candidate != "ni hao")
+            .any(|candidate| candidate != "thank you")
     );
 }
 
 #[test]
 fn selecting_a_continuation_can_commit_a_full_sentence_without_more_typing() {
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-    let snapshot = engine.seed("tablet ime");
+    let snapshot = engine.seed("thank you");
     let sentence_index = snapshot
         .candidate_labels
         .iter()
@@ -201,7 +217,7 @@ fn selecting_a_continuation_can_commit_a_full_sentence_without_more_typing() {
 }
 
 #[test]
-fn degraded_mode_still_prefers_tap_selectable_sentence_candidates() {
+fn degraded_mode_preserves_literal_input_and_bounds_local_candidates() {
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     engine.update_signal(SignalState {
         pointer_precision: 0.2,
@@ -214,10 +230,6 @@ fn degraded_mode_still_prefers_tap_selectable_sentence_candidates() {
 
     assert!(snapshot.degraded);
     assert!(snapshot.candidate_labels.len() <= 3);
-    assert!(
-        snapshot
-            .candidate_labels
-            .iter()
-            .all(|candidate| candidate.split_whitespace().count() >= 2)
-    );
+    assert!(snapshot.candidate_labels[0].starts_with("xr"));
+    assert_eq!(engine.candidates()[0].text, "xr");
 }

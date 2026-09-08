@@ -67,126 +67,58 @@ fn render_scene_switches_to_numeric_keyboard_layout() {
 fn render_scene_exposes_display_settings_when_open() {
     use suzaku_map::ime::gpu::{
         CandidateDensity, DisplayTextScale, FontFaceChoice, InputMode, InteractionKind,
-        PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing, ThemePreset,
-        WgpuCandidateRenderer,
+        LlmTemperaturePreset, PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing,
+        ThemePreset, WgpuCandidateRenderer,
     };
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     let snapshot = engine.seed("ni hao");
     let renderer = WgpuCandidateRenderer::new(900.0, 760.0);
-    let scene = renderer.build_panel_scene(
-        &snapshot,
-        &PanelChromeState {
-            seed_text: "ni hao".into(),
-            compact_mode: false,
-            input_modes_expanded: true,
-            active_input_mode: InputMode::VirtualKeyboard,
-            input_focused: true,
-            caret_index: 5,
-            keyboard_shifted: false,
-            keyboard_numeric: false,
-            settings_open: true,
-            text_scale: DisplayTextScale::Large,
-            candidate_density: CandidateDensity::Compact,
-            preview_style: PreviewStyle::Full,
-            font_face: FontFaceChoice::Geneva,
-            text_spacing: TextSpacing::Relaxed,
-            text_smoothing: TextSmoothing::Smooth,
-            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
-            voice_state: suzaku_map::ime::gpu::VoiceCaptureState::Idle,
-            voice_permission: suzaku_map::ime::gpu::VoicePermissionState::Ready,
-            voice_backend_label: "Apple Speech".into(),
-            voice_supports_live_capture: true,
-            hovered_interaction: None,
-            pressed_interaction: None,
-            voice_transcript: String::new(),
-            voice_visual_phase: 0,
-            voice_auto_insert: true,
-            llm_enabled: true,
-            llm_model: suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b,
-            llm_temperature: suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced,
-            composed_tokens: Vec::new(),
-            next_token_candidates: Vec::new(),
-            sentence_candidates: Vec::new(),
-            sentence_candidate_source_indices: Vec::new(),
-            handwriting_strokes: Vec::new(),
-            handwriting_candidates: Vec::new(),
-            handwriting_hint: String::new(),
-            ..PanelChromeState::default()
-        },
-        None,
-        None,
-        None,
-        None,
-    );
+    let mut chrome = PanelChromeState {
+        seed_text: "ni hao".into(),
+        input_modes_expanded: true,
+        active_input_mode: InputMode::VirtualKeyboard,
+        settings_open: true,
+        text_scale: DisplayTextScale::Large,
+        candidate_density: CandidateDensity::Compact,
+        preview_style: PreviewStyle::Full,
+        ..PanelChromeState::default()
+    };
+    let mut controls = Vec::new();
+    loop {
+        let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
+        let scroll = scene
+            .settings_scroll_metadata
+            .expect("embedded settings viewport");
+        controls.extend(scene.interactive_targets.iter().map(|target| target.kind));
+        if chrome.settings_scroll_offset >= scroll.max_scroll_offset {
+            break;
+        }
+        chrome.settings_scroll_offset = (chrome.settings_scroll_offset
+            + scroll.visible_height.max(1.0) * 0.5)
+            .min(scroll.max_scroll_offset);
+    }
 
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetTextScale(DisplayTextScale::Large))
-    );
-    assert!(scene.interactive_targets.iter().any(
-        |target| target.kind == InteractionKind::SetCandidateDensity(CandidateDensity::Compact)
-    ));
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetThemePreset(ThemePreset::DeviceDark))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetFontFace(FontFaceChoice::Geneva))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetFontFace(FontFaceChoice::Menlo))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetFontFace(FontFaceChoice::PingFang))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetPreviewStyle(PreviewStyle::Full))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetTextSpacing(TextSpacing::Relaxed))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetTextSmoothing(TextSmoothing::Smooth))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetVoiceAutoInsert(true))
-    );
-    assert!(
-        scene
-            .interactive_targets
-            .iter()
-            .any(|target| target.kind == InteractionKind::SetLlmEnabled(true))
-    );
-    assert!(scene.interactive_targets.iter().any(|target| target.kind
-        == InteractionKind::SetLlmTemperature(
-            suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced
-        )));
+    // All controls remain reachable by scrolling, without placing offscreen click targets.
+    for expected in [
+        InteractionKind::SetTextScale(DisplayTextScale::Large),
+        InteractionKind::SetCandidateDensity(CandidateDensity::Compact),
+        InteractionKind::SetThemePreset(ThemePreset::DeviceDark),
+        InteractionKind::SetFontFace(FontFaceChoice::Geneva),
+        InteractionKind::SetFontFace(FontFaceChoice::Menlo),
+        InteractionKind::SetFontFace(FontFaceChoice::PingFang),
+        InteractionKind::SetPreviewStyle(PreviewStyle::Full),
+        InteractionKind::SetTextSpacing(TextSpacing::Relaxed),
+        InteractionKind::SetTextSmoothing(TextSmoothing::Smooth),
+        InteractionKind::SetVoiceAutoInsert(true),
+        InteractionKind::SetLlmEnabled(true),
+        InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Balanced),
+    ] {
+        assert!(
+            controls.contains(&expected),
+            "unreachable setting: {expected:?}"
+        );
+    }
 }
 
 #[cfg(feature = "gpu")]
@@ -263,7 +195,10 @@ fn settings_scene_target_slop_expands_interactive_hit_area() {
         + ((expanded_target.rect[2] - base_target.rect[2]) * 0.4);
     let probe_y = base_target.rect[1] + base_target.rect[3] * 0.5;
 
-    assert_eq!(base_scene.hit_interaction(probe_x, probe_y), None);
+    assert_eq!(
+        base_scene.hit_interaction(probe_x, probe_y),
+        Some(InteractionKind::DragWindow)
+    );
     assert_eq!(
         expanded_scene.hit_interaction(probe_x, probe_y),
         Some(target)

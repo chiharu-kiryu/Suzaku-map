@@ -3,8 +3,117 @@ use super::{
     MAX_PANEL_INNER_WIDTH, MIN_PANEL_INNER_HEIGHT, MIN_PANEL_INNER_WIDTH, PANEL_SCALE_MAX,
     PANEL_SCALE_MIN, PANEL_SCALE_STEP, PanelState, PanelWindowKind,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
+use winit::window::CursorIcon;
+
+fn pointer_cursor_for(
+    state: &super::PanelInteractionState,
+    inside_window: bool,
+    compact_bubble: bool,
+) -> CursorIcon {
+    use suzaku_map::ime::gpu::InteractionKind;
+    if !inside_window || state.last_input_was_touch {
+        return CursorIcon::Default;
+    }
+    if state.panel_dragging {
+        return CursorIcon::Grabbing;
+    }
+    if state.handwriting_dragging {
+        return CursorIcon::Crosshair;
+    }
+    if state.scale_dragging {
+        return CursorIcon::EwResize;
+    }
+    if state.settings_scroll_dragging {
+        return CursorIcon::NsResize;
+    }
+    match state.hovered_interaction {
+        Some(InteractionKind::DragWindow) => CursorIcon::Grab,
+        Some(InteractionKind::ToggleCompactMode) if compact_bubble => CursorIcon::Grab,
+        Some(InteractionKind::SeedInput | InteractionKind::SettingsSearchInput) => CursorIcon::Text,
+        Some(InteractionKind::HandwritingCanvas) => CursorIcon::Crosshair,
+        Some(InteractionKind::DragWindowScale) => CursorIcon::EwResize,
+        Some(InteractionKind::SettingsScrollHandle) => CursorIcon::NsResize,
+        Some(_) => CursorIcon::Pointer,
+        None => CursorIcon::Default,
+    }
+}
+
+const RESIZE_ACK_WINDOW: Duration = Duration::from_millis(400);
+
+/// Winit may acknowledge old sizes after newer zoom requests. Keep those events
+/// out of the user's scale base and avoid retry loops when a compositor clamps a size.
+#[derive(Debug, Default)]
+pub(super) struct WindowResizeState {
+    last_requested: Option<PhysicalSize<u32>>,
+    pending: Option<(PhysicalSize<u32>, bool, Instant)>,
+}
+
+impl WindowResizeState {
+    fn request(
+        &mut self,
+        current: PhysicalSize<u32>,
+        target: PhysicalSize<u32>,
+        now: Instant,
+    ) -> bool {
+        if (current == target && self.pending.is_none()) || self.last_requested == Some(target) {
+            return false;
+        }
+        let changed_width = current.width != target.width
+            || self
+                .pending
+                .is_some_and(|(older, _, _)| older.width != target.width);
+        self.last_requested = Some(target);
+        self.pending = Some((target, changed_width, now));
+        true
+    }
+
+    fn preferred_width(&self, current: u32, now: Instant) -> u32 {
+        match self.pending {
+            Some((size, true, started)) if now.duration_since(started) < RESIZE_ACK_WINDOW => {
+                size.width
+            }
+            _ => current,
+        }
+    }
+
+    /// True only for a user/compositor resize, not one of our own acknowledgements.
+    fn observe(&mut self, size: PhysicalSize<u32>, now: Instant) -> bool {
+        if let Some((target, changed_width, started)) = self.pending {
+            if size.width == target.width {
+                self.pending = None;
+                return false;
+            }
+            if changed_width && now.duration_since(started) < RESIZE_ACK_WINDOW {
+                return false;
+            }
+            self.pending = None;
+        }
+        true
+    }
+}
+
+fn content_fitted_size(
+    width: u32,
+    dpi: f64,
+    max_height: u32,
+    chrome: &suzaku_map::ime::gpu::PanelChromeState,
+) -> PhysicalSize<u32> {
+    let width = width.max(1);
+    let dpi = if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    };
+    let renderer = suzaku_map::ime::gpu::WgpuCandidateRenderer::new(width as f32, 1.0);
+    let upper = max_height.max(1);
+    let lower = ((MIN_PANEL_INNER_HEIGHT * dpi).ceil() as u32).min(upper);
+    PhysicalSize::new(
+        width,
+        (renderer.preferred_input_panel_height(chrome).ceil() as u32).clamp(lower, upper),
+    )
+}
 
 fn compute_restored_expanded_position(
     compact_pos: Option<PhysicalPosition<i32>>,
@@ -69,13 +178,10 @@ fn is_significant_window_scale_change(current_scale: f32, target_scale: f32) -> 
 }
 
 fn window_scale_limits_for_base(base: LogicalSize<f64>) -> (f32, f32) {
-    let min_scale_for_base = ((MIN_PANEL_INNER_WIDTH / base.width)
-        .max(MIN_PANEL_INNER_HEIGHT / base.height))
-    .max(PANEL_SCALE_MIN as f64);
-    let max_scale_for_base = ((MAX_PANEL_INNER_WIDTH / base.width)
-        .min(MAX_PANEL_INNER_HEIGHT / base.height))
-    .min(PANEL_SCALE_MAX as f64)
-    .max(PANEL_SCALE_MIN as f64);
+    let min_scale_for_base = (MIN_PANEL_INNER_WIDTH / base.width).max(PANEL_SCALE_MIN as f64);
+    let max_scale_for_base = (MAX_PANEL_INNER_WIDTH / base.width)
+        .min(PANEL_SCALE_MAX as f64)
+        .max(PANEL_SCALE_MIN as f64);
     (
         (min_scale_for_base as f32).max(PANEL_SCALE_MIN),
         max_scale_for_base as f32,
@@ -249,31 +355,84 @@ fn compact_snap_for_position(
 }
 
 impl PanelState {
+    fn fitted_size_for_width(&self, width: u32) -> PhysicalSize<u32> {
+        let dpi = self.window.scale_factor();
+        let max_height = (MAX_PANEL_INNER_HEIGHT * dpi).round() as u32;
+        let max_height = self.window.current_monitor().map_or(max_height, |monitor| {
+            max_height.min(
+                monitor
+                    .size()
+                    .height
+                    .saturating_sub((36.0 * dpi).ceil() as u32),
+            )
+        });
+        content_fitted_size(width, dpi, max_height, &self.chrome)
+    }
+
+    fn request_panel_size(&mut self, target: PhysicalSize<u32>) {
+        if !self
+            .window_resize_state
+            .request(self.window.inner_size(), target, Instant::now())
+        {
+            return;
+        }
+        self.last_scene = None;
+        if let Some(actual) = self.window.request_inner_size(target) {
+            self.resize(actual.width, actual.height);
+        }
+        self.window.request_redraw();
+    }
+
+    pub(super) fn fit_window_to_content(&mut self) {
+        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+            return;
+        }
+        let current = self.window.inner_size();
+        if current.width == 0 || current.height == 0 {
+            return;
+        }
+        let width = self
+            .window_resize_state
+            .preferred_width(current.width, Instant::now());
+        self.request_panel_size(self.fitted_size_for_width(width));
+    }
+
+    pub(super) fn is_external_window_resize(&mut self, size: PhysicalSize<u32>) -> bool {
+        self.window_resize_state.observe(size, Instant::now())
+    }
+
     pub(super) fn apply_compact_mode(&mut self, compact: bool) {
         if self.kind != PanelWindowKind::Main || self.chrome.compact_mode == compact {
             return;
         }
 
-        if let Some(last_toggle) = self.last_compact_toggle {
-            if last_toggle.elapsed() < COMPACT_TOGGLE_DEBOUNCE {
-                return;
-            }
+        if let Some(last_toggle) = self.last_compact_toggle
+            && last_toggle.elapsed() < COMPACT_TOGGLE_DEBOUNCE
+        {
+            return;
         }
 
         if compact {
+            self.finish_text_editing();
             self.expanded_window_size = Some(
                 self.window
                     .inner_size()
                     .to_logical::<f64>(self.window.scale_factor()),
             );
             self.expanded_window_pos = self.window.outer_position().ok();
+            self.expanded_window_decorations = self.window.is_decorated();
             self.chrome.settings_open = false;
+            self.chrome.compact_mode = true;
             self.window.set_decorations(false);
             self.window.set_resizable(false);
-            let _ = self.window.request_inner_size(LogicalSize::new(
-                COMPACT_PANEL_INNER_WIDTH,
-                COMPACT_PANEL_INNER_HEIGHT,
-            ));
+            let compact_size =
+                LogicalSize::new(COMPACT_PANEL_INNER_WIDTH, COMPACT_PANEL_INNER_HEIGHT);
+            self.window.set_min_inner_size(Some(compact_size));
+            self.window.set_max_inner_size(Some(compact_size));
+            self.request_panel_size(
+                LogicalSize::new(COMPACT_PANEL_INNER_WIDTH, COMPACT_PANEL_INNER_HEIGHT)
+                    .to_physical(self.window.scale_factor()),
+            );
         } else {
             let restored = self.expanded_window_size.unwrap_or_else(|| {
                 LogicalSize::new(
@@ -281,9 +440,24 @@ impl PanelState {
                     super::DEFAULT_PANEL_INNER_HEIGHT,
                 )
             });
-            self.window.set_decorations(true);
+            self.window.set_max_inner_size(Some(LogicalSize::new(
+                MAX_PANEL_INNER_WIDTH,
+                MAX_PANEL_INNER_HEIGHT,
+            )));
+            self.window.set_min_inner_size(Some(LogicalSize::new(
+                MIN_PANEL_INNER_WIDTH,
+                MIN_PANEL_INNER_HEIGHT,
+            )));
+            self.window
+                .set_decorations(self.expanded_window_decorations);
             self.window.set_resizable(true);
-            let _ = self.window.request_inner_size(restored);
+            self.chrome.compact_mode = false;
+            let target = self.fitted_size_for_width(
+                restored
+                    .to_physical::<u32>(self.window.scale_factor())
+                    .width,
+            );
+            self.request_panel_size(target);
             self.restore_expanded_window_position(restored);
         }
         self.chrome.compact_mode = compact;
@@ -302,16 +476,26 @@ impl PanelState {
     }
 
     pub(super) fn begin_panel_drag(&mut self) {
-        if self.kind != PanelWindowKind::Main {
-            return;
-        }
         self.interaction.panel_dragging = true;
         self.interaction.panel_drag_moved = false;
         self.interaction.panel_drag_start_cursor = self.cursor_position;
         self.interaction.panel_drag_start_window_pos = self.window.outer_position().ok();
         self.interaction.panel_drag_start_instant = Some(std::time::Instant::now());
+        self.update_pointer_cursor();
         if !self.runs_without_window_focus {
             let _ = self.window.drag_window();
+        }
+    }
+
+    pub(super) fn update_pointer_cursor(&mut self) {
+        let cursor = pointer_cursor_for(
+            &self.interaction,
+            self.cursor_position.is_some(),
+            self.kind == PanelWindowKind::Main && self.chrome.compact_mode,
+        );
+        if self.interaction.pointer_cursor != cursor {
+            self.window.set_cursor(cursor);
+            self.interaction.pointer_cursor = cursor;
         }
     }
 
@@ -619,14 +803,12 @@ impl PanelState {
             return;
         }
 
-        let target = LogicalSize::new(
-            base.width * target_scale as f64,
-            base.height * target_scale as f64,
-        );
-        let _ = self.window.request_inner_size(target);
-        self.expanded_window_size = Some(target);
         self.window_scale = target_scale;
         self.expanded_window_base_size = Some(base);
+        let width = (base.width * target_scale as f64 * self.window.scale_factor()).round() as u32;
+        let target = self.fitted_size_for_width(width);
+        self.request_panel_size(target);
+        self.expanded_window_size = Some(target.to_logical(self.window.scale_factor()));
         self.persist_display_settings();
         if quantize {
             self.rebuild_font_atlas();
@@ -665,6 +847,127 @@ impl PanelState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pointer_cursor_distinguishes_drag_background_from_controls() {
+        use suzaku_map::ime::gpu::InteractionKind;
+        for (kind, expected) in [
+            (InteractionKind::DragWindow, CursorIcon::Grab),
+            (InteractionKind::ToggleCompactMode, CursorIcon::Pointer),
+            (InteractionKind::SeedInput, CursorIcon::Text),
+            (InteractionKind::SettingsSearchInput, CursorIcon::Text),
+            (InteractionKind::HandwritingCanvas, CursorIcon::Crosshair),
+            (InteractionKind::DragWindowScale, CursorIcon::EwResize),
+            (InteractionKind::SettingsScrollHandle, CursorIcon::NsResize),
+            (InteractionKind::Candidate(0), CursorIcon::Pointer),
+        ] {
+            let mut state = super::super::PanelInteractionState {
+                hovered_interaction: Some(kind),
+                ..Default::default()
+            };
+            assert_eq!(pointer_cursor_for(&state, true, false), expected);
+            if kind == InteractionKind::ToggleCompactMode {
+                assert_eq!(pointer_cursor_for(&state, true, true), CursorIcon::Grab);
+            }
+            state.panel_dragging = true;
+            assert_eq!(
+                pointer_cursor_for(&state, true, false),
+                CursorIcon::Grabbing
+            );
+            assert_eq!(
+                pointer_cursor_for(&state, false, false),
+                CursorIcon::Default
+            );
+            state.last_input_was_touch = true;
+            assert_eq!(pointer_cursor_for(&state, true, false), CursorIcon::Default);
+        }
+    }
+
+    #[test]
+    fn content_height_tracks_tabs_candidates_zoom_and_dpi_without_old_height() {
+        use suzaku_map::ime::gpu::{InputMode, PanelChromeState};
+        for dpi in [1.0, 1.25, 2.0] {
+            for width in [630, 900, 1170] {
+                let width = (width as f64 * dpi).round() as u32;
+                let mut chrome = PanelChromeState {
+                    input_modes_expanded: false,
+                    sentence_candidates: vec!["hel".into(), "hello".into(), "help".into()],
+                    next_token_candidates: vec!["hello".into(), "help".into()],
+                    ..Default::default()
+                };
+                let folded = content_fitted_size(width, dpi, 4000, &chrome);
+                for mode in [
+                    InputMode::VirtualKeyboard,
+                    InputMode::Dictation,
+                    InputMode::Handwriting,
+                ] {
+                    chrome.active_input_mode = mode;
+                    chrome.input_modes_expanded = true;
+                    let expanded = content_fitted_size(width, dpi, 4000, &chrome);
+                    assert!(expanded.height > folded.height + 100);
+                    chrome.input_modes_expanded = false;
+                    assert_eq!(content_fitted_size(width, dpi, 4000, &chrome), folded);
+                }
+                chrome.sentence_candidates.clear();
+                chrome.next_token_candidates.clear();
+                assert!(content_fitted_size(width, dpi, 4000, &chrome).height < folded.height);
+                assert_eq!(content_fitted_size(width, dpi, 50, &chrome).height, 50);
+            }
+        }
+    }
+
+    #[test]
+    fn asynchronous_resize_acks_do_not_become_manual_zoom_bases() {
+        let now = Instant::now();
+        let mut state = WindowResizeState::default();
+        let original = PhysicalSize::new(900, 480);
+        let first = PhysicalSize::new(810, 390);
+        let latest = PhysicalSize::new(720, 360);
+        assert!(state.request(original, first, now));
+        assert!(state.request(original, latest, now));
+        assert!(!state.observe(first, now));
+        assert_eq!(state.preferred_width(first.width, now), latest.width);
+        assert!(!state.observe(latest, now));
+        assert!(!state.request(latest, latest, now));
+        assert!(state.observe(PhysicalSize::new(780, 360), now));
+        // Compositor rejection/clamping must not cause a resize request every frame.
+        assert!(!state.request(PhysicalSize::new(780, 360), latest, now));
+    }
+
+    #[test]
+    fn returning_to_current_size_cancels_a_still_pending_resize() {
+        let now = Instant::now();
+        for smaller in [PhysicalSize::new(810, 390), PhysicalSize::new(900, 160)] {
+            let mut state = WindowResizeState::default();
+            let original = PhysicalSize::new(900, 480);
+            assert!(state.request(original, smaller, now));
+            assert!(
+                state.request(original, original, now),
+                "must supersede the pending shrink"
+            );
+            assert!(!state.observe(smaller, now));
+            assert!(
+                !state.request(smaller, original, now),
+                "the restore is already requested"
+            );
+            state.observe(original, now);
+        }
+    }
+
+    #[test]
+    fn height_only_fit_does_not_block_manual_width_changes_or_retry_clamped_sizes() {
+        let now = Instant::now();
+        let mut state = WindowResizeState::default();
+        let folded = PhysicalSize::new(900, 160);
+        assert!(state.request(PhysicalSize::new(900, 480), folded, now));
+        assert!(state.observe(PhysicalSize::new(850, 160), now));
+        assert_eq!(state.preferred_width(850, now), 850);
+        assert!(!state.request(PhysicalSize::new(900, 300), folded, now));
+        let wide = PhysicalSize::new(1000, 420);
+        assert!(state.request(folded, wide, now));
+        assert!(state.observe(PhysicalSize::new(950, 420), now + RESIZE_ACK_WINDOW));
+        assert_eq!(state.preferred_width(950, now + RESIZE_ACK_WINDOW), 950);
+    }
 
     struct ScaleDragDeltaCase {
         name: &'static str,
@@ -777,7 +1080,7 @@ mod tests {
                 name: "tiny_width_promotes_min_scale",
                 base: LogicalSize::new(300.0, 520.0),
                 expected_min: 1.4,
-                expected_max: 1.55,
+                expected_max: PANEL_SCALE_MAX,
             },
             WindowScaleLimitsCase {
                 name: "very_large_base_collapses_to_global_min",
@@ -786,10 +1089,10 @@ mod tests {
                 expected_max: 0.65,
             },
             WindowScaleLimitsCase {
-                name: "tall_aspect_limits_by_height",
+                name: "old_height_does_not_limit_content_driven_zoom",
                 base: LogicalSize::new(900.0, 1000.0),
                 expected_min: 0.65,
-                expected_max: 0.806,
+                expected_max: 1.55,
             },
         ];
 

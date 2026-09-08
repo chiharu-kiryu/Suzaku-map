@@ -6,9 +6,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, exit};
 use std::time::Duration;
 
+#[path = "suzaku_tool/llama.rs"]
+mod llama;
+
 const CONNECTION_NAME: &str = "dev.suzaku.linux.ime";
 const IBUS_COMPONENT_NAME: &str = "org.freedesktop.IBus.Suzaku";
 const IBUS_USER_SERVICE_NAME: &str = "suzaku-ibus.service";
+const GNOME_INPUT_SOURCES_SCHEMA: &str = "org.gnome.desktop.input-sources";
+const GNOME_INPUT_SOURCES_KEY: &str = "sources";
 const FCITX_CONFIG_NAME: &str = "dev_suzaku_linux_ime.conf";
 const DEFAULT_ANDROID_SDK_ROOT: &str = "/opt/homebrew/share/android-commandlinetools";
 const DEFAULT_JAVA_HOME: &str = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
@@ -27,6 +32,7 @@ fn run() -> i32 {
     }
 
     match args[1].as_str() {
+        "llama" => llama::run(&args[2..]),
         "linux-register" => linux_register(&args[2..]),
         "linux-register-ime" => linux_register(&args[2..]),
         "android" => android_dispatch(&args[2..]),
@@ -54,6 +60,9 @@ fn run() -> i32 {
 
 fn print_help() {
     println!("Usage:");
+    println!(
+        "  suzaku_tool llama [status|warmup|probe [all|en|zh-Hans|ja]|configure [--model NAME] [--endpoint URL] [--timeout-ms N]]"
+    );
     println!("  suzaku_tool linux-register [install|status|verify|uninstall|diag]");
     println!("  suzaku_tool linux-register-ime [install|status|verify|uninstall|diag]");
     println!(
@@ -157,6 +166,13 @@ fn check_exit_status(status: &ExitStatus, label: &str) -> Result<(), String> {
 enum LinuxFramework {
     IBus,
     Fcitx,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DesktopInputSourceChange {
+    Unavailable,
+    Unchanged,
+    Updated,
 }
 
 impl LinuxFramework {
@@ -275,6 +291,25 @@ fn linux_install(framework: LinuxFramework) -> i32 {
                             "IBus host was installed, but the previous engine could not be restored: {error}"
                         );
                         return 1;
+                    }
+                    match reconcile_gnome_ibus_input_source(true) {
+                        Ok(DesktopInputSourceChange::Updated) => {
+                            println!("Added Suzaku to the GNOME input-source switcher.");
+                        }
+                        Ok(DesktopInputSourceChange::Unchanged) => {
+                            println!("GNOME input-source switcher already includes Suzaku.");
+                        }
+                        Ok(DesktopInputSourceChange::Unavailable) => {
+                            println!(
+                                "GNOME input-source settings are unavailable; IBus registration remains usable directly."
+                            );
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "IBus host was installed, but Suzaku could not be added to the GNOME input-source switcher: {error}"
+                            );
+                            return 1;
+                        }
                     }
                     println!("Enabled user service: {IBUS_USER_SERVICE_NAME}");
                     if let Some(engine) = previous_engine {
@@ -545,6 +580,19 @@ fn linux_uninstall(framework: LinuxFramework) -> i32 {
     };
     match framework {
         LinuxFramework::IBus => {
+            match reconcile_gnome_ibus_input_source(false) {
+                Ok(DesktopInputSourceChange::Updated) => {
+                    println!("Removed Suzaku from the GNOME input-source switcher.");
+                }
+                Ok(DesktopInputSourceChange::Unchanged)
+                | Ok(DesktopInputSourceChange::Unavailable) => {}
+                Err(error) => {
+                    eprintln!(
+                        "could not remove Suzaku from the GNOME input-source switcher: {error}"
+                    );
+                    return 1;
+                }
+            }
             if let Err(error) = uninstall_ibus_user_service(&home) {
                 eprintln!("{error}");
                 return 1;
@@ -581,6 +629,135 @@ fn linux_uninstall(framework: LinuxFramework) -> i32 {
         }
     }
     0
+}
+
+fn gnome_ibus_source_entry() -> String {
+    format!("('ibus', '{CONNECTION_NAME}')")
+}
+
+fn split_gvariant_tuple_array(value: &str) -> Result<Vec<String>, String> {
+    let trimmed = value.trim();
+    let trimmed = trimmed
+        .strip_prefix("@a(ss)")
+        .map(str::trim_start)
+        .unwrap_or(trimmed);
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return Err(format!("unexpected input-source value: {trimmed}"));
+    }
+
+    let inner = &trimmed[1..trimmed.len() - 1];
+    if inner.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    let mut start = 0;
+    let mut tuple_depth = 0_i32;
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in inner.char_indices() {
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == delimiter {
+                quote = None;
+            }
+            continue;
+        }
+
+        match character {
+            '\'' | '"' => quote = Some(character),
+            '(' => tuple_depth += 1,
+            ')' if tuple_depth > 0 => tuple_depth -= 1,
+            ')' => return Err("unbalanced input-source tuple".to_string()),
+            ',' if tuple_depth == 0 => {
+                let entry = inner[start..index].trim();
+                if entry.is_empty() {
+                    return Err("empty input-source tuple".to_string());
+                }
+                entries.push(entry.to_string());
+                start = index + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    if quote.is_some() || escaped || tuple_depth != 0 {
+        return Err("unterminated input-source tuple".to_string());
+    }
+
+    let entry = inner[start..].trim();
+    if entry.is_empty() {
+        return Err("empty input-source tuple".to_string());
+    }
+    entries.push(entry.to_string());
+    Ok(entries)
+}
+
+fn updated_gnome_input_sources(
+    value: &str,
+    include_suzaku: bool,
+) -> Result<Option<String>, String> {
+    let mut entries = split_gvariant_tuple_array(value)?;
+    let target = gnome_ibus_source_entry();
+    let contains_target = entries.iter().any(|entry| entry == &target);
+    if contains_target == include_suzaku {
+        return Ok(None);
+    }
+
+    if include_suzaku {
+        entries.push(target);
+    } else {
+        entries.retain(|entry| entry != &target);
+    }
+    Ok(Some(format!("[{}]", entries.join(", "))))
+}
+
+fn read_gnome_input_sources() -> Result<Option<String>, String> {
+    let Some(mut gsettings) = command("gsettings") else {
+        return Ok(None);
+    };
+    let output = gsettings
+        .arg("get")
+        .arg(GNOME_INPUT_SOURCES_SCHEMA)
+        .arg(GNOME_INPUT_SOURCES_KEY)
+        .output()
+        .map_err(|error| format!("run `gsettings get`: {error}"))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    String::from_utf8(output.stdout)
+        .map(|value| Some(value.trim().to_string()))
+        .map_err(|error| format!("GNOME input-source settings are not UTF-8: {error}"))
+}
+
+fn reconcile_gnome_ibus_input_source(
+    include_suzaku: bool,
+) -> Result<DesktopInputSourceChange, String> {
+    let Some(current) = read_gnome_input_sources()? else {
+        return Ok(DesktopInputSourceChange::Unavailable);
+    };
+    let Some(updated) = updated_gnome_input_sources(&current, include_suzaku)? else {
+        return Ok(DesktopInputSourceChange::Unchanged);
+    };
+    let mut gsettings = command("gsettings")
+        .ok_or_else(|| "gsettings disappeared while updating input sources".to_string())?;
+    let output = gsettings
+        .arg("set")
+        .arg(GNOME_INPUT_SOURCES_SCHEMA)
+        .arg(GNOME_INPUT_SOURCES_KEY)
+        .arg(&updated)
+        .output()
+        .map_err(|error| format!("run `gsettings set`: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "`gsettings set` failed with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(DesktopInputSourceChange::Updated)
 }
 
 fn uninstall_ibus_user_service(home: &Path) -> Result<(), String> {
@@ -1513,8 +1690,8 @@ fn macos_open_app_for(target: MacTarget) -> i32 {
 mod tests {
     use super::{
         CONNECTION_NAME, IBUS_COMPONENT_NAME, ibus_component_host_binary, ibus_component_is_valid,
-        install_linux_ime_host_binary, should_restore_ibus_engine, write_ibus_marker, xml_escape,
-        xml_unescape,
+        install_linux_ime_host_binary, should_restore_ibus_engine, split_gvariant_tuple_array,
+        updated_gnome_input_sources, write_ibus_marker, xml_escape, xml_unescape,
     };
     use std::fs;
     #[cfg(unix)]
@@ -1544,6 +1721,43 @@ mod tests {
         assert!(!should_restore_ibus_engine(""));
         assert!(!should_restore_ibus_engine("   "));
         assert!(!should_restore_ibus_engine("dummy"));
+    }
+
+    #[test]
+    fn gnome_input_source_update_preserves_existing_sources_and_order() {
+        let current = "[('xkb', 'us+symbolic'), ('ibus', 'rime'), ('ibus', 'mozc-jp')]";
+        let updated = updated_gnome_input_sources(current, true)
+            .expect("parse sources")
+            .expect("add Suzaku");
+
+        assert_eq!(
+            updated,
+            "[('xkb', 'us+symbolic'), ('ibus', 'rime'), ('ibus', 'mozc-jp'), ('ibus', 'dev.suzaku.linux.ime')]"
+        );
+        assert_eq!(
+            updated_gnome_input_sources(&updated, true).expect("parse updated sources"),
+            None
+        );
+    }
+
+    #[test]
+    fn gnome_input_source_update_only_removes_suzaku() {
+        let current =
+            "[('xkb', 'us+symbolic'), ('ibus', 'dev.suzaku.linux.ime'), ('ibus', 'rime')]";
+        let updated = updated_gnome_input_sources(current, false)
+            .expect("parse sources")
+            .expect("remove Suzaku");
+
+        assert_eq!(updated, "[('xkb', 'us+symbolic'), ('ibus', 'rime')]");
+    }
+
+    #[test]
+    fn gnome_input_source_parser_accepts_typed_empty_arrays() {
+        assert!(split_gvariant_tuple_array("@a(ss) []").unwrap().is_empty());
+        assert_eq!(
+            updated_gnome_input_sources("@a(ss) []", true).unwrap(),
+            Some("[('ibus', 'dev.suzaku.linux.ime')]".to_string())
+        );
     }
 
     #[cfg(unix)]

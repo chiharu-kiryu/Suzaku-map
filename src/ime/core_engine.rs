@@ -2,8 +2,13 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use crate::languages::english::EnglishLanguagePlugin;
+use crate::languages::{
+    BuiltinLanguage, chinese::ChineseLanguagePlugin, japanese::JapaneseLanguagePlugin,
+};
 
+use super::{PredictionStatus, prediction::PredictionWorker};
 use super::{build_combinations, clamp01, tokenize_seed};
+use crate::languages::llm::{LlmCompletionProvider, LlmCompletionRequest, LlmProviderError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
@@ -124,6 +129,25 @@ pub trait LanguagePlugin: Send + Sync {
         input.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
+    /// Override for scripts whose conversion is not a product of space-delimited words.
+    fn direct_candidates(&self, _seed: &str, _confidence: f32) -> Option<Vec<Candidate>> {
+        None
+    }
+
+    /// Context contains only this input session's commits, never another application's text.
+    fn direct_candidates_with_context(
+        &self,
+        seed: &str,
+        _context: &str,
+        confidence: f32,
+    ) -> Option<Vec<Candidate>> {
+        self.direct_candidates(seed, confidence)
+    }
+
+    fn commit_separator(&self) -> &str {
+        " "
+    }
+
     fn expand_token(&self, token: &str, degraded: bool) -> Vec<String>;
 
     fn build_candidates(
@@ -144,7 +168,9 @@ impl LanguageRegistry {
         let mut registry = Self {
             plugins: HashMap::new(),
         };
-        registry.register(EnglishLanguagePlugin::default());
+        registry.register(EnglishLanguagePlugin);
+        registry.register(ChineseLanguagePlugin);
+        registry.register(JapaneseLanguagePlugin);
         registry
     }
 
@@ -159,11 +185,17 @@ impl LanguageRegistry {
     }
 
     pub fn get(&self, language_id: &str) -> Option<Arc<dyn LanguagePlugin>> {
-        self.plugins.get(language_id).cloned()
+        self.plugins
+            .get(language_id)
+            .or_else(|| {
+                BuiltinLanguage::resolve(language_id)
+                    .and_then(|language| self.plugins.get(language.id()))
+            })
+            .cloned()
     }
 
     pub fn contains(&self, language_id: &str) -> bool {
-        self.plugins.contains_key(language_id)
+        self.get(language_id).is_some()
     }
 
     pub fn ids(&self) -> Vec<String> {
@@ -195,21 +227,28 @@ pub struct XRTabletImeEngine {
     config: EngineConfig,
     registry: LanguageRegistry,
     state: CompositionState,
+    prediction: Option<PredictionWorker>,
+    prediction_status: PredictionStatus,
+    prediction_error: Option<LlmProviderError>,
+    selection_locked: bool,
 }
 
 impl XRTabletImeEngine {
     pub fn new(config: EngineConfig) -> Self {
         let committed = config.initial_text.clone();
         let registry = LanguageRegistry::with_default_plugins();
-        let default_language = if registry.contains(&config.default_language) {
-            config.default_language.clone()
-        } else {
-            "en".to_string()
-        };
+        let default_language = registry
+            .get(&config.default_language)
+            .map(|plugin| plugin.id().to_string())
+            .unwrap_or_else(|| "en".to_string());
 
         Self {
             config,
             registry,
+            prediction: None,
+            prediction_status: PredictionStatus::Disabled,
+            prediction_error: None,
+            selection_locked: false,
             state: CompositionState {
                 mode: Mode::Idle,
                 seed_text: String::new(),
@@ -263,8 +302,9 @@ impl XRTabletImeEngine {
 
     pub fn set_language(&mut self, language_id: impl AsRef<str>) -> Snapshot {
         let language_id = language_id.as_ref();
-        if self.registry.contains(language_id) {
-            self.state.active_language = language_id.to_string();
+        if let Some(plugin) = self.registry.get(language_id) {
+            self.state.active_language = plugin.id().to_string();
+            self.state.selected_index = 0;
             self.rebuild();
         }
         self.snapshot()
@@ -298,6 +338,8 @@ impl XRTabletImeEngine {
     }
 
     pub fn seed(&mut self, input: impl AsRef<str>) -> Snapshot {
+        self.state.selected_index = 0;
+        self.selection_locked = false;
         self.state.mode = Mode::Composing;
         self.state.seed_text = self.active_plugin().normalize_seed(input.as_ref());
         self.rebuild();
@@ -329,6 +371,7 @@ impl XRTabletImeEngine {
         let max_index = self.state.candidates.len().saturating_sub(1) as isize;
         let next = (self.state.selected_index as isize + delta).clamp(0, max_index);
         self.state.selected_index = next as usize;
+        self.lock_prediction_selection();
         self.render_draft();
         self.snapshot()
     }
@@ -336,6 +379,7 @@ impl XRTabletImeEngine {
     pub fn select_candidate(&mut self, index: usize) -> Snapshot {
         if index < self.state.candidates.len() {
             self.state.selected_index = index;
+            self.lock_prediction_selection();
             self.render_draft();
         }
 
@@ -376,10 +420,16 @@ impl XRTabletImeEngine {
         if self.state.committed_text.is_empty() {
             self.state.committed_text = candidate.text;
         } else {
-            self.state.committed_text = format!("{} {}", self.state.committed_text, candidate.text);
+            self.state.committed_text = format!(
+                "{}{}{}",
+                self.state.committed_text,
+                self.active_plugin().commit_separator(),
+                candidate.text
+            );
         }
 
         self.state.mode = Mode::Idle;
+        self.cancel_prediction();
         self.state.seed_text.clear();
         self.state.expansions.clear();
         self.state.candidates.clear();
@@ -401,6 +451,7 @@ impl XRTabletImeEngine {
     }
 
     fn rebuild(&mut self) {
+        self.selection_locked = false;
         let plugin = self.active_plugin();
         self.state.seed_text = plugin.normalize_seed(&self.state.seed_text);
         let tokens = tokenize_seed(&self.state.seed_text);
@@ -415,6 +466,178 @@ impl XRTabletImeEngine {
         }
 
         self.render_draft();
+        self.request_prediction();
+    }
+
+    pub fn configure_prediction(&mut self, provider: Option<Arc<dyn LlmCompletionProvider>>) {
+        self.prediction = provider
+            .map(|provider| PredictionWorker::new(provider, std::time::Duration::from_millis(120)));
+        self.prediction_status = if self.prediction.is_some() {
+            PredictionStatus::Idle
+        } else {
+            PredictionStatus::Disabled
+        };
+        self.rebuild();
+    }
+
+    pub fn prediction_status(&self) -> PredictionStatus {
+        self.prediction_status
+    }
+
+    pub fn prediction_error(&self) -> Option<&LlmProviderError> {
+        self.prediction_error.as_ref()
+    }
+
+    pub fn prediction_pending(&self) -> bool {
+        self.prediction_status == PredictionStatus::Pending
+    }
+
+    pub fn cancel_prediction(&mut self) {
+        self.prediction_error = None;
+        if let Some(worker) = &self.prediction {
+            worker.cancel();
+        }
+        self.prediction_status = if self.prediction.is_some() {
+            PredictionStatus::Idle
+        } else {
+            PredictionStatus::Disabled
+        };
+    }
+
+    /// A host calls this nonblocking method only while a prediction is pending.
+    pub fn poll_prediction(&mut self) -> bool {
+        let Some(completions) = self
+            .prediction
+            .as_ref()
+            .and_then(PredictionWorker::take_result)
+        else {
+            return false;
+        };
+        if self.selection_locked || self.state.seed_text.is_empty() {
+            return false;
+        }
+        let completions = match completions {
+            Ok(completions) => completions,
+            Err(error) => {
+                self.prediction_error = Some(error);
+                self.prediction_status = PredictionStatus::Unavailable;
+                return false;
+            }
+        };
+        let local = self.state.candidates.clone();
+        // Keep both literal input and the best offline English completion in place
+        // when an asynchronous model result arrives. CJK keeps its conversion first.
+        let pinned_count = if self.state.active_language == "en" && self.config.max_candidates >= 3
+        {
+            local.len().min(2)
+        } else {
+            local.len().min(1)
+        };
+        let mut merged: Vec<Candidate> = local.iter().take(pinned_count).cloned().collect();
+        let mut seen: BTreeSet<String> = merged.iter().map(|item| item.text.clone()).collect();
+        let literal = local
+            .iter()
+            .find(|candidate| candidate.text == self.state.seed_text)
+            .cloned();
+        for completion in completions.into_iter().take(3) {
+            let text = completion.text.trim().to_string();
+            if text.is_empty()
+                || text.chars().count() > 160
+                || text.chars().any(char::is_control)
+                || !seen.insert(text.clone())
+            {
+                continue;
+            }
+            merged.push(Candidate {
+                label: format!("{text} · AI"),
+                text,
+                score: self.state.confidence,
+            });
+        }
+        self.prediction_status = if merged.len() > pinned_count {
+            PredictionStatus::Ready
+        } else {
+            self.prediction_error = Some(LlmProviderError::NoCandidates);
+            PredictionStatus::Unavailable
+        };
+        for candidate in local.into_iter().skip(pinned_count) {
+            if seen.insert(candidate.text.clone()) {
+                merged.push(candidate);
+            }
+        }
+        merged.truncate(if self.state.degraded {
+            3
+        } else {
+            self.config.max_candidates.max(1)
+        });
+        if let Some(literal) = literal
+            && merged.len() > 1
+            && !merged
+                .iter()
+                .any(|candidate| candidate.text == literal.text)
+        {
+            *merged.last_mut().unwrap() = literal;
+        }
+        let changed = merged != self.state.candidates;
+        self.state.candidates = merged;
+        self.render_draft();
+        changed
+    }
+
+    /// Focus boundaries discard context to prevent suggestions leaking between apps/fields.
+    pub fn clear_session_context(&mut self) {
+        self.cancel_prediction();
+        self.state.committed_text.clear();
+        self.state.history.clear();
+        self.seed("");
+    }
+
+    fn lock_prediction_selection(&mut self) {
+        self.selection_locked = true;
+        if self.prediction_pending() {
+            self.cancel_prediction();
+        }
+    }
+
+    fn request_prediction(&mut self) {
+        self.cancel_prediction();
+        if self.state.seed_text.is_empty()
+            || self.state.seed_text.chars().count() > 256
+            || self.state.degraded
+        {
+            return;
+        }
+        let Some(worker) = &self.prediction else {
+            return;
+        };
+        let context_before_cursor: String = self
+            .state
+            .committed_text
+            .chars()
+            .rev()
+            .take(160)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let requested = worker.request(LlmCompletionRequest {
+            language_id: self.state.active_language.clone(),
+            seed_text: self.state.seed_text.clone(),
+            normalized_phrase: self
+                .state
+                .candidates
+                .first()
+                .map(|candidate| candidate.text.clone())
+                .unwrap_or_default(),
+            context_before_cursor,
+            confidence: self.state.confidence,
+            degraded: self.state.degraded,
+        });
+        self.prediction_status = if requested {
+            PredictionStatus::Pending
+        } else {
+            PredictionStatus::Unavailable
+        };
     }
 
     fn compute_confidence(&self) -> f32 {
@@ -431,23 +654,33 @@ impl XRTabletImeEngine {
             return Vec::new();
         }
 
-        let max_pool = self.config.max_candidates * 3;
-        let mut combinations = Vec::new();
-        let mut current = Vec::new();
-        build_combinations(
-            &self.state.expansions,
-            0,
-            &mut current,
-            &mut combinations,
-            max_pool,
-        );
-
-        let mut candidates: Vec<Candidate> = combinations
-            .into_iter()
-            .flat_map(|parts| {
-                plugin.build_candidates(&parts, &self.state.seed_text, self.state.confidence)
-            })
-            .collect();
+        let mut candidates: Vec<Candidate> = plugin
+            .direct_candidates_with_context(
+                &self.state.seed_text,
+                &self.state.committed_text,
+                self.state.confidence,
+            )
+            .unwrap_or_else(|| {
+                // Built-in whole-composition converters do not need a recursive token product.
+                let mut combinations = Vec::new();
+                build_combinations(
+                    &self.state.expansions,
+                    0,
+                    &mut Vec::new(),
+                    &mut combinations,
+                    self.config.max_candidates.max(1).saturating_mul(3),
+                );
+                combinations
+                    .into_iter()
+                    .flat_map(|parts| {
+                        plugin.build_candidates(
+                            &parts,
+                            &self.state.seed_text,
+                            self.state.confidence,
+                        )
+                    })
+                    .collect()
+            });
 
         candidates.sort_by(|left, right| {
             right
@@ -456,13 +689,17 @@ impl XRTabletImeEngine {
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(left.text.len().cmp(&right.text.len()))
         });
+        let literal = candidates
+            .iter()
+            .find(|candidate| candidate.text == self.state.seed_text)
+            .cloned();
 
         let mut unique = Vec::new();
         let mut seen = BTreeSet::new();
         let limit = if self.state.degraded {
             3
         } else {
-            self.config.max_candidates
+            self.config.max_candidates.max(1)
         };
 
         for candidate in candidates {
@@ -473,6 +710,15 @@ impl XRTabletImeEngine {
             if unique.len() >= limit {
                 break;
             }
+        }
+
+        if let Some(literal) = literal
+            && unique.len() > 1
+            && !unique
+                .iter()
+                .any(|candidate| candidate.text == literal.text)
+        {
+            *unique.last_mut().unwrap() = literal;
         }
 
         if self.state.degraded {

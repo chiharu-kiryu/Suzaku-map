@@ -372,7 +372,9 @@ impl PanelState {
     }
 
     pub(super) fn try_begin_handwriting_stroke(&mut self) -> bool {
-        if self.chrome.active_input_mode != InputMode::Handwriting {
+        if self.chrome.active_input_mode != InputMode::Handwriting
+            || self.interaction.pressed_interaction != Some(InteractionKind::HandwritingCanvas)
+        {
             return false;
         }
         let Some((x, y)) = self.cursor_position else {

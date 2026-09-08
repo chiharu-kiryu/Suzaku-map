@@ -1,9 +1,11 @@
+use crate::ime::settings::ImeSettings;
 use crate::ime::{
     CommitOptions, CommitResult, EngineConfig, InputSource, SignalState, Snapshot,
     XRTabletImeEngine,
 };
+use crate::languages::{BuiltinLanguage, llama::OpenAiCompatibleLlamaProvider};
 use std::ffi::{CStr, CString};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostImeUpdate {
@@ -18,6 +20,8 @@ pub struct HostImeUpdate {
 pub struct HostImeSession {
     engine: XRTabletImeEngine,
     active: bool,
+    settings: ImeSettings,
+    private: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,9 +38,16 @@ pub struct HostImeBridgeSnapshot {
 
 impl HostImeSession {
     pub fn new(config: EngineConfig) -> Self {
+        let settings = ImeSettings {
+            language: BuiltinLanguage::resolve(&config.default_language)
+                .unwrap_or(BuiltinLanguage::English),
+            ..Default::default()
+        };
         Self {
             engine: XRTabletImeEngine::new(config),
             active: false,
+            settings,
+            private: false,
         }
     }
 
@@ -47,6 +58,7 @@ impl HostImeSession {
 
     pub fn deactivate(&mut self) -> HostImeUpdate {
         self.active = false;
+        self.engine.clear_session_context();
         self.current_update()
     }
 
@@ -83,12 +95,37 @@ impl HostImeSession {
 
     pub fn commit_selected(&mut self, options: CommitOptions) -> (CommitResult, HostImeUpdate) {
         let result = self.engine.commit(options);
+        if self.private {
+            self.engine.clear_session_context();
+        }
         let update = self.current_update();
         (result, update)
     }
 
     pub fn snapshot(&self) -> Snapshot {
         self.engine.snapshot()
+    }
+
+    pub fn apply_settings(&mut self, settings: ImeSettings) {
+        if self.settings.language != settings.language {
+            self.engine.clear_session_context();
+        }
+        self.engine.set_language(settings.language.id());
+        let provider = (settings.llm_enabled && !self.private).then(|| {
+            Arc::new(OpenAiCompatibleLlamaProvider::new(
+                settings.provider.clone(),
+            )) as Arc<dyn crate::languages::llm::LlmCompletionProvider>
+        });
+        self.engine.configure_prediction(provider);
+        self.settings = settings;
+    }
+
+    pub fn set_private(&mut self, private: bool) {
+        if self.private != private {
+            self.private = private;
+            self.engine.clear_session_context();
+            self.apply_settings(self.settings.clone());
+        }
     }
 
     pub fn current_update(&self) -> HostImeUpdate {
@@ -107,8 +144,24 @@ impl HostImeSession {
 static HOST_IME_BRIDGE_SESSION: OnceLock<Mutex<HostImeSession>> = OnceLock::new();
 static HOST_IME_BRIDGE_LAST_COMMIT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
+#[cfg(test)]
+pub(crate) fn test_session_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
 fn shared_host_ime_session() -> &'static Mutex<HostImeSession> {
-    HOST_IME_BRIDGE_SESSION.get_or_init(|| Mutex::new(HostImeSession::new(EngineConfig::default())))
+    HOST_IME_BRIDGE_SESSION.get_or_init(|| {
+        let mut session = HostImeSession::new(EngineConfig::default());
+        let settings = ImeSettings::load().unwrap_or_else(|error| {
+            eprintln!("Suzaku: {error}; using safe local defaults");
+            ImeSettings::default()
+        });
+        session.apply_settings(settings);
+        Mutex::new(session)
+    })
 }
 
 fn shared_last_commit() -> &'static Mutex<Option<String>> {
@@ -246,6 +299,65 @@ fn into_raw_c_string(value: String) -> *mut std::os::raw::c_char {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_companion_snapshot_utf8(
+    host: *const std::os::raw::c_char,
+    context: u64,
+    revision: u64,
+    focused: bool,
+    private: bool,
+) -> *mut std::os::raw::c_char {
+    use crate::ime::companion::{MAX_FRAME_BYTES, NativeCandidate, NativeComposition};
+    let Some(host) = read_optional_utf8(host) else {
+        return std::ptr::null_mut();
+    };
+    let mut frame = with_shared_host_ime_session(|session| {
+        let snapshot = session.engine.snapshot();
+        let visible = focused
+            && session.active
+            && !private
+            && !session.private
+            && !snapshot.seed_text.is_empty();
+        NativeComposition {
+            host,
+            context,
+            revision,
+            focused,
+            private: private || session.private,
+            language: snapshot.active_language,
+            seed: if visible {
+                snapshot.seed_text
+            } else {
+                String::new()
+            },
+            selected: if visible { snapshot.selected_index } else { 0 },
+            candidates: if visible {
+                session
+                    .engine
+                    .candidates()
+                    .iter()
+                    .map(|c| NativeCandidate {
+                        text: c.text.clone(),
+                        label: c.label.clone(),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            },
+        }
+    });
+    let mut raw = frame.to_json().to_string();
+    // Fail closed rather than truncating a composition into a different candidate.
+    if raw.len() >= MAX_FRAME_BYTES || NativeComposition::parse(raw.as_bytes()).is_err() {
+        frame.private = true;
+        frame.seed.clear();
+        frame.candidates.clear();
+        frame.selected = 0;
+        raw = frame.to_json().to_string();
+    }
+    into_raw_c_string(raw + "\n")
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_activate() -> bool {
     host_bridge_activate()
 }
@@ -253,6 +365,84 @@ pub extern "C" fn suzaku_host_ime_activate() -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_deactivate() {
     host_bridge_deactivate();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_poll_prediction() -> bool {
+    with_shared_host_ime_session(|session| {
+        session.active && !session.private && session.engine.poll_prediction()
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_prediction_pending() -> bool {
+    with_shared_host_ime_session(|session| {
+        session.active && !session.private && session.engine.prediction_pending()
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_set_private(private: bool) {
+    with_shared_host_ime_session(|session| session.set_private(private));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_language_kind() -> u32 {
+    with_shared_host_ime_session(|session| match session.settings.language {
+        BuiltinLanguage::ChineseSimplified => 1,
+        BuiltinLanguage::English => 2,
+        BuiltinLanguage::Japanese => 3,
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_control_utf8(
+    raw: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    let Some(command) = read_optional_utf8(raw) else {
+        return std::ptr::null_mut();
+    };
+    let value = with_shared_host_ime_session(|session| {
+        let mut settings = session.settings.clone();
+        let change = match command.as_str() {
+            "S" => Ok(false),
+            "R" => match ImeSettings::load() {
+                Ok(loaded) => {
+                    settings = loaded;
+                    Ok(true)
+                }
+                Err(error) => Err(error),
+            },
+            "P0" => {
+                settings.llm_enabled = false;
+                Ok(true)
+            }
+            "P1" => {
+                settings.llm_enabled = true;
+                Ok(true)
+            }
+            language if language.starts_with('L') => match BuiltinLanguage::resolve(&language[1..])
+            {
+                Some(language) => {
+                    settings.language = language;
+                    Ok(true)
+                }
+                None => Err("不支持的输入语言".to_string()),
+            },
+            _ => Err("不支持的输入法控制命令".to_string()),
+        };
+        let result = change.and_then(|changed| {
+            if changed {
+                settings.save()?;
+                session.apply_settings(settings);
+            }
+            Ok(())
+        });
+        serde_json::json!({"ok": result.is_ok(), "error": result.err(),
+            "settings": session.settings.to_json(), "prediction": format!("{:?}", session.engine.prediction_status()),
+            "prediction_error": session.engine.prediction_error().map(ToString::to_string)})
+    });
+    into_raw_c_string(value.to_string())
 }
 
 #[unsafe(no_mangle)]
@@ -358,14 +548,9 @@ mod tests {
     use crate::ime::{CommitOptions, EngineConfig, InputSource, SignalState};
     use std::ffi::{CStr, CString};
     use std::os::raw::c_char;
-    use std::sync::{Mutex, OnceLock};
 
     fn host_bridge_test_lock() -> std::sync::MutexGuard<'static, ()> {
-        static HOST_BRIDGE_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        HOST_BRIDGE_TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("host bridge test lock poisoned")
+        super::test_session_lock()
     }
 
     #[test]
@@ -378,6 +563,44 @@ mod tests {
         assert!(update.active);
         assert_eq!(update.marked_text, "ni hao");
         assert!(!update.candidates.is_empty());
+    }
+
+    #[test]
+    fn private_sessions_disable_predictions_and_never_retain_commit_context() {
+        let mut session = HostImeSession::new(EngineConfig::default());
+        session.apply_settings(crate::ime::settings::ImeSettings {
+            language: crate::languages::BuiltinLanguage::ChineseSimplified,
+            llm_enabled: true,
+            ..Default::default()
+        });
+        session.activate();
+        session.set_private(true);
+        session.replace_marked_text("nihao", InputSource::HardwareKeyboard);
+        assert_eq!(
+            session.engine.prediction_status(),
+            crate::ime::PredictionStatus::Disabled
+        );
+        let (result, update) = session.commit_selected(CommitOptions { force: true });
+        assert_eq!(result.text.as_deref(), Some("你好"));
+        assert!(update.committed_text.is_empty());
+        session.set_private(false);
+        assert_eq!(
+            session.engine.prediction_status(),
+            crate::ime::PredictionStatus::Idle
+        );
+    }
+
+    #[test]
+    fn deactivation_clears_context_and_pending_composition() {
+        let mut session = HostImeSession::new(EngineConfig::default());
+        session.activate();
+        session.replace_marked_text("hello", InputSource::HardwareKeyboard);
+        session.commit_selected(CommitOptions { force: true });
+        session.replace_marked_text("world", InputSource::HardwareKeyboard);
+        let update = session.deactivate();
+        assert!(update.marked_text.is_empty());
+        assert!(update.committed_text.is_empty());
+        assert!(update.candidates.is_empty());
     }
 
     #[test]

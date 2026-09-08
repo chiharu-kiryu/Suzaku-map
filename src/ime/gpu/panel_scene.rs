@@ -462,7 +462,14 @@ impl WgpuCandidateRenderer {
         }
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::SeedInput,
-            rect: interaction_hit_rect([panel_x, input_box_y, panel_width, metrics.input_box_h]),
+            // The text row stays editable across its full width. The label and
+            // unused header space above it act as a broad window drag area.
+            rect: [
+                panel_x,
+                input_box_y + 24.0 * responsive_scale,
+                panel_width,
+                (metrics.input_box_h - 24.0 * responsive_scale).max(1.0),
+            ],
         });
 
         let header_layouts = vec![
@@ -632,7 +639,7 @@ impl WgpuCandidateRenderer {
                     compact_button_rect[1] + 3.8 * responsive_scale,
                 ],
                 max_width: scale_label_width,
-                pixel_size: micro_px,
+                pixel_size: micro_px.min(scale_label_width / (4.0 * 4.65)),
                 letter_spacing: ui_tracking,
                 line_gap: base_line_gap,
                 max_lines: 1,
@@ -644,7 +651,15 @@ impl WgpuCandidateRenderer {
                 align: TextAlign::Left,
                 role: TextRole::ToolButton,
             }
-            .layout();
+            .layout_in_rect(
+                [
+                    scale_text_x,
+                    compact_button_rect[1],
+                    scale_label_width,
+                    scale_minus_rect[3],
+                ],
+                [0.0, 2.0 * responsive_scale],
+            );
             text_quads.extend(scale_text.quads.iter().copied());
             atlas_glyphs.extend(scale_text.atlas_glyphs.iter().cloned());
             text_sections.push(TextSection {
@@ -707,7 +722,10 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Center,
             role: TextRole::ToolButton,
         }
-        .layout();
+        .layout_in_rect(
+            compact_button_rect,
+            [3.0 * responsive_scale, 2.0 * responsive_scale],
+        );
         text_quads.extend(compact_icon.quads.iter().copied());
         atlas_glyphs.extend(compact_icon.atlas_glyphs.iter().cloned());
         text_sections.push(TextSection {
@@ -764,7 +782,10 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Center,
             role: TextRole::ToolButton,
         }
-        .layout();
+        .layout_in_rect(
+            close_visual_rect,
+            [3.0 * responsive_scale, 2.0 * responsive_scale],
+        );
         text_quads.extend(close_icon.quads.iter().copied());
         atlas_glyphs.extend(close_icon.atlas_glyphs.iter().cloned());
         text_sections.push(TextSection {
@@ -821,7 +842,10 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Center,
             role: TextRole::ToolButton,
         }
-        .layout();
+        .layout_in_rect(
+            decrease_visual_rect,
+            [2.0 * responsive_scale, 2.0 * responsive_scale],
+        );
         text_quads.extend(minus_text.quads.iter().copied());
         atlas_glyphs.extend(minus_text.atlas_glyphs.iter().cloned());
         text_sections.push(TextSection {
@@ -924,7 +948,10 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Center,
             role: TextRole::ToolButton,
         }
-        .layout();
+        .layout_in_rect(
+            increase_visual_rect,
+            [2.0 * responsive_scale, 2.0 * responsive_scale],
+        );
         text_quads.extend(plus_text.quads.iter().copied());
         atlas_glyphs.extend(plus_text.atlas_glyphs.iter().cloned());
         text_sections.push(TextSection {
@@ -1226,6 +1253,6 @@ impl WgpuCandidateRenderer {
             ];
         }
 
-        scene
+        scene.with_window_drag_background(self.scene_width, self.scene_height)
     }
 }

@@ -3,6 +3,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdint.h>
+#include <unistd.h>
+
+#define SUZAKU_LOOKUP_PAGE_SIZE 3
+#define SUZAKU_CANDIDATE_PREVIEW_CHARS 42
 
 extern bool suzaku_host_ime_activate(void);
 extern void suzaku_host_ime_deactivate(void);
@@ -16,10 +21,19 @@ extern size_t suzaku_host_ime_selected_index(void);
 extern char *suzaku_host_ime_candidate_label_utf8(size_t index);
 extern char *suzaku_host_ime_take_last_committed_text_utf8(void);
 extern void suzaku_host_ime_free_utf8(char *text);
+extern bool suzaku_host_ime_poll_prediction(void);
+extern bool suzaku_host_ime_prediction_pending(void);
+extern void suzaku_host_ime_set_private(bool private_input);
+extern unsigned int suzaku_host_ime_language_kind(void);
+extern char *suzaku_host_ime_control_utf8(const char *command);
+extern char *suzaku_host_ime_companion_snapshot_utf8(
+    const char *host, uint64_t context, uint64_t revision, bool focused, bool private_input);
 
 typedef struct _SuzakuIBusEngine {
     IBusEngine parent_instance;
     GString *input;
+    gboolean sensitive;
+    gboolean private_input;
 } SuzakuIBusEngine;
 
 typedef struct _SuzakuIBusEngineClass {
@@ -31,8 +45,45 @@ G_DEFINE_TYPE(SuzakuIBusEngine, suzaku_ibus_engine, IBUS_TYPE_ENGINE)
 static GWeakRef suzaku_last_focused_engine;
 static GSocketService *suzaku_ipc_service = NULL;
 static gchar *suzaku_ipc_socket_path = NULL;
+static guint suzaku_prediction_source = 0;
+static void suzaku_ibus_schedule_prediction(void);
+static void suzaku_companion_publish(void);
+static gchar *suzaku_companion_host_id = NULL;
+static guint64 suzaku_companion_context = 0;
+static guint64 suzaku_companion_revision = 0;
+static GPtrArray *suzaku_companion_subscribers = NULL;
+
+static gboolean suzaku_ibus_engine_is_focused(IBusEngine *engine) {
+    GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
+    gboolean matches = focused == G_OBJECT(engine);
+    g_clear_object(&focused);
+    return matches;
+}
+
+static size_t suzaku_ibus_candidate_page_start(void) {
+    size_t selected = suzaku_host_ime_selected_index();
+    return (selected / SUZAKU_LOOKUP_PAGE_SIZE) * SUZAKU_LOOKUP_PAGE_SIZE;
+}
+
+static gchar *suzaku_ibus_candidate_preview(const gchar *label) {
+    if (label == NULL) {
+        return NULL;
+    }
+    if (g_utf8_strlen(label, -1) <= SUZAKU_CANDIDATE_PREVIEW_CHARS) {
+        return g_strdup(label);
+    }
+
+    gboolean ai = g_str_has_suffix(label, " · AI");
+    const gchar *end = g_utf8_offset_to_pointer(
+        label, SUZAKU_CANDIDATE_PREVIEW_CHARS - 1 - (ai ? 5 : 0));
+    gchar *prefix = g_strndup(label, (gsize)(end - label));
+    gchar *preview = g_strconcat(prefix, "…", ai ? " · AI" : "", NULL);
+    g_free(prefix);
+    return preview;
+}
 
 static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
+    suzaku_companion_publish();
     IBusEngine *engine = IBUS_ENGINE(self);
     if (self->input->len == 0) {
         ibus_engine_hide_preedit_text(engine);
@@ -54,14 +105,20 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
 
     size_t selected = suzaku_host_ime_selected_index();
     IBusLookupTable *table = ibus_lookup_table_new(
-        9, (guint)MIN(selected, candidate_count - 1), TRUE, FALSE);
+        SUZAKU_LOOKUP_PAGE_SIZE,
+        (guint)MIN(selected, candidate_count - 1),
+        TRUE,
+        FALSE);
+    ibus_lookup_table_set_orientation(table, IBUS_ORIENTATION_VERTICAL);
     for (size_t index = 0; index < candidate_count; index++) {
         char *label = suzaku_host_ime_candidate_label_utf8(index);
         if (label == NULL) {
             continue;
         }
+        gchar *preview = suzaku_ibus_candidate_preview(label);
         ibus_lookup_table_append_candidate(
-            table, ibus_text_new_from_string(label));
+            table, ibus_text_new_from_string(preview));
+        g_free(preview);
         suzaku_host_ime_free_utf8(label);
     }
     ibus_engine_update_lookup_table(engine, table, TRUE);
@@ -74,16 +131,45 @@ static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
         suzaku_host_ime_replace_marked_text_utf8(self->input->str);
     }
     suzaku_ibus_engine_render(self);
+    suzaku_ibus_schedule_prediction();
 }
 
 static void suzaku_ibus_engine_clear(SuzakuIBusEngine *self) {
     g_string_truncate(self->input, 0);
     suzaku_host_ime_clear_marked_text();
     suzaku_ibus_engine_render(self);
+    suzaku_ibus_schedule_prediction();
 }
 
-static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self) {
-    if (self->input->len == 0 || !suzaku_host_ime_commit_selected(true)) {
+static gboolean suzaku_ibus_prediction_tick(gpointer data) {
+    (void)data;
+    if (suzaku_host_ime_poll_prediction()) {
+        GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
+        if (focused != NULL) {
+            suzaku_ibus_engine_render((SuzakuIBusEngine *)focused);
+            g_object_unref(focused);
+        }
+    }
+    if (!suzaku_host_ime_prediction_pending()) {
+        suzaku_prediction_source = 0;
+        return G_SOURCE_REMOVE;
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+static void suzaku_ibus_schedule_prediction(void) {
+    if (suzaku_host_ime_prediction_pending()) {
+        if (suzaku_prediction_source == 0) {
+            suzaku_prediction_source = g_timeout_add(30, suzaku_ibus_prediction_tick, NULL);
+        }
+    } else if (suzaku_prediction_source != 0) {
+        g_source_remove(suzaku_prediction_source);
+        suzaku_prediction_source = 0;
+    }
+}
+
+static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self, gboolean append_space) {
+    if (self->sensitive || self->input->len == 0 || !suzaku_host_ime_commit_selected(true)) {
         return FALSE;
     }
 
@@ -93,8 +179,9 @@ static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self) {
         return FALSE;
     }
 
-    ibus_engine_commit_text(
-        IBUS_ENGINE(self), ibus_text_new_from_string(committed));
+    gchar *output = append_space ? g_strconcat(committed, " ", NULL) : g_strdup(committed);
+    ibus_engine_commit_text(IBUS_ENGINE(self), ibus_text_new_from_string(output));
+    g_free(output);
     suzaku_host_ime_free_utf8(committed);
     suzaku_ibus_engine_clear(self);
     return TRUE;
@@ -113,6 +200,8 @@ static gboolean suzaku_ibus_engine_process_key_event(
     IBusEngine *engine, guint keyval, guint keycode, guint state) {
     (void)keycode;
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+
+    if (self->sensitive) { return FALSE; }
 
     if ((state & IBUS_RELEASE_MASK) != 0) {
         return FALSE;
@@ -133,40 +222,55 @@ static gboolean suzaku_ibus_engine_process_key_event(
         suzaku_ibus_engine_clear(self);
         return TRUE;
     }
-    if (keyval == IBUS_KEY_Up || keyval == IBUS_KEY_Page_Up) {
+    if (keyval == IBUS_KEY_Up || keyval == IBUS_KEY_Left ||
+        keyval == IBUS_KEY_Page_Up) {
         if (self->input->len == 0) {
             return FALSE;
         }
         suzaku_ibus_engine_move_selection(
-            self, keyval == IBUS_KEY_Page_Up ? -9 : -1);
+            self, keyval == IBUS_KEY_Page_Up ? -SUZAKU_LOOKUP_PAGE_SIZE : -1);
         return TRUE;
     }
-    if (keyval == IBUS_KEY_Down || keyval == IBUS_KEY_Page_Down) {
+    if (keyval == IBUS_KEY_ISO_Left_Tab ||
+        (keyval == IBUS_KEY_Tab && (state & IBUS_SHIFT_MASK) != 0)) {
+        if (self->input->len == 0) {
+            return FALSE;
+        }
+        suzaku_ibus_engine_move_selection(self, -1);
+        return TRUE;
+    }
+    if (keyval == IBUS_KEY_Down || keyval == IBUS_KEY_Right ||
+        keyval == IBUS_KEY_Page_Down || keyval == IBUS_KEY_Tab) {
         if (self->input->len == 0) {
             return FALSE;
         }
         suzaku_ibus_engine_move_selection(
-            self, keyval == IBUS_KEY_Page_Down ? 9 : 1);
+            self, keyval == IBUS_KEY_Page_Down ? SUZAKU_LOOKUP_PAGE_SIZE : 1);
         return TRUE;
     }
     if (keyval == IBUS_KEY_space || keyval == IBUS_KEY_Return ||
         keyval == IBUS_KEY_KP_Enter) {
-        return suzaku_ibus_engine_commit(self);
+        return suzaku_ibus_engine_commit(self, keyval == IBUS_KEY_space && suzaku_host_ime_language_kind() == 2);
     }
 
-    if (self->input->len > 0 && keyval >= IBUS_KEY_1 && keyval <= IBUS_KEY_9) {
-        size_t index = (size_t)(keyval - IBUS_KEY_1);
+    if (self->input->len > 0 && keyval >= IBUS_KEY_1 &&
+        keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
+        size_t index = suzaku_ibus_candidate_page_start() +
+                       (size_t)(keyval - IBUS_KEY_1);
         if (index < suzaku_host_ime_candidate_count()) {
             suzaku_host_ime_select_candidate(index);
-            return suzaku_ibus_engine_commit(self);
+            return suzaku_ibus_engine_commit(self, FALSE);
         }
     }
 
     gunichar character = ibus_keyval_to_unicode(keyval);
+    guint language = suzaku_host_ime_language_kind();
     if ((character >= 'a' && character <= 'z') ||
-        (character >= 'A' && character <= 'Z') || character == '\'') {
+        (character >= 'A' && character <= 'Z') || character == '\'' ||
+        (language == 1 && (character == 0xfc || character == 0xdc || character == ':')) ||
+        (language == 3 && character == '-')) {
         gchar utf8[7] = {0};
-        character = g_unichar_tolower(character);
+        /* Language converters normalize case themselves; retain the literal fallback here. */
         gint length = g_unichar_to_utf8(character, utf8);
         g_string_append_len(self->input, utf8, length);
         suzaku_ibus_engine_sync_input(self);
@@ -174,7 +278,7 @@ static gboolean suzaku_ibus_engine_process_key_event(
     }
 
     if (self->input->len > 0) {
-        suzaku_ibus_engine_commit(self);
+        suzaku_ibus_engine_commit(self, FALSE);
     }
     return FALSE;
 }
@@ -182,27 +286,59 @@ static gboolean suzaku_ibus_engine_process_key_event(
 static void suzaku_ibus_engine_focus_in(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
     g_weak_ref_set(&suzaku_last_focused_engine, G_OBJECT(engine));
+    suzaku_companion_context++;
+    suzaku_host_ime_set_private(self->private_input);
     suzaku_host_ime_activate();
     suzaku_ibus_engine_sync_input(self);
 }
 
-static void suzaku_ibus_clear_focused_engine_if(IBusEngine *engine) {
+static gboolean suzaku_ibus_clear_focused_engine_if(IBusEngine *engine) {
     GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
-    if (focused == G_OBJECT(engine)) {
+    gboolean matches = focused == G_OBJECT(engine);
+    if (matches) {
         g_weak_ref_set(&suzaku_last_focused_engine, NULL);
+        suzaku_companion_context++;
     }
     g_clear_object(&focused);
+    return matches;
 }
 
 static void suzaku_ibus_engine_focus_out(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
-    suzaku_ibus_clear_focused_engine_if(engine);
+    if (!suzaku_ibus_clear_focused_engine_if(engine)) {
+        g_string_truncate(self->input, 0);
+        ibus_engine_hide_preedit_text(engine);
+        ibus_engine_hide_lookup_table(engine);
+        return;
+    }
     suzaku_ibus_engine_clear(self);
     suzaku_host_ime_deactivate();
 }
 
 static void suzaku_ibus_engine_reset(IBusEngine *engine) {
-    suzaku_ibus_engine_clear((SuzakuIBusEngine *)engine);
+    if (suzaku_ibus_engine_is_focused(engine)) {
+        suzaku_ibus_engine_clear((SuzakuIBusEngine *)engine);
+    } else {
+        g_string_truncate(((SuzakuIBusEngine *)engine)->input, 0);
+    }
+}
+
+static void suzaku_ibus_engine_set_content_type(IBusEngine *engine, guint purpose, guint hints) {
+    SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+    gboolean was_private = self->private_input;
+    self->sensitive = purpose == IBUS_INPUT_PURPOSE_PASSWORD || purpose == IBUS_INPUT_PURPOSE_PIN;
+    /* PRIVATE was added in IBus 1.5.26; use its ABI bit for older headers as well. */
+    self->private_input = self->sensitive || (hints & (1u << 11)) != 0;
+    if (!suzaku_ibus_engine_is_focused(engine)) {
+        if (self->sensitive || was_private != self->private_input) { g_string_truncate(self->input, 0); }
+        return;
+    }
+    suzaku_host_ime_set_private(self->private_input);
+    /* A privacy transition must not carry an old private preedit into a later model request. */
+    if (self->sensitive || was_private != self->private_input) {
+        suzaku_ibus_engine_clear(self);
+    }
+    suzaku_ibus_schedule_prediction();
 }
 
 static void suzaku_ibus_engine_enable(IBusEngine *engine) {
@@ -211,7 +347,10 @@ static void suzaku_ibus_engine_enable(IBusEngine *engine) {
 }
 
 static void suzaku_ibus_engine_disable(IBusEngine *engine) {
-    suzaku_ibus_clear_focused_engine_if(engine);
+    if (!suzaku_ibus_clear_focused_engine_if(engine)) {
+        g_string_truncate(((SuzakuIBusEngine *)engine)->input, 0);
+        return;
+    }
     suzaku_ibus_engine_clear((SuzakuIBusEngine *)engine);
     suzaku_host_ime_deactivate();
 }
@@ -225,11 +364,13 @@ static void suzaku_ibus_engine_cursor_down(IBusEngine *engine) {
 }
 
 static void suzaku_ibus_engine_page_up(IBusEngine *engine) {
-    suzaku_ibus_engine_move_selection((SuzakuIBusEngine *)engine, -9);
+    suzaku_ibus_engine_move_selection(
+        (SuzakuIBusEngine *)engine, -SUZAKU_LOOKUP_PAGE_SIZE);
 }
 
 static void suzaku_ibus_engine_page_down(IBusEngine *engine) {
-    suzaku_ibus_engine_move_selection((SuzakuIBusEngine *)engine, 9);
+    suzaku_ibus_engine_move_selection(
+        (SuzakuIBusEngine *)engine, SUZAKU_LOOKUP_PAGE_SIZE);
 }
 
 static void suzaku_ibus_engine_candidate_clicked(
@@ -237,11 +378,17 @@ static void suzaku_ibus_engine_candidate_clicked(
     (void)button;
     (void)state;
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
-    if (self->input->len == 0 || index >= suzaku_host_ime_candidate_count()) {
+    size_t candidate_count = suzaku_host_ime_candidate_count();
+    size_t absolute_index = index;
+    if (candidate_count > SUZAKU_LOOKUP_PAGE_SIZE &&
+        index < SUZAKU_LOOKUP_PAGE_SIZE) {
+        absolute_index = suzaku_ibus_candidate_page_start() + index;
+    }
+    if (self->input->len == 0 || absolute_index >= candidate_count) {
         return;
     }
-    suzaku_host_ime_select_candidate(index);
-    suzaku_ibus_engine_commit(self);
+    suzaku_host_ime_select_candidate(absolute_index);
+    suzaku_ibus_engine_commit(self, FALSE);
 }
 
 static void suzaku_ibus_engine_finalize(GObject *object) {
@@ -268,6 +415,7 @@ static void suzaku_ibus_engine_class_init(SuzakuIBusEngineClass *class) {
     engine_class->page_up = suzaku_ibus_engine_page_up;
     engine_class->page_down = suzaku_ibus_engine_page_down;
     engine_class->candidate_clicked = suzaku_ibus_engine_candidate_clicked;
+    engine_class->set_content_type = suzaku_ibus_engine_set_content_type;
 }
 
 static void suzaku_ibus_engine_init(SuzakuIBusEngine *self) {
@@ -280,6 +428,8 @@ static void suzaku_ibus_bus_disconnected(IBusBus *bus, gpointer user_data) {
     ibus_quit();
 }
 
+#include "ibus_companion.inc.c"
+
 static gboolean suzaku_ibus_ipc_incoming(
     GSocketService *service,
     GSocketConnection *connection,
@@ -288,6 +438,13 @@ static gboolean suzaku_ibus_ipc_incoming(
     (void)service;
     (void)source_object;
     (void)user_data;
+
+    GCredentials *credentials = g_socket_get_credentials(
+        g_socket_connection_get_socket(connection), NULL);
+    gboolean same_user = credentials != NULL &&
+        g_credentials_get_unix_user(credentials, NULL) == getuid();
+    g_clear_object(&credentials);
+    if (!same_user) { return TRUE; }
 
     gchar request[65536];
     gsize bytes_read = 0;
@@ -302,16 +459,50 @@ static gboolean suzaku_ibus_ipc_incoming(
     }
     request[MIN(bytes_read, sizeof(request) - 1)] = '\0';
 
+    if (read_ok && bytes_read == 1 && request[0] == 'W') {
+        suzaku_companion_subscribe(connection);
+        return TRUE;
+    }
+
+    if (read_ok && bytes_read > 0 && bytes_read < 128 &&
+        (request[0] == 'S' || request[0] == 'L' || request[0] == 'P' || request[0] == 'R') &&
+        g_utf8_validate(request, (gssize)bytes_read, NULL)) {
+        char *response = suzaku_host_ime_control_utf8(request);
+        if (response != NULL) {
+            if (strstr(response, "\"ok\":true") != NULL) {
+                GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
+                if (focused != NULL) {
+                    SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
+                    if (request[0] == 'L' || request[0] == 'R') { suzaku_ibus_engine_clear(engine); }
+                    if (request[0] != 'S') { suzaku_ibus_engine_render(engine); }
+                    g_object_unref(focused);
+                }
+                suzaku_ibus_schedule_prediction();
+            }
+            GOutputStream *output = g_io_stream_get_output_stream(G_IO_STREAM(connection));
+            g_output_stream_write_all(output, response, strlen(response), NULL, NULL, NULL);
+            g_output_stream_close(output, NULL, NULL);
+            suzaku_host_ime_free_utf8(response);
+        }
+        return TRUE;
+    }
+
     gboolean delivered = FALSE;
-    if (bytes_read > 1 && request[0] == 'C' &&
+    if (read_ok && bytes_read > 1 && request[0] == 'A' &&
+        g_utf8_validate(request, (gssize)bytes_read, NULL)) {
+        delivered = suzaku_companion_action(request + 1);
+    } else if (read_ok && bytes_read > 1 && request[0] == 'C' &&
         g_utf8_validate(request + 1, (gssize)bytes_read - 1, NULL)) {
         GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
         if (focused != NULL) {
-            IBusEngine *engine = IBUS_ENGINE(focused);
-            ibus_engine_commit_text(
-                engine, ibus_text_new_from_string(request + 1));
+            SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
+            if (!engine->sensitive) {
+                ibus_engine_commit_text(
+                    IBUS_ENGINE(engine), ibus_text_new_from_string(request + 1));
+                delivered = TRUE;
+                suzaku_ibus_engine_clear(engine);
+            }
             g_object_unref(focused);
-            delivered = TRUE;
         }
     } else if (bytes_read == 1 && request[0] == 'Q') {
         delivered = TRUE;
@@ -377,6 +568,8 @@ static gboolean suzaku_ibus_start_ipc_service(void) {
 }
 
 static void suzaku_ibus_stop_ipc_service(void) {
+    g_clear_pointer(&suzaku_companion_subscribers, g_ptr_array_unref);
+    g_clear_pointer(&suzaku_companion_host_id, g_free);
     if (suzaku_ipc_service != NULL) {
         g_socket_service_stop(suzaku_ipc_service);
         g_clear_object(&suzaku_ipc_service);
@@ -394,6 +587,8 @@ int suzaku_linux_ibus_run(
     }
 
     ibus_init();
+    suzaku_companion_host_id = g_uuid_string_random();
+    suzaku_companion_subscribers = g_ptr_array_new_with_free_func(g_object_unref);
     g_weak_ref_init(&suzaku_last_focused_engine, NULL);
     IBusBus *bus = ibus_bus_new();
     if (bus == NULL || !ibus_bus_is_connected(bus)) {
@@ -468,6 +663,11 @@ int suzaku_linux_ibus_run(
             component_name, engine_name, suzaku_ipc_socket_path);
     ibus_main();
 
+    if (suzaku_prediction_source != 0) {
+        g_source_remove(suzaku_prediction_source);
+        suzaku_prediction_source = 0;
+    }
+
     suzaku_ibus_stop_ipc_service();
     g_weak_ref_clear(&suzaku_last_focused_engine);
     g_object_unref(factory);
@@ -477,8 +677,20 @@ int suzaku_linux_ibus_run(
 
 typedef struct {
     gchar *committed;
-    gsize capacity;
-    gboolean received;
+    gsize committed_capacity;
+    gboolean commit_received;
+    gchar *preedit;
+    gsize preedit_capacity;
+    gboolean preedit_received;
+    gchar *primary_candidate;
+    gsize primary_candidate_capacity;
+    size_t candidate_count;
+    size_t page_size;
+    size_t selected_index;
+    gboolean lookup_received;
+    gboolean preedit_visible;
+    gboolean lookup_visible;
+    size_t ai_candidate_index;
 } SuzakuIBusProbe;
 
 static void suzaku_ibus_probe_commit_text(
@@ -489,8 +701,88 @@ static void suzaku_ibus_probe_commit_text(
     if (value == NULL || value[0] == '\0') {
         return;
     }
-    g_strlcpy(probe->committed, value, probe->capacity);
-    probe->received = TRUE;
+    g_strlcpy(probe->committed, value, probe->committed_capacity);
+    probe->commit_received = TRUE;
+}
+
+static void suzaku_ibus_probe_update_preedit_text(
+    IBusInputContext *context,
+    IBusText *text,
+    guint cursor_pos,
+    gboolean visible,
+    gpointer user_data) {
+    (void)context;
+    (void)cursor_pos;
+    SuzakuIBusProbe *probe = (SuzakuIBusProbe *)user_data;
+    probe->preedit_visible = visible;
+    if (!visible) {
+        return;
+    }
+
+    const gchar *value = ibus_text_get_text(text);
+    if (value == NULL || value[0] == '\0') {
+        return;
+    }
+    g_strlcpy(probe->preedit, value, probe->preedit_capacity);
+    probe->preedit_received = TRUE;
+}
+
+static void suzaku_ibus_probe_update_lookup_table(
+    IBusInputContext *context,
+    IBusLookupTable *table,
+    gboolean visible,
+    gpointer user_data) {
+    (void)context;
+    SuzakuIBusProbe *probe = (SuzakuIBusProbe *)user_data;
+    probe->lookup_visible = visible;
+    if (!visible) {
+        return;
+    }
+
+    guint candidate_count = ibus_lookup_table_get_number_of_candidates(table);
+    if (candidate_count == 0) {
+        return;
+    }
+
+    guint selected_index = MIN(
+        ibus_lookup_table_get_cursor_pos(table), candidate_count - 1);
+    IBusText *candidate = ibus_lookup_table_get_candidate(table, selected_index);
+    if (candidate == NULL) {
+        return;
+    }
+    const gchar *value = ibus_text_get_text(candidate);
+    if (value == NULL || value[0] == '\0') {
+        return;
+    }
+
+    g_strlcpy(
+        probe->primary_candidate,
+        value,
+        probe->primary_candidate_capacity);
+    probe->candidate_count = candidate_count;
+    probe->page_size = ibus_lookup_table_get_page_size(table);
+    probe->selected_index = selected_index;
+    probe->lookup_received = TRUE;
+    for (guint index = 0; index < candidate_count; index++) {
+        IBusText *entry = ibus_lookup_table_get_candidate(table, index);
+        const gchar *label = entry == NULL ? NULL : ibus_text_get_text(entry);
+        if (label != NULL && strstr(label, " · AI") != NULL) {
+            probe->ai_candidate_index = index;
+            break;
+        }
+    }
+}
+
+static void suzaku_ibus_probe_hide_preedit(
+    IBusInputContext *context, gpointer user_data) {
+    (void)context;
+    ((SuzakuIBusProbe *)user_data)->preedit_visible = FALSE;
+}
+
+static void suzaku_ibus_probe_hide_lookup(
+    IBusInputContext *context, gpointer user_data) {
+    (void)context;
+    ((SuzakuIBusProbe *)user_data)->lookup_visible = FALSE;
 }
 
 static void suzaku_ibus_probe_pump_events(void) {
@@ -578,13 +870,31 @@ int suzaku_linux_ibus_probe_roundtrip(
     const char *engine_name,
     const char *seed,
     bool via_ipc,
+    bool wait_for_llm,
+    bool complete_word,
+    unsigned int privacy_mode,
     char *committed,
-    size_t committed_capacity) {
+    size_t committed_capacity,
+    char *preedit,
+    size_t preedit_capacity,
+    char *primary_candidate,
+    size_t primary_candidate_capacity,
+    size_t *candidate_count,
+    size_t *page_size,
+    size_t *selected_index) {
     if (engine_name == NULL || seed == NULL || seed[0] == '\0' ||
-        committed == NULL || committed_capacity == 0) {
+        committed == NULL || committed_capacity == 0 ||
+        preedit == NULL || preedit_capacity == 0 ||
+        primary_candidate == NULL || primary_candidate_capacity == 0 ||
+        candidate_count == NULL || page_size == NULL || selected_index == NULL) {
         return 1;
     }
     committed[0] = '\0';
+    preedit[0] = '\0';
+    primary_candidate[0] = '\0';
+    *candidate_count = 0;
+    *page_size = 0;
+    *selected_index = 0;
 
     ibus_init();
     IBusBus *bus = ibus_bus_new();
@@ -602,11 +912,29 @@ int suzaku_linux_ibus_probe_roundtrip(
 
     SuzakuIBusProbe probe = {
         .committed = committed,
-        .capacity = committed_capacity,
-        .received = FALSE,
+        .committed_capacity = committed_capacity,
+        .commit_received = FALSE,
+        .preedit = preedit,
+        .preedit_capacity = preedit_capacity,
+        .preedit_received = FALSE,
+        .primary_candidate = primary_candidate,
+        .primary_candidate_capacity = primary_candidate_capacity,
+        .candidate_count = 0,
+        .page_size = 0,
+        .selected_index = 0,
+        .lookup_received = FALSE,
+        .ai_candidate_index = (size_t)-1,
     };
     g_signal_connect(context, "commit-text",
                      G_CALLBACK(suzaku_ibus_probe_commit_text), &probe);
+    g_signal_connect(context, "update-preedit-text",
+                     G_CALLBACK(suzaku_ibus_probe_update_preedit_text), &probe);
+    g_signal_connect(context, "update-lookup-table",
+                     G_CALLBACK(suzaku_ibus_probe_update_lookup_table), &probe);
+    g_signal_connect(context, "hide-preedit-text",
+                     G_CALLBACK(suzaku_ibus_probe_hide_preedit), &probe);
+    g_signal_connect(context, "hide-lookup-table",
+                     G_CALLBACK(suzaku_ibus_probe_hide_lookup), &probe);
     ibus_input_context_set_capabilities(
         context, IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_LOOKUP_TABLE);
     ibus_input_context_focus_in(context);
@@ -644,6 +972,24 @@ int suzaku_linux_ibus_probe_roundtrip(
         goto cleanup;
     }
 
+    ibus_input_context_set_content_type(context,
+        privacy_mode == 2 ? IBUS_INPUT_PURPOSE_PASSWORD : IBUS_INPUT_PURPOSE_FREE_FORM,
+        privacy_mode != 0 ? 1u << 11 : 0);
+    suzaku_ibus_probe_pump_events();
+    if (privacy_mode == 2) {
+        if (ibus_input_context_process_key_event(context, IBUS_KEY_a, 0, 0)) { result = 18; }
+        if (suzaku_ibus_probe_send_ipc_commit(seed)) { result = 18; }
+        suzaku_ibus_probe_pump_events();
+        if (probe.preedit_visible || probe.lookup_visible || probe.commit_received) { result = 18; }
+        goto cleanup;
+    }
+
+    suzaku_ibus_probe_pump_events();
+    if (probe.preedit_visible || probe.lookup_visible) {
+        result = 15;
+        goto cleanup;
+    }
+
     if (via_ipc) {
         if (!suzaku_ibus_probe_send_ipc_commit(seed)) {
             result = 11;
@@ -658,19 +1004,73 @@ int suzaku_linux_ibus_probe_roundtrip(
                 goto cleanup;
             }
         }
-        if (!ibus_input_context_process_key_event(context, IBUS_KEY_space, 0, 0)) {
+        for (guint attempt = 0;
+             attempt < 100 &&
+                 (!probe.preedit_received || !probe.lookup_received);
+             attempt++) {
+            suzaku_ibus_probe_pump_events();
+            g_usleep(10000);
+        }
+        if (!probe.preedit_received || !probe.preedit_visible) {
+            result = 12;
+            goto cleanup;
+        }
+        if (!probe.lookup_received || !probe.lookup_visible) {
+            result = 13;
+            goto cleanup;
+        }
+        if (probe.page_size != SUZAKU_LOOKUP_PAGE_SIZE) {
+            result = 14;
+            goto cleanup;
+        }
+        if (wait_for_llm || privacy_mode == 1) {
+            guint attempts = wait_for_llm ? 600 : 160;
+            for (guint attempt = 0; attempt < attempts && probe.ai_candidate_index == (size_t)-1; attempt++) {
+                suzaku_ibus_probe_pump_events();
+                g_usleep(10000);
+            }
+            if (wait_for_llm && probe.ai_candidate_index == (size_t)-1) { result = 17; goto cleanup; }
+            if (privacy_mode == 1 && probe.ai_candidate_index != (size_t)-1) { result = 19; goto cleanup; }
+        }
+        if (complete_word) {
+            if (probe.candidate_count < 2 || !ibus_input_context_process_key_event(context, IBUS_KEY_Tab, 0, 0)) {
+                result = 20;
+                goto cleanup;
+            }
+            for (guint attempt = 0; attempt < 100 && probe.selected_index != 1; attempt++) {
+                suzaku_ibus_probe_pump_events();
+                g_usleep(10000);
+            }
+            if (probe.selected_index != 1) { result = 20; goto cleanup; }
+        }
+        guint commit_key = wait_for_llm ? IBUS_KEY_1 + (guint)probe.ai_candidate_index : IBUS_KEY_space;
+        if (!ibus_input_context_process_key_event(context, commit_key, 0, 0)) {
             result = 8;
             goto cleanup;
         }
     }
 
-    for (guint attempt = 0; attempt < 100 && !probe.received; attempt++) {
+    for (guint attempt = 0;
+         attempt < 100 && (!probe.commit_received ||
+             probe.preedit_visible || probe.lookup_visible);
+         attempt++) {
         suzaku_ibus_probe_pump_events();
         g_usleep(10000);
     }
-    if (!probe.received) {
+    if (!probe.commit_received) {
         result = 9;
+    } else if (probe.preedit_visible || probe.lookup_visible) {
+        result = 16;
     }
+    if (result == 0 && complete_word) {
+        gchar *expected = g_strconcat(probe.primary_candidate, " ", NULL);
+        if (g_strcmp0(probe.committed, expected) != 0) { result = 21; }
+        g_free(expected);
+    }
+
+    *candidate_count = probe.candidate_count;
+    *page_size = probe.page_size;
+    *selected_index = probe.selected_index;
 
 cleanup:
     if (use_global_engine && engine_switched && previous_engine != NULL) {

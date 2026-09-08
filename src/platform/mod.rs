@@ -74,12 +74,18 @@ pub mod linux;
 #[cfg(all(target_os = "linux", feature = "linux-ibus"))]
 pub mod linux_ibus_host;
 pub mod linux_ime;
+#[cfg(target_os = "linux")]
+pub mod linux_ime_control;
+#[cfg(target_os = "linux")]
+pub mod linux_ime_sync;
 pub mod linux_voice;
 pub mod macos;
 pub mod macos_ime;
 #[cfg(target_os = "macos")]
 pub mod macos_voice;
 pub mod panel_companion_dispatch;
+#[cfg(feature = "gpu")]
+pub mod panel_text_focus;
 pub mod settings_host;
 #[cfg(test)]
 mod test_env;

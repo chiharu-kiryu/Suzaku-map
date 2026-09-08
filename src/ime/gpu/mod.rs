@@ -5,8 +5,8 @@ use super::{
     append_keyboard_icon_quads, append_mic_icon_quads, append_next_icon_quads,
     append_pen_icon_quads, append_refresh_icon_quads, append_rounded_rect_quads,
     append_seed_icon_quads, append_soft_card_quads, append_suzaku_bird_icon_quads,
-    append_trash_icon_quads, append_undo_icon_quads, measure_text_prefix_width, text_glyph_advance,
-    text_space_advance,
+    append_trash_icon_quads, append_undo_icon_quads, measure_text_prefix_width, text_char_advance,
+    text_char_width, text_glyph_advance, text_space_advance,
 };
 
 mod glyphs;

@@ -4,10 +4,9 @@ use std::time::{Duration, Instant};
 use suzaku_map::ime::InputSource;
 use suzaku_map::ime::SignalState;
 use suzaku_map::ime::gpu::InteractionKind;
-use suzaku_map::languages::llama::{LlamaProviderConfig, llama_english_plugin_with_config};
-use suzaku_map::panel_support::{
-    derive_next_token_candidates, derive_sentence_candidates_with_indices,
-};
+use suzaku_map::ime::settings::ImeSettings;
+use suzaku_map::languages::llama::{LlamaProviderConfig, OpenAiCompatibleLlamaProvider};
+use suzaku_map::panel_support::composition_candidate_previews;
 use suzaku_map::platform::ime_host_adapter::ImeHostSessionBridge;
 use suzaku_map::platform::ime_host_adapter::shared_session_bridge;
 use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
@@ -57,31 +56,27 @@ impl PanelState {
 
     fn current_llama_config(&self) -> LlamaProviderConfig {
         LlamaProviderConfig {
-            endpoint: "http://127.0.0.1:11434/v1/chat/completions".to_string(),
-            model: match self.chrome.llm_model {
-                suzaku_map::ime::gpu::LlmModelPreset::Llama32_3b => "llama3.2:3b".to_string(),
-            },
-            system_prompt: "You are a sentence-completion engine for an XR and tablet IME. Expand the user's seed into 3 short, tap-friendly English sentence candidates. Return plain text only, one candidate per line, no numbering.".to_string(),
-            max_tokens: 96,
             temperature_tenths: match self.chrome.llm_temperature {
                 suzaku_map::ime::gpu::LlmTemperaturePreset::Focused => 2,
                 suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced => 4,
                 suzaku_map::ime::gpu::LlmTemperaturePreset::Expressive => 7,
             },
-            timeout_ms: 1200,
             handwriting_hint: self.last_handwriting_summary.clone(),
+            ..ImeSettings::load().unwrap_or_default().provider
         }
     }
 
     pub(super) fn reconfigure_llama_plugin(&mut self) {
+        if self.native.showing {
+            self.engine.configure_prediction(None);
+            return;
+        }
         if self.chrome.llm_enabled {
-            self.engine
-                .register_language_plugin(llama_english_plugin_with_config(
-                    self.current_llama_config(),
-                ));
-            self.engine.set_language("llama-en");
+            self.engine.configure_prediction(Some(std::sync::Arc::new(
+                OpenAiCompatibleLlamaProvider::new(self.current_llama_config()),
+            )));
         } else {
-            self.engine.set_language("en");
+            self.engine.configure_prediction(None);
         }
         self.refresh_seed();
     }
@@ -107,10 +102,10 @@ impl PanelState {
             return;
         }
 
-        let normalized = text.trim();
+        let normalized = text;
         let bridge = shared_session_bridge();
         let _ = bridge.activate_session();
-        if normalized.is_empty() {
+        if normalized.trim().is_empty() {
             bridge.clear_marked_text();
             return;
         }
@@ -118,15 +113,20 @@ impl PanelState {
     }
 
     fn refresh_seed_with_text(&mut self, text: &str) {
-        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        self.engine.seed(&normalized);
+        if self.native_action(suzaku_map::ime::companion::NativeOperation::Replace(
+            text.to_string(),
+        )) {
+            self.refresh_native_view();
+            return;
+        }
+        self.engine.seed(text);
         self.refresh_composition_candidates();
-        self.sync_marked_text_with_host(&normalized);
+        self.sync_marked_text_with_host(text);
     }
 
     pub(super) fn reset_after_commit(&mut self, committed_seed: &str) {
-        self.selected_next_tokens.clear();
-        self.composition_base_seed.clear();
+        self.completion_history.clear();
+        self.next_token_completions.clear();
         self.chrome.composed_tokens.clear();
         self.chrome.next_token_candidates.clear();
         self.chrome.sentence_candidates.clear();
@@ -138,50 +138,36 @@ impl PanelState {
     }
 
     pub(super) fn sync_manual_seed_base(&mut self) {
-        self.selected_next_tokens.clear();
-        self.composition_base_seed = self
-            .chrome
-            .seed_text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
+        if self.native.showing {
+            return;
+        }
+        self.completion_history.clear();
     }
 
-    fn full_composed_seed(&self) -> String {
-        let mut parts = Vec::new();
-        if !self.composition_base_seed.is_empty() {
-            parts.push(self.composition_base_seed.clone());
+    pub(super) fn refresh_composition_candidates(&mut self) {
+        if self.native.showing {
+            self.refresh_native_view();
+            return;
         }
-        if !self.selected_next_tokens.is_empty() {
-            parts.push(self.selected_next_tokens.join(" "));
-        }
-        parts.join(" ").trim().to_string()
-    }
-
-    fn refresh_composition_candidates(&mut self) {
         let snapshot = self.engine.snapshot();
-        let normalized_seed = snapshot.seed_text.trim().to_string();
-        self.chrome.composed_tokens = self.selected_next_tokens.clone();
-        self.chrome.next_token_candidates =
-            derive_next_token_candidates(&normalized_seed, &snapshot.candidate_labels, 6);
-        if normalized_seed.split_whitespace().count() >= 2 {
-            let sentence_candidates = derive_sentence_candidates_with_indices(
-                &normalized_seed,
-                &snapshot.candidate_labels,
-                4,
-            );
-            self.chrome.sentence_candidate_source_indices = sentence_candidates
-                .iter()
-                .map(|(index, _)| *index)
-                .collect();
-            self.chrome.sentence_candidates = sentence_candidates
-                .into_iter()
-                .map(|(_, sentence)| sentence)
-                .collect();
-        } else {
-            self.chrome.sentence_candidate_source_indices.clear();
-            self.chrome.sentence_candidates.clear();
-        }
+        self.chrome.composed_tokens = self.completion_history.labels();
+        let previews = composition_candidate_previews(
+            &snapshot.seed_text,
+            &snapshot.active_language,
+            self.engine.candidates(),
+            6,
+            4,
+        );
+        self.chrome.next_token_candidates = previews
+            .next_tokens
+            .iter()
+            .map(|edit| edit.label.clone())
+            .collect();
+        self.next_token_completions = previews.next_tokens;
+        (
+            self.chrome.sentence_candidate_source_indices,
+            self.chrome.sentence_candidates,
+        ) = previews.sentences.into_iter().unzip();
 
         let scroll_index = self.interaction.sentence_candidate_scroll_index;
         if !scroll_index.is_none_or(|index| {
@@ -211,38 +197,40 @@ impl PanelState {
     }
 
     pub(super) fn select_next_token(&mut self, index: usize) {
-        let Some(token) = self.chrome.next_token_candidates.get(index).cloned() else {
+        let Some(edit) = self.next_token_completions.get(index).cloned() else {
             return;
         };
+        if self.native.showing {
+            let mut history = suzaku_map::panel_support::CompletionHistory::default();
+            if let Some(seed) = history.apply(&self.chrome.seed_text, &edit) {
+                self.native_action(suzaku_map::ime::companion::NativeOperation::Replace(seed));
+            }
+            return;
+        }
         let action = InteractionKind::SelectNextToken(index);
         if self.is_repeating_interaction(action) {
             return;
         }
         self.note_interaction_action(action);
-        if self.selected_next_tokens.is_empty() {
-            self.composition_base_seed = self
-                .chrome
-                .seed_text
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
-        }
-        self.selected_next_tokens.push(token);
-        let full_seed = self.full_composed_seed();
+        let Some(full_seed) = self.completion_history.apply(&self.chrome.seed_text, &edit) else {
+            return;
+        };
         self.chrome.set_seed_text(full_seed.clone());
         self.chrome.move_caret_to_end();
         self.refresh_seed_with_text(&full_seed);
     }
 
     pub(super) fn rewind_next_token(&mut self) {
+        if self.native.showing {
+            return;
+        }
         if self.is_repeating_interaction(InteractionKind::RewindNextToken) {
             return;
         }
         self.note_interaction_action(InteractionKind::RewindNextToken);
-        if self.selected_next_tokens.pop().is_none() {
+        let Some(full_seed) = self.completion_history.undo(&self.chrome.seed_text) else {
             return;
-        }
-        let full_seed = self.full_composed_seed();
+        };
         self.chrome.set_seed_text(full_seed.clone());
         self.chrome.move_caret_to_end();
         self.refresh_seed_with_text(&full_seed);
@@ -261,7 +249,7 @@ impl PanelState {
     }
 
     pub(super) fn handle_text_input(&mut self, text: &str) {
-        if !can_process_text_input(self.chrome.active_input_mode, self.chrome.input_focused) {
+        if !can_process_text_input(self.chrome.input_focused) {
             return;
         }
 
@@ -302,13 +290,7 @@ impl PanelState {
     }
 
     pub(super) fn refresh_seed(&mut self) {
-        let normalized = self
-            .chrome
-            .seed_text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
-        self.refresh_seed_with_text(&normalized);
+        self.refresh_seed_with_text(&self.chrome.seed_text.clone());
     }
 }
 
@@ -322,11 +304,8 @@ fn sanitize_text_input(text: &str) -> String {
         .collect()
 }
 
-fn can_process_text_input(
-    active_input_mode: suzaku_map::ime::gpu::InputMode,
-    input_focused: bool,
-) -> bool {
-    active_input_mode == suzaku_map::ime::gpu::InputMode::VirtualKeyboard && input_focused
+fn can_process_text_input(input_focused: bool) -> bool {
+    input_focused
 }
 
 #[cfg(test)]
@@ -359,27 +338,18 @@ mod tests {
     }
 
     #[test]
-    fn text_input_rejected_when_not_virtual_keyboard() {
-        assert!(!can_process_text_input(
-            suzaku_map::ime::gpu::InputMode::Handwriting,
-            true,
-        ));
+    fn focused_text_input_does_not_depend_on_the_selected_input_tab() {
+        assert!(can_process_text_input(true));
     }
 
     #[test]
     fn text_input_rejected_when_input_blurred() {
-        assert!(!can_process_text_input(
-            suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
-            false,
-        ));
+        assert!(!can_process_text_input(false));
     }
 
     #[test]
     fn text_input_allowed_when_virtual_keyboard_focused() {
-        assert!(can_process_text_input(
-            suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
-            true,
-        ));
+        assert!(can_process_text_input(true));
     }
 
     #[test]
@@ -390,7 +360,7 @@ mod tests {
         chrome.active_input_mode = suzaku_map::ime::gpu::InputMode::VirtualKeyboard;
         chrome.input_focused = true;
 
-        if can_process_text_input(chrome.active_input_mode, chrome.input_focused) {
+        if can_process_text_input(chrome.input_focused) {
             let accepted = sanitize_text_input(" 😀");
             if !accepted.is_empty() {
                 chrome.insert_text(&accepted);
@@ -402,26 +372,21 @@ mod tests {
     }
 
     #[test]
-    fn text_input_does_not_mutate_seed_when_rejected_by_mode() {
+    fn handwriting_text_field_accepts_keyboard_input() {
         let mut chrome = PanelChromeState::default();
         chrome.seed_text = "hello".to_string();
         chrome.caret_index = 5;
-
-        let expected = chrome.seed_text.clone();
-        let snapshot = chrome.caret_index;
-
-        if can_process_text_input(
-            suzaku_map::ime::gpu::InputMode::Handwriting,
-            chrome.input_focused,
-        ) {
+        chrome.active_input_mode = suzaku_map::ime::gpu::InputMode::Handwriting;
+        chrome.input_focused = true;
+        if can_process_text_input(chrome.input_focused) {
             let accepted = sanitize_text_input(" 🐶");
             if !accepted.is_empty() {
                 chrome.insert_text(&accepted);
             }
         }
 
-        assert_eq!(chrome.seed_text, expected);
-        assert_eq!(chrome.caret_index, snapshot);
+        assert_eq!(chrome.seed_text, "hello 🐶");
+        assert_eq!(chrome.caret_index, 7);
     }
 
     #[test]
@@ -434,10 +399,7 @@ mod tests {
         let expected = chrome.seed_text.clone();
         let snapshot = chrome.caret_index;
 
-        if can_process_text_input(
-            suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
-            chrome.input_focused,
-        ) {
+        if can_process_text_input(chrome.input_focused) {
             let accepted = sanitize_text_input(" 🐶");
             if !accepted.is_empty() {
                 chrome.insert_text(&accepted);

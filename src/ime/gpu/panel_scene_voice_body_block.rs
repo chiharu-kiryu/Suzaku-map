@@ -376,27 +376,28 @@
                         } else {
                             text_primary
                         };
+                        let icon_rect = centered_icon_rect(visual_rect);
                         match kind {
                             InteractionKind::ToggleVoiceCapture => {
-                                append_mic_icon_quads(&mut quads, visual_rect, icon_color)
+                                append_mic_icon_quads(&mut quads, icon_rect, icon_color)
                             }
                             InteractionKind::InsertVoiceTranscript => {
-                                append_seed_icon_quads(&mut quads, visual_rect, icon_color)
+                                append_seed_icon_quads(&mut quads, icon_rect, icon_color)
                             }
                             InteractionKind::CycleVoiceSample => {
-                                append_next_icon_quads(&mut quads, visual_rect, icon_color)
+                                append_next_icon_quads(&mut quads, icon_rect, icon_color)
                             }
                             InteractionKind::OpenVoiceSettings => append_gear_icon_quads(
                                 &mut quads,
-                                visual_rect,
+                                icon_rect,
                                 icon_color,
                                 [0.0, 0.0, 0.0, 0.0],
                             ),
                             InteractionKind::RefreshVoicePermissions => {
-                                append_refresh_icon_quads(&mut quads, visual_rect, icon_color)
+                                append_refresh_icon_quads(&mut quads, icon_rect, icon_color)
                             }
                             InteractionKind::ClearVoiceTranscript => {
-                                append_trash_icon_quads(&mut quads, visual_rect, icon_color)
+                                append_trash_icon_quads(&mut quads, icon_rect, icon_color)
                             }
                         _ => {
                             let layout = TextBlock {
@@ -414,7 +415,7 @@
                                     align: TextAlign::Center,
                                     role: TextRole::VoiceButton,
                                 }
-                                .layout();
+                                .layout_in_rect(visual_rect, [7.0 * responsive_scale * voice_scale, 2.0 * responsive_scale * voice_scale]);
                                 text_quads.extend(layout.quads.iter().copied());
                                 atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                                 voice_action_layouts.push(layout);

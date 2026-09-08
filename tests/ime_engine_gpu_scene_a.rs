@@ -6,7 +6,7 @@ fn gpu_scene_builder_marks_selected_candidate() {
     use suzaku_map::ime::gpu::WgpuCandidateRenderer;
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-    engine.seed("ni hao xr");
+    engine.seed("hello");
     let snapshot = engine.select_candidate(1);
 
     let renderer = WgpuCandidateRenderer::new(1024.0, 768.0);
@@ -46,7 +46,7 @@ fn gpu_scene_hit_test_returns_clicked_candidate() {
     use suzaku_map::ime::gpu::WgpuCandidateRenderer;
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-    let snapshot = engine.seed("ni hao xr");
+    let snapshot = engine.seed("hello");
     let renderer = WgpuCandidateRenderer::new(1280.0, 800.0);
     let scene = renderer.build_scene(&snapshot);
 
@@ -169,7 +169,7 @@ fn render_scene_exposes_hierarchical_text_sections() {
 
 #[cfg(feature = "gpu")]
 #[test]
-fn render_scene_candidate_primary_prefers_continuation_not_full_repeat() {
+fn render_scene_candidate_primary_preserves_the_literal_fallback() {
     use suzaku_map::ime::gpu::{TextRole, WgpuCandidateRenderer};
 
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
@@ -191,7 +191,7 @@ fn render_scene_candidate_primary_prefers_continuation_not_full_repeat() {
 
     assert!(!first_candidate.lines.is_empty());
     assert!(
-        !first_candidate.lines[0]
+        first_candidate.lines[0]
             .to_lowercase()
             .contains("tablet ime")
     );
@@ -304,7 +304,10 @@ fn render_scene_target_slop_expands_interactive_hit_area() {
     let probe_x = expanded_toggle.rect[0] + 1.0;
     let probe_y = expanded_toggle.rect[1] + expanded_toggle.rect[3] * 0.5;
 
-    assert_eq!(base_scene.hit_interaction(probe_x, probe_y), None);
+    assert_eq!(
+        base_scene.hit_interaction(probe_x, probe_y),
+        Some(InteractionKind::DragWindow)
+    );
     assert_eq!(
         expanded_scene.hit_interaction(probe_x, probe_y),
         Some(InteractionKind::SettingsToggle)

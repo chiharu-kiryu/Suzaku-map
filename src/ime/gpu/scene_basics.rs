@@ -9,9 +9,23 @@ impl WgpuCandidateRenderer {
     }
 
     pub(super) fn responsive_scale(&self) -> f32 {
-        let width_factor = self.scene_width / 900.0;
-        let height_factor = self.scene_height / 780.0;
-        (width_factor * 0.65 + height_factor * 0.35).clamp(0.8, 1.8)
+        // Height is an output of layout, not an input to control scaling.
+        self.scene_width / 1000.0
+    }
+
+    /// Natural height in scene pixels, independent of the current viewport height.
+    /// Settings use a separate desktop window and are excluded here.
+    pub fn preferred_input_panel_height(&self, chrome: &PanelChromeState) -> f32 {
+        let scale = (self.responsive_scale() * 1.12).clamp(0.9, 2.4);
+        let metrics = PanelSceneMetrics::new(
+            self.scene_width,
+            f32::MAX,
+            scale,
+            chrome,
+            chrome.sentence_candidates.len().min(4),
+            self.scene_width < 1360.0 && chrome.preview_style == PreviewStyle::Compact,
+        );
+        (metrics.panel_height + 12.0 * scale).ceil()
     }
 
     pub(super) fn interaction_hit_rect(
@@ -287,6 +301,7 @@ impl WgpuCandidateRenderer {
                 .cloned(),
             draft_text: snapshot.draft_text.clone(),
         }
+        .with_window_drag_background(self.scene_width, self.scene_height)
     }
 }
 
@@ -349,6 +364,7 @@ mod tests {
         let drag_target = scene
             .interactive_targets
             .iter()
+            .rev()
             .find(|target| target.kind == InteractionKind::DragWindow)
             .expect("expanded panel drag target");
         let drag_center_x = drag_target.rect[0] + drag_target.rect[2] * 0.5;
@@ -360,9 +376,93 @@ mod tests {
     }
 
     #[test]
+    fn collapsed_cjk_candidates_share_width_instead_of_hiding_secondary_readings() {
+        let mut engine = XRTabletImeEngine::new(EngineConfig {
+            default_language: "ja".into(),
+            ..Default::default()
+        });
+        let snapshot = engine.seed("nihongo");
+        let chrome = PanelChromeState {
+            seed_text: "nihongo".into(),
+            input_modes_expanded: false,
+            sentence_candidates: snapshot.candidate_labels.iter().take(4).cloned().collect(),
+            sentence_candidate_source_indices: (0..4).collect(),
+            ..Default::default()
+        };
+        let scene = WgpuCandidateRenderer::new(1000.0, 620.0)
+            .build_panel_scene(&snapshot, &chrome, None, None, None, None);
+        assert_eq!(scene.hit_targets.len(), 4);
+        let width = scene.hit_targets[0].rect[2];
+        assert!(
+            scene
+                .hit_targets
+                .iter()
+                .all(|target| (target.rect[2] - width).abs() < 0.01)
+        );
+        assert!(
+            scene
+                .text_sections
+                .iter()
+                .flat_map(|section| &section.layouts)
+                .any(|layout| layout.lines.iter().any(|line| line.contains("にほんご")))
+        );
+    }
+
+    #[test]
+    fn short_english_word_chips_fit_in_expanded_and_collapsed_panels() {
+        let mut engine = XRTabletImeEngine::new(Default::default());
+        let snapshot = engine.seed("hel");
+        for expanded in [false, true] {
+            for text_scale in [
+                DisplayTextScale::Small,
+                DisplayTextScale::Medium,
+                DisplayTextScale::Large,
+            ] {
+                let chrome = PanelChromeState {
+                    seed_text: "hel".into(),
+                    input_modes_expanded: expanded,
+                    text_scale,
+                    next_token_candidates: vec!["hello".into(), "help".into(), "helpful".into()],
+                    sentence_candidates: snapshot
+                        .candidate_labels
+                        .iter()
+                        .take(4)
+                        .cloned()
+                        .collect(),
+                    sentence_candidate_source_indices: (0..4).collect(),
+                    ..Default::default()
+                };
+                let scene = WgpuCandidateRenderer::new(1000.0, 620.0)
+                    .build_panel_scene(&snapshot, &chrome, None, None, None, None);
+                let chips: Vec<_> = scene
+                    .text_sections
+                    .iter()
+                    .filter(|section| section.role == TextRole::NextTokenChip)
+                    .flat_map(|section| &section.layouts)
+                    .collect();
+                assert_eq!(chips.len(), 3);
+                assert!(
+                    chips.iter().all(|layout| !layout.truncated),
+                    "{expanded} / {text_scale:?}"
+                );
+                assert!(chips[0].lines[0].contains("hello"));
+                if !expanded {
+                    let width = scene.hit_targets[0].rect[2];
+                    assert!(
+                        scene
+                            .hit_targets
+                            .iter()
+                            .all(|target| (target.rect[2] - width).abs() < 0.01)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn default_panel_spans_an_unpaired_candidate_across_the_last_row() {
         let mut engine = XRTabletImeEngine::new(EngineConfig::default());
-        engine.seed("ni hao");
+        engine.seed("hello");
         let snapshot = engine.snapshot();
         let chrome = PanelChromeState {
             seed_text: "ni hao".to_string(),

@@ -7,7 +7,7 @@ use crate::app_state::{
 };
 use crate::helpers::point_in_rect;
 use crate::helpers::window_title;
-use crate::render::{build_shape_vertices, build_text_vertices};
+use crate::render::build_frame_vertices;
 use std::time::{Duration, Instant};
 use suzaku_map::ime::gpu::{
     InputMode, InteractionKind, RenderScene, SettingsScrollMetadata, VirtualKeyboardKey,
@@ -158,6 +158,15 @@ impl PanelState {
     }
 
     pub(super) fn move_candidate_selection(&mut self, delta: isize) {
+        if self.native.showing {
+            if let Some(frame) = &self.native.frame {
+                let index = (frame.selected as isize + delta)
+                    .clamp(0, frame.candidates.len().saturating_sub(1) as isize)
+                    as usize;
+                self.native_action(suzaku_map::ime::companion::NativeOperation::Select(index));
+            }
+            return;
+        }
         self.engine.move_selection(delta);
         if !self.is_host_marked_text_roundtrip_ready() {
             return;
@@ -206,7 +215,14 @@ impl PanelState {
             return;
         }
         self.is_focused = focused;
+        if focused {
+            self.leave_native_view();
+        }
         if !focused {
+            self.modifiers = Default::default();
+            self.text_input.clear();
+            self.text_focus.forget();
+            self.clear_pointer_hover();
             if self.kind == PanelWindowKind::Main {
                 self.chosen_canvas_abandon_state();
             } else {
@@ -268,6 +284,15 @@ impl PanelState {
     }
 
     pub(super) fn commit_selected_candidate_to_host(&mut self, options: CommitOptions) -> bool {
+        let selected = self.view_snapshot().selected_index;
+        if self.native_action(suzaku_map::ime::companion::NativeOperation::Commit(
+            selected,
+        )) {
+            return true;
+        }
+        if self.prevent_commit_into_panel() {
+            return false;
+        }
         let Some(candidate) = self
             .engine
             .candidates()
@@ -321,6 +346,12 @@ impl PanelState {
     }
 
     pub(super) fn commit_sentence_candidate(&mut self, index: usize) -> bool {
+        if self.native_action(suzaku_map::ime::companion::NativeOperation::Commit(index)) {
+            return true;
+        }
+        if self.prevent_commit_into_panel() {
+            return false;
+        }
         let Some(index) = self.resolve_sentence_candidate_index(index) else {
             return false;
         };
@@ -354,6 +385,20 @@ impl PanelState {
         self.clear_sentence_candidate_scroll();
         self.reset_after_commit(&committed_text);
         true
+    }
+
+    fn prevent_commit_into_panel(&mut self) -> bool {
+        // The Linux IPC commits to the *currently* focused IBus context. A
+        // directly edited panel/settings window must not become its own target.
+        if cfg!(target_os = "linux") && (self.is_focused || self.chrome.settings_open) {
+            self.finish_text_editing();
+            self.last_commit_feedback =
+                Some("Focus the target app, then click a candidate to send.".into());
+            self.commit_feedback_ticks = 180;
+            self.window.request_redraw();
+            return true;
+        }
+        false
     }
 
     fn resolve_sentence_candidate_index(&self, index: usize) -> Option<usize> {
@@ -457,14 +502,18 @@ impl PanelState {
     }
 
     pub(super) fn current_scene(&mut self) -> RenderScene {
-        let snapshot = self.engine.snapshot();
+        let snapshot = self.view_snapshot();
         self.current_scene_with_snapshot(&snapshot)
     }
 
     fn current_scene_with_snapshot(&mut self, snapshot: &Snapshot) -> RenderScene {
-        let mut scene = match self.kind {
+        let scene = match self.kind {
             PanelWindowKind::Main => {
                 let mut chrome = self.chrome.clone();
+                if self.native.showing {
+                    chrome.input_focused = false;
+                }
+                self.text_input.preview(&mut chrome, false);
                 chrome.settings_open = false;
                 chrome.hovered_interaction = self.interaction.hovered_interaction;
                 chrome.pressed_interaction = self.interaction.pressed_interaction;
@@ -525,6 +574,7 @@ impl PanelState {
             }
             PanelWindowKind::Settings => {
                 let mut chrome = self.chrome.clone();
+                self.text_input.preview(&mut chrome, true);
                 chrome.hovered_interaction = self.interaction.hovered_interaction;
                 chrome.pressed_interaction = self.interaction.pressed_interaction;
                 self.renderer.build_settings_scene(
@@ -540,8 +590,6 @@ impl PanelState {
                 )
             }
         };
-        self.append_hover_tooltip(&mut scene);
-        self.append_commit_feedback(&mut scene);
         self.sync_settings_scroll_interaction_metadata(&scene.settings_scroll_metadata);
         scene
     }
@@ -617,7 +665,11 @@ impl PanelState {
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
             let logical_size = winit::dpi::PhysicalSize::new(width, height)
                 .to_logical::<f64>(self.window.scale_factor());
-            self.record_scaled_expanded_size(logical_size);
+            if self.is_external_window_resize(winit::dpi::PhysicalSize::new(width, height))
+                && self.size.width != width
+            {
+                self.record_scaled_expanded_size(logical_size);
+            }
             self.note_expanded_window_position();
         }
         self.size.width = width;
@@ -628,17 +680,32 @@ impl PanelState {
             suzaku_map::ime::gpu::WgpuCandidateRenderer::new(width as f32, height as f32);
         self.surface.configure(&self.device, &self.config);
         self.last_scene = None;
+        self.constrain_expanded_window_position();
     }
 
     pub(super) fn render(&mut self) -> Result<(), SurfaceError> {
-        let snapshot = self.engine.snapshot();
+        let snapshot = self.view_snapshot();
         let scene = self.current_scene_with_snapshot(&snapshot);
+        let overlays: Vec<_> = self
+            .build_hover_tooltip(&scene)
+            .into_iter()
+            .chain(self.build_commit_feedback())
+            .collect();
+        self.font_atlas.ensure_glyphs(
+            &self.queue,
+            &snapshot.active_language,
+            scene
+                .atlas_glyphs
+                .iter()
+                .chain(overlays.iter().flat_map(|overlay| &overlay.atlas_glyphs))
+                .map(|glyph| glyph.ch),
+        );
         let next_window_title = match self.kind {
             PanelWindowKind::Main => window_title(
                 &scene,
                 &snapshot.committed_text,
                 self.font_atlas.uses_runtime_font,
-                &self.font_atlas.font_label,
+                &self.font_atlas.status_label(),
             ),
             PanelWindowKind::Settings => "Suzaku Panel Settings".to_string(),
         };
@@ -646,14 +713,12 @@ impl PanelState {
             self.window.set_title(&next_window_title);
             self.last_window_title = next_window_title;
         }
-
-        let shape_vertices =
-            build_shape_vertices(&scene, self.config.width as f32, self.config.height as f32);
-        let text_vertices = build_text_vertices(
-            &scene.atlas_glyphs,
-            &self.font_atlas,
+        let vertices = build_frame_vertices(
+            &scene,
+            &overlays,
             self.config.width as f32,
             self.config.height as f32,
+            |ch| self.font_atlas.uv_for(ch),
         );
         upload_vertex_data(
             &self.device,
@@ -661,7 +726,7 @@ impl PanelState {
             &mut self.shape_vertex_buffer,
             &mut self.shape_vertex_capacity,
             "suzaku-panel-shape-vertices",
-            bytemuck::cast_slice(&shape_vertices),
+            bytemuck::cast_slice(&vertices.shapes),
         );
         upload_vertex_data(
             &self.device,
@@ -669,7 +734,7 @@ impl PanelState {
             &mut self.text_vertex_buffer,
             &mut self.text_vertex_capacity,
             "suzaku-panel-text-vertices",
-            bytemuck::cast_slice(&text_vertices),
+            bytemuck::cast_slice(&vertices.text),
         );
 
         let output = self.surface.get_current_texture()?;
@@ -751,14 +816,20 @@ impl PanelState {
                 timestamp_writes: None,
             });
 
-            pass.set_pipeline(&self.shape_pipeline);
-            pass.set_vertex_buffer(0, self.shape_vertex_buffer.slice(..));
-            pass.draw(0..shape_vertices.len() as u32, 0..1);
-            if !text_vertices.is_empty() {
-                pass.set_pipeline(&self.text_pipeline);
-                pass.set_bind_group(0, &self.font_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.text_vertex_buffer.slice(..));
-                pass.draw(0..text_vertices.len() as u32, 0..1);
+            // Paint each surface with its own text before advancing to the next overlay.
+            // Painting all surfaces first lets underlying labels bleed through tooltip cards.
+            for layer in &vertices.layers {
+                if !layer.shapes.is_empty() {
+                    pass.set_pipeline(&self.shape_pipeline);
+                    pass.set_vertex_buffer(0, self.shape_vertex_buffer.slice(..));
+                    pass.draw(layer.shapes.clone(), 0..1);
+                }
+                if !layer.text.is_empty() {
+                    pass.set_pipeline(&self.text_pipeline);
+                    pass.set_bind_group(0, &self.font_atlas.bind_group, &[]);
+                    pass.set_vertex_buffer(0, self.text_vertex_buffer.slice(..));
+                    pass.draw(layer.text.clone(), 0..1);
+                }
             }
         }
 
@@ -774,15 +845,11 @@ impl PanelState {
         y: f32,
     ) -> (Option<InteractionKind>, Option<[f32; 4]>) {
         let read_target = |scene: &RenderScene| {
-            let interaction = scene.hit_interaction(x, y);
-            let rect = interaction.and_then(|target| {
-                scene
-                    .interactive_targets
-                    .iter()
-                    .find(|candidate| candidate.kind == target)
-                    .map(|candidate| candidate.rect)
-            });
-            (interaction, rect)
+            let target = scene.hit_interactive_target(x, y);
+            (
+                target.map(|target| target.kind),
+                target.map(|target| target.rect),
+            )
         };
         if let Some(scene) = self.last_scene.as_ref() {
             read_target(scene)
@@ -844,11 +911,11 @@ impl PanelState {
         if let Some((kind, interaction_is_truncated)) = self.selectable_interaction_at(x, y) {
             match kind {
                 InteractionKind::SeedInput => {
-                    self.chrome.focus_input();
-                    self.chrome.move_caret_to_end();
+                    self.begin_text_editing();
                 }
                 InteractionKind::DragWindow => {}
                 InteractionKind::ClosePanel => {
+                    self.finish_text_editing();
                     self.close_requested = true;
                     self.window.set_visible(false);
                 }
@@ -1470,11 +1537,20 @@ impl PanelState {
     pub(super) fn update_hovered_interaction(&mut self) -> bool {
         let previous = self.interaction.hovered_interaction;
         let Some((x, y)) = self.cursor_position else {
-            self.interaction.hovered_interaction = None;
-            return previous.is_some();
+            return self.clear_pointer_hover();
         };
-        self.interaction.hovered_interaction = self.hit_interaction_at(x, y);
-        self.interaction.hovered_interaction != previous
+        let (kind, rect) = self.interaction_target_at(x, y);
+        self.interaction.hovered_interaction = kind;
+        let tooltip_changed = if self.tooltip_can_arm() {
+            let target = kind
+                .zip(rect)
+                .filter(|(kind, _)| self.interaction_hint(*kind).is_some())
+                .map(|(kind, rect)| suzaku_map::ime::gpu::InteractiveTarget { kind, rect });
+            self.interaction.tooltip.track(target, Instant::now())
+        } else {
+            self.interaction.tooltip.dismiss()
+        };
+        self.interaction.hovered_interaction != previous || tooltip_changed
     }
 
     pub(super) fn update_pressed_interaction(&mut self) {
@@ -1493,6 +1569,11 @@ impl PanelState {
     }
 
     pub(super) fn begin_primary_press(&mut self, is_touch: bool) {
+        // Some native window managers consume the release after a system drag.
+        // A fresh press always starts a new gesture, never a stale drag.
+        if self.interaction.panel_dragging {
+            self.end_panel_drag();
+        }
         self.update_pressed_interaction();
         if !matches!(
             self.interaction.pressed_interaction,
@@ -1533,7 +1614,8 @@ impl PanelState {
 
         if is_touch {
             self.interaction.touch_start_position = self.cursor_position;
-            self.interaction.touch_tap_pending = !self.try_begin_handwriting_stroke();
+            self.interaction.touch_tap_pending =
+                self.kind != PanelWindowKind::Main || !self.try_begin_handwriting_stroke();
             return;
         }
 
@@ -1583,7 +1665,11 @@ impl PanelState {
             .pressed_interaction
             .is_some_and(|target| self.press_target_is_stable(target));
 
-        if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
+        if self.interaction.panel_dragging
+            && pressed_interaction != Some(InteractionKind::ToggleCompactMode)
+        {
+            self.end_panel_drag();
+        } else if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
                 if !self.end_panel_drag() && selected_from_pressed {
                     self.select_at_cursor();
@@ -1727,7 +1813,7 @@ impl PanelState {
         }
     }
 
-    fn clear_sentence_candidate_scroll(&mut self) {
+    pub(super) fn clear_sentence_candidate_scroll(&mut self) {
         self.interaction.sentence_candidate_scroll_index = None;
         self.interaction.sentence_candidate_scroll_started_at = None;
         self.interaction.next_token_candidate_scroll_index = None;

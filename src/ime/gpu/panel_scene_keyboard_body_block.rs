@@ -242,14 +242,14 @@
                                 align: TextAlign::Center,
                                 role: TextRole::KeyboardKey,
                             }
-                            .layout();
+                            .layout_in_rect(rect, [5.0 * responsive_scale * keyboard_scale, 2.0 * responsive_scale * keyboard_scale]);
                             text_quads.extend(layout.quads.iter().copied());
                             atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                             keyboard_layouts.push(layout);
                             if matches!(key, VirtualKeyboardKey::Backspace) {
                                 append_backspace_icon_quads(
                                     &mut quads,
-                                    rect,
+                                    centered_icon_rect(rect),
                                     keyboard_secondary_text,
                                 );
                             }
@@ -500,12 +500,12 @@
                             align: TextAlign::Center,
                             role: TextRole::KeyboardKey,
                         }
-                        .layout();
+                        .layout_in_rect(rect, [6.0 * responsive_scale * keyboard_scale, 2.0 * responsive_scale * keyboard_scale]);
                         text_quads.extend(layout.quads.iter().copied());
                         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         keyboard_layouts.push(layout);
                         if matches!(key, VirtualKeyboardKey::Backspace) {
-                            append_backspace_icon_quads(&mut quads, rect, keyboard_secondary_text);
+                            append_backspace_icon_quads(&mut quads, centered_icon_rect(rect), keyboard_secondary_text);
                         }
                     }
 

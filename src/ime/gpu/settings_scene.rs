@@ -42,18 +42,19 @@ impl WgpuCandidateRenderer {
         let title_px = (label_px * 1.52_f32).max(2.8_f32 * ui_scale);
         let section_px = (label_px * 1.01_f32).max(2.0_f32 * ui_scale);
         let chip_px = (label_px * 0.94_f32).max(1.88_f32 * ui_scale);
-        let panel_width = (self.scene_width * 0.96).clamp(420.0, 760.0);
-        let panel_x = ((self.scene_width - panel_width) / 2.0).max(5.0);
-        let row_height = 24.8 * ui_scale;
+        let panel_width = (self.scene_width - 16.0).clamp(0.0, 760.0);
+        let panel_x = (self.scene_width - panel_width) / 2.0;
+        let row_height = (24.8 * ui_scale).max(section_px.max(chip_px) * 7.0 + 8.0 * ui_scale);
         let section_gap_y = 4.8 * ui_scale;
-        let chip_start_x = panel_x + 118.0 * ui_scale;
-        let chip_max_x = panel_x + panel_width - 18.0;
+        let label_col_x = panel_x + 30.0 * ui_scale;
+        let label_max_width =
+            measure_text_prefix_width("Tap Timeout", 11, section_px, heading_tracking).ceil() + 1.0;
+        let chip_start_x = label_col_x + label_max_width + 12.0 * ui_scale;
+        let scroll_track_width = 5.8 * ui_scale;
+        let scroll_track_padding = 8.0 * ui_scale;
+        let chip_max_x = panel_x + panel_width - (scroll_track_width + scroll_track_padding * 2.0);
         let chip_gap_x = 5.8 * ui_scale;
         let chip_gap_y = 4.8 * ui_scale;
-        let label_col_x = panel_x + 17.0 * ui_scale;
-        let label_max_width = (chip_start_x - label_col_x - 8.0).max(94.0);
-        let row_label_height = 22.4 * ui_scale;
-        let section_label_height = row_label_height;
         let section_margin = 2.4 * ui_scale;
         let settings_panel_radius = 13.0 * ui_scale;
         let settings_section_radius = 10.0 * ui_scale;
@@ -71,7 +72,7 @@ impl WgpuCandidateRenderer {
             )
         };
         let min_panel_height = 166.0;
-        let chip_area_width = (chip_max_x - chip_start_x).max(132.0);
+        let chip_area_width = (chip_max_x - chip_start_x).max(0.0);
 
         let sections: Vec<(&str, Vec<(InteractionKind, &str, bool)>)> = vec![
             (
@@ -363,17 +364,19 @@ impl WgpuCandidateRenderer {
         ];
 
         let estimated_chip_width = |label: &str| {
-            (label.chars().count() as f32 * 10.0)
-                .max(56.0)
-                .min(chip_area_width)
+            (measure_text_prefix_width(label, label.chars().count(), chip_px, ui_tracking)
                 + 20.0 * ui_scale
+                + 1.0)
+                .ceil()
+                .max(48.0 * ui_scale)
+                .min(chip_area_width)
         };
         let estimate_chip_rows = |options: &[(InteractionKind, &str, bool)]| {
             let mut cursor_x = chip_start_x;
             let mut rows = 1usize;
             for (_, chip_label, _) in options {
                 let chip_w = estimated_chip_width(chip_label);
-                if cursor_x + chip_w > chip_max_x {
+                if cursor_x > chip_start_x && cursor_x + chip_w > chip_max_x {
                     rows += 1;
                     cursor_x = chip_start_x;
                 }
@@ -423,13 +426,7 @@ impl WgpuCandidateRenderer {
             }
 
             let glyph_advance = text_glyph_advance(pixel_size, letter_spacing);
-            let width_for_char = |ch: char| {
-                if ch == ' ' {
-                    text_space_advance(pixel_size)
-                } else {
-                    glyph_advance
-                }
-            };
+            let width_for_char = |ch: char| text_char_advance(ch, pixel_size, letter_spacing);
 
             let doubled: Vec<char> = chars.iter().chain(chars.iter()).cloned().collect();
             let cycle_step = (started_at.elapsed().as_millis() as f32 / 220.0).floor() as usize;
@@ -455,27 +452,29 @@ impl WgpuCandidateRenderer {
             text
         };
 
-        let mut estimated_height = 0.0;
-
-        for (_, _, options, is_collapsed) in visible_sections.iter() {
-            if !is_collapsed && !options.is_empty() {
-                let section_rows = estimate_chip_rows(options.as_slice());
-                estimated_height += section_margin + section_label_height;
-                estimated_height += section_rows as f32 * row_height;
-                if section_rows > 1 {
-                    estimated_height += (section_rows as f32 - 1.0) * chip_gap_y;
-                }
-                estimated_height += section_gap_y;
+        // Labels share the first option row; estimation and drawing must use the same flow.
+        let section_height_for = |options: &[(InteractionKind, &str, bool)], collapsed: bool| {
+            let rows = if collapsed || options.is_empty() {
+                1
             } else {
-                estimated_height += section_margin + section_label_height + section_gap_y;
-            }
-        }
+                estimate_chip_rows(options)
+            };
+            section_margin * 2.0 + rows as f32 * row_height + (rows - 1) as f32 * chip_gap_y
+        };
+        let estimated_height: f32 = visible_sections
+            .iter()
+            .map(|(_, _, options, collapsed)| {
+                section_height_for(options, *collapsed) + section_gap_y
+            })
+            .sum();
 
-        let title_section_h = 33.8;
+        let title_section_h = title_px * 7.0 + 12.0 * ui_scale;
+        let search_bar_h = (24.0 * ui_scale).max(section_px * 7.0 + 8.0 * ui_scale);
         let panel_padding_y = 7.0;
-        let panel_height = (title_section_h + estimated_height + panel_padding_y)
-            .max(min_panel_height)
-            .min((self.scene_height - 16.0).max(224.0));
+        let panel_height =
+            (title_section_h + search_bar_h + 8.0 * ui_scale + estimated_height + panel_padding_y)
+                .max(min_panel_height)
+                .min((self.scene_height - 16.0).max(0.0));
         let panel_y = if self.scene_height > panel_height + 20.0 {
             8.0
         } else {
@@ -570,7 +569,13 @@ impl WgpuCandidateRenderer {
             color: settings_divider,
         });
 
-        let close_rect = [panel_x + panel_width - 34.0, panel_y + 7.0, 20.0, 20.0];
+        let close_size = (24.0 * ui_scale).max(20.0);
+        let close_rect = [
+            panel_x + panel_width - close_size - 12.0 * ui_scale,
+            panel_y + (title_section_h - close_size) * 0.5,
+            close_size,
+            close_size,
+        ];
         let (close_hovered, close_pressed) = interaction_state(InteractionKind::SettingsToggle);
         let close_visual_rect = animated_rect(close_rect, close_hovered, close_pressed);
         append_soft_card_quads(
@@ -598,7 +603,25 @@ impl WgpuCandidateRenderer {
             kind: InteractionKind::SettingsToggle,
             rect: interaction_hit_rect(close_rect),
         });
-        append_gear_icon_quads(&mut quads, close_visual_rect, text_secondary, surface_alt);
+        let close_layout = TextBlock {
+            text: "×".to_string(),
+            origin: [0.0; 2],
+            max_width: 0.0,
+            pixel_size: section_px,
+            letter_spacing: ui_tracking,
+            line_gap: 0.0,
+            max_lines: 1,
+            color: text_secondary,
+            align: TextAlign::Center,
+            role: TextRole::ToolButton,
+        }
+        .layout_in_rect(close_visual_rect, [3.0 * ui_scale, 3.0 * ui_scale]);
+        text_quads.extend(close_layout.quads.iter().copied());
+        atlas_glyphs.extend(close_layout.atlas_glyphs.iter().cloned());
+        text_sections.push(TextSection {
+            role: TextRole::ToolButton,
+            layouts: vec![close_layout],
+        });
 
         let title_layout = TextBlock {
             text: "Panel Settings".to_string(),
@@ -612,7 +635,15 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Left,
             role: TextRole::HeaderTitle,
         }
-        .layout();
+        .layout_in_rect(
+            [
+                panel_x + 15.0 * ui_scale,
+                panel_y,
+                panel_width - close_size - 40.0 * ui_scale,
+                title_section_h,
+            ],
+            [0.0, 4.0 * ui_scale],
+        );
         text_quads.extend(title_layout.quads.iter().copied());
         atlas_glyphs.extend(title_layout.atlas_glyphs.iter().cloned());
         text_sections.push(TextSection {
@@ -624,9 +655,8 @@ impl WgpuCandidateRenderer {
         let mut option_layouts = Vec::new();
         let search_bar_x = panel_x + 14.0 * ui_scale;
         let search_bar_w = (panel_width - 72.0 * ui_scale).max(140.0 * ui_scale);
-        let search_bar_h = 19.2 * ui_scale;
-        let search_bar_y = panel_y + 35.0 * ui_scale;
-        let search_clear_size = (18.0 * ui_scale).max(10.0);
+        let search_bar_y = panel_y + title_section_h;
+        let search_clear_size = search_bar_h;
         let search_clear_x = search_bar_x + search_bar_w + 6.0 * ui_scale;
         let search_clear_y = search_bar_y;
         let clear_search_text = !chrome.settings_search_query.is_empty();
@@ -692,7 +722,7 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Left,
             role: TextRole::InputValue,
         }
-        .layout();
+        .layout_in_rect(search_bar_rect, [8.0 * ui_scale, 3.0 * ui_scale]);
         text_quads.extend(search_layout.quads.iter().copied());
         atlas_glyphs.extend(search_layout.atlas_glyphs.iter().cloned());
 
@@ -739,7 +769,7 @@ impl WgpuCandidateRenderer {
                 align: TextAlign::Center,
                 role: TextRole::SettingOption,
             }
-            .layout();
+            .layout_in_rect(clear_button_rect, [3.0 * ui_scale, 3.0 * ui_scale]);
             text_quads.extend(clear_label.quads.iter().copied());
             atlas_glyphs.extend(clear_label.atlas_glyphs.iter().cloned());
         }
@@ -757,21 +787,19 @@ impl WgpuCandidateRenderer {
             .settings_scroll_offset
             .max(0.0)
             .min(max_scroll_offset);
-        let scroll_track_width = 5.8 * ui_scale;
-        let scroll_track_padding = 8.0 * ui_scale;
         let settings_scroll_track_x =
             (panel_x + panel_width - scroll_track_width - scroll_track_padding).max(panel_x + 2.0);
         let settings_scroll_track_top = settings_content_top;
         let settings_scroll_track_height =
             (settings_content_bottom - settings_scroll_track_top).max(0.0);
-        let chip_max_x = panel_x + panel_width - (scroll_track_width + scroll_track_padding * 1.5);
         let mut content_y = settings_content_top - settings_scroll_offset;
         let has_settings_scroll = max_scroll_offset > 0.0 && settings_scroll_track_height > 0.0;
         let settings_scroll_handle_height = if has_settings_scroll {
             let ratio = (visible_content_height / estimated_height.max(visible_content_height))
                 .clamp(0.12, 1.0);
             (settings_scroll_track_height * ratio)
-                .clamp(14.0 * ui_scale, settings_scroll_track_height)
+                .max(14.0 * ui_scale)
+                .min(settings_scroll_track_height)
         } else {
             settings_scroll_track_height.min(16.0 * ui_scale)
         };
@@ -807,6 +835,12 @@ impl WgpuCandidateRenderer {
         let visible_in_settings = |top: f32, height: f32| {
             top + height > settings_content_top && top < settings_content_bottom
         };
+        let content_viewport = [
+            panel_x + 7.0,
+            settings_content_top,
+            panel_width - 14.0,
+            visible_content_height,
+        ];
 
         if has_settings_scroll {
             let track_color = [
@@ -853,23 +887,33 @@ impl WgpuCandidateRenderer {
             });
         }
 
+        let content_quad_start = quads.len();
+        let content_target_start = interactive_targets.len();
+        if visible_sections.is_empty() {
+            let mut empty_layout = TextBlock {
+                text: "No matching settings".to_string(),
+                origin: [label_col_x, settings_content_top],
+                max_width: panel_width - 40.0 * ui_scale,
+                pixel_size: section_px,
+                letter_spacing: ui_tracking,
+                line_gap: base_line_gap,
+                max_lines: 1,
+                color: text_secondary,
+                align: TextAlign::Left,
+                role: TextRole::SettingLabel,
+            }
+            .layout();
+            empty_layout.clip_to_rect(content_viewport);
+            text_quads.extend(empty_layout.quads.iter().copied());
+            atlas_glyphs.extend(empty_layout.atlas_glyphs.iter().cloned());
+            label_layouts.push(empty_layout);
+        }
         for (_visible_index, (section_index, label, options, is_collapsed)) in
             visible_sections.iter().enumerate()
         {
-            let section_effectively_collapsed = is_searching || *is_collapsed;
-            let section_rows = if section_effectively_collapsed || options.is_empty() {
-                1.0
-            } else {
-                estimate_chip_rows(options.as_slice()) as f32
-            };
-            let mut section_height = section_margin + section_label_height;
-            if !section_effectively_collapsed && !options.is_empty() {
-                section_height += section_rows * row_height;
-                if section_rows > 1.0 {
-                    section_height += (section_rows - 1.0) * chip_gap_y;
-                }
-            }
-            let section_top = content_y - 3.2;
+            let section_effectively_collapsed = *is_collapsed;
+            let section_height = section_height_for(options, section_effectively_collapsed);
+            let section_top = content_y;
             let section_visible = visible_in_settings(section_top, section_height);
             if section_visible {
                 append_soft_card_quads(
@@ -877,7 +921,7 @@ impl WgpuCandidateRenderer {
                     [
                         panel_x + 8.0,
                         section_top,
-                        panel_width - 16.0,
+                        chip_max_x - panel_x - 4.0,
                         section_height,
                     ],
                     settings_section_fill,
@@ -895,58 +939,46 @@ impl WgpuCandidateRenderer {
                     rect: [
                         panel_x + 20.0,
                         section_top + section_height - 1.0,
-                        panel_width - 40.0,
+                        chip_max_x - panel_x - 20.0,
                         1.0,
                     ],
                     color: settings_divider,
                 });
             }
 
-            let label_toggle_layout = TextBlock {
-                text: if section_effectively_collapsed {
-                    "▸"
-                } else {
-                    "▾"
+            let row_y = content_y + section_margin;
+            if visible_in_settings(row_y, row_height) {
+                let toggle_size = 16.0 * ui_scale;
+                append_chevron_icon_quads(
+                    &mut quads,
+                    [
+                        panel_x + 12.0 * ui_scale,
+                        row_y + (row_height - toggle_size) * 0.5,
+                        toggle_size,
+                        toggle_size,
+                    ],
+                    text_secondary,
+                    section_effectively_collapsed,
+                );
+                if !is_searching {
+                    interactive_targets.push(InteractiveTarget {
+                        kind: InteractionKind::ToggleSettingsSection(*section_index),
+                        rect: interaction_hit_rect([
+                            panel_x + 10.0 * ui_scale,
+                            row_y,
+                            chip_start_x - panel_x - 16.0 * ui_scale,
+                            row_height,
+                        ]),
+                    });
                 }
-                .to_string(),
-                origin: [panel_x + panel_width - 24.0 * ui_scale, content_y + 6.2],
-                max_width: 10.0,
-                pixel_size: section_px,
-                letter_spacing: heading_tracking,
-                line_gap: base_line_gap,
-                max_lines: 1,
-                color: text_secondary,
-                align: TextAlign::Center,
-                role: TextRole::SettingOption,
-            }
-            .layout();
-            if section_visible {
-                text_quads.extend(label_toggle_layout.quads.iter().copied());
-                atlas_glyphs.extend(label_toggle_layout.atlas_glyphs.iter().cloned());
-                option_layouts.push(label_toggle_layout);
-                interactive_targets.push(InteractiveTarget {
-                    kind: InteractionKind::ToggleSettingsSection(*section_index),
-                    rect: {
-                        let toggle_area_w = 16.0 * ui_scale;
-                        let toggle_area_x = panel_x + panel_width - toggle_area_w - 6.0 * ui_scale;
-                        interaction_hit_rect([
-                            toggle_area_x,
-                            section_top,
-                            toggle_area_w,
-                            section_label_height,
-                        ])
-                    },
-                });
             }
 
             let mut chip_x = chip_start_x;
-            let mut chip_y = content_y;
+            let mut chip_y = row_y;
             if !section_effectively_collapsed {
                 for (kind, chip_label, selected) in options {
                     let (hovered, pressed) = interaction_state(*kind);
-                    let available_chip_w =
-                        (chip_area_width + chip_start_x - chip_x).max(72.0 * ui_scale);
-                    let chip_w = estimated_chip_width(chip_label).min(available_chip_w);
+                    let chip_w = estimated_chip_width(chip_label);
                     if chip_x > chip_start_x && chip_x + chip_w > chip_max_x {
                         chip_x = chip_start_x;
                         chip_y += row_height + chip_gap_y;
@@ -972,7 +1004,7 @@ impl WgpuCandidateRenderer {
                             align: TextAlign::Center,
                             role: TextRole::SettingOption,
                         }
-                        .layout();
+                        .layout_in_rect(visual_rect, [10.0 * ui_scale, 3.0 * ui_scale]);
                         if base_layout.truncated || base_layout.lines.len() > 1 {
                             settings_option_truncated.push(*kind);
                         }
@@ -1021,7 +1053,7 @@ impl WgpuCandidateRenderer {
                             rect: interaction_hit_rect(rect),
                         });
 
-                        let option_layout = TextBlock {
+                        let mut option_layout = TextBlock {
                             text: option_text,
                             origin: [
                                 visual_rect[0] + 10.0 * ui_scale,
@@ -1036,7 +1068,8 @@ impl WgpuCandidateRenderer {
                             align: TextAlign::Center,
                             role: TextRole::SettingOption,
                         }
-                        .layout();
+                        .layout_in_rect(visual_rect, [10.0 * ui_scale, 3.0 * ui_scale]);
+                        option_layout.clip_to_rect(content_viewport);
                         text_quads.extend(option_layout.quads.iter().copied());
                         atlas_glyphs.extend(option_layout.atlas_glyphs.iter().cloned());
                         option_layouts.push(option_layout);
@@ -1045,7 +1078,7 @@ impl WgpuCandidateRenderer {
                 }
             }
 
-            let label_layout = TextBlock {
+            let mut label_layout = TextBlock {
                 text: (*label).to_string(),
                 origin: [label_col_x, content_y + 6.2],
                 max_width: label_max_width,
@@ -1057,14 +1090,26 @@ impl WgpuCandidateRenderer {
                 align: TextAlign::Left,
                 role: TextRole::SettingLabel,
             }
-            .layout();
-            if section_visible {
+            .layout_in_rect(
+                [label_col_x, row_y, label_max_width, row_height],
+                [0.0, 3.0 * ui_scale],
+            );
+            label_layout.clip_to_rect(content_viewport);
+            if visible_in_settings(row_y, row_height) {
                 text_quads.extend(label_layout.quads.iter().copied());
                 atlas_glyphs.extend(label_layout.atlas_glyphs.iter().cloned());
                 label_layouts.push(label_layout);
             }
             content_y += section_height + section_gap_y;
         }
+
+        for quad in &mut quads[content_quad_start..] {
+            quad.rect = intersect_rect(quad.rect, content_viewport);
+        }
+        for target in &mut interactive_targets[content_target_start..] {
+            target.rect = intersect_rect(target.rect, content_viewport);
+        }
+        interactive_targets.retain(|target| target.rect[2] > 0.0 && target.rect[3] > 0.0);
 
         text_sections.push(TextSection {
             role: TextRole::SettingLabel,
@@ -1091,6 +1136,7 @@ impl WgpuCandidateRenderer {
             selected_label: None,
             draft_text: String::new(),
         }
+        .with_window_drag_background(self.scene_width, self.scene_height)
     }
 
     pub async fn request_adapter() -> Result<wgpu::Adapter, wgpu::RequestAdapterError> {
