@@ -31,9 +31,9 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$suzaku_ci_mode" == ibus ]]; then
-  cargo build --locked --all-features --bin linux_ime_host
+  cargo build --locked --all-features --bin linux_ime_host --bin linux_ime_probe
   suzaku_ci_tmp="$(mktemp -d /tmp/suzaku-sync-qa.XXXXXX)"
-  env -u DISPLAY -u WAYLAND_DISPLAY dbus-run-session -- env \
+  timeout --kill-after=3s 120s env -u DISPLAY -u WAYLAND_DISPLAY dbus-run-session -- env \
     XDG_RUNTIME_DIR="$suzaku_ci_tmp" \
     XDG_CONFIG_HOME="$suzaku_ci_tmp/config" \
     XDG_DATA_HOME="$suzaku_ci_tmp/data" \
@@ -50,6 +50,10 @@ else
   for suzaku_ci_test in \
     windowing_native_test::native_window_fits_content_through_fold_zoom_and_restore \
     keyboard_native_test::native_keyboard_editing_and_focus_return \
+    candidates_native_test::native_candidate_clicks_and_async_refresh_are_safe \
+    settings_native_test::native_tone_controls_follow_acknowledgements_and_reload \
+    native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
+    status_native_test::native_panel_input_does_not_wait_for_status_probes \
     font_atlas::visual_tests::multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
   do
     # A renamed/missing opt-in test must not become a successful zero-test run.
@@ -57,14 +61,30 @@ else
       printf 'Required CI test is missing: %s\n' "$suzaku_ci_test" >&2
       exit 1
     fi
-    env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
+    suzaku_ci_probe_env=()
+    if [[ "$suzaku_ci_test" == status_native_test::* ]]; then
+      mkdir -m 700 "$suzaku_ci_tmp/bin"
+      install -m 700 scripts/fixtures/slow-ibus.sh "$suzaku_ci_tmp/bin/ibus"
+      suzaku_ci_probe_env=(
+        "PATH=$suzaku_ci_tmp/bin:$PATH" SUZAKU_STATUS_NATIVE_QA=1
+        "SUZAKU_STATUS_FIXTURE_BIN=$suzaku_ci_tmp/bin"
+        SUZAKU_LINUX_IME_FRAMEWORK=ibus SUZAKU_LINUX_IME_DAEMON_READY=1
+        SUZAKU_LINUX_IME_REGISTERED=1 SUZAKU_LINUX_IME_RUNTIME_VISIBLE=1
+        SUZAKU_LINUX_IME_HOST_READY=1
+      )
+    fi
+    timeout --kill-after=3s 90s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
+      -u SUZAKU_LINUX_IME_ACTIVE \
       dbus-run-session -- env \
+      "${suzaku_ci_probe_env[@]}" \
       XDG_RUNTIME_DIR="$suzaku_ci_tmp/runtime" \
       XDG_CONFIG_HOME="$suzaku_ci_tmp/$suzaku_ci_test/config" \
       XDG_DATA_HOME="$suzaku_ci_tmp/$suzaku_ci_test/data" \
       GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
       SUZAKU_IME_CONFIG="$suzaku_ci_tmp/$suzaku_ci_test/ime.json" \
       SUZAKU_LINUX_IME_SOCKET="$suzaku_ci_tmp/runtime/host.sock" \
+      SUZAKU_LINUX_PORTAL_AVAILABLE=0 SUZAKU_LINUX_PIPEWIRE_AVAILABLE=0 \
+      SUZAKU_LINUX_VOICE_FORCE_READY=1 SUZAKU_LINUX_VOICE_SAMPLE='hello world' \
       SUZAKU_PANEL_NATIVE_QA=1 SUZAKU_LINUX_PANEL_BACKEND=x11-nofocus \
       xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
       cargo test --locked --all-features --bin panel "$suzaku_ci_test" \

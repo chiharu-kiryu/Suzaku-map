@@ -10,6 +10,7 @@ mod platform {
     use ksni::{Icon, MenuItem, ToolTip, Tray};
     use std::sync::mpsc::{self, Sender};
     use std::thread::{self, JoinHandle};
+    use suzaku_map::ime::settings::PredictionSettingsPatch;
     use suzaku_map::languages::BuiltinLanguage;
     use suzaku_map::languages::llama::{LlamaProviderConfig, runtime as llama_runtime};
     use suzaku_map::platform::linux_ime_control::{self, NativeImeStatus};
@@ -28,6 +29,7 @@ mod platform {
         ReleaseInputMethod,
         SetLanguage(BuiltinLanguage),
         SetPredictionEnabled(bool),
+        SetPredictionSettings(PredictionSettingsPatch),
         ReloadImeSettings,
         CheckModel(LlamaProviderConfig),
         WarmModel(LlamaProviderConfig),
@@ -98,10 +100,10 @@ mod platform {
     }
 
     impl SystemTray {
-        pub(crate) fn set_prediction_enabled(&self, enabled: bool) {
-            let _ = self
-                .control_tx
-                .send(TrayControl::SetPredictionEnabled(enabled));
+        pub(crate) fn set_prediction_settings(&self, patch: PredictionSettingsPatch) -> bool {
+            self.control_tx
+                .send(TrayControl::SetPredictionSettings(patch))
+                .is_ok()
         }
         pub(crate) fn set_panel_visible(&self, visible: bool) {
             let _ = self.control_tx.send(TrayControl::SetPanelVisible(visible));
@@ -458,6 +460,13 @@ mod platform {
                                 linux_ime_control::set_llm_enabled(enabled),
                             );
                         }
+                        TrayControl::SetPredictionSettings(patch) => {
+                            publish_settings_result(
+                                &handle,
+                                linux_ime_control::set_prediction_settings(patch),
+                                true,
+                            );
+                        }
                         TrayControl::ReloadImeSettings => {
                             publish_native_settings(&handle, linux_ime_control::reload_settings());
                         }
@@ -571,6 +580,14 @@ mod platform {
         handle: &Handle<SuzakuTray>,
         result: Result<NativeImeStatus, String>,
     ) {
+        publish_settings_result(handle, result, false);
+    }
+
+    fn publish_settings_result(
+        handle: &Handle<SuzakuTray>,
+        result: Result<NativeImeStatus, String>,
+        panel_write_finished: bool,
+    ) {
         // A timed-out write may have succeeded. Reconcile before rolling the companion UI back.
         let (confirmed, error) = match result {
             Ok(state) => (Some(state), None),
@@ -581,7 +598,14 @@ mod platform {
             if let Some(state) = confirmed {
                 tray.input_method.native = Some(state);
             }
-            if let Some(state) = &tray.input_method.native {
+            if panel_write_finished {
+                tray.send(PanelUserEvent::PredictionSettingsApplied(
+                    tray.input_method
+                        .native
+                        .as_ref()
+                        .map(|state| state.settings.clone()),
+                ));
+            } else if let Some(state) = &tray.input_method.native {
                 tray.send(PanelUserEvent::InputMethodSettingsChanged(
                     state.settings.clone(),
                 ));
@@ -765,7 +789,12 @@ mod platform {
 
     impl SystemTray {
         pub(crate) fn set_panel_visible(&self, _visible: bool) {}
-        pub(crate) fn set_prediction_enabled(&self, _enabled: bool) {}
+        pub(crate) fn set_prediction_settings(
+            &self,
+            _patch: suzaku_map::ime::settings::PredictionSettingsPatch,
+        ) -> bool {
+            false
+        }
 
         pub(crate) fn shutdown(self) {}
     }

@@ -5,9 +5,9 @@ use winit::event_loop::EventLoopProxy;
 mod platform {
     use super::{EventLoopProxy, PanelUserEvent};
     use std::env;
-    use std::fs::{self, OpenOptions};
+    use std::fs::{self, File, OpenOptions, TryLockError};
     use std::io::{self, ErrorKind, Write};
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     use std::os::unix::net::UnixDatagram;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -30,8 +30,9 @@ mod platform {
         listener: Option<JoinHandle<()>>,
         stop: Arc<AtomicBool>,
         socket_path: PathBuf,
-        lock_path: PathBuf,
-        identity: String,
+        // Never unlink this file: all launches must contend on the same inode.
+        // The OS releases the lock even if the process crashes.
+        lock_file: File,
     }
 
     impl SingleInstanceGuard {
@@ -46,10 +47,8 @@ mod platform {
                 let _ = listener.join();
             }
             remove_file_if_present(&self.socket_path);
-            if fs::read_to_string(&self.lock_path).is_ok_and(|owner| owner.trim() == self.identity)
-            {
-                remove_file_if_present(&self.lock_path);
-            }
+            // Clear legacy PID metadata while still holding the exclusive lock.
+            let _ = self.lock_file.set_len(0);
         }
     }
 
@@ -62,7 +61,15 @@ mod platform {
     pub(crate) fn claim_single_instance(
         proxy: EventLoopProxy<PanelUserEvent>,
     ) -> io::Result<InstanceLaunch> {
-        let runtime_dir = panel_runtime_dir()?;
+        claim_instance_at(panel_runtime_dir()?, move || {
+            let _ = proxy.send_event(PanelUserEvent::ShowPanel);
+        })
+    }
+
+    fn claim_instance_at(
+        runtime_dir: PathBuf,
+        show_panel: impl Fn() + Send + 'static,
+    ) -> io::Result<InstanceLaunch> {
         fs::create_dir_all(&runtime_dir)?;
         fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o700))?;
 
@@ -70,55 +77,42 @@ mod platform {
         let socket_path = runtime_dir.join("control.sock");
         let identity = current_process_identity()?;
 
-        for _ in 0..3 {
-            match OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&lock_path)
-            {
-                Ok(mut lock_file) => {
-                    if let Err(error) = lock_file
-                        .set_permissions(fs::Permissions::from_mode(0o600))
-                        .and_then(|()| writeln!(lock_file, "{identity}"))
-                    {
-                        drop(lock_file);
-                        remove_file_if_present(&lock_path);
-                        return Err(error);
-                    }
-                    return create_primary_instance(proxy, socket_path, lock_path, identity);
-                }
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                    if lock_owner_is_alive(&lock_path) {
-                        signal_existing_instance(&socket_path)?;
-                        return Ok(InstanceLaunch::ExistingSignaled);
-                    }
-                    match fs::remove_file(&lock_path) {
-                        Ok(()) => {}
-                        Err(error) if error.kind() == ErrorKind::NotFound => {}
-                        Err(error) => return Err(error),
-                    }
-                }
-                Err(error) => return Err(error),
+        let mut lock_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(&lock_path)?;
+        match lock_file.try_lock() {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => {
+                signal_existing_instance(&socket_path)?;
+                return Ok(InstanceLaunch::ExistingSignaled);
             }
+            Err(TryLockError::Error(error)) => return Err(error),
         }
-
-        Err(io::Error::new(
-            ErrorKind::AlreadyExists,
-            "could not claim the Suzaku panel instance lock",
-        ))
+        // Respect an already-running older panel which only used PID metadata.
+        if lock_owner_is_alive(&lock_path) {
+            signal_existing_instance(&socket_path)?;
+            return Ok(InstanceLaunch::ExistingSignaled);
+        }
+        lock_file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        lock_file.set_len(0)?;
+        writeln!(lock_file, "{identity}")?;
+        create_primary_instance(show_panel, socket_path, lock_file)
     }
 
     fn create_primary_instance(
-        proxy: EventLoopProxy<PanelUserEvent>,
+        show_panel: impl Fn() + Send + 'static,
         socket_path: PathBuf,
-        lock_path: PathBuf,
-        identity: String,
+        lock_file: File,
     ) -> io::Result<InstanceLaunch> {
         remove_file_if_present(&socket_path);
         let socket = match UnixDatagram::bind(&socket_path) {
             Ok(socket) => socket,
             Err(error) => {
-                remove_owned_lock(&lock_path, &identity);
+                let _ = lock_file.set_len(0);
                 return Err(error);
             }
         };
@@ -126,7 +120,7 @@ mod platform {
             .and_then(|()| socket.set_read_timeout(Some(LISTENER_POLL_INTERVAL)))
         {
             remove_file_if_present(&socket_path);
-            remove_owned_lock(&lock_path, &identity);
+            let _ = lock_file.set_len(0);
             return Err(error);
         }
 
@@ -134,12 +128,12 @@ mod platform {
         let listener_stop = Arc::clone(&stop);
         let listener = match thread::Builder::new()
             .name("suzaku-instance-control".into())
-            .spawn(move || listen_for_instance_commands(socket, proxy, listener_stop))
+            .spawn(move || listen_for_instance_commands(socket, show_panel, listener_stop))
         {
             Ok(listener) => listener,
             Err(error) => {
                 remove_file_if_present(&socket_path);
-                remove_owned_lock(&lock_path, &identity);
+                let _ = lock_file.set_len(0);
                 return Err(error);
             }
         };
@@ -148,21 +142,20 @@ mod platform {
             listener: Some(listener),
             stop,
             socket_path,
-            lock_path,
-            identity,
+            lock_file,
         }))
     }
 
     fn listen_for_instance_commands(
         socket: UnixDatagram,
-        proxy: EventLoopProxy<PanelUserEvent>,
+        show_panel: impl Fn(),
         stop: Arc<AtomicBool>,
     ) {
         let mut message = [0_u8; 32];
         while !stop.load(Ordering::Acquire) {
             match socket.recv(&mut message) {
                 Ok(length) if message.get(..length) == Some(CONTROL_SHOW) => {
-                    let _ = proxy.send_event(PanelUserEvent::ShowPanel);
+                    show_panel();
                 }
                 Ok(_) => {}
                 Err(error)
@@ -192,7 +185,9 @@ mod platform {
     }
 
     fn send_control_message(socket_path: &Path, message: &[u8]) -> io::Result<()> {
-        UnixDatagram::unbound()?.send_to(message, socket_path)?;
+        let socket = UnixDatagram::unbound()?;
+        socket.set_write_timeout(Some(CONTROL_RETRY_DELAY))?;
+        socket.send_to(message, socket_path)?;
         Ok(())
     }
 
@@ -240,12 +235,6 @@ mod platform {
             .split_whitespace()
             .nth(19)
             .and_then(|value| value.parse().ok())
-    }
-
-    fn remove_owned_lock(lock_path: &Path, identity: &str) {
-        if fs::read_to_string(lock_path).is_ok_and(|owner| owner.trim() == identity) {
-            remove_file_if_present(lock_path);
-        }
     }
 
     fn remove_file_if_present(path: &Path) {
@@ -312,6 +301,137 @@ mod platform {
 
             drop(receiver);
             fs::remove_file(socket_path).expect("remove test socket");
+        }
+
+        #[test]
+        fn concurrent_launches_keep_exactly_one_primary_and_can_relaunch() {
+            use super::{InstanceLaunch, claim_instance_at};
+            use std::sync::{Arc, Barrier};
+            use std::thread;
+            for _ in 0..4 {
+                let directory = test_path("concurrent");
+                let barrier = Arc::new(Barrier::new(24));
+                let workers: Vec<_> = (0..24)
+                    .map(|_| {
+                        let directory = directory.clone();
+                        let barrier = barrier.clone();
+                        thread::spawn(move || {
+                            barrier.wait();
+                            claim_instance_at(directory, || {})
+                        })
+                    })
+                    .collect();
+                let outcomes: Vec<_> = workers
+                    .into_iter()
+                    .map(|worker| worker.join().unwrap())
+                    .collect();
+                let primary = outcomes
+                    .iter()
+                    .filter(|result| matches!(result, Ok(InstanceLaunch::Primary(_))))
+                    .count();
+                let failures: Vec<_> = outcomes
+                    .iter()
+                    .filter_map(|result| result.as_ref().err())
+                    .collect();
+                assert_eq!(primary, 1, "multiple live primary guards");
+                assert!(failures.is_empty(), "secondary launch failed: {failures:?}");
+                drop(outcomes);
+                assert!(!directory.join("control.sock").exists());
+                let relaunched = claim_instance_at(directory.clone(), || {}).unwrap();
+                assert!(matches!(relaunched, InstanceLaunch::Primary(_)));
+                drop(relaunched);
+                fs::remove_dir_all(directory).unwrap();
+            }
+        }
+
+        #[test]
+        fn a_running_legacy_panel_keeps_its_socket_and_identity() {
+            use super::{InstanceLaunch, claim_instance_at};
+            let directory = test_path("legacy");
+            fs::create_dir(&directory).unwrap();
+            let lock_path = directory.join("panel.lock");
+            let identity = current_process_identity().unwrap();
+            fs::write(&lock_path, &identity).unwrap();
+            let socket_path = directory.join("control.sock");
+            let receiver = UnixDatagram::bind(&socket_path).unwrap();
+            receiver
+                .set_read_timeout(Some(std::time::Duration::from_secs(1)))
+                .unwrap();
+            assert!(matches!(
+                claim_instance_at(directory.clone(), || {}).unwrap(),
+                InstanceLaunch::ExistingSignaled
+            ));
+            let mut bytes = [0; 16];
+            let size = receiver.recv(&mut bytes).unwrap();
+            assert_eq!(&bytes[..size], CONTROL_SHOW);
+            assert_eq!(fs::read_to_string(lock_path).unwrap(), identity);
+            drop(receiver);
+            fs::remove_dir_all(directory).unwrap();
+        }
+
+        #[test]
+        fn instance_process_fixture() {
+            use std::io::Read;
+            let Some(directory) = std::env::var_os("SUZAKU_INSTANCE_TEST_DIR") else {
+                return;
+            };
+            let directory = PathBuf::from(directory);
+            assert!(directory.starts_with(std::env::temp_dir()));
+            assert!(
+                directory
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("suzaku-panel-crash-")
+            );
+            let guard = super::claim_instance_at(directory.clone(), || {}).unwrap();
+            assert!(matches!(guard, super::InstanceLaunch::Primary(_)));
+            fs::write(directory.join("ready"), b"ready").unwrap();
+            let _ = std::io::stdin().read(&mut [0]);
+            drop(guard);
+        }
+
+        #[test]
+        fn crashed_process_releases_the_lock_and_stale_socket_can_be_replaced() {
+            use std::process::{Child, Command, Stdio};
+            use std::time::{Duration, Instant};
+            struct TestChild(Child);
+            impl Drop for TestChild {
+                fn drop(&mut self) {
+                    let _ = self.0.kill();
+                    let _ = self.0.wait();
+                }
+            }
+            let directory = test_path("crash");
+            let mut child = TestChild(
+                Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "instance::platform::tests::instance_process_fixture",
+                        "--nocapture",
+                    ])
+                    .env("SUZAKU_INSTANCE_TEST_DIR", &directory)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !directory.join("ready").exists() {
+                assert!(Instant::now() < deadline, "child did not acquire the lock");
+                assert!(child.0.try_wait().unwrap().is_none(), "child exited early");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(matches!(
+                super::claim_instance_at(directory.clone(), || {}).unwrap(),
+                super::InstanceLaunch::ExistingSignaled
+            ));
+            child.0.kill().unwrap();
+            child.0.wait().unwrap();
+            let guard = super::claim_instance_at(directory.clone(), || {}).unwrap();
+            assert!(matches!(guard, super::InstanceLaunch::Primary(_)));
+            drop(guard);
+            fs::remove_dir_all(directory).unwrap();
         }
     }
 }

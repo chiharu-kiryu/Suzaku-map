@@ -435,11 +435,12 @@ fn decode_u16(value: &str) -> Option<u16> {
     value.trim().parse::<u16>().ok()
 }
 
-pub(crate) fn encode_llm_temperature(value: LlmTemperaturePreset) -> &'static str {
+pub(crate) fn encode_llm_temperature(value: LlmTemperaturePreset) -> String {
     match value {
-        LlmTemperaturePreset::Focused => "focused",
-        LlmTemperaturePreset::Balanced => "balanced",
-        LlmTemperaturePreset::Expressive => "expressive",
+        LlmTemperaturePreset::Focused => "focused".into(),
+        LlmTemperaturePreset::Balanced => "balanced".into(),
+        LlmTemperaturePreset::Expressive => "expressive".into(),
+        LlmTemperaturePreset::Custom(value) => format!("custom:{value}"),
     }
 }
 
@@ -448,13 +449,30 @@ pub(crate) fn decode_llm_temperature(value: &str) -> Option<LlmTemperaturePreset
         "focused" => Some(LlmTemperaturePreset::Focused),
         "balanced" => Some(LlmTemperaturePreset::Balanced),
         "expressive" => Some(LlmTemperaturePreset::Expressive),
-        _ => None,
+        _ => value
+            .strip_prefix("custom:")
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|value| *value <= 10)
+            .map(LlmTemperaturePreset::from_tenths),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_temperature_settings_round_trip_without_rounding() {
+        for value in 0..=10 {
+            let preset = LlmTemperaturePreset::from_tenths(value);
+            assert_eq!(preset.tenths(), value);
+            assert_eq!(
+                decode_llm_temperature(&encode_llm_temperature(preset)),
+                Some(preset)
+            );
+        }
+        assert!(decode_llm_temperature("custom:11").is_none());
+    }
 
     fn assert_float_eq(actual: f32, expected: f32, case: &str) {
         if actual.is_infinite() || expected.is_infinite() {

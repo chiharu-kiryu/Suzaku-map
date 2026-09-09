@@ -79,6 +79,7 @@ fn build_linux_ibus_bridge() {
     println!("cargo:rerun-if-env-changed=SUZAKU_IBUS_INCLUDE_DIR");
     println!("cargo:rerun-if-changed=src/linux/ibus_engine_bridge.c");
     println!("cargo:rerun-if-changed=src/linux/ibus_companion.inc.c");
+    println!("cargo:rerun-if-changed=src/linux/ibus_ipc.inc.c");
 }
 
 fn locate_ibus_include() -> Option<PathBuf> {

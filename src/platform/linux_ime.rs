@@ -1,5 +1,14 @@
 use super::TargetPlatform;
 
+#[path = "linux_ime_cache.rs"]
+mod background;
+
+/// UI-safe view: returns the latest snapshot immediately and refreshes off-thread.
+/// The initial snapshot is conservative until the first probe completes.
+pub fn bootstrap_status_nonblocking(platform: TargetPlatform) -> LinuxImeBootstrap {
+    background::status(platform)
+}
+
 #[cfg(not(test))]
 use std::sync::{Mutex, OnceLock};
 #[cfg(not(test))]
@@ -197,11 +206,7 @@ fn parse_bool_env(value: String) -> Option<bool> {
 }
 
 fn process_has_name(process_name: &str) -> bool {
-    std::process::Command::new("pgrep")
-        .arg("-x")
-        .arg(process_name)
-        .output()
-        .is_ok_and(|output| output.status.success())
+    command_stdout("pgrep", &["-x", process_name]).is_some()
 }
 
 fn ibus_runtime_has_engine(connection_name: &str) -> bool {
@@ -277,14 +282,15 @@ fn has_ibus_component_marker(connection_name: &str) -> bool {
 }
 
 fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
-    let response = std::process::Command::new(command)
-        .args(args)
-        .output()
-        .ok()?;
-    if !response.status.success() {
-        return None;
+    #[cfg(target_os = "linux")]
+    {
+        super::linux_command::stdout(command, args, std::time::Duration::from_millis(350))
     }
-    String::from_utf8(response.stdout).ok()
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (command, args);
+        None
+    }
 }
 
 fn has_fcitx_registration_marker(connection_name: &str) -> bool {

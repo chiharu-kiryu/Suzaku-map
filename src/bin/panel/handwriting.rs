@@ -345,6 +345,7 @@ impl PanelState {
     }
 
     fn refresh_handwriting_candidates(&mut self) {
+        self.handwriting_generation = self.handwriting_generation.wrapping_add(1);
         self.last_handwriting_summary = Some(summarize_handwriting_strokes(
             &self.chrome.handwriting_strokes,
         ));
@@ -391,6 +392,7 @@ impl PanelState {
         self.interaction.handwriting_dragging = true;
         let start_point = clamp_handwriting_point([x, y], rect);
         self.chrome.handwriting_strokes.push(vec![start_point]);
+        self.handwriting_generation = self.handwriting_generation.wrapping_add(1);
         self.begin_handwriting_sample_state(start_point);
         self.chrome.handwriting_hint = "Tracing… release to recognize".to_string();
         true
@@ -414,6 +416,7 @@ impl PanelState {
         }
         if let Some(stroke) = self.chrome.handwriting_strokes.last_mut() {
             append_handwriting_segment(stroke, clamped, self.interaction.last_input_was_touch);
+            self.handwriting_generation = self.handwriting_generation.wrapping_add(1);
         }
     }
 
@@ -432,6 +435,7 @@ impl PanelState {
     }
 
     pub(super) fn clear_handwriting(&mut self) {
+        self.handwriting_generation = self.handwriting_generation.wrapping_add(1);
         self.interaction.handwriting_dragging = false;
         self.reset_handwriting_sample_state();
         self.chrome.handwriting_strokes.clear();
@@ -447,6 +451,17 @@ impl PanelState {
         let Some(candidate) = self.chrome.handwriting_candidates.get(index).cloned() else {
             return;
         };
+        if self.native.showing {
+            self.native_insert_text(
+                &candidate,
+                super::native_sync::NativeInsertion::Handwriting {
+                    strokes: self.chrome.handwriting_strokes.clone(),
+                    candidates: self.chrome.handwriting_candidates.clone(),
+                    generation: self.handwriting_generation,
+                },
+            );
+            return;
+        }
         if !self.chrome.seed_text.is_empty() && !self.chrome.seed_text.ends_with(' ') {
             self.chrome.insert_text(" ");
         }

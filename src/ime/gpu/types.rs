@@ -124,6 +124,26 @@ pub enum LlmTemperaturePreset {
     Focused,
     Balanced,
     Expressive,
+    Custom(u32),
+}
+
+impl LlmTemperaturePreset {
+    pub fn from_tenths(value: u32) -> Self {
+        match value {
+            2 => Self::Focused,
+            4 => Self::Balanced,
+            7 => Self::Expressive,
+            other => Self::Custom(other),
+        }
+    }
+    pub fn tenths(self) -> u32 {
+        match self {
+            Self::Focused => 2,
+            Self::Balanced => 4,
+            Self::Expressive => 7,
+            Self::Custom(value) => value,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

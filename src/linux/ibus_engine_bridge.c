@@ -253,7 +253,9 @@ static gboolean suzaku_ibus_engine_process_key_event(
         return suzaku_ibus_engine_commit(self, keyval == IBUS_KEY_space && suzaku_host_ime_language_kind() == 2);
     }
 
-    if (self->input->len > 0 && keyval >= IBUS_KEY_1 &&
+    guint language = suzaku_host_ime_language_kind();
+    /* English digits belong to the literal input; Tab/arrows select completions. */
+    if (language != 2 && self->input->len > 0 && keyval >= IBUS_KEY_1 &&
         keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
         size_t index = suzaku_ibus_candidate_page_start() +
                        (size_t)(keyval - IBUS_KEY_1);
@@ -264,9 +266,9 @@ static gboolean suzaku_ibus_engine_process_key_event(
     }
 
     gunichar character = ibus_keyval_to_unicode(keyval);
-    guint language = suzaku_host_ime_language_kind();
     if ((character >= 'a' && character <= 'z') ||
         (character >= 'A' && character <= 'Z') || character == '\'' ||
+        (language == 2 && character >= '0' && character <= '9') ||
         (language == 1 && (character == 0xfc || character == 0xdc || character == ':')) ||
         (language == 3 && character == '-')) {
         gchar utf8[7] = {0};
@@ -277,7 +279,8 @@ static gboolean suzaku_ibus_engine_process_key_event(
         return TRUE;
     }
 
-    if (self->input->len > 0) {
+    /* Modifier/function keys carry no text and must never commit a pending word. */
+    if (self->input->len > 0 && character != 0 && g_unichar_isprint(character)) {
         suzaku_ibus_engine_commit(self, FALSE);
     }
     return FALSE;
@@ -429,43 +432,22 @@ static void suzaku_ibus_bus_disconnected(IBusBus *bus, gpointer user_data) {
 }
 
 #include "ibus_companion.inc.c"
+#include "ibus_ipc.inc.c"
 
-static gboolean suzaku_ibus_ipc_incoming(
-    GSocketService *service,
-    GSocketConnection *connection,
-    GObject *source_object,
-    gpointer user_data) {
-    (void)service;
-    (void)source_object;
-    (void)user_data;
-
-    GCredentials *credentials = g_socket_get_credentials(
-        g_socket_connection_get_socket(connection), NULL);
-    gboolean same_user = credentials != NULL &&
-        g_credentials_get_unix_user(credentials, NULL) == getuid();
-    g_clear_object(&credentials);
-    if (!same_user) { return TRUE; }
-
-    gchar request[65536];
-    gsize bytes_read = 0;
-    GError *error = NULL;
-    g_socket_set_timeout(g_socket_connection_get_socket(connection), 1);
-    GInputStream *input = g_io_stream_get_input_stream(G_IO_STREAM(connection));
-    gboolean read_ok = g_input_stream_read_all(
-        input, request, sizeof(request) - 1, &bytes_read, NULL, &error);
-    if (!read_ok && error != NULL) {
-        g_warning("Suzaku IPC read failed: %s", error->message);
-        g_clear_error(&error);
-    }
-    request[MIN(bytes_read, sizeof(request) - 1)] = '\0';
-
-    if (read_ok && bytes_read == 1 && request[0] == 'W') {
+static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
+    GSocketConnection *connection = client->connection;
+    gsize bytes_read = client->input->len;
+    g_byte_array_append(client->input, (const guint8 *)"", 1);
+    const gchar *request = (const gchar *)client->input->data;
+    if (bytes_read == 1 && request[0] == 'W') {
         suzaku_companion_subscribe(connection);
-        return TRUE;
+        // The subscriber list owns the stream now; discard only request state.
+        suzaku_ipc_finish(client, FALSE);
+        return;
     }
 
-    if (read_ok && bytes_read > 0 && bytes_read < 128 &&
-        (request[0] == 'S' || request[0] == 'L' || request[0] == 'P' || request[0] == 'R') &&
+    if (bytes_read > 0 && bytes_read < 128 &&
+        (request[0] == 'S' || request[0] == 'L' || request[0] == 'P' || request[0] == 'R' || request[0] == 'U') &&
         g_utf8_validate(request, (gssize)bytes_read, NULL)) {
         char *response = suzaku_host_ime_control_utf8(request);
         if (response != NULL) {
@@ -479,19 +461,20 @@ static gboolean suzaku_ibus_ipc_incoming(
                 }
                 suzaku_ibus_schedule_prediction();
             }
-            GOutputStream *output = g_io_stream_get_output_stream(G_IO_STREAM(connection));
-            g_output_stream_write_all(output, response, strlen(response), NULL, NULL, NULL);
-            g_output_stream_close(output, NULL, NULL);
+            suzaku_ipc_reply(client, response);
             suzaku_host_ime_free_utf8(response);
+        } else {
+            suzaku_ipc_reply(client, "0");
         }
-        return TRUE;
+        return;
     }
 
     gboolean delivered = FALSE;
-    if (read_ok && bytes_read > 1 && request[0] == 'A' &&
+    if (bytes_read > 1 && request[0] == 'A' &&
         g_utf8_validate(request, (gssize)bytes_read, NULL)) {
         delivered = suzaku_companion_action(request + 1);
-    } else if (read_ok && bytes_read > 1 && request[0] == 'C' &&
+    } else if (bytes_read > 1 && request[0] == 'C' &&
+        client->context == suzaku_companion_context &&
         g_utf8_validate(request + 1, (gssize)bytes_read - 1, NULL)) {
         GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
         if (focused != NULL) {
@@ -508,17 +491,7 @@ static gboolean suzaku_ibus_ipc_incoming(
         delivered = TRUE;
     }
 
-    const gchar response = delivered ? '1' : '0';
-    GOutputStream *output = g_io_stream_get_output_stream(G_IO_STREAM(connection));
-    gsize bytes_written = 0;
-    if (!g_output_stream_write_all(
-            output, &response, 1, &bytes_written, NULL, &error) &&
-        error != NULL) {
-        g_warning("Suzaku IPC response failed: %s", error->message);
-        g_clear_error(&error);
-    }
-    g_output_stream_close(output, NULL, NULL);
-    return TRUE;
+    suzaku_ipc_reply(client, delivered ? "1" : "0");
 }
 
 static gboolean suzaku_ibus_start_ipc_service(void) {
@@ -568,6 +541,7 @@ static gboolean suzaku_ibus_start_ipc_service(void) {
 }
 
 static void suzaku_ibus_stop_ipc_service(void) {
+    suzaku_ipc_close_clients();
     g_clear_pointer(&suzaku_companion_subscribers, g_ptr_array_unref);
     g_clear_pointer(&suzaku_companion_host_id, g_free);
     if (suzaku_ipc_service != NULL) {
@@ -1043,7 +1017,20 @@ int suzaku_linux_ibus_probe_roundtrip(
             }
             if (probe.selected_index != 1) { result = 20; goto cleanup; }
         }
-        guint commit_key = wait_for_llm ? IBUS_KEY_1 + (guint)probe.ai_candidate_index : IBUS_KEY_space;
+        /* Navigate by absolute candidate position, not page-local number keys.
+         * English treats digits as text and AI results can be on a later page. */
+        if (wait_for_llm) {
+            ptrdiff_t delta = (ptrdiff_t)probe.ai_candidate_index - (ptrdiff_t)probe.selected_index;
+            guint select_key = delta < 0 ? IBUS_KEY_ISO_Left_Tab : IBUS_KEY_Tab;
+            size_t steps = (size_t)(delta < 0 ? -delta : delta);
+            for (size_t step = 0; step < steps; step++) {
+                if (!ibus_input_context_process_key_event(context, select_key, 0, 0)) {
+                    result = 8;
+                    goto cleanup;
+                }
+            }
+        }
+        guint commit_key = wait_for_llm ? IBUS_KEY_Return : IBUS_KEY_space;
         if (!ibus_input_context_process_key_event(context, commit_key, 0, 0)) {
             result = 8;
             goto cleanup;

@@ -39,11 +39,18 @@ impl ImeHostDispatch {
     }
 }
 
+/// UI-safe on Linux: uses the last status snapshot (conservative on startup)
+/// and schedules at most one background refresh when it expires.
 pub fn current_ime_host_dispatch() -> ImeHostDispatch {
-    dispatch_for(host_platform())
+    dispatch(host_platform(), true)
 }
 
+/// Diagnostic view; may wait for bounded native status probes on Linux.
 pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
+    dispatch(platform, false)
+}
+
+fn dispatch(platform: TargetPlatform, nonblocking: bool) -> ImeHostDispatch {
     let support = support_for(platform);
 
     match platform {
@@ -112,7 +119,11 @@ pub fn dispatch_for(platform: TargetPlatform) -> ImeHostDispatch {
             }
         }
         TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs => {
-            let bootstrap = linux_ime::bootstrap_status(platform);
+            let bootstrap = if nonblocking {
+                linux_ime::bootstrap_status_nonblocking(platform)
+            } else {
+                linux_ime::bootstrap_status(platform)
+            };
             let live_system_host = bootstrap.host_registration_ready
                 && bootstrap.runtime_engine_visible
                 && bootstrap.host_service_ready;

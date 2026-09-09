@@ -1,10 +1,8 @@
 //! Tray-owned IBus activation. All host I/O runs on the tray worker, never winit.
 
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
-use std::process::{Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::process::{Command, Output};
+use std::time::Duration;
+use suzaku_map::platform::linux_ipc::Deadline;
 
 pub(super) const SUZAKU_ENGINE: &str = "dev.suzaku.linux.ime";
 const HOST_TIMEOUT: Duration = Duration::from_millis(350);
@@ -127,21 +125,13 @@ impl InputMethodBackend for IBusBackend {
                     .map(|directory| directory.join("suzaku-ime/host.sock"))
             })
             .ok_or("无法定位本机输入法服务（缺少 XDG_RUNTIME_DIR）")?;
-        let mut stream = UnixStream::connect(socket).map_err(|_| {
-            "Suzaku 输入法服务未运行，请先运行 suzaku_tool linux-register install".to_string()
-        })?;
-        stream
-            .set_read_timeout(Some(HOST_TIMEOUT))
-            .map_err(host_error)?;
-        stream
-            .set_write_timeout(Some(HOST_TIMEOUT))
-            .map_err(host_error)?;
-        stream.write_all(b"Q").map_err(host_error)?;
-        stream
-            .shutdown(std::net::Shutdown::Write)
-            .map_err(host_error)?;
+        let deadline = Deadline::new(HOST_TIMEOUT);
+        let mut stream = deadline.connect(&socket).map_err(host_error)?;
+        deadline.send(&mut stream, b"Q").map_err(host_error)?;
         let mut response = [0];
-        stream.read_exact(&mut response).map_err(host_error)?;
+        deadline
+            .read_exact(&mut stream, &mut response)
+            .map_err(host_error)?;
         if response == [b'1'] {
             Ok(())
         } else {
@@ -172,39 +162,18 @@ fn run_ibus(args: &[&str]) -> Result<String, String> {
 }
 
 fn run_bounded(command: &mut Command, timeout: Duration) -> Result<Output, String> {
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| "无法启动 ibus 命令，请确认 IBus 已安装".to_string())?;
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .map_err(|_| "无法读取 IBus 状态".into());
-            }
-            Ok(None) if started.elapsed() < timeout => {
-                thread::sleep(Duration::from_millis(15));
-            }
-            status => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(if status.is_err() {
-                    "无法检查 IBus 状态，请重试".into()
-                } else {
-                    "输入法切换超时，请重试；原输入法已保留".into()
-                });
-            }
-        }
-    }
+    suzaku_map::platform::linux_command::run(command, timeout).map_err(|error| match error.kind() {
+        std::io::ErrorKind::TimedOut => "输入法切换超时，请重试；原输入法已保留".into(),
+        std::io::ErrorKind::NotFound => "无法启动 ibus 命令，请确认 IBus 已安装".into(),
+        std::io::ErrorKind::InvalidData => "IBus 返回数据过大，已停止请求".into(),
+        _ => "无法读取 IBus 状态，请重试".into(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     struct FakeBackend {
         current: String,
@@ -385,6 +354,41 @@ mod tests {
         assert!(control.state.active());
         control.release().unwrap();
         assert_eq!(control.backend.current, "rime");
+    }
+
+    #[test]
+    fn tray_command_deadline_covers_inherited_stdout() {
+        let started = Instant::now();
+        // One finite child and no real ibus; never invoke the test executable.
+        let result = run_bounded(
+            Command::new("/bin/sh").args(["-c", "/bin/sleep 2 & printf rime; exit 0"]),
+            Duration::from_millis(45),
+        );
+        assert!(result.unwrap_err().contains("超时"));
+        assert!(started.elapsed() < Duration::from_millis(400));
+    }
+
+    #[test]
+    fn tray_command_drains_bounded_output_and_can_reuse_the_command() {
+        let mut command = Command::new("/usr/bin/head");
+        command.args(["-c", "65536", "/dev/zero"]);
+        for _ in 0..2 {
+            assert_eq!(
+                run_bounded(&mut command, COMMAND_TIMEOUT)
+                    .unwrap()
+                    .stdout
+                    .len(),
+                65536
+            );
+        }
+        assert!(
+            run_bounded(
+                Command::new("/usr/bin/head").args(["-c", "131072", "/dev/zero"]),
+                COMMAND_TIMEOUT
+            )
+            .unwrap_err()
+            .contains("过大")
+        );
     }
 
     #[test]

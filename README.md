@@ -2,7 +2,43 @@
 
 Suzaku Map is a multimodal IME project.
 
-Current release: **0.5.0**.
+Current release: **0.5.1**.
+
+### 0.5.1 Patch fixes
+
+- Preserve literal English digits and preedit across modifier/function keys. Keep CJK numeric
+  candidate selection, and use absolute candidate navigation for later-page AI probe results.
+- Prevent stale candidate presses and duplicate mouse/touch completions. Synchronize Tone through
+  acknowledged native settings, preserve custom temperatures, and retain decimal/version prefixes
+  in Llama responses. Use a process-lifetime lock for concurrent panel startup and crash recovery.
+- Keep Linux/IBus IPC reads and replies off the blocking path with main-loop socket sources.
+  Incomplete requests have a one-second absolute deadline, a 65,535-byte limit, and a cap of
+  16 pending clients. Oversized, invalid UTF-8 and incomplete requests cannot commit a prefix;
+  legacy commits are rejected if focus changes before the complete request arrives.
+- Refresh Linux panel capability/status checks in one on-demand background worker. Startup uses
+  a conservative snapshot; an expired three-second cache returns its last result immediately.
+  External status commands have a 350 ms deadline and 64 KiB output limit; timed-out probe
+  process groups are stopped and the direct child is reaped. Diagnostic APIs remain synchronous
+  with these bounds; UI input handlers never wait for a status subprocess.
+- Apply one total deadline to Linux client connections, partial writes and responses: 200 ms
+  for subscription setup/each read turn, 350 ms for native actions, availability checks and legacy
+  text output, and 700 ms for settings. A saturated accept queue cannot block indefinitely;
+  trickled responses cannot reset the budget. Timed-out operations are never replayed.
+- Reuse the bounded command runner for tray IBus operations, including output collection, with
+  a two-second deadline and 64 KiB output limit. Inherited stdout cannot extend the deadline;
+  the unreaped direct child reserves its process-group identity until cleanup. Failed/uncertain
+  switches retain their restore target. Native sync workers support cancellation on panel exit,
+  and partial subscription frames yield without recursion or discarding their buffered bytes.
+- Keep voice transcripts and handwriting drafts until a revision-bound native replacement is
+  acknowledged. Busy, rejected, disconnected or timed-out requests retain the source for explicit
+  retry, without falling back to another target. Late acknowledgements cannot clear newer drafts.
+- Wait for 900 ms without a transcript change before automatic voice insertion, including backends
+  that emit each update only once. Changed partials restart that interval; failed handoffs stop
+  capture and never auto-retry. This is a quiet-time heuristic, not a final-utterance signal.
+- Preserve leading/trailing spaces, tabs and newlines in fallback text output. Blank-only input is
+  still rejected and embedded NUL bytes are still replaced by spaces.
+- Remove macOS speech file logging, including transcripts and framework error descriptions.
+  This prevents new logs; pre-existing logs are not removed. macOS runtime verification is pending.
 
 ### 0.5.0 Highlights
 
@@ -63,8 +99,15 @@ Panel word chips complete the current word or append only the immediate next wor
 clicking `hello` after `hel` produces `hello`, never `hel hello`; clicking `world` then gives
 `hello world`. The back action reverses each exact completion. Single-word full candidates remain
 visible for immediate commit; no arbitrary `is/can/will` words fill an empty live candidate list.
+Mouse and touch completion/rewind use one repeat guard. If a model response replaces the
+candidate list during a press, releasing that old press cannot select or commit its replacement;
+refreshing an unchanged list still permits the click.
 On native IBus, use **Tab** to select the best completion, then **Space** to commit it with one
 space; **Shift+Tab** moves back. Plain Space keeps the literal unless another candidate is selected.
+English digits (including keypad digits) are literal input, so `hel2`, `v123` and `2026` are not
+candidate shortcuts. Chinese/Japanese retain the lookup window's numeric selection shortcuts.
+Shift, Caps Lock and other non-text keys do not submit pending input; printable punctuation still
+commits the selected word before being forwarded to the application.
 
 Enable **本地 LLM 联想** to enrich the current composition. Offline candidates remain usable
 immediately; the local first candidate never changes under Space. The model gets a structured
@@ -104,6 +147,12 @@ Set `llm_model` to an **already installed** local model and run its local servic
 Suzaku never downloads a model during typing or starts a model server implicitly.
 Choose **重新加载模型配置** after editing. `SUZAKU_IME_CONFIG` can select an isolated settings file
 for development. An absent, slow or invalid model response leaves offline candidates available.
+The settings window's **Tone** updates the native Linux host and its saved configuration:
+Focused = 0.2, Balanced = 0.4, Expressive = 0.7. Both windows follow acknowledged values;
+failed writes roll back, and late replies do not overwrite a newer selection. Reloaded custom
+temperatures remain exact and appear as **Custom**, rather than being rounded to a preset.
+Tone changes preserve the current composition and do not change the model or language.
+The compatible API's line parser preserves decimal/version prefixes such as `3.14` and `1.2.3`.
 
 The tray provides **检查本机 Llama 模型** and **预热 Llama**. Checking only reads model metadata;
 preheating sends an empty request, not typed text, and runs independently of input-method switching.
@@ -154,9 +203,26 @@ not latency percentiles, end-to-end keypress timings, or a comprehensive quality
 An isolated real IBus session also successfully selected and committed AI candidates for `nihao`,
 `hello`, and `nihongo`, retained local-only candidates in private fields, bypassed password fields,
 and restored its previous engine after each probe. The desktop's active `rime` engine and LLM
-opt-in remained unchanged. The feature-enabled regression suite passed 576 tests (four opt-in UI
-tests are ignored by default; GPU readback, isolated native-window and keyboard tests have separate opt-in commands). The local service binds loopback only with cloud use disabled;
+opt-in remained unchanged. The current feature-enabled regression suite passes 615 tests, with eight
+opt-in tests ignored by default. All seven isolated UI/GPU checks pass separately; the live-desktop IME
+activation test is intentionally not run. The local service binds loopback only with cloud use disabled;
 model residency expires after five idle minutes.
+
+The Linux blocking-path follow-up uses private IBus/Xvfb sessions and a fixed, non-recursive slow
+status-command fixture. In one local run, an idle/partial IPC client increased native key handling
+to about 953 ms before the fix and about 1–2 ms afterward. With a 1.2-second status-command fixture,
+panel focus/edit/selection handlers returned in about 0.4–0.8 ms, including cache expiry. These are
+synthetic regression observations, not latency percentiles or whole-desktop performance claims.
+Transport checks also cover fragmented Unicode, exact/oversized frames, trickling clients, focus
+changes before a legacy commit, abandoned replies, and bounded pending-client/descriptor cleanup.
+
+The client/tray follow-up also reproduces a full Unix accept queue and inherited stdout without
+using the desktop host. The corrected subscription/action/settings/availability calls returned at
+about 200/350/700/350 ms, a trickled settings reply stopped at 700 ms, and the tray command that
+previously waited three seconds stopped at its two-second limit. Isolated native-sync shutdown
+checks cancelled and joined both workers in about 0.6–24 ms, including connected peers withholding
+frames/acknowledgements. These timings describe the fixed fixtures, not whole-application shutdown
+or general performance guarantees; IME restoration on quit remains a separate bounded operation.
 
 The English-completion follow-up verified native Tab + Space commits for `hel`, `HEL`, `sched`,
 `compati` and `don'`, alongside lossless literal commits and Chinese/Japanese privacy checks.
@@ -178,13 +244,19 @@ New commits cancel superseded runs on the same branch or pull request.
 - **Rust formatting** checks the entire workspace with `cargo fmt --all --check`.
 - **Linux** runs the complete feature-enabled test suite serially, then exercises real IBus
   composition/candidate synchronization in a private D-Bus session. Separate Xvfb processes test
-  keyboard focus, content-fit resizing/dragging, and multilingual GPU readback using Mesa software
-  rendering and installed CJK fonts. The job also builds the four Linux release binaries.
+  keyboard focus, mouse/touch candidate completion and async-refresh races, content-fit
+  resizing/dragging, Tone acknowledgement/reload, voice/handwriting handoff safety, slow status
+  probes, native-worker cancellation, and multilingual GPU readback using Mesa software rendering
+  and installed CJK fonts.
+  The job also builds the four Linux release binaries.
 - **macOS and Windows** compile-check GPU-enabled desktop code and test targets on native runners;
   these checks do not claim native input-method or graphical runtime coverage.
 
 The native checks use temporary settings and a deterministic local model fixture. They do not
 download Llama, contact a real model, capture the desktop, or change the desktop's input method.
+They check actual model-request temperatures, rejected/failed configuration writes, and persistence
+across host restart. Single-instance tests cover concurrent launches, crash recovery and legacy
+running panels without opening desktop windows.
 Reproduce them on Linux after installing the packages listed in `.github/workflows/ci.yml`:
 
 ```bash
@@ -252,6 +324,12 @@ target/release/linux_ime_probe --complete hel   # Tab + Space, validates exact s
 Some existing FFI tests share global theme state and can interfere under parallel test execution;
 the serial regression command avoids that interference. This does not remove the repository-wide
 strict-Clippy and default-feature limitations described above.
+
+The isolated UI suite also checks voice/handwriting handoff acknowledgements, source retention on
+failure and late replies, and Linux's consume-once transcript path with an injected clock. It uses
+only synthetic text, with live voice capabilities disabled; no microphone is opened. This validates
+panel/bridge integration, not production Linux speech recognition. Text-output tests use a private
+Unix socket, and a cross-platform source guard prevents macOS speech logging from being reintroduced.
 
 The Linux native-window regression uses an isolated Xvfb display and temporary settings. It tests
 keyboard/voice/handwriting folding, zoom and restore through real window-size events. It also checks
@@ -692,7 +770,9 @@ Wayland.
   Before sending a candidate, focus the target app; Linux rejects commits into the panel itself.
 - StatusNotifierItem system tray with a built-in Suzaku icon, show/hide activation, position reset,
   direct settings access, close-to-tray behavior, and an explicit quit action
-- per-session single-instance control that reopens the existing panel on a repeated launch
+- per-session single-instance control that reopens the existing panel on a repeated launch;
+  a process-lifetime OS lock serializes startup and releases on crash. The empty `panel.lock`
+  file is intentionally retained after clean shutdown so contenders always lock the same file.
 - Ubuntu / Arch / SteamOS capability profiles
 - Linux voice backend and probe path
 - native IBus `Factory`/`Engine` host backed by the shared Rust candidate engine

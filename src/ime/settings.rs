@@ -18,6 +18,59 @@ pub struct ImeSettings {
     pub provider: LlamaProviderConfig,
 }
 
+/// A narrow, atomic update: panel controls cannot overwrite language/model configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PredictionSettingsPatch {
+    pub enabled: Option<bool>,
+    pub temperature_tenths: Option<u32>,
+}
+
+impl PredictionSettingsPatch {
+    pub fn from_json(raw: &str) -> Result<Self, String> {
+        let value: Value = serde_json::from_str(raw).map_err(|_| "联想设置不是有效的 JSON")?;
+        let fields = value.as_object().ok_or("联想设置必须是 JSON 对象")?;
+        if fields.is_empty()
+            || fields
+                .keys()
+                .any(|key| !matches!(key.as_str(), "llm_enabled" | "llm_temperature_tenths"))
+        {
+            return Err("不支持的联想设置字段".into());
+        }
+        let checked = ImeSettings::from_json(raw)?;
+        Ok(Self {
+            enabled: fields
+                .contains_key("llm_enabled")
+                .then_some(checked.llm_enabled),
+            temperature_tenths: fields
+                .contains_key("llm_temperature_tenths")
+                .then_some(checked.provider.temperature_tenths),
+        })
+    }
+
+    pub fn to_json(self) -> Value {
+        let mut value = json!({});
+        if let Some(enabled) = self.enabled {
+            value["llm_enabled"] = enabled.into();
+        }
+        if let Some(temperature) = self.temperature_tenths {
+            value["llm_temperature_tenths"] = temperature.into();
+        }
+        value
+    }
+
+    pub fn apply(self, settings: &mut ImeSettings) -> Result<(), String> {
+        // Validate before changing either field, including patches constructed in Rust.
+        let checked = Self::from_json(&self.to_json().to_string())?;
+        if let Some(enabled) = checked.enabled {
+            settings.llm_enabled = enabled;
+        }
+        if let Some(temperature) = checked.temperature_tenths {
+            settings.provider.temperature_tenths = temperature;
+        }
+        Ok(())
+    }
+}
+
 impl Default for ImeSettings {
     fn default() -> Self {
         Self {
@@ -148,6 +201,40 @@ pub fn settings_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prediction_patch_is_validated_atomically_and_preserves_other_settings() {
+        let mut settings = ImeSettings::default();
+        settings.language = BuiltinLanguage::Japanese;
+        settings.provider.model = "llama3.2:1b".into();
+        let before = settings.clone();
+        PredictionSettingsPatch::from_json(r#"{"llm_temperature_tenths":7}"#)
+            .unwrap()
+            .apply(&mut settings)
+            .unwrap();
+        assert_eq!(settings.provider.temperature_tenths, 7);
+        let mut expected = before;
+        expected.provider.temperature_tenths = 7;
+        assert_eq!(settings, expected);
+        for raw in [
+            "{}",
+            "null",
+            r#"{"llm_model":"other"}"#,
+            r#"{"llm_enabled":true,"llm_temperature_tenths":11}"#,
+            r#"{"llm_temperature_tenths":-1}"#,
+            r#"{"llm_temperature_tenths":"7"}"#,
+        ] {
+            assert!(PredictionSettingsPatch::from_json(raw).is_err(), "{raw}");
+        }
+        assert!(
+            PredictionSettingsPatch {
+                enabled: Some(true),
+                temperature_tenths: Some(11)
+            }
+            .apply(&mut settings)
+            .is_err()
+        );
+        assert_eq!(settings, expected);
+    }
     #[test]
     fn english_is_the_default_without_overwriting_saved_language_choices() {
         assert_eq!(ImeSettings::default().language, BuiltinLanguage::English);

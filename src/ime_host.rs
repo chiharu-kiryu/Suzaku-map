@@ -421,6 +421,11 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
                 settings.llm_enabled = true;
                 Ok(true)
             }
+            patch if patch.starts_with('U') => {
+                crate::ime::settings::PredictionSettingsPatch::from_json(&patch[1..])
+                    .and_then(|patch| patch.apply(&mut settings))
+                    .map(|()| true)
+            }
             language if language.starts_with('L') => match BuiltinLanguage::resolve(&language[1..])
             {
                 Some(language) => {

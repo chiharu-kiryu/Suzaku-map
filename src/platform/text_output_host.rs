@@ -52,14 +52,14 @@ impl HostTextOutputResult {
 }
 
 pub fn commit_text_to_active_target(text: &str) -> HostTextOutputResult {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
+    // Validate blank input without changing the text the caller asked us to send.
+    if text.trim().is_empty() {
         return HostTextOutputResult::error("Nothing to send to the active app.".to_string());
     }
 
     #[cfg(target_os = "macos")]
     {
-        return macos_commit_text(trimmed);
+        return macos_commit_text(text);
     }
 
     #[cfg(target_os = "windows")]
@@ -71,7 +71,7 @@ pub fn commit_text_to_active_target(text: &str) -> HostTextOutputResult {
 
     #[cfg(target_os = "linux")]
     {
-        return linux_commit_text(trimmed);
+        return linux_commit_text(text);
     }
 
     #[allow(unreachable_code)]
@@ -80,8 +80,8 @@ pub fn commit_text_to_active_target(text: &str) -> HostTextOutputResult {
 
 #[cfg(target_os = "linux")]
 fn linux_commit_text(text: &str) -> HostTextOutputResult {
-    use std::io::{ErrorKind, Read, Write};
-    use std::os::unix::net::UnixStream;
+    use super::linux_ipc::Deadline;
+    use std::io::ErrorKind;
     use std::time::Duration;
 
     let sanitized = text.replace('\0', " ");
@@ -97,7 +97,8 @@ fn linux_commit_text(text: &str) -> HostTextOutputResult {
             "XDG_RUNTIME_DIR is unavailable; cannot reach the Suzaku IBus host.".to_string(),
         );
     };
-    let mut stream = match UnixStream::connect(&socket_path) {
+    let deadline = Deadline::new(Duration::from_millis(350));
+    let mut stream = match deadline.connect(&socket_path) {
         Ok(stream) => stream,
         Err(error)
             if matches!(
@@ -116,22 +117,16 @@ fn linux_commit_text(text: &str) -> HostTextOutputResult {
             ));
         }
     };
-    let timeout = Some(Duration::from_millis(350));
-    let _ = stream.set_read_timeout(timeout);
-    let _ = stream.set_write_timeout(timeout);
-
     let mut request = Vec::with_capacity(sanitized.len() + 1);
     request.push(b'C');
     request.extend_from_slice(sanitized.as_bytes());
-    if let Err(error) = stream.write_all(&request) {
+    if let Err(error) = deadline.send(&mut stream, &request) {
         return HostTextOutputResult::error(format!(
             "Could not send text to the Suzaku IBus host: {error}"
         ));
     }
-    let _ = stream.shutdown(std::net::Shutdown::Write);
-
     let mut response = [0_u8; 1];
-    if let Err(error) = stream.read_exact(&mut response) {
+    if let Err(error) = deadline.read_exact(&mut stream, &mut response) {
         return HostTextOutputResult::error(format!(
             "Suzaku IBus host did not acknowledge the commit: {error}"
         ));
@@ -274,6 +269,25 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn linux_commit_times_out_before_sending_to_a_backlogged_host() {
+        crate::platform::test_env::with_test_env(|env| {
+            let endpoint = crate::platform::linux_ipc::tests::Endpoint::new();
+            let _queued = endpoint.fill_backlog();
+            env.set_var("SUZAKU_LINUX_IME_SOCKET", endpoint.path.to_str().unwrap());
+            let started = std::time::Instant::now();
+            let result = commit_text_to_active_target("synthetic text only");
+            assert_eq!(result.status, HostTextOutputStatus::Error);
+            assert!(started.elapsed() < std::time::Duration::from_millis(600));
+            drop(endpoint.accept());
+            assert_eq!(
+                endpoint.listener.accept().unwrap_err().kind(),
+                std::io::ErrorKind::WouldBlock
+            );
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     fn linux_commit_reports_unavailable_when_host_socket_is_missing() {
         crate::platform::test_env::with_test_env(|env| {
             let socket = unique_linux_test_socket("missing");
@@ -312,12 +326,12 @@ mod tests {
                 request
             });
 
-            let result = commit_text_to_active_target("has\0null");
+            let result = commit_text_to_active_target(" \t has\0null 日本語\n ");
             let request = server.join().expect("join mock IBus host");
+            std::fs::remove_file(socket).expect("remove mock socket");
 
             assert_eq!(result.status, HostTextOutputStatus::Delivered);
-            assert_eq!(request, b"Chas null");
-            std::fs::remove_file(socket).expect("remove mock socket");
+            assert_eq!(request, "C \t has null 日本語\n ".as_bytes());
         });
     }
 
@@ -330,6 +344,19 @@ mod tests {
 
         assert_eq!(result.status, HostTextOutputStatus::Error);
         assert!(result.message.contains("too large"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_commit_counts_boundary_whitespace_toward_the_ipc_limit() {
+        crate::platform::test_env::with_test_env(|env| {
+            let socket = unique_linux_test_socket("oversize");
+            env.set_var("SUZAKU_LINUX_IME_SOCKET", socket.to_str().unwrap());
+            let text = format!(" {}", "x".repeat(LINUX_IME_IPC_MAX_TEXT_BYTES));
+            let result = commit_text_to_active_target(&text);
+            assert_eq!(result.status, HostTextOutputStatus::Error);
+            assert!(result.message.contains("too large"));
+        });
     }
 
     #[cfg(target_os = "linux")]

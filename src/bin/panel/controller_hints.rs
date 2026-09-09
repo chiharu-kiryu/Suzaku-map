@@ -407,6 +407,7 @@ pub(super) fn llm_temperature_label(
         suzaku_map::ime::gpu::LlmTemperaturePreset::Focused => "Focused",
         suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced => "Balanced",
         suzaku_map::ime::gpu::LlmTemperaturePreset::Expressive => "Expressive",
+        suzaku_map::ime::gpu::LlmTemperaturePreset::Custom(_) => "Custom",
     }
 }
 

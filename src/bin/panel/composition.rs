@@ -56,11 +56,7 @@ impl PanelState {
 
     fn current_llama_config(&self) -> LlamaProviderConfig {
         LlamaProviderConfig {
-            temperature_tenths: match self.chrome.llm_temperature {
-                suzaku_map::ime::gpu::LlmTemperaturePreset::Focused => 2,
-                suzaku_map::ime::gpu::LlmTemperaturePreset::Balanced => 4,
-                suzaku_map::ime::gpu::LlmTemperaturePreset::Expressive => 7,
-            },
+            temperature_tenths: self.chrome.llm_temperature.tenths(),
             handwriting_hint: self.last_handwriting_summary.clone(),
             ..ImeSettings::load().unwrap_or_default().provider
         }
@@ -158,16 +154,30 @@ impl PanelState {
             6,
             4,
         );
+        let (source_indices, sentences): (Vec<_>, Vec<_>) = previews.sentences.into_iter().unzip();
+        let candidates_changed = self.next_token_completions != previews.next_tokens
+            || self.chrome.sentence_candidate_source_indices != source_indices
+            || self.chrome.sentence_candidates != sentences;
+        if candidates_changed
+            && matches!(
+                self.interaction.pressed_interaction,
+                Some(InteractionKind::Candidate(_) | InteractionKind::SelectNextToken(_))
+            )
+        {
+            // An index is not a candidate identity: an async result can replace
+            // the pressed item before release, for both mouse and touch input.
+            self.clear_pressed_interaction();
+            self.interaction.touch_tap_pending = false;
+        }
         self.chrome.next_token_candidates = previews
             .next_tokens
             .iter()
             .map(|edit| edit.label.clone())
             .collect();
         self.next_token_completions = previews.next_tokens;
-        (
-            self.chrome.sentence_candidate_source_indices,
-            self.chrome.sentence_candidates,
-        ) = previews.sentences.into_iter().unzip();
+        self.chrome.sentence_candidate_source_indices = source_indices;
+        self.chrome.sentence_candidates = sentences;
+        self.last_scene = None;
 
         let scroll_index = self.interaction.sentence_candidate_scroll_index;
         if !scroll_index.is_none_or(|index| {

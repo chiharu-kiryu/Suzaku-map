@@ -1,6 +1,6 @@
 [package]
 name = "suzaku-map"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MIT"
 description = "TDD-driven XR and tablet IME engine prototype in Rust"
@@ -21,6 +21,7 @@ wgpu = { version = "27.0.1", optional = true, default-features = false, features
 winit = { version = "0.30.12", optional = true, default-features = false, features = ["android-native-activity", "rwh_06", "x11", "wayland", "wayland-dlopen"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2.189"
 ksni = { version = "0.3.6", optional = true, features = ["blocking"] }
 x11rb = { version = "0.13.2", optional = true }
 

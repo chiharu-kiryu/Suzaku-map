@@ -32,15 +32,25 @@ impl PanelCompanionDispatch {
     }
 }
 
+/// UI-safe on Linux; shares the background status cache with the IME dispatcher.
 pub fn current_panel_companion_dispatch() -> PanelCompanionDispatch {
-    dispatch_for(host_platform())
+    dispatch(host_platform(), true)
 }
 
+/// Diagnostic view; may wait for bounded native status probes on Linux.
 pub fn dispatch_for(platform: TargetPlatform) -> PanelCompanionDispatch {
+    dispatch(platform, false)
+}
+
+fn dispatch(platform: TargetPlatform, nonblocking: bool) -> PanelCompanionDispatch {
     let support = support_for(platform);
     let system_ime_host = match platform {
         TargetPlatform::Ubuntu | TargetPlatform::ArchLinux | TargetPlatform::SteamOs => {
-            let bootstrap = linux_ime::bootstrap_status(platform);
+            let bootstrap = if nonblocking {
+                linux_ime::bootstrap_status_nonblocking(platform)
+            } else {
+                linux_ime::bootstrap_status(platform)
+            };
             support.capabilities.system_ime_host
                 || (bootstrap.host_registration_ready
                     && bootstrap.runtime_engine_visible

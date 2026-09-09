@@ -12,27 +12,8 @@ typedef NS_ENUM(NSInteger, SuzakuSpeechState) {
     SuzakuSpeechStateError = 5,
 };
 
-static void suzaku_voice_log(NSString *message) {
-    @try {
-        NSString *line = [NSString stringWithFormat:@"%@\n", message ?: @"(null)"];
-        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
-        if (data == nil) {
-            return;
-        }
-        NSString *path = @"/tmp/suzaku-macos-voice.log";
-        NSFileManager *manager = [NSFileManager defaultManager];
-        if (![manager fileExistsAtPath:path]) {
-            [data writeToFile:path atomically:YES];
-            return;
-        }
-        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
-        [handle seekToEndOfFile];
-        [handle writeData:data];
-        [handle closeFile];
-    } @catch (NSException *exception) {
-        (void)exception;
-    }
-}
+// Keep transcripts in memory only. Report failures through SuzakuSpeechState;
+// neither recognition results nor framework error descriptions belong in logs.
 
 @interface SuzakuSpeechBridge : NSObject
 @property (nonatomic, strong) SFSpeechRecognizer *recognizer;
@@ -73,8 +54,6 @@ static void suzaku_voice_log(NSString *message) {
 - (instancetype)init {
     self = [super init];
     if (self) {
-        NSString *bundlePath = [[NSBundle mainBundle] bundlePath] ?: @"(no bundle path)";
-        NSString *executablePath = [[NSBundle mainBundle] executablePath] ?: @"(no executable path)";
         _recognizer = [[SFSpeechRecognizer alloc] init];
         _audioEngine = [[AVAudioEngine alloc] init];
         _latestTranscript = @"";
@@ -82,27 +61,18 @@ static void suzaku_voice_log(NSString *message) {
         _micGranted = NO;
         _micResolved = NO;
         _state = _recognizer != nil ? SuzakuSpeechStatePermissionPending : SuzakuSpeechStateUnavailable;
-        suzaku_voice_log([NSString stringWithFormat:@"bundle path=%@", bundlePath]);
-        suzaku_voice_log([NSString stringWithFormat:@"executable path=%@", executablePath]);
-        suzaku_voice_log([NSString stringWithFormat:@"init recognizer=%@ state=%ld",
-                          _recognizer != nil ? @"yes" : @"no",
-                          (long)_state]);
     }
     return self;
 }
 
 - (void)requestPermissionsIfNeeded {
     @try {
-        suzaku_voice_log(@"requestPermissionsIfNeeded begin");
         self.speechAuth = [SFSpeechRecognizer authorizationStatus];
-        suzaku_voice_log([NSString stringWithFormat:@"speech auth status=%ld", (long)self.speechAuth]);
         BOOL bundled = [self isRunningBundledApp];
-        suzaku_voice_log([NSString stringWithFormat:@"bundle host=%@", bundled ? @"yes" : @"no"]);
         if (bundled && self.speechAuth == SFSpeechRecognizerAuthorizationStatusNotDetermined) {
             [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
                 @synchronized (self) {
                     self.speechAuth = status;
-                    suzaku_voice_log([NSString stringWithFormat:@"speech auth callback status=%ld", (long)status]);
                     [self refreshState];
                 }
             }];
@@ -110,7 +80,6 @@ static void suzaku_voice_log(NSString *message) {
 
         AVAuthorizationStatus micStatus =
             [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-        suzaku_voice_log([NSString stringWithFormat:@"mic status=%ld", (long)micStatus]);
         if (micStatus == AVAuthorizationStatusAuthorized) {
             self.micGranted = YES;
             self.micResolved = YES;
@@ -124,7 +93,6 @@ static void suzaku_voice_log(NSString *message) {
                 @synchronized (self) {
                     self.micGranted = granted;
                     self.micResolved = YES;
-                    suzaku_voice_log([NSString stringWithFormat:@"mic callback granted=%@", granted ? @"yes" : @"no"]);
                     [self refreshState];
                 }
             }];
@@ -133,7 +101,6 @@ static void suzaku_voice_log(NSString *message) {
             self.micResolved = NO;
         }
     } @catch (NSException *exception) {
-        suzaku_voice_log([NSString stringWithFormat:@"requestPermissions exception=%@", exception.reason ?: @"unknown"]);
         (void)exception;
         self.state = SuzakuSpeechStateError;
     }
@@ -157,7 +124,6 @@ static void suzaku_voice_log(NSString *message) {
     if (self.state != SuzakuSpeechStateListening) {
         self.state = SuzakuSpeechStateReady;
     }
-    suzaku_voice_log([NSString stringWithFormat:@"refreshState -> %ld", (long)self.state]);
 }
 
 - (AVAudioFormat *)safeInputFormatForNode:(AVAudioInputNode *)inputNode {
@@ -185,18 +151,13 @@ static void suzaku_voice_log(NSString *message) {
 - (BOOL)startListening {
     @synchronized (self) {
         @try {
-            suzaku_voice_log(@"startListening begin");
             [self requestPermissionsIfNeeded];
             [self refreshState];
             if (self.state != SuzakuSpeechStateReady || self.recognizer == nil) {
-                suzaku_voice_log([NSString stringWithFormat:@"startListening abort early state=%ld recognizer=%@",
-                                  (long)self.state,
-                                  self.recognizer != nil ? @"yes" : @"no"]);
                 return NO;
             }
 
             [self stopListening];
-            suzaku_voice_log(@"startListening after stopListening");
             self.latestTranscript = @"";
             self.request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
             self.request.shouldReportPartialResults = YES;
@@ -209,7 +170,6 @@ static void suzaku_voice_log(NSString *message) {
 
             AVAudioInputNode *inputNode = self.audioEngine.inputNode;
             if (inputNode == nil) {
-                suzaku_voice_log(@"startListening inputNode=nil");
                 self.state = SuzakuSpeechStateError;
                 self.request = nil;
                 return NO;
@@ -217,20 +177,15 @@ static void suzaku_voice_log(NSString *message) {
 
             AVAudioFormat *format = [self safeInputFormatForNode:inputNode];
             if (format == nil) {
-                suzaku_voice_log(@"startListening format=nil");
                 self.state = SuzakuSpeechStateError;
                 self.request = nil;
                 return NO;
             }
-            suzaku_voice_log([NSString stringWithFormat:@"startListening format sr=%.2f channels=%u",
-                              format.sampleRate,
-                              format.channelCount]);
 
             [self.audioEngine stop];
             [self.audioEngine reset];
             [inputNode removeTapOnBus:0];
             __weak typeof(self) weakSelf = self;
-            suzaku_voice_log(@"startListening before recognitionTask");
             self.task = [self.recognizer recognitionTaskWithRequest:self.request
                                                       resultHandler:^(SFSpeechRecognitionResult *result, NSError *error) {
                 __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -240,13 +195,8 @@ static void suzaku_voice_log(NSString *message) {
                 @synchronized (strongSelf) {
                     if (result != nil) {
                         strongSelf.latestTranscript = result.bestTranscription.formattedString ?: @"";
-                        suzaku_voice_log([NSString stringWithFormat:@"recognition partial=%@ final=%@",
-                                          strongSelf.latestTranscript,
-                                          result.isFinal ? @"yes" : @"no"]);
                     }
                     if (error != nil) {
-                        suzaku_voice_log([NSString stringWithFormat:@"recognition error=%@",
-                                          error.localizedDescription ?: @"unknown"]);
                         strongSelf.state = SuzakuSpeechStateError;
                         [strongSelf stopListening];
                         return;
@@ -257,7 +207,6 @@ static void suzaku_voice_log(NSString *message) {
                     }
                 }
             }];
-            suzaku_voice_log(@"startListening before installTap");
             [inputNode installTapOnBus:0
                             bufferSize:1024
                                 format:format
@@ -270,12 +219,8 @@ static void suzaku_voice_log(NSString *message) {
             }];
 
             NSError *error = nil;
-            suzaku_voice_log(@"startListening before engine prepare");
             [self.audioEngine prepare];
-            suzaku_voice_log(@"startListening before engine start");
             if (![self.audioEngine startAndReturnError:&error]) {
-                suzaku_voice_log([NSString stringWithFormat:@"engine start failed=%@",
-                                  error.localizedDescription ?: @"unknown"]);
                 self.state = SuzakuSpeechStateError;
                 [inputNode removeTapOnBus:0];
                 self.request = nil;
@@ -284,10 +229,8 @@ static void suzaku_voice_log(NSString *message) {
             }
 
             self.state = SuzakuSpeechStateListening;
-            suzaku_voice_log(@"startListening success");
             return YES;
         } @catch (NSException *exception) {
-            suzaku_voice_log([NSString stringWithFormat:@"startListening exception=%@", exception.reason ?: @"unknown"]);
             (void)exception;
             self.state = SuzakuSpeechStateError;
             self.request = nil;
@@ -300,7 +243,6 @@ static void suzaku_voice_log(NSString *message) {
 - (void)stopListening {
     @synchronized (self) {
         @try {
-            suzaku_voice_log(@"stopListening begin");
             [self.audioEngine.inputNode removeTapOnBus:0];
             if (self.audioEngine.isRunning) {
                 [self.audioEngine stop];
@@ -310,9 +252,7 @@ static void suzaku_voice_log(NSString *message) {
             self.request = nil;
             self.task = nil;
             [self refreshState];
-            suzaku_voice_log(@"stopListening end");
         } @catch (NSException *exception) {
-            suzaku_voice_log([NSString stringWithFormat:@"stopListening exception=%@", exception.reason ?: @"unknown"]);
             (void)exception;
             self.request = nil;
             self.task = nil;

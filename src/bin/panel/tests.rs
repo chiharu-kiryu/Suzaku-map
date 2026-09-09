@@ -78,19 +78,19 @@ fn normalize_voice_transcript_preserves_emoji_and_kaomoji_tokens() {
 fn voice_auto_insert_requires_stable_ready_transcript() {
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "hello",
-        2,
+        Duration::from_millis(899),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
     assert!(PanelState::should_auto_insert_voice_transcript(
         "hello xr",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "hello xr",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Idle,
         VoicePermissionState::Ready,
     ));
@@ -100,7 +100,7 @@ fn voice_auto_insert_requires_stable_ready_transcript() {
 fn voice_auto_insert_accepts_long_single_token_when_stable() {
     assert!(PanelState::should_auto_insert_voice_transcript(
         "abcdef",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
@@ -110,7 +110,7 @@ fn voice_auto_insert_accepts_long_single_token_when_stable() {
 fn voice_auto_insert_accepts_short_multiple_words_when_stable() {
     assert!(PanelState::should_auto_insert_voice_transcript(
         "a b",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
@@ -120,13 +120,13 @@ fn voice_auto_insert_accepts_short_multiple_words_when_stable() {
 fn voice_auto_insert_rejects_when_not_listening_or_not_ready() {
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "hello xr",
-        10,
+        Duration::from_secs(10),
         VoiceCaptureState::Idle,
         VoicePermissionState::Ready,
     ));
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "hello xr",
-        10,
+        Duration::from_secs(10),
         VoiceCaptureState::Listening,
         VoicePermissionState::Unavailable,
     ));
@@ -166,7 +166,7 @@ fn normalize_voice_transcript_collapses_newlines_and_tabs_to_single_spaces() {
 fn voice_auto_insert_rejects_empty_or_whitespace_only_transcript() {
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "   \n\t",
-        10,
+        Duration::from_secs(10),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
@@ -176,7 +176,7 @@ fn voice_auto_insert_rejects_empty_or_whitespace_only_transcript() {
 fn voice_auto_insert_accepts_same_transcript_when_stability_reaches_threshold() {
     assert!(PanelState::should_auto_insert_voice_transcript(
         "hello world",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
@@ -186,7 +186,7 @@ fn voice_auto_insert_accepts_same_transcript_when_stability_reaches_threshold() 
 fn voice_auto_insert_rejects_stability_below_threshold_even_for_long_phrase() {
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "hello world",
-        2,
+        Duration::from_millis(899),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
@@ -196,7 +196,7 @@ fn voice_auto_insert_rejects_stability_below_threshold_even_for_long_phrase() {
 fn voice_auto_insert_rejects_emoji_token_without_stability_or_word_count_signal() {
     assert!(!PanelState::should_auto_insert_voice_transcript(
         "😀",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));
@@ -206,7 +206,7 @@ fn voice_auto_insert_rejects_emoji_token_without_stability_or_word_count_signal(
 fn voice_auto_insert_accepts_two_emoji_words_when_stable() {
     assert!(PanelState::should_auto_insert_voice_transcript(
         "😀 🙂",
-        3,
+        Duration::from_millis(900),
         VoiceCaptureState::Listening,
         VoicePermissionState::Ready,
     ));

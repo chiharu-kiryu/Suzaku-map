@@ -234,8 +234,7 @@ impl PanelState {
                 bridge.clear_marked_text();
             }
             self.clear_sentence_candidate_scroll();
-            self.voice_stability_ticks = 0;
-            self.last_polled_voice_transcript.clear();
+            self.voice_progress.reset();
             self.chrome.blur_input();
             self.interaction.touch_tap_pending = false;
             self.interaction.touch_start_position = None;
@@ -1397,7 +1396,6 @@ impl PanelState {
                     self.persist_display_settings();
                 }
                 InteractionKind::SelectNextToken(index) => {
-                    let action = InteractionKind::SelectNextToken(index);
                     let is_truncated = interaction_is_truncated;
                     let is_scrolling = self.interaction.next_token_candidate_scroll_index
                         == Some(index)
@@ -1414,10 +1412,8 @@ impl PanelState {
                     }
 
                     self.clear_sentence_candidate_scroll();
-                    if self.is_repeating_interaction(action) {
-                        return;
-                    }
-                    self.note_interaction_action(action);
+                    // The completion handler owns deduplication; recording this
+                    // press here would make it reject its own first invocation.
                     self.select_next_token(index);
                 }
                 InteractionKind::RewindNextToken => self.rewind_next_token(),
@@ -1452,8 +1448,8 @@ impl PanelState {
                     if self.chrome.voice_transcript.is_empty() {
                         return;
                     }
-                    self.chrome.voice_transcript.clear();
-                    self.chrome.voice_state = VoiceCaptureState::Idle;
+                    self.stop_voice_capture();
+                    self.clear_voice_transcript();
                 }
                 InteractionKind::HandwritingCanvas => {}
                 InteractionKind::UndoHandwritingStroke => {

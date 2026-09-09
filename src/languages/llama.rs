@@ -509,6 +509,8 @@ fn normalize_model_lines(content: &str) -> Vec<String> {
                     .strip_prefix('.')
                     .or_else(|| tail.strip_prefix(')'))
                     .or_else(|| tail.strip_prefix('、'))
+                    // Keep decimals, versions and numeric enumerations intact.
+                    .filter(|rest| !rest.starts_with(char::is_numeric))
                 {
                     line = rest.trim();
                 }
@@ -553,6 +555,18 @@ mod tests {
         assert_eq!(
             parse_chat_completion_candidates(&body),
             ["2026年你好", "你好", "こんにちは"]
+        );
+    }
+
+    #[test]
+    fn compatible_candidates_preserve_decimal_and_version_prefixes() {
+        for text in ["3.14 is pi", "10.5 kilograms", "1.2.3 release", "3、4、5"] {
+            let body = json!({"choices":[{"message":{"content":text}}]}).to_string();
+            assert_eq!(parse_chat_completion_candidates(&body), [text], "{text}");
+        }
+        assert_eq!(
+            normalize_model_lines("1. hello\n2) world\n3、 你好"),
+            ["hello", "world", "你好"]
         );
     }
     #[test]

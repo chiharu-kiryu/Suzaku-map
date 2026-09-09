@@ -16,13 +16,38 @@ use suzaku_map::{
 };
 use winit::event_loop::EventLoopProxy;
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "native_sync_test.rs"]
+mod tests;
+#[cfg(all(test, target_os = "linux"))]
+pub(super) use tests::assert_workers_cancel_on_shutdown;
+
 #[derive(Default)]
 pub(super) struct NativeView {
     pub frame: Option<NativeComposition>,
     pub showing: bool,
     draft: Option<(String, usize, bool)>,
     pub sender: Option<SyncSender<ActionRequest>>,
-    pending: Option<(String, u64)>,
+    pending: Option<PendingAction>,
+}
+
+struct PendingAction {
+    id: (String, u64),
+    insertion: Option<NativeInsertion>,
+}
+
+/// Retain the source until the revision-bound replacement is acknowledged. A
+/// snapshot plus generation prevents a late reply from clearing newer work.
+pub(super) enum NativeInsertion {
+    Voice {
+        transcript: String,
+        generation: u64,
+    },
+    Handwriting {
+        strokes: Vec<Vec<[f32; 2]>>,
+        candidates: Vec<String>,
+        generation: u64,
+    },
 }
 
 pub(super) struct ActionRequest {
@@ -63,7 +88,9 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
     #[cfg(target_os = "linux")]
     {
         use std::time::Duration;
-        use suzaku_map::platform::linux_ime_sync::{Subscription, send_action, socket_path};
+        use suzaku_map::platform::linux_ime_sync::{
+            Subscription, send_action_cancellable, socket_path,
+        };
         let path = socket_path()?;
         let mailbox = Arc::new(Mutex::new(Mailbox::default()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -86,10 +113,12 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
                 };
                 let mut backoff = Duration::from_millis(250);
                 while !reader_stop.load(Ordering::Acquire) {
-                    if let Ok(mut subscription) = Subscription::connect(&reader_path) {
+                    if let Ok(mut subscription) =
+                        Subscription::connect_cancellable(&reader_path, &reader_stop)
+                    {
                         let mut received = false;
                         while !reader_stop.load(Ordering::Acquire) {
-                            match subscription.next_frame() {
+                            match subscription.next_frame_cancellable(&reader_stop) {
                                 Ok(Some(frame)) => {
                                     received = true;
                                     backoff = Duration::from_millis(250);
@@ -120,7 +149,8 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
                             if action_stop.load(Ordering::Acquire) {
                                 break;
                             }
-                            let result = send_action(&path, &action.command);
+                            let result =
+                                send_action_cancellable(&path, &action.command, &action_stop);
                             let _ = proxy.send_event(PanelUserEvent::NativeActionFinished {
                                 host: action.host,
                                 revision: action.revision,
@@ -266,6 +296,27 @@ impl PanelState {
 
     /// true means this is a native view, including a rejected/inactive action.
     pub(super) fn native_action(&mut self, operation: NativeOperation) -> bool {
+        self.native_action_with_source(operation, None)
+    }
+
+    pub(super) fn native_insert_text(&mut self, text: &str, source: NativeInsertion) -> bool {
+        if !self.native.showing {
+            return false;
+        }
+        let mut seed = self.view_snapshot().seed_text;
+        if !seed.is_empty() && !seed.ends_with(char::is_whitespace) {
+            seed.push(' ');
+        }
+        seed.push_str(text);
+        // Do not edit the acknowledged seed or discard the source optimistically.
+        self.native_action_with_source(NativeOperation::Replace(seed), Some(source))
+    }
+
+    fn native_action_with_source(
+        &mut self,
+        operation: NativeOperation,
+        insertion: Option<NativeInsertion>,
+    ) -> bool {
         if !self.native.showing {
             return false;
         }
@@ -285,15 +336,26 @@ impl PanelState {
                         })
                         .is_ok()
                     {
-                        self.native.pending = Some(id);
+                        if insertion.is_some() {
+                            self.last_commit_feedback =
+                                Some("Inserting; source retained until confirmation.".into());
+                            self.commit_feedback_ticks = 120;
+                        }
+                        self.native.pending = Some(PendingAction { id, insertion });
                         return true;
                     }
                 }
             }
         }
         let _ = operation;
-        self.last_commit_feedback =
-            Some("Native input changed or is unavailable. Choose a current candidate.".into());
+        self.last_commit_feedback = Some(
+            if insertion.is_some() {
+                "Native input is busy or unavailable; source retained. Retry explicitly when ready."
+            } else {
+                "Native input changed or is unavailable. Choose a current candidate."
+            }
+            .into(),
+        );
         self.commit_feedback_ticks = 120;
         true
     }
@@ -304,16 +366,59 @@ impl PanelState {
         revision: u64,
         result: Result<bool, String>,
     ) {
-        if self.native.pending.as_ref() != Some(&(host, revision)) {
+        if self.native.pending.as_ref().map(|pending| &pending.id) != Some(&(host, revision)) {
             return;
         }
-        self.native.pending = None;
-        if !matches!(result, Ok(true)) {
-            self.last_commit_feedback =
-                Some("Input changed; nothing was retried. Choose a current candidate.".into());
+        let pending = self.native.pending.take().unwrap();
+        if matches!(result, Ok(true)) {
+            if let Some(insertion) = pending.insertion {
+                self.finish_native_insertion(insertion);
+                self.last_commit_feedback = Some("Input added to the native composition.".into());
+                self.commit_feedback_ticks = 40;
+                self.window.request_redraw();
+            }
+        } else {
+            self.last_commit_feedback = Some(if pending.insertion.is_some() {
+                "Insertion was not confirmed; source retained. Nothing was retried; check the target before retrying."
+            } else {
+                "Input changed; nothing was retried. Choose a current candidate."
+            }.into());
             self.commit_feedback_ticks = 120;
             self.window.request_redraw();
         }
+    }
+
+    fn finish_native_insertion(&mut self, insertion: NativeInsertion) {
+        use suzaku_map::ime::gpu::InputMode;
+        let completed_mode = match insertion {
+            NativeInsertion::Voice {
+                transcript,
+                generation,
+            } if self.voice_progress.generation() == generation
+                && self.chrome.voice_transcript == transcript =>
+            {
+                self.clear_voice_transcript();
+                InputMode::Dictation
+            }
+            NativeInsertion::Handwriting {
+                strokes,
+                candidates,
+                generation,
+            } if self.handwriting_generation == generation
+                && self.chrome.handwriting_strokes == strokes
+                && self.chrome.handwriting_candidates == candidates =>
+            {
+                self.clear_handwriting();
+                InputMode::Handwriting
+            }
+            _ => return,
+        };
+        // Do not pull the user out of another mode opened while the request ran.
+        if self.chrome.active_input_mode == completed_mode {
+            self.chrome.active_input_mode = InputMode::VirtualKeyboard;
+            self.chrome.input_modes_expanded = false;
+        }
+        self.last_scene = None;
     }
 }
 

@@ -250,6 +250,26 @@ impl HostSpeechRecognizer {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn macos_speech_bridge_has_no_transcript_logging_sinks() {
+        let source = include_str!("../macos/speech_bridge.m");
+        // Source-level privacy guard, runnable on every host (not a macOS runtime test).
+        for sink in [
+            "suzaku_voice_log",
+            "NSLog",
+            "os_log",
+            "printf(",
+            "writeToFile:",
+            "writeData:",
+            "fileHandleForWritingAtPath:",
+        ] {
+            assert!(
+                !source.contains(sink),
+                "speech bridge must not log private input: {sink}"
+            );
+        }
+    }
+
     use super::{
         HostSpeechRecognizer, VoiceBackend, open_voice_permission_settings, voice_status_text,
         voice_transcript_placeholder,

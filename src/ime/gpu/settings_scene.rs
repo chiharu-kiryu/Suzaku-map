@@ -74,7 +74,11 @@ impl WgpuCandidateRenderer {
         let min_panel_height = 166.0;
         let chip_area_width = (chip_max_x - chip_start_x).max(0.0);
 
-        let sections: Vec<(&str, Vec<(InteractionKind, &str, bool)>)> = vec![
+        let custom_tone_label = format!(
+            "Custom ({:.1})",
+            chrome.llm_temperature.tenths() as f32 / 10.0
+        );
+        let mut sections: Vec<(&str, Vec<(InteractionKind, &str, bool)>)> = vec![
             (
                 "Text",
                 [
@@ -362,6 +366,16 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
         ];
+
+        if matches!(chrome.llm_temperature, LlmTemperaturePreset::Custom(_)) {
+            if let Some((_, options)) = sections.iter_mut().find(|(title, _)| *title == "Tone") {
+                options.push((
+                    InteractionKind::SetLlmTemperature(chrome.llm_temperature),
+                    &custom_tone_label,
+                    true,
+                ));
+            }
+        }
 
         let estimated_chip_width = |label: &str| {
             (measure_text_prefix_width(label, label.chars().count(), chip_px, ui_tracking)

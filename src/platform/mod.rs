@@ -71,6 +71,9 @@ pub mod ime_host_adapter;
 pub mod ime_host_dispatch;
 pub mod ime_host_runtime;
 pub mod linux;
+#[cfg(target_os = "linux")]
+#[path = "linux_ime_command.rs"]
+pub mod linux_command;
 #[cfg(all(target_os = "linux", feature = "linux-ibus"))]
 pub mod linux_ibus_host;
 pub mod linux_ime;
@@ -78,6 +81,8 @@ pub mod linux_ime;
 pub mod linux_ime_control;
 #[cfg(target_os = "linux")]
 pub mod linux_ime_sync;
+#[cfg(target_os = "linux")]
+pub mod linux_ipc;
 pub mod linux_voice;
 pub mod macos;
 pub mod macos_ime;
