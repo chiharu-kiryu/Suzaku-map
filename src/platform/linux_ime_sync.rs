@@ -231,6 +231,7 @@ mod tests {
             candidates: vec![NativeCandidate {
                 text: "日本語".into(),
                 label: "日本語 · AI".into(),
+                ..Default::default()
             }],
         }
     }

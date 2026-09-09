@@ -5,7 +5,7 @@ use suzaku_map::ime::InputSource;
 use suzaku_map::ime::SignalState;
 use suzaku_map::ime::gpu::InteractionKind;
 use suzaku_map::ime::settings::ImeSettings;
-use suzaku_map::languages::llama::{LlamaProviderConfig, OpenAiCompatibleLlamaProvider};
+use suzaku_map::languages::model::{HttpModelProvider, ModelProviderConfig};
 use suzaku_map::panel_support::composition_candidate_previews;
 use suzaku_map::platform::ime_host_adapter::ImeHostSessionBridge;
 use suzaku_map::platform::ime_host_adapter::shared_session_bridge;
@@ -54,23 +54,24 @@ impl PanelState {
         self.refresh_seed();
     }
 
-    fn current_llama_config(&self) -> LlamaProviderConfig {
-        LlamaProviderConfig {
+    fn current_model_config(&self) -> ModelProviderConfig {
+        ModelProviderConfig {
             temperature_tenths: self.chrome.llm_temperature.tenths(),
             handwriting_hint: self.last_handwriting_summary.clone(),
             ..ImeSettings::load().unwrap_or_default().provider
         }
     }
 
-    pub(super) fn reconfigure_llama_plugin(&mut self) {
+    pub(super) fn reconfigure_model_provider(&mut self) {
         if self.native.showing {
             self.engine.configure_prediction(None);
             return;
         }
         if self.chrome.llm_enabled {
-            self.engine.configure_prediction(Some(std::sync::Arc::new(
-                OpenAiCompatibleLlamaProvider::new(self.current_llama_config()),
-            )));
+            self.engine
+                .configure_prediction(Some(std::sync::Arc::new(HttpModelProvider::new(
+                    self.current_model_config(),
+                ))));
         } else {
             self.engine.configure_prediction(None);
         }

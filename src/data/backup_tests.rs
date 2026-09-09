@@ -59,6 +59,40 @@ fn snapshot_contains_configuration_only_and_round_trips_custom_values() {
 }
 
 #[test]
+fn cloud_backup_preserves_configuration_but_restore_revokes_input_consent() {
+    let fixture = Fixture::new();
+    let settings = ImeSettings::from_json(r#"{"llm_scope":"cloud","llm_endpoint":"https://models.example/v1/chat/completions","llm_model":"any-model","llm_api_key_env":"SUZAKU_TEST_KEY","llm_enabled":true,"llm_cloud_consent":true}"#).unwrap();
+    files::atomic_write(
+        &fixture.paths.ime,
+        settings.to_json().to_string().as_bytes(),
+    )
+    .unwrap();
+    let backup = Backup::collect(&fixture.paths).unwrap();
+    let parsed = Backup::parse(&backup.to_json().to_string()).unwrap();
+    assert_eq!(
+        parsed.ime.as_ref().unwrap()["llm_api_key_env"],
+        "SUZAKU_TEST_KEY"
+    );
+    assert!(parsed.ime.as_ref().unwrap().get("llm_api_key").is_none());
+    let report = preview(&fixture.paths, &parsed).unwrap();
+    assert!(report[0].starts_with("写入设置"));
+    assert!(report.iter().any(|line| line.contains("授权将关闭")));
+    restore_with_publish(&fixture.paths, &parsed, publish)
+        .unwrap()
+        .unwrap();
+    let restored =
+        ImeSettings::from_json(&fs::read_to_string(&fixture.paths.ime).unwrap()).unwrap();
+    assert_eq!(restored.provider.model, settings.provider.model);
+    assert!(restored.llm_enabled);
+    assert!(!restored.provider.cloud_consent);
+    assert!(
+        restore_with_publish(&fixture.paths, &parsed, publish)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
 fn missing_settings_are_backed_up_without_materializing_defaults() {
     let fixture = Fixture::new();
     let backup = Backup::collect(&fixture.paths).unwrap();

@@ -155,7 +155,7 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         theme_preset: ThemePreset::Daylight,
         voice_auto_insert: true,
         llm_enabled: false,
-        llm_model: LlmModelPreset::Llama32_3b,
+        llm_model: LlmModelPreset::Configured,
         llm_temperature: LlmTemperaturePreset::Balanced,
         pointer_tap_slop_tenths: 100,
         pointer_tap_max_ms: 420,
@@ -415,13 +415,13 @@ pub(crate) fn decode_text_smoothing(value: &str) -> Option<TextSmoothing> {
 
 pub(crate) fn encode_llm_model(value: LlmModelPreset) -> &'static str {
     match value {
-        LlmModelPreset::Llama32_3b => "llama32_3b",
+        LlmModelPreset::Configured => "configured",
     }
 }
 
 pub(crate) fn decode_llm_model(value: &str) -> Option<LlmModelPreset> {
     match value {
-        "llama32_3b" => Some(LlmModelPreset::Llama32_3b),
+        "configured" | "llama32_3b" => Some(LlmModelPreset::Configured),
         _ => None,
     }
 }
@@ -528,7 +528,7 @@ mod tests {
             theme_preset: ThemePreset::Daylight,
             voice_auto_insert: true,
             llm_enabled: true,
-            llm_model: LlmModelPreset::Llama32_3b,
+            llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
@@ -602,7 +602,7 @@ mod tests {
                     theme_preset: ThemePreset::DeviceDark,
                     voice_auto_insert: false,
                     llm_enabled: false,
-                    llm_model: LlmModelPreset::Llama32_3b,
+                    llm_model: LlmModelPreset::Configured,
                     llm_temperature: LlmTemperaturePreset::Expressive,
                     pointer_tap_slop_tenths: 95,
                     pointer_tap_max_ms: 240,
@@ -622,7 +622,7 @@ mod tests {
                     theme_preset: ThemePreset::HighContrast,
                     voice_auto_insert: true,
                     llm_enabled: true,
-                    llm_model: LlmModelPreset::Llama32_3b,
+                    llm_model: LlmModelPreset::Configured,
                     llm_temperature: LlmTemperaturePreset::Balanced,
                     pointer_tap_slop_tenths: 65,
                     pointer_tap_max_ms: 520,
@@ -642,7 +642,7 @@ mod tests {
                     theme_preset: ThemePreset::Daylight,
                     voice_auto_insert: false,
                     llm_enabled: true,
-                    llm_model: LlmModelPreset::Llama32_3b,
+                    llm_model: LlmModelPreset::Configured,
                     llm_temperature: LlmTemperaturePreset::Focused,
                     pointer_tap_slop_tenths: 110,
                     pointer_tap_max_ms: 900,
@@ -745,7 +745,7 @@ mod tests {
                 theme_preset: ThemePreset::Daylight,
                 voice_auto_insert: true,
                 llm_enabled: false,
-                llm_model: LlmModelPreset::Llama32_3b,
+                llm_model: LlmModelPreset::Configured,
                 llm_temperature: LlmTemperaturePreset::Balanced,
                 pointer_tap_slop_tenths: case.pointer_tap_slop_tenths_input,
                 pointer_tap_max_ms: case.pointer_tap_max_ms_input,
@@ -840,7 +840,7 @@ mod tests {
             theme_preset: ThemePreset::Daylight,
             voice_auto_insert: true,
             llm_enabled: false,
-            llm_model: LlmModelPreset::Llama32_3b,
+            llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
@@ -938,7 +938,7 @@ mod tests {
             theme_preset: ThemePreset::Daylight,
             voice_auto_insert: true,
             llm_enabled: false,
-            llm_model: LlmModelPreset::Llama32_3b,
+            llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
@@ -1350,7 +1350,7 @@ mod tests {
             DecodeCodecCase {
                 name: "decode_llm_model_llama_round_trips",
                 input: "llama32_3b",
-                expected: DecodeCodecCaseValue::LlmModel(LlmModelPreset::Llama32_3b),
+                expected: DecodeCodecCaseValue::LlmModel(LlmModelPreset::Configured),
             },
         ];
 

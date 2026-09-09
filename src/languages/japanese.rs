@@ -13,6 +13,9 @@ impl LanguagePlugin for JapaneseLanguagePlugin {
     fn display_name(&self) -> &str {
         "日本語"
     }
+    fn normalize_seed(&self, input: &str) -> String {
+        input.to_owned()
+    }
     fn expand_token(&self, token: &str, _degraded: bool) -> Vec<String> {
         vec![token.into()]
     }
@@ -20,12 +23,18 @@ impl LanguagePlugin for JapaneseLanguagePlugin {
         if seed.trim().is_empty() {
             return Vec::new();
         }
-        let kana = romaji_to_hiragana(seed);
+        let kana = composition_kana(seed);
         let mut values: Vec<String> = KANJI
             .iter()
             .filter(|(reading, _)| *reading == kana)
             .map(|(_, text)| text.to_string())
             .collect();
+        if values.is_empty() {
+            let converted = convert_segments(&kana);
+            if converted != kana {
+                values.push(converted);
+            }
+        }
         values.extend([kana.clone(), hiragana_to_katakana(&kana), seed.to_string()]);
         ranked_candidates(values, confidence)
     }
@@ -65,6 +74,236 @@ const KANJI: &[(&str, &str)] = &[
     ("かんじ", "感じ"),
     ("すずめ", "雀"),
 ];
+
+pub(crate) fn is_dictionary_word(text: &str) -> bool {
+    KANJI.iter().any(|(reading, word)| {
+        *word == text || *reading == text || hiragana_to_katakana(reading) == text
+    })
+}
+
+/// Greedy dictionary segments plus untouched particles. This is a bounded
+/// bootstrap conversion, not a morphological analyzer or a full Japanese IME.
+fn convert_segments(kana: &str) -> String {
+    let mut rest = kana;
+    let mut output = String::new();
+    while !rest.is_empty() {
+        if let Some((reading, word)) = KANJI
+            .iter()
+            .rev() // Keep the dictionary's first variant when readings have equal lengths.
+            .filter(|(reading, _)| rest.starts_with(reading))
+            .max_by_key(|(reading, _)| reading.len())
+        {
+            output.push_str(word);
+            rest = &rest[reading.len()..];
+        } else {
+            let ch = rest.chars().next().unwrap();
+            output.push(ch);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+    output
+}
+
+fn composition_kana(seed: &str) -> String {
+    // Shift+Space separates romaji words, not words in the converted Japanese text.
+    seed.split_whitespace().map(romaji_to_hiragana).collect()
+}
+
+/// Complete the final reading after known dictionary words and particles. Never
+/// scan through an arbitrary unknown prefix looking for an unrelated dictionary suffix.
+fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
+    use crate::ime::candidate_mix::CandidateKind;
+    if seed.len() < 2 || seed.chars().count() > 256 {
+        return Vec::new();
+    }
+    let kana = composition_kana(seed);
+    let mut queries = vec![kana.clone()];
+    if seed.ends_with(|ch: char| {
+        ch.is_ascii_alphabetic() && !"aiueo".contains(ch.to_ascii_lowercase())
+    }) {
+        queries.extend(
+            ['a', 'i', 'u', 'e', 'o']
+                .into_iter()
+                .map(|vowel| composition_kana(&format!("{seed}{vowel}"))),
+        );
+    }
+    let mut offset = 0;
+    let mut prefix = String::new();
+    let mut output = Vec::new();
+    while offset < kana.len() {
+        let rest = &kana[offset..];
+        for (reading, word) in KANJI {
+            if *reading != rest
+                && queries.iter().any(|query| {
+                    query
+                        .strip_prefix(&kana[..offset])
+                        .is_some_and(|tail| !tail.is_empty() && reading.starts_with(tail))
+                })
+            {
+                let text = format!("{prefix}{word}");
+                if !output.iter().any(|(value, _)| value == &text) {
+                    output.push((text, CandidateKind::Word));
+                    if output.len() == 4 {
+                        return output;
+                    }
+                }
+            }
+        }
+        if let Some((reading, word)) = KANJI
+            .iter()
+            .rev()
+            .filter(|(reading, _)| rest.starts_with(reading))
+            .max_by_key(|(reading, _)| reading.len())
+        {
+            prefix.push_str(word);
+            offset += reading.len();
+        } else {
+            let ch = rest.chars().next().unwrap();
+            if !matches!(
+                ch,
+                'は' | 'を' | 'が' | 'に' | 'で' | 'と' | 'も' | 'へ' | 'の' | '\u{3400}'
+                    ..='\u{9fff}'
+            ) {
+                break;
+            }
+            prefix.push(ch);
+            offset += ch.len_utf8();
+        }
+    }
+    output
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+    #[test]
+    fn incomplete_consonants_and_terminal_n_can_finish_the_last_known_word() {
+        for (seed, word) in [
+            ("niho", "日本語"),
+            ("nihong", "日本語"),
+            ("nihon", "日本語"),
+            ("watashihanihong", "私は日本語"),
+            ("私はniho", "私は日本語"),
+            ("nihongo wo benky", "日本語を勉強"),
+        ] {
+            let choices = word_completions(seed);
+            assert!(
+                choices.iter().any(|(text, _)| text == word),
+                "{seed}: {choices:?}"
+            );
+            assert!(choices.len() <= 4);
+        }
+    }
+    #[test]
+    fn unknown_prefixes_are_not_scanned_for_unrelated_suffix_completions() {
+        for seed in ["xyzniho", "https://niho", "foobarniho", "🙂niho"] {
+            assert!(word_completions(seed).is_empty(), "{seed}");
+        }
+        assert!(word_completions(&"あ".repeat(300)).is_empty());
+    }
+}
+
+pub(crate) fn mixed_candidates(
+    seed: &str,
+) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
+    use crate::ime::candidate_mix::CandidateKind;
+    const CONTINUATIONS: &[(&str, &[&str])] = &[
+        (
+            "日本語",
+            &["日本語を勉強しています。", "日本語で入力できます。"],
+        ),
+        ("日本語入力", &["日本語入力を試しています。"]),
+        (
+            "私は日本語",
+            &[
+                "私は日本語を勉強しています。",
+                "私は日本語で入力しています。",
+            ],
+        ),
+        (
+            "日本語を勉強",
+            &["日本語を勉強しています。", "日本語を勉強したいです。"],
+        ),
+        (
+            "私",
+            &["私は日本語を勉強しています。", "私はそう思います。"],
+        ),
+        ("今日", &["今日はいい天気ですね。", "今日は何をしますか？"]),
+        (
+            "明日",
+            &["明日また会いましょう。", "明日よろしくお願いします。"],
+        ),
+        (
+            "ありがとう",
+            &["ありがとうございます。", "ありがとう、助かりました。"],
+        ),
+        (
+            "こんにちは",
+            &[
+                "こんにちは、お元気ですか？",
+                "こんにちは、よろしくお願いします。",
+            ],
+        ),
+        (
+            "おはよう",
+            &[
+                "おはようございます。",
+                "おはよう、今日もよろしくお願いします。",
+            ],
+        ),
+        (
+            "入力",
+            &["入力方法を変更できます。", "入力を確認してください。"],
+        ),
+        ("勉強", &["勉強を続けたいです。", "勉強になりました。"]),
+        (
+            "仕事",
+            &["仕事が終わりました。", "仕事について相談したいです。"],
+        ),
+        ("天気", &["天気がいいですね。", "天気はどうですか？"]),
+    ];
+    let kana = composition_kana(seed);
+    let converted = convert_segments(&kana);
+    let mut output = Vec::new();
+    // Segmented conversion should be available before the unchanged kana forms.
+    if converted != kana {
+        output.push((
+            converted.clone(),
+            if is_dictionary_word(&converted) {
+                CandidateKind::Word
+            } else {
+                CandidateKind::Sentence
+            },
+        ));
+    }
+    output.extend(word_completions(seed));
+    let words: Vec<_> = std::iter::once(converted)
+        .chain(
+            output
+                .iter()
+                .filter(|(_, kind)| *kind == CandidateKind::Word)
+                .map(|(text, _)| text.clone()),
+        )
+        .collect();
+    for word in words {
+        if let Some((_, values)) = CONTINUATIONS.iter().find(|(prefix, _)| *prefix == word) {
+            for text in *values {
+                if !output.iter().any(|(existing, _)| existing == text) {
+                    output.push(((*text).into(), CandidateKind::Sentence));
+                }
+            }
+        }
+        if output
+            .iter()
+            .filter(|(_, kind)| *kind == CandidateKind::Sentence)
+            .count()
+            >= 4
+        {
+            break;
+        }
+    }
+    output
+}
 
 // Standard five-vowel rows plus common alternative spellings. The conversion algorithm,
 // including terminal n and doubled consonants, is separate from language/LLM dispatch.

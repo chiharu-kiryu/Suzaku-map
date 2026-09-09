@@ -126,6 +126,7 @@ impl LlmCompletionProvider for GatedProvider {
         vec![LlmCompletion {
             text: "helipad".into(),
             score_bias: 1.0,
+            kind: None,
         }]
     }
 }

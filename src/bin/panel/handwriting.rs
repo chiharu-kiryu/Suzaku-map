@@ -358,7 +358,7 @@ impl PanelState {
             self.interaction.handwriting_candidate_scroll_index = None;
             self.interaction.handwriting_candidate_scroll_started_at = None;
         }
-        self.reconfigure_llama_plugin();
+        self.reconfigure_model_provider();
         self.chrome.handwriting_hint = if self.chrome.handwriting_strokes.is_empty() {
             "Draw a seed word with mouse or touch.".to_string()
         } else if self.chrome.handwriting_candidates.is_empty() {
@@ -444,7 +444,7 @@ impl PanelState {
         self.interaction.handwriting_candidate_scroll_started_at = None;
         self.chrome.handwriting_hint = "Draw a seed word with mouse or touch.".to_string();
         self.last_handwriting_summary = None;
-        self.reconfigure_llama_plugin();
+        self.reconfigure_model_provider();
     }
 
     pub(super) fn insert_handwriting_candidate(&mut self, index: usize) {

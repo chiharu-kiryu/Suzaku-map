@@ -649,7 +649,7 @@ impl PanelState {
             self.rebuild_font_atlas();
         }
         if settings_changed && self.kind == PanelWindowKind::Main && needs_llm_reconfigure {
-            self.reconfigure_llama_plugin();
+            self.reconfigure_model_provider();
         }
         settings_changed
     }
@@ -1237,7 +1237,7 @@ impl PanelState {
                     }
                     self.note_interaction_action(action);
                     self.chrome.llm_enabled = enabled;
-                    self.reconfigure_llama_plugin();
+                    self.reconfigure_model_provider();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetPointerTapSlopTenths(value) => {
@@ -1366,7 +1366,7 @@ impl PanelState {
                     }
                     self.note_interaction_action(action);
                     self.chrome.llm_model = model;
-                    self.reconfigure_llama_plugin();
+                    self.reconfigure_model_provider();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetLlmTemperature(temp) => {
@@ -1392,7 +1392,7 @@ impl PanelState {
                     }
                     self.note_interaction_action(action);
                     self.chrome.llm_temperature = temp;
-                    self.reconfigure_llama_plugin();
+                    self.reconfigure_model_provider();
                     self.persist_display_settings();
                 }
                 InteractionKind::SelectNextToken(index) => {

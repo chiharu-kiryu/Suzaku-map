@@ -116,7 +116,14 @@ pub enum ThemePreset {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LlmModelPreset {
-    Llama32_3b,
+    /// The actual model comes from ImeSettings, not a hard-coded UI preset.
+    Configured,
+}
+
+impl LlmModelPreset {
+    /// Source compatibility for older panel integrations.
+    #[allow(non_upper_case_globals)]
+    pub const Llama32_3b: Self = Self::Configured;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -238,7 +245,7 @@ impl Default for PanelChromeState {
             voice_visual_phase: 0,
             voice_auto_insert: true,
             llm_enabled: false,
-            llm_model: LlmModelPreset::Llama32_3b,
+            llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,

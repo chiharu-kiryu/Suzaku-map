@@ -66,6 +66,7 @@ fn engine_can_switch_to_a_registered_language_plugin() {
                 text: format!("echo {} :: {}", seed_text, parts.join("-")),
                 label: format!("echo {} :: {}", seed_text, parts.join("-")),
                 score: confidence + 1.0,
+                ..Default::default()
             }]
         }
     }
@@ -96,6 +97,7 @@ fn llm_language_plugin_can_drive_sentence_candidates() {
             vec![LlmCompletion {
                 text: format!("{} becomes a full llm sentence", request.seed_text),
                 score_bias: 0.6,
+                kind: None,
             }]
         }
     }

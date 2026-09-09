@@ -1,5 +1,6 @@
 //! Shared IME engine and GPU debug-companion entry points.
 
+pub mod candidate_mix;
 pub mod companion;
 mod core_engine;
 mod core_helpers;

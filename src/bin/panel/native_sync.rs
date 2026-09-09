@@ -290,7 +290,7 @@ impl PanelState {
             self.chrome.caret_index = caret;
             self.chrome.input_modes_expanded = expanded;
         }
-        self.reconfigure_llama_plugin();
+        self.reconfigure_model_provider();
         self.last_scene = None;
     }
 
@@ -441,10 +441,12 @@ pub(super) fn assert_native_view(state: &mut PanelState) {
             NativeCandidate {
                 text: "hello".into(),
                 label: "hello".into(),
+                ..Default::default()
             },
             NativeCandidate {
                 text: "hello world".into(),
                 label: "hello world · AI".into(),
+                ..Default::default()
             },
         ],
     };

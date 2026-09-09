@@ -19,7 +19,7 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   suzaku_package_test_tree=${suzaku_package_test_roots[0]}
   (cd -- "$suzaku_package_test_tree" && sha256sum --quiet -c SHA256SUMS)
   jq -e '.format == 1 and .models_bundled == false and .user_data_bundled == false' "$suzaku_package_test_tree/manifest.json" >/dev/null
-  for suzaku_package_test_crate in wgpu winit ksni; do
+  for suzaku_package_test_crate in wgpu winit ksni reqwest rustls; do
     jq -e --arg crate "$suzaku_package_test_crate" 'any(.[]; .name == $crate)' "$suzaku_package_test_tree/share/doc/suzaku/dependencies.json" >/dev/null
   done
   for suzaku_package_test_bin in panel linux_ime_host linux_ime_probe suzaku_tool; do
@@ -27,6 +27,10 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
     readelf -h "$suzaku_package_test_tree/bin/$suzaku_package_test_bin" >/dev/null
   done
   "$suzaku_package_test_tree/bin/suzaku_tool" --version
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/model-providers.md"
+  test -s "$suzaku_package_test_tree/model-providers.md"
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/ibus-candidates.md"
+  test -s "$suzaku_package_test_tree/ibus-candidates.md"
   "$suzaku_package_test_tree/bin/suzaku_tool" data --help
   desktop-file-validate "$suzaku_package_test_tree/share/applications/dev.suzaku.Suzaku.desktop"
 done
@@ -41,6 +45,8 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   test ! -e "$suzaku_package_test_extract/root/home"
   test ! -e "$suzaku_package_test_extract/root/etc"
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" --version
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/model-providers.md"
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/ibus-candidates.md"
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" data --help
   desktop-file-validate "$suzaku_package_test_extract/root/usr/share/applications/dev.suzaku.Suzaku.desktop"
   test -x "$suzaku_package_test_extract/root/usr/bin/suzaku-panel"

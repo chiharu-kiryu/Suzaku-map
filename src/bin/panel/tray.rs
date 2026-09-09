@@ -12,7 +12,7 @@ mod platform {
     use std::thread::{self, JoinHandle};
     use suzaku_map::ime::settings::PredictionSettingsPatch;
     use suzaku_map::languages::BuiltinLanguage;
-    use suzaku_map::languages::llama::{LlamaProviderConfig, runtime as llama_runtime};
+    use suzaku_map::languages::model::{ModelProviderConfig, ModelScope, runtime as model_runtime};
     use suzaku_map::platform::linux_ime_control::{self, NativeImeStatus};
 
     const TRAY_ICON_SIZES: [i32; 4] = [22, 32, 48, 64];
@@ -31,9 +31,9 @@ mod platform {
         SetPredictionEnabled(bool),
         SetPredictionSettings(PredictionSettingsPatch),
         ReloadImeSettings,
-        CheckModel(LlamaProviderConfig),
-        WarmModel(LlamaProviderConfig),
-        ModelReport(LlamaProviderConfig, Result<String, String>),
+        CheckModel(ModelProviderConfig),
+        WarmModel(ModelProviderConfig),
+        ModelReport(ModelProviderConfig, Result<String, String>),
         ManageData(DataAction),
         DataReport(Result<String, String>),
         Quit,
@@ -75,7 +75,7 @@ mod platform {
         operation_error: Option<String>,
         native: Option<NativeImeStatus>,
         model_busy: bool,
-        model_status: Option<(LlamaProviderConfig, String)>,
+        model_status: Option<(ModelProviderConfig, String)>,
     }
 
     impl InputMethodMenuState {
@@ -307,7 +307,19 @@ mod platform {
                 }
                 .into(),
                 CheckmarkItem {
-                    label: "本地 LLM 联想".into(),
+                    label: self
+                        .input_method
+                        .native
+                        .as_ref()
+                        .map(|state| {
+                            if state.settings.provider.scope == ModelScope::Cloud {
+                                "LLM 联想（云端，需单独授权）"
+                            } else {
+                                "LLM 联想（本机）"
+                            }
+                        })
+                        .unwrap_or("LLM 联想")
+                        .into(),
                     enabled: !self.input_method.busy && self.input_method.native.is_some(),
                     checked: self
                         .input_method
@@ -337,7 +349,13 @@ mod platform {
                                 .clone()
                                 .unwrap_or_else(|| "模型暂无结果或不可用，已保留本地候选".into()),
                             _ if state.settings.llm_enabled => {
-                                "LLM 已启用，等待输入（需要本机模型服务）".into()
+                                if state.settings.provider.scope == ModelScope::Cloud
+                                    && !state.settings.provider.cloud_consent
+                                {
+                                    "云端联想尚未授权，不会发送输入内容".into()
+                                } else {
+                                    "LLM 已启用，等待输入".into()
+                                }
                             }
                             _ => "使用本地基础候选，未请求模型".into(),
                         })
@@ -356,7 +374,16 @@ mod platform {
                             .filter(|(config, _)| config == &state.settings.provider)
                             .map(|(_, status)| status.clone())
                             .unwrap_or_else(|| {
-                                format!("模型：{}（尚未检查）", state.settings.provider.model)
+                                if state.settings.provider.scope == ModelScope::Cloud {
+                                    format!(
+                                        "云端模型：{}（配置状态；未联网检查）",
+                                        state.settings.provider.model
+                                    )
+                                } else if state.settings.provider.model == "auto" {
+                                    "模型：自动发现本机服务，优先 LLaMA".into()
+                                } else {
+                                    format!("模型：{}（尚未检查）", state.settings.provider.model)
+                                }
                             })
                     } else {
                         "模型服务状态未知".into()
@@ -366,17 +393,21 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: "检查本机 Llama 模型".into(),
-                    enabled: !self.input_method.model_busy && self.input_method.native.is_some(),
+                    label: "发现 / 检查本机模型".into(),
+                    enabled: !self.input_method.model_busy
+                        && self.input_method.native.as_ref().is_some_and(|state| {
+                            state.settings.provider.scope == ModelScope::Local
+                        }),
                     activate: Box::new(|tray: &mut Self| tray.request_model(false)),
                     ..Default::default()
                 }
                 .into(),
                 StandardItem {
-                    label: "预热 Llama（空闲 5 分钟后释放）".into(),
+                    label: "预热本机 Ollama 模型（空闲 5 分钟后释放）".into(),
                     enabled: !self.input_method.model_busy
                         && self.input_method.native.as_ref().is_some_and(|state| {
-                            state.settings.provider.endpoint.ends_with("/api/chat")
+                            state.settings.provider.scope == ModelScope::Local
+                                && state.settings.provider.uses_ollama_api()
                         }),
                     activate: Box::new(|tray: &mut Self| tray.request_model(true)),
                     ..Default::default()
@@ -585,14 +616,14 @@ mod platform {
                                 .name("suzaku-model-check".into())
                                 .spawn(move || {
                                     let result = if warmup {
-                                        llama_runtime::warm_up(&config).map(|()| {
+                                        model_runtime::warm_up(&config).map(|()| {
                                             format!(
                                                 "模型已预热：{}（未发送输入文本）",
                                                 config.model
                                             )
                                         })
                                     } else {
-                                        llama_runtime::inspect(&config)
+                                        model_runtime::inspect(&config)
                                             .map(|status| status.summary())
                                     }
                                     .map_err(|error| error.to_string());

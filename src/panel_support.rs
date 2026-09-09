@@ -1372,6 +1372,7 @@ mod tests {
                 text: (*text).into(),
                 label: format!("{text} · AI"),
                 score: 1.0,
+                ..Default::default()
             })
             .collect();
         let previews = composition_candidate_previews("hel", "en", &candidates, 6, 4);
@@ -1404,6 +1405,7 @@ mod tests {
             text: "hello world".into(),
             label: "hello world · AI".into(),
             score: 1.0,
+            ..Default::default()
         }];
         let previews = composition_candidate_previews("hello", "en", &candidates, 6, 4);
         assert!(
@@ -1430,11 +1432,13 @@ mod tests {
                     text: conversion.into(),
                     label: conversion.into(),
                     score: 1.0,
+                    ..Default::default()
                 },
                 crate::ime::Candidate {
                     text: seed.into(),
                     label: seed.into(),
                     score: 0.8,
+                    ..Default::default()
                 },
             ];
             let previews = composition_candidate_previews(seed, language, &candidates, 6, 4);
@@ -1456,6 +1460,7 @@ mod tests {
             text: "thank you for reading".into(),
             label: "thank you for reading · AI".into(),
             score: 1.0,
+            ..Default::default()
         }];
         let previews = composition_candidate_previews("thank you", "en-US", &candidates, 6, 4);
         assert_eq!(

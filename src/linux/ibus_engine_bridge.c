@@ -6,8 +6,7 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#define SUZAKU_LOOKUP_PAGE_SIZE 3
-#define SUZAKU_CANDIDATE_PREVIEW_CHARS 42
+#define SUZAKU_LOOKUP_PAGE_SIZE 6
 
 extern bool suzaku_host_ime_activate(void);
 extern void suzaku_host_ime_deactivate(void);
@@ -19,6 +18,9 @@ extern bool suzaku_host_ime_commit_selected(bool force);
 extern size_t suzaku_host_ime_candidate_count(void);
 extern size_t suzaku_host_ime_selected_index(void);
 extern char *suzaku_host_ime_candidate_label_utf8(size_t index);
+extern char *suzaku_host_ime_ibus_candidate_label_utf8(size_t index);
+extern char *suzaku_host_ime_completion_text_utf8(bool explicit_only);
+extern void suzaku_host_ime_enable_ibus_candidates(void);
 extern char *suzaku_host_ime_take_last_committed_text_utf8(void);
 extern void suzaku_host_ime_free_utf8(char *text);
 extern bool suzaku_host_ime_poll_prediction(void);
@@ -32,6 +34,7 @@ extern char *suzaku_host_ime_companion_snapshot_utf8(
 typedef struct _SuzakuIBusEngine {
     IBusEngine parent_instance;
     GString *input;
+    gchar *completion_undo;
     gboolean sensitive;
     gboolean private_input;
 } SuzakuIBusEngine;
@@ -65,29 +68,13 @@ static size_t suzaku_ibus_candidate_page_start(void) {
     return (selected / SUZAKU_LOOKUP_PAGE_SIZE) * SUZAKU_LOOKUP_PAGE_SIZE;
 }
 
-static gchar *suzaku_ibus_candidate_preview(const gchar *label) {
-    if (label == NULL) {
-        return NULL;
-    }
-    if (g_utf8_strlen(label, -1) <= SUZAKU_CANDIDATE_PREVIEW_CHARS) {
-        return g_strdup(label);
-    }
-
-    gboolean ai = g_str_has_suffix(label, " · AI");
-    const gchar *end = g_utf8_offset_to_pointer(
-        label, SUZAKU_CANDIDATE_PREVIEW_CHARS - 1 - (ai ? 5 : 0));
-    gchar *prefix = g_strndup(label, (gsize)(end - label));
-    gchar *preview = g_strconcat(prefix, "…", ai ? " · AI" : "", NULL);
-    g_free(prefix);
-    return preview;
-}
-
 static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     suzaku_companion_publish();
     IBusEngine *engine = IBUS_ENGINE(self);
     if (self->input->len == 0) {
         ibus_engine_hide_preedit_text(engine);
         ibus_engine_hide_lookup_table(engine);
+        ibus_engine_hide_auxiliary_text(engine);
         return;
     }
 
@@ -100,6 +87,7 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     size_t candidate_count = suzaku_host_ime_candidate_count();
     if (candidate_count == 0) {
         ibus_engine_hide_lookup_table(engine);
+        ibus_engine_hide_auxiliary_text(engine);
         return;
     }
 
@@ -111,20 +99,29 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         FALSE);
     ibus_lookup_table_set_orientation(table, IBUS_ORIENTATION_VERTICAL);
     for (size_t index = 0; index < candidate_count; index++) {
-        char *label = suzaku_host_ime_candidate_label_utf8(index);
+        char *label = suzaku_host_ime_ibus_candidate_label_utf8(index);
         if (label == NULL) {
             continue;
         }
-        gchar *preview = suzaku_ibus_candidate_preview(label);
         ibus_lookup_table_append_candidate(
-            table, ibus_text_new_from_string(preview));
-        g_free(preview);
+            table, ibus_text_new_from_string(label));
         suzaku_host_ime_free_utf8(label);
     }
+    const gchar *keys[] = {"¹", "²", "³", "⁴", "⁵", "⁶"};
+    for (guint index = 0; index < SUZAKU_LOOKUP_PAGE_SIZE; index++) {
+        ibus_lookup_table_append_label(table, ibus_text_new_from_string(keys[index]));
+    }
     ibus_engine_update_lookup_table(engine, table, TRUE);
+    guint language = suzaku_host_ime_language_kind();
+    const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
+    gchar *help = g_strdup_printf("%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | %s · Shift+Space/Enter 连写/补全", mode,
+        language == 2 ? "Alt+1–6" : "1–6");
+    ibus_engine_update_auxiliary_text(engine, ibus_text_new_from_string(help), TRUE);
+    g_free(help);
 }
 
 static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
+    g_clear_pointer(&self->completion_undo, g_free);
     if (self->input->len == 0) {
         suzaku_host_ime_clear_marked_text();
     } else {
@@ -134,11 +131,38 @@ static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
     suzaku_ibus_schedule_prediction();
 }
 
-static void suzaku_ibus_engine_clear(SuzakuIBusEngine *self) {
+static void suzaku_ibus_engine_clear_local(SuzakuIBusEngine *self) {
     g_string_truncate(self->input, 0);
+    g_clear_pointer(&self->completion_undo, g_free);
+}
+
+static void suzaku_ibus_engine_clear(SuzakuIBusEngine *self) {
+    suzaku_ibus_engine_clear_local(self);
     suzaku_host_ime_clear_marked_text();
     suzaku_ibus_engine_render(self);
     suzaku_ibus_schedule_prediction();
+}
+
+/* Keep the replacement in preedit; no commit event or committed context is created.
+ * Backspace immediately after a replacement restores the exact previous spelling. */
+static gboolean suzaku_ibus_engine_complete(SuzakuIBusEngine *self, gboolean append_space) {
+    if (self->sensitive || self->input->len == 0) { return FALSE; }
+    char *candidate = suzaku_host_ime_completion_text_utf8(append_space);
+    if (!append_space && candidate == NULL) { return FALSE; }
+    const gchar *text = candidate != NULL ? candidate : self->input->str;
+    gboolean changed = g_strcmp0(text, self->input->str) != 0;
+    if (!changed && !append_space) {
+        suzaku_host_ime_free_utf8(candidate);
+        return TRUE;
+    }
+    gchar *previous = changed ? g_strdup(self->input->str) : NULL;
+    gchar *replacement = append_space ? g_strconcat(text, " ", NULL) : g_strdup(text);
+    g_string_assign(self->input, replacement);
+    g_free(replacement);
+    suzaku_host_ime_free_utf8(candidate);
+    suzaku_ibus_engine_sync_input(self);
+    self->completion_undo = previous;
+    return TRUE;
 }
 
 static gboolean suzaku_ibus_prediction_tick(gpointer data) {
@@ -192,6 +216,7 @@ static void suzaku_ibus_engine_move_selection(
     if (self->input->len == 0) {
         return;
     }
+    g_clear_pointer(&self->completion_undo, g_free);
     suzaku_host_ime_move_selection(delta);
     suzaku_ibus_engine_render(self);
 }
@@ -206,11 +231,32 @@ static gboolean suzaku_ibus_engine_process_key_event(
     if ((state & IBUS_RELEASE_MASK) != 0) {
         return FALSE;
     }
+    /* Use Alt+digits for lookup choices without stealing English literal digits.
+     * Do not intercept AltGr (MOD5) or application shortcuts with other modifiers. */
+    if (self->input->len > 0 && (state & IBUS_MOD1_MASK) != 0 &&
+        (state & (IBUS_CONTROL_MASK | IBUS_SUPER_MASK | IBUS_SHIFT_MASK | IBUS_MOD5_MASK)) == 0 &&
+        keyval >= IBUS_KEY_1 && keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
+        size_t index = suzaku_ibus_candidate_page_start() + (size_t)(keyval - IBUS_KEY_1);
+        if (index < suzaku_host_ime_candidate_count()) {
+            suzaku_host_ime_select_candidate(index);
+            return suzaku_ibus_engine_commit(self, FALSE);
+        }
+        return TRUE;
+    }
     if ((state & (IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_SUPER_MASK)) != 0) {
+        return FALSE;
+    }
+    if ((state & IBUS_MOD5_MASK) != 0 &&
+        (keyval == IBUS_KEY_space || keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter)) {
         return FALSE;
     }
 
     if (keyval == IBUS_KEY_BackSpace && self->input->len > 0) {
+        if (self->completion_undo != NULL) {
+            g_string_assign(self->input, self->completion_undo);
+            suzaku_ibus_engine_sync_input(self);
+            return TRUE;
+        }
         gchar *last = g_utf8_find_prev_char(
             self->input->str, self->input->str + self->input->len);
         g_string_truncate(self->input,
@@ -247,6 +293,13 @@ static gboolean suzaku_ibus_engine_process_key_event(
         suzaku_ibus_engine_move_selection(
             self, keyval == IBUS_KEY_Page_Down ? SUZAKU_LOOKUP_PAGE_SIZE : 1);
         return TRUE;
+    }
+    if (keyval == IBUS_KEY_space && (state & IBUS_SHIFT_MASK) != 0 && self->input->len > 0) {
+        return suzaku_ibus_engine_complete(self, TRUE);
+    }
+    if ((keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter) &&
+        (state & IBUS_SHIFT_MASK) != 0 && self->input->len > 0) {
+        return suzaku_ibus_engine_complete(self, FALSE);
     }
     if (keyval == IBUS_KEY_space || keyval == IBUS_KEY_Return ||
         keyval == IBUS_KEY_KP_Enter) {
@@ -309,9 +362,10 @@ static gboolean suzaku_ibus_clear_focused_engine_if(IBusEngine *engine) {
 static void suzaku_ibus_engine_focus_out(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
     if (!suzaku_ibus_clear_focused_engine_if(engine)) {
-        g_string_truncate(self->input, 0);
+        suzaku_ibus_engine_clear_local(self);
         ibus_engine_hide_preedit_text(engine);
         ibus_engine_hide_lookup_table(engine);
+        ibus_engine_hide_auxiliary_text(engine);
         return;
     }
     suzaku_ibus_engine_clear(self);
@@ -322,7 +376,7 @@ static void suzaku_ibus_engine_reset(IBusEngine *engine) {
     if (suzaku_ibus_engine_is_focused(engine)) {
         suzaku_ibus_engine_clear((SuzakuIBusEngine *)engine);
     } else {
-        g_string_truncate(((SuzakuIBusEngine *)engine)->input, 0);
+        suzaku_ibus_engine_clear_local((SuzakuIBusEngine *)engine);
     }
 }
 
@@ -333,7 +387,7 @@ static void suzaku_ibus_engine_set_content_type(IBusEngine *engine, guint purpos
     /* PRIVATE was added in IBus 1.5.26; use its ABI bit for older headers as well. */
     self->private_input = self->sensitive || (hints & (1u << 11)) != 0;
     if (!suzaku_ibus_engine_is_focused(engine)) {
-        if (self->sensitive || was_private != self->private_input) { g_string_truncate(self->input, 0); }
+        if (self->sensitive || was_private != self->private_input) { suzaku_ibus_engine_clear_local(self); }
         return;
     }
     suzaku_host_ime_set_private(self->private_input);
@@ -351,7 +405,7 @@ static void suzaku_ibus_engine_enable(IBusEngine *engine) {
 
 static void suzaku_ibus_engine_disable(IBusEngine *engine) {
     if (!suzaku_ibus_clear_focused_engine_if(engine)) {
-        g_string_truncate(((SuzakuIBusEngine *)engine)->input, 0);
+        suzaku_ibus_engine_clear_local((SuzakuIBusEngine *)engine);
         return;
     }
     suzaku_ibus_engine_clear((SuzakuIBusEngine *)engine);
@@ -396,6 +450,7 @@ static void suzaku_ibus_engine_candidate_clicked(
 
 static void suzaku_ibus_engine_finalize(GObject *object) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
+    g_clear_pointer(&self->completion_undo, g_free);
     if (self->input != NULL) {
         g_string_free(self->input, TRUE);
         self->input = NULL;
@@ -422,6 +477,7 @@ static void suzaku_ibus_engine_class_init(SuzakuIBusEngineClass *class) {
 }
 
 static void suzaku_ibus_engine_init(SuzakuIBusEngine *self) {
+    suzaku_host_ime_enable_ibus_candidates();
     self->input = g_string_new(NULL);
 }
 
@@ -740,7 +796,7 @@ static void suzaku_ibus_probe_update_lookup_table(
     for (guint index = 0; index < candidate_count; index++) {
         IBusText *entry = ibus_lookup_table_get_candidate(table, index);
         const gchar *label = entry == NULL ? NULL : ibus_text_get_text(entry);
-        if (label != NULL && strstr(label, " · AI") != NULL) {
+        if (label != NULL && strstr(label, "ᴬᴵ") != NULL) {
             probe->ai_candidate_index = index;
             break;
         }
@@ -1050,7 +1106,12 @@ int suzaku_linux_ibus_probe_roundtrip(
         result = 16;
     }
     if (result == 0 && complete_word) {
-        gchar *expected = g_strconcat(probe.primary_candidate, " ", NULL);
+        /* Display annotations never belong to the committed replacement. */
+        const gchar *annotation = strrchr(probe.primary_candidate, ' ');
+        gchar *plain = annotation == NULL ? g_strdup(probe.primary_candidate) :
+            g_strndup(probe.primary_candidate, (gsize)(annotation - probe.primary_candidate));
+        gchar *expected = g_strconcat(plain, " ", NULL);
+        g_free(plain);
         if (g_strcmp0(probe.committed, expected) != 0) { result = 21; }
         g_free(expected);
     }

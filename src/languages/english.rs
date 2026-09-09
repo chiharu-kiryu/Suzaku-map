@@ -223,6 +223,67 @@ pub fn english_sentence_variants(seed: &str) -> Vec<String> {
     english_variants(seed, "")
 }
 
+/// Explicit collocations only. Finish a word before offering a sentence; never
+/// fabricate a suffix for an unknown word, identifier, URL or password-like token.
+pub(crate) fn mixed_candidates(
+    seed: &str,
+    context: &str,
+) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
+    use crate::ime::candidate_mix::CandidateKind;
+    const ENDINGS: &[(&str, &[&str])] = &[
+        ("hello", &[", how are you?", ", nice to meet you."]),
+        ("help", &[" me with this, please."]),
+        ("good morning", &[", how are you?", ", have a nice day."]),
+        ("good evening", &[", nice to see you."]),
+        ("thank you", &[" for your help.", " very much."]),
+        ("thank you for", &[" your help.", " the update."]),
+        ("hello world", &[", nice to meet you."]),
+        ("thanks", &[" for your help.", " for the update."]),
+        ("please send", &[" me the details.", " me a message."]),
+        ("please check", &[" the latest version.", " the details."]),
+        ("please", &[" let me know.", " check the details."]),
+        ("how", &[" are you?", " can I help you?"]),
+        ("how are", &[" you?", " things going?"]),
+        ("let me", &[" know what you think.", " check the details."]),
+        ("let me know", &[" what you think.", " if you need help."]),
+        ("see you", &[" tomorrow.", " later."]),
+        ("i would like", &[" to know more.", " to ask a question."]),
+        ("i am", &[" happy to help.", " working on it."]),
+        ("we can", &[" discuss it later.", " try again."]),
+        ("sorry", &[" for the delay.", " about that."]),
+        ("welcome", &[" to the team."]),
+        ("looking forward", &[" to hearing from you."]),
+    ];
+    let mut output = Vec::new();
+    for completed in english_variants(seed, context).into_iter().take(6) {
+        let Some(tail) = english_word_prefix(&completed) else {
+            continue;
+        };
+        if !is_known_english_word(tail) {
+            continue;
+        }
+        let combined = format!("{} {completed}", bounded_context(context)).to_lowercase();
+        let matched = ENDINGS
+            .iter()
+            .filter(|(prefix, _)| {
+                combined == *prefix
+                    || combined
+                        .strip_suffix(prefix)
+                        .is_some_and(|left| left.ends_with(char::is_whitespace))
+            })
+            .max_by_key(|(prefix, _)| prefix.len());
+        if let Some((_, endings)) = matched {
+            for ending in *endings {
+                let text = format!("{completed}{ending}");
+                if output.len() < 6 && !output.iter().any(|(value, _)| value == &text) {
+                    output.push((text, CandidateKind::Sentence));
+                }
+            }
+        }
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,7 +2,7 @@
 
 use crate::languages::{
     BuiltinLanguage,
-    llama::{LlamaProviderConfig, is_local_llm_endpoint},
+    model::{ModelProtocol, ModelProviderConfig, ModelScope},
 };
 use serde_json::{Value, json};
 use std::{fs, io::Read, path::PathBuf};
@@ -11,7 +11,7 @@ use std::{fs, io::Read, path::PathBuf};
 pub struct ImeSettings {
     pub language: BuiltinLanguage,
     pub llm_enabled: bool,
-    pub provider: LlamaProviderConfig,
+    pub provider: ModelProviderConfig,
 }
 
 /// A narrow, atomic update: panel controls cannot overwrite language/model configuration.
@@ -72,7 +72,7 @@ impl Default for ImeSettings {
         Self {
             language: BuiltinLanguage::English,
             llm_enabled: false,
-            provider: LlamaProviderConfig::default(),
+            provider: ModelProviderConfig::default(),
         }
     }
 }
@@ -96,8 +96,27 @@ impl ImeSettings {
         if let Some(endpoint) = value.get("llm_endpoint") {
             settings.provider.endpoint = endpoint.as_str().ok_or("模型地址必须是字符串")?.into();
         }
-        if !is_local_llm_endpoint(&settings.provider.endpoint) {
-            return Err("目前只允许本机回环地址的模型服务".into());
+        if let Some(scope) = value.get("llm_scope") {
+            settings.provider.scope = match scope.as_str() {
+                Some("local") => ModelScope::Local,
+                Some("cloud") => ModelScope::Cloud,
+                _ => return Err("llm_scope 必须为 local 或 cloud".into()),
+            };
+        }
+        if let Some(protocol) = value.get("llm_protocol") {
+            settings.provider.protocol = match protocol.as_str() {
+                Some("auto") => ModelProtocol::Auto,
+                Some("ollama") => ModelProtocol::Ollama,
+                Some("openai-compatible") => ModelProtocol::OpenAiCompatible,
+                _ => return Err("不支持的模型接口协议".into()),
+            };
+        }
+        if let Some(consent) = value.get("llm_cloud_consent") {
+            settings.provider.cloud_consent = consent.as_bool().ok_or("云端授权必须是布尔值")?;
+        }
+        if let Some(key) = value.get("llm_api_key_env").filter(|v| !v.is_null()) {
+            settings.provider.api_key_env =
+                Some(key.as_str().ok_or("密钥环境变量名必须是字符串")?.into());
         }
         if let Some(model) = value.get("llm_model") {
             let model = model.as_str().ok_or("模型名称必须是字符串")?;
@@ -119,11 +138,17 @@ impl ImeSettings {
                 .ok_or("模型温度必须为 0–10")?
                 as u32;
         }
+        settings
+            .provider
+            .validate()
+            .map_err(|error| error.to_string())?;
         Ok(settings)
     }
 
     pub fn to_json(&self) -> Value {
         json!({"language": self.language.id(), "llm_enabled": self.llm_enabled,
+            "llm_scope": self.provider.scope.id(), "llm_protocol": self.provider.protocol.id(),
+            "llm_cloud_consent": self.provider.cloud_consent, "llm_api_key_env": self.provider.api_key_env,
             "llm_endpoint": self.provider.endpoint, "llm_model": self.provider.model,
             "llm_timeout_ms": self.provider.timeout_ms, "llm_temperature_tenths": self.provider.temperature_tenths})
     }
@@ -169,6 +194,52 @@ pub fn settings_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn defaults_are_local_auto_but_legacy_model_and_language_are_preserved() {
+        let defaults = ImeSettings::from_json("{}").unwrap();
+        assert_eq!(defaults.provider.model, "auto");
+        assert_eq!(defaults.provider.scope, ModelScope::Local);
+        assert!(!defaults.llm_enabled);
+        assert!(!defaults.provider.cloud_consent);
+        let legacy = ImeSettings::from_json(
+            r#"{"language":"ja","llm_model":"llama3.2:3b","llm_enabled":true}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.provider.model, "llama3.2:3b");
+        assert_eq!(legacy.language, BuiltinLanguage::Japanese);
+        assert!(legacy.llm_enabled);
+    }
+
+    #[test]
+    fn cloud_needs_explicit_scope_and_model_and_persists_only_a_key_reference() {
+        let settings = ImeSettings::from_json(r#"{"llm_scope":"cloud","llm_protocol":"openai-compatible","llm_endpoint":"https://models.example/v1/chat/completions","llm_model":"any-family","llm_api_key_env":"SUZAKU_MODEL_KEY","llm_enabled":true}"#).unwrap();
+        assert!(!settings.provider.cloud_consent);
+        assert_eq!(
+            ImeSettings::from_json(&settings.to_json().to_string()).unwrap(),
+            settings
+        );
+        let json = settings.to_json();
+        assert!(json.get("llm_api_key").is_none());
+        assert_eq!(json["llm_api_key_env"], "SUZAKU_MODEL_KEY");
+        for (key, value) in [
+            ("llm_scope", json!("local")),
+            ("llm_model", json!("auto")),
+            (
+                "llm_endpoint",
+                json!("http://remote.example/v1/chat/completions"),
+            ),
+            ("llm_api_key_env", json!("KEY=secret")),
+            ("llm_cloud_consent", json!("true")),
+            ("llm_protocol", json!("invented")),
+        ] {
+            let mut invalid = json.clone();
+            invalid[key] = value;
+            assert!(
+                ImeSettings::from_json(&invalid.to_string()).is_err(),
+                "{key}"
+            );
+        }
+    }
     #[test]
     fn prediction_patch_is_validated_atomically_and_preserves_other_settings() {
         let mut settings = ImeSettings::default();

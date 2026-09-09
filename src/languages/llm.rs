@@ -13,10 +13,12 @@ pub struct LlmCompletionRequest {
     pub degraded: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LlmCompletion {
     pub text: String,
     pub score_bias: f32,
+    /// Older/plain-text providers may omit this; the language profile then classifies it.
+    pub kind: Option<crate::ime::candidate_mix::CandidateKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,19 +30,26 @@ pub enum LlmProviderError {
     InvalidResponse,
     ResponseTooLarge,
     NoCandidates,
+    NoLocalModel,
+    CloudConsentRequired,
+    MissingCredentials,
 }
 
 impl std::fmt::Display for LlmProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::InvalidEndpoint => "模型地址无效，只允许本机 HTTP 服务",
-            Self::Unavailable => "本机模型服务未运行或连接已断开",
+            Self::InvalidEndpoint => "模型配置无效：本地需回环 HTTP，云端需 HTTPS 和明确模型",
+            Self::Unavailable => "模型服务不可用或安全连接失败，本地候选仍可使用",
             Self::Timeout => "模型请求超时，本地候选仍可使用",
-            Self::HttpStatus(404) => "模型或接口不存在，请检查已安装的 Llama 模型",
-            Self::HttpStatus(_) => "模型服务返回错误，请检查本机服务状态",
+            Self::HttpStatus(401 | 403) => "模型服务拒绝授权，请检查密钥与访问权限",
+            Self::HttpStatus(404) => "模型或接口不存在，请检查模型配置",
+            Self::HttpStatus(_) => "模型服务返回错误，请检查服务状态",
             Self::InvalidResponse => "模型响应格式无效，已保留本地候选",
             Self::ResponseTooLarge => "模型响应过大，已拒绝处理",
             Self::NoCandidates => "模型未返回有效候选，已保留本地候选",
+            Self::NoLocalModel => "未发现可用本机模型，请启动本地服务或指定模型；未访问云端",
+            Self::CloudConsentRequired => "云端联想尚未授权，输入内容不会发送到云端",
+            Self::MissingCredentials => "模型密钥环境变量未设置或格式无效",
         })
     }
 }
@@ -127,6 +136,8 @@ impl LanguagePlugin for LlmLanguagePlugin {
                         label: completion.text.clone(),
                         text: completion.text,
                         score: confidence + sentence_bonus + completion.score_bias,
+                        kind: completion.kind.unwrap_or_default(),
+                        source: crate::ime::candidate_mix::CandidateSource::Model,
                     }
                 })
                 .collect();

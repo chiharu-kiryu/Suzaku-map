@@ -1,7 +1,8 @@
 //! Small offline bootstrap lexicon, not a replacement for a full Pinyin dictionary.
 //! Unknown input is always preserved; an optional LLM can enrich these candidates.
 
-use super::ranked_candidates;
+use super::ranked_typed_candidates;
+use crate::ime::candidate_mix::CandidateKind;
 use crate::ime::{Candidate, LanguagePlugin};
 
 #[derive(Default)]
@@ -14,11 +15,15 @@ impl LanguagePlugin for ChineseLanguagePlugin {
     fn display_name(&self) -> &str {
         "简体中文"
     }
+    fn normalize_seed(&self, input: &str) -> String {
+        // Separators belong to the preedit and the lossless literal candidate.
+        input.to_owned()
+    }
     fn expand_token(&self, token: &str, _degraded: bool) -> Vec<String> {
         vec![token.into()]
     }
     fn build_candidates(&self, _parts: &[String], seed: &str, confidence: f32) -> Vec<Candidate> {
-        ranked_candidates(pinyin_candidates(seed), confidence)
+        ranked_typed_candidates(pinyin_choices(seed), confidence)
     }
     fn direct_candidates(&self, seed: &str, confidence: f32) -> Option<Vec<Candidate>> {
         Some(self.build_candidates(&[], seed, confidence))
@@ -79,6 +84,7 @@ const PINYIN: &[(&str, &str)] = &[
     ("shanghai", "上海"),
     ("shenzhen", "深圳"),
     ("guangzhou", "广州"),
+    ("xi'an", "西安"),
     ("wo", "我"),
     ("ni", "你"),
     ("ni", "呢"),
@@ -142,20 +148,92 @@ fn normalize_pinyin(seed: &str) -> String {
                 && chars.get(index + 1).is_none_or(|next| {
                     next.is_ascii_alphabetic() || next.is_whitespace() || *next == '\''
                 });
-            (!tone && !ch.is_whitespace()).then_some(ch)
+            (!tone).then_some(if ch.is_whitespace() { '\'' } else { ch })
         })
         .collect()
 }
 
+pub(crate) fn is_dictionary_word(text: &str) -> bool {
+    PINYIN.iter().any(|(_, word)| *word == text) && text != "你好吗"
+}
+
+pub(crate) fn mixed_candidates(
+    seed: &str,
+) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
+    const CONTINUATIONS: &[(&str, &[&str])] = &[
+        (
+            "你好",
+            &["你好，很高兴认识你。", "你好，请问有什么可以帮忙？"],
+        ),
+        ("谢谢", &["谢谢你的帮助。", "谢谢，辛苦了。"]),
+        ("请问", &["请问现在方便吗？", "请问可以帮我一下吗？"]),
+        ("我", &["我想了解一下。", "我可以帮忙。"]),
+        ("你", &["你现在方便吗？", "你有什么建议？"]),
+        ("我们", &["我们一起试试看。", "我们可以稍后讨论。"]),
+        ("今天", &["今天天气很好。", "今天有什么安排？"]),
+        ("明天", &["明天见。", "明天再讨论吧。"]),
+        ("中文", &["中文输入很方便。", "中文和英文都可以输入。"]),
+        (
+            "输入法",
+            &["输入法支持多种语言。", "输入法可以提供词句候选。"],
+        ),
+        ("继续", &["继续完善这个功能。", "继续下一步吧。"]),
+        ("可以", &["可以帮我看一下吗？", "可以继续了。"]),
+        ("学习", &["学习一门新的语言。", "学习需要不断练习。"]),
+        ("测试", &["测试一下输入效果。", "测试已经完成。"]),
+        ("再见", &["再见，下次再聊。"]),
+        ("我喜欢北京", &["我喜欢北京的文化。", "我喜欢北京的美食。"]),
+        ("我想学习中文", &["我想学习中文，请多指教。"]),
+    ];
+    let code = normalize_pinyin(seed);
+    let mut output = Vec::new();
+    if code.len() >= 2 && code.bytes().all(|ch| ch.is_ascii_lowercase()) {
+        for (_, word) in PINYIN
+            .iter()
+            .filter(|(key, _)| key.starts_with(&code) && *key != code)
+            .take(5)
+        {
+            output.push((
+                (*word).to_owned(),
+                if is_dictionary_word(word) {
+                    CandidateKind::Word
+                } else {
+                    CandidateKind::Sentence
+                },
+            ));
+        }
+    }
+    if let Some(primary) = pinyin_candidates(seed).first()
+        && let Some((_, values)) = CONTINUATIONS.iter().find(|(word, _)| *word == primary)
+    {
+        output.extend(
+            values
+                .iter()
+                .map(|text| ((*text).into(), CandidateKind::Sentence)),
+        );
+    }
+    output
+}
+
 pub fn pinyin_candidates(seed: &str) -> Vec<String> {
-    let seed = seed.trim();
-    if seed.is_empty() {
+    pinyin_choices(seed)
+        .into_iter()
+        .map(|(text, _)| text)
+        .collect()
+}
+
+fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
+    if seed.trim().is_empty() {
         return Vec::new();
+    }
+    if seed.chars().count() > 256 {
+        return vec![(seed.into(), CandidateKind::Literal)];
     }
     let normalized = normalize_pinyin(seed);
     let mut paths = vec![(0usize, String::new(), 0usize)];
     // Bounded beam search: never exponential in the number of ambiguous syllables.
     let mut finished = Vec::new();
+    let mut completions = Vec::new();
     for _ in 0..128 {
         let mut next = Vec::new();
         for (offset, text, segments) in paths {
@@ -172,6 +250,25 @@ pub fn pinyin_candidates(seed: &str) -> Vec<String> {
                 next.push((offset + ch.len_utf8(), format!("{text}{ch}"), segments));
                 continue;
             }
+            // Finish only the final unfinished spelling, keeping the already converted prefix.
+            // Unknown Latin prefixes never reach this state through a dictionary path.
+            if rest.len() >= 2 && rest.bytes().all(|ch| ch.is_ascii_lowercase()) {
+                for (_, word) in PINYIN
+                    .iter()
+                    .filter(|(key, _)| key.starts_with(rest) && *key != rest)
+                    .take(4)
+                {
+                    completions.push((
+                        format!("{text}{word}"),
+                        segments + 1,
+                        if is_dictionary_word(word) {
+                            CandidateKind::Word
+                        } else {
+                            CandidateKind::Sentence
+                        },
+                    ));
+                }
+            }
             for (pinyin, hanzi) in PINYIN {
                 if rest.starts_with(pinyin) {
                     next.push((
@@ -184,29 +281,40 @@ pub fn pinyin_candidates(seed: &str) -> Vec<String> {
         }
         next.sort_by(|left, right| right.0.cmp(&left.0).then(left.2.cmp(&right.2)));
         next.truncate(24);
+        completions.sort_by_key(|(_, segments, _)| *segments);
+        completions.truncate(64);
         if next.is_empty() {
             break;
         }
         paths = next;
     }
     finished.sort_by_key(|(_, segments)| *segments);
-    let mut output: Vec<String> = finished.into_iter().map(|(text, _)| text).take(5).collect();
-    // Prefix completion only for a single unambiguous unfinished code, not arbitrary mixed text.
-    if output.is_empty()
-        && normalized.len() >= 2
-        && normalized.bytes().all(|ch| ch.is_ascii_lowercase())
-    {
-        output.extend(
-            PINYIN
-                .iter()
-                .filter(|(key, _)| key.starts_with(&normalized))
-                .take(4)
-                .map(|(_, text)| text.to_string()),
-        );
-    }
-    output.push(seed.to_string());
     let mut seen = std::collections::HashSet::new();
-    output.retain(|text| seen.insert(text.clone()));
+    let mut output: Vec<_> = finished
+        .into_iter()
+        .filter(|(text, _)| seen.insert(text.clone()))
+        .take(5)
+        .map(|(text, _)| {
+            let kind = if text == seed {
+                CandidateKind::Literal
+            } else if is_dictionary_word(&text) {
+                CandidateKind::Word
+            } else {
+                CandidateKind::Sentence
+            };
+            (text, kind)
+        })
+        .collect();
+    output.extend(
+        completions
+            .into_iter()
+            .filter(|(text, _, _)| seen.insert(text.clone()))
+            .take(4)
+            .map(|(text, _, kind)| (text, kind)),
+    );
+    if seen.insert(seed.to_owned()) {
+        output.push((seed.into(), CandidateKind::Literal));
+    }
     output
 }
 
@@ -227,5 +335,44 @@ mod tests {
         assert_eq!(pinyin_candidates("Rust2026"), ["Rust2026"]);
         assert!(pinyin_candidates("nihao").contains(&"nihao".into()));
         assert_eq!(pinyin_candidates("nü")[0], "女");
+    }
+
+    #[test]
+    fn spaces_and_apostrophes_keep_pinyin_syllable_boundaries() {
+        for seed in ["xi an", "xi  an", "XI AN", "xi1 an1", "xi'an"] {
+            let candidates = pinyin_candidates(seed);
+            assert_eq!(candidates[0], "西安", "{seed}: {candidates:?}");
+            assert!(candidates.iter().any(|text| text == seed));
+        }
+        assert_eq!(pinyin_candidates("xian")[0], "先");
+        assert_eq!(pinyin_candidates("xi'an")[0], "西安");
+    }
+
+    #[test]
+    fn partial_last_syllables_and_typed_han_prefixes_have_bounded_lossless_completions() {
+        for (seed, expected) in [
+            ("woxihuanbeij", "我喜欢北京"),
+            ("我喜欢bei", "我喜欢北京"),
+            ("wo xihuan bei", "我喜欢北京"),
+            ("我想学习zhongw", "我想学习中文"),
+        ] {
+            let candidates = pinyin_choices(seed);
+            assert!(
+                candidates
+                    .iter()
+                    .any(|(text, kind)| text == expected && *kind == CandidateKind::Word),
+                "{seed}: {candidates:?}"
+            );
+            assert!(candidates.iter().any(|(text, _)| text == seed));
+            assert!(candidates.len() <= 10);
+        }
+        for seed in [
+            "unknownbei",
+            "https://bei",
+            "Rust2026",
+            "字".repeat(300).as_str(),
+        ] {
+            assert_eq!(pinyin_candidates(seed), [seed]);
+        }
     }
 }

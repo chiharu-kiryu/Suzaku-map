@@ -68,11 +68,13 @@ impl Default for SignalState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Candidate {
     pub text: String,
     pub label: String,
     pub score: f32,
+    pub kind: super::candidate_mix::CandidateKind,
+    pub source: super::candidate_mix::CandidateSource,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -231,6 +233,7 @@ pub struct XRTabletImeEngine {
     prediction_status: PredictionStatus,
     prediction_error: Option<LlmProviderError>,
     selection_locked: bool,
+    ibus_candidate_mix: bool,
 }
 
 impl XRTabletImeEngine {
@@ -249,6 +252,7 @@ impl XRTabletImeEngine {
             prediction_status: PredictionStatus::Disabled,
             prediction_error: None,
             selection_locked: false,
+            ibus_candidate_mix: false,
             state: CompositionState {
                 mode: Mode::Idle,
                 seed_text: String::new(),
@@ -390,6 +394,18 @@ impl XRTabletImeEngine {
         &self.state.candidates
     }
 
+    /// Read a full replacement for continuing a composition, never its decorated label
+    /// or the session's committed context. Reading it does not commit or request a model.
+    pub fn selected_completion_text(&self, explicit_only: bool) -> Option<&str> {
+        if self.state.seed_text.is_empty() || (explicit_only && !self.selection_locked) {
+            return None;
+        }
+        self.state
+            .candidates
+            .get(self.state.selected_index)
+            .map(|candidate| candidate.text.as_str())
+    }
+
     pub fn commit(&mut self, options: CommitOptions) -> CommitResult {
         let snapshot = self.snapshot();
         let Some(candidate) = self
@@ -469,6 +485,15 @@ impl XRTabletImeEngine {
         self.request_prediction();
     }
 
+    /// IBus has room for a mixed lookup list. Other hosts retain their existing policy.
+    pub fn enable_ibus_candidate_mix(&mut self) {
+        if !self.ibus_candidate_mix {
+            self.ibus_candidate_mix = true;
+            self.config.max_candidates = 12;
+            self.rebuild();
+        }
+    }
+
     pub fn configure_prediction(&mut self, provider: Option<Arc<dyn LlmCompletionProvider>>) {
         self.prediction = provider
             .map(|provider| PredictionWorker::new(provider, std::time::Duration::from_millis(120)));
@@ -525,6 +550,27 @@ impl XRTabletImeEngine {
             }
         };
         let local = self.state.candidates.clone();
+        if self.ibus_candidate_mix {
+            let (merged, accepted) = super::candidate_mix::merge_model(
+                &self.state.active_language,
+                &self.state.seed_text,
+                local,
+                completions,
+                self.config.max_candidates,
+            );
+            self.prediction_status = if accepted {
+                PredictionStatus::Ready
+            } else {
+                PredictionStatus::Unavailable
+            };
+            if !accepted {
+                self.prediction_error = Some(LlmProviderError::NoCandidates);
+            }
+            let changed = merged != self.state.candidates;
+            self.state.candidates = merged;
+            self.render_draft();
+            return changed;
+        }
         // Keep both literal input and the best offline English completion in place
         // when an asynchronous model result arrives. CJK keeps its conversion first.
         let pinned_count = if self.state.active_language == "en" && self.config.max_candidates >= 3
@@ -552,6 +598,8 @@ impl XRTabletImeEngine {
                 label: format!("{text} · AI"),
                 text,
                 score: self.state.confidence,
+                kind: completion.kind.unwrap_or_default(),
+                source: super::candidate_mix::CandidateSource::Model,
             });
         }
         self.prediction_status = if merged.len() > pinned_count {
@@ -682,6 +730,19 @@ impl XRTabletImeEngine {
                     .collect()
             });
 
+        if self.ibus_candidate_mix {
+            return super::candidate_mix::offline(
+                &self.state.active_language,
+                &self.state.seed_text,
+                &self.state.committed_text,
+                candidates,
+                if self.state.degraded {
+                    3
+                } else {
+                    self.config.max_candidates
+                },
+            );
+        }
         candidates.sort_by(|left, right| {
             right
                 .score

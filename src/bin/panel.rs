@@ -380,7 +380,7 @@ impl PanelApp {
             {
                 panel.sync_manual_seed_base();
                 panel.engine.set_language(language.id());
-                panel.reconfigure_llama_plugin();
+                panel.reconfigure_model_provider();
                 panel.persist_display_settings();
                 if self.panel_visible {
                     panel.window.request_redraw();
@@ -994,7 +994,7 @@ impl PanelState {
             voice_visual_phase: 0,
             voice_auto_insert: true,
             llm_enabled: false,
-            llm_model: LlmModelPreset::Llama32_3b,
+            llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
@@ -1155,7 +1155,7 @@ impl PanelState {
             } else {
                 state.window_scale = 1.0;
             }
-            state.reconfigure_llama_plugin();
+            state.reconfigure_model_provider();
         }
 
         state.sync_text_input_state();

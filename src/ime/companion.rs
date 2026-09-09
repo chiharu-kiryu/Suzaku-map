@@ -1,5 +1,6 @@
 //! Versioned, bounded view of the active native composition. No surrounding text
 //! or committed history crosses this channel; private contexts are always blank.
+use super::candidate_mix::{CandidateKind, CandidateSource, display_label};
 use super::{Candidate, InputSource, Mode, Snapshot};
 use crate::languages::BuiltinLanguage;
 use serde_json::{Value, json};
@@ -16,10 +17,13 @@ pub enum NativeOperation {
     Clear,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct NativeCandidate {
     pub text: String,
     pub label: String,
+    pub kind: CandidateKind,
+    pub source: CandidateSource,
+    pub weight: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,7 +48,8 @@ impl NativeComposition {
         json!({"version":1,"host":self.host,"context":self.context,"revision":self.revision,
             "focused":self.focused,"private":self.private,"language":self.language,
             "seed":self.seed,"selected":self.selected,"candidates":self.candidates.iter()
-                .map(|c| json!({"text":c.text,"label":c.label})).collect::<Vec<_>>()})
+                .map(|c| json!({"text":c.text,"label":c.label,"kind":c.kind.id(),"source":c.source.id(),"weight":c.weight,
+                    "ibus_label":display_label(&c.text,c.kind,c.source,c.weight)})).collect::<Vec<_>>()})
     }
 
     pub fn parse(raw: &[u8]) -> Result<Self, String> {
@@ -82,6 +87,33 @@ impl NativeComposition {
                 Ok(NativeCandidate {
                     text: text(&c["text"])?,
                     label: text(&c["label"])?,
+                    kind: c
+                        .get("kind")
+                        .map(|v| {
+                            v.as_str()
+                                .and_then(CandidateKind::parse)
+                                .ok_or("Invalid candidate kind")
+                        })
+                        .transpose()?
+                        .unwrap_or_default(),
+                    source: c
+                        .get("source")
+                        .map(|v| {
+                            v.as_str()
+                                .and_then(CandidateSource::parse)
+                                .ok_or("Invalid candidate source")
+                        })
+                        .transpose()?
+                        .unwrap_or_default(),
+                    weight: c
+                        .get("weight")
+                        .map(|v| {
+                            v.as_u64()
+                                .filter(|n| *n <= 100)
+                                .ok_or("Invalid candidate weight")
+                        })
+                        .transpose()?
+                        .unwrap_or(0) as u8,
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -116,7 +148,9 @@ impl NativeComposition {
             .map(|c| Candidate {
                 text: c.text.clone(),
                 label: c.label.clone(),
-                score: 1.0,
+                score: f32::from(c.weight),
+                kind: c.kind,
+                source: c.source,
             })
             .collect()
     }
@@ -162,6 +196,7 @@ mod tests {
             candidates: vec![NativeCandidate {
                 text: "hello".into(),
                 label: "hello · AI".into(),
+                ..Default::default()
             }],
         }
     }
@@ -201,5 +236,42 @@ mod tests {
             assert!(NativeComposition::parse(raw.to_string().as_bytes()).is_err());
         }
         assert!(NativeComposition::parse(&vec![b' '; MAX_FRAME_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn optional_candidate_metadata_roundtrips_without_changing_plain_labels_or_commit_text() {
+        let mut frame = sample();
+        frame.candidates[0].kind = CandidateKind::Word;
+        frame.candidates[0].source = CandidateSource::Model;
+        frame.candidates[0].weight = 93;
+        let mut value = frame.to_json();
+        assert_eq!(value["candidates"][0]["ibus_label"], "hello ᵂᴬᴵ₉₃");
+        let parsed = NativeComposition::parse(value.to_string().as_bytes()).unwrap();
+        assert_eq!(parsed, frame);
+        assert_eq!(parsed.engine_candidates()[0].text, "hello");
+        assert_eq!(parsed.engine_candidates()[0].score, 93.0);
+        assert_eq!(parsed.snapshot().candidate_labels, ["hello · AI"]);
+        for key in ["kind", "source", "weight", "ibus_label"] {
+            value["candidates"][0].as_object_mut().unwrap().remove(key);
+        }
+        let legacy = NativeComposition::parse(value.to_string().as_bytes()).unwrap();
+        assert_eq!(legacy.candidates[0].kind, CandidateKind::Unspecified);
+        assert_eq!(legacy.candidates[0].weight, 0);
+    }
+
+    #[test]
+    fn invalid_candidate_metadata_is_rejected() {
+        for (key, invalid) in [
+            ("kind", json!("command")),
+            ("source", json!("remote")),
+            ("weight", json!(-1)),
+            ("weight", json!(101)),
+            ("weight", json!(0.5)),
+            ("weight", json!("90")),
+        ] {
+            let mut value = sample().to_json();
+            value["candidates"][0][key] = invalid;
+            assert!(NativeComposition::parse(value.to_string().as_bytes()).is_err());
+        }
     }
 }

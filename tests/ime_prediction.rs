@@ -48,6 +48,7 @@ fn answer(text: &str) -> Vec<LlmCompletion> {
     vec![LlmCompletion {
         text: text.into(),
         score_bias: 1.0,
+        kind: None,
     }]
 }
 fn settle(engine: &mut XRTabletImeEngine) {
@@ -83,6 +84,44 @@ fn slow_model_does_not_block_typing_and_never_replaces_primary_candidate() {
     assert_eq!(
         engine.commit(CommitOptions { force: true }).text.unwrap(),
         "hello, how are you?"
+    );
+}
+
+#[test]
+fn ibus_mix_accepts_typed_predictions_but_late_results_do_not_reorder_a_selection() {
+    use suzaku_map::ime::candidate_mix::{CandidateKind, CandidateSource};
+    let (mut engine, requests, replies) = controlled();
+    engine.enable_ibus_candidate_mix();
+    engine.seed("hel");
+    requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    replies
+        .send(vec![LlmCompletion {
+            text: "hello from the model".into(),
+            score_bias: 1.0,
+            kind: Some(CandidateKind::Sentence),
+        }])
+        .unwrap();
+    settle(&mut engine);
+    assert_eq!(engine.candidates()[0].text, "hel");
+    assert_eq!(engine.candidates()[1].text, "hello");
+    let candidate = engine
+        .candidates()
+        .iter()
+        .find(|c| c.text == "hello from the model")
+        .unwrap();
+    assert_eq!(candidate.kind, CandidateKind::Sentence);
+    assert_eq!(candidate.source, CandidateSource::Model);
+    engine.seed("hel");
+    requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    engine.move_selection(3);
+    let displayed = engine.candidates().to_vec();
+    let selected = engine.snapshot().draft_text;
+    replies.send(answer("hello from a late model")).unwrap();
+    settle(&mut engine);
+    assert_eq!(engine.candidates(), displayed);
+    assert_eq!(
+        engine.commit(CommitOptions { force: true }).text.unwrap(),
+        selected
     );
 }
 

@@ -19,6 +19,10 @@ const IME_KEYS: &[&str] = &[
     "llm_model",
     "llm_timeout_ms",
     "llm_temperature_tenths",
+    "llm_scope",
+    "llm_protocol",
+    "llm_api_key_env",
+    "llm_cloud_consent",
 ];
 
 #[derive(Debug, Clone)]
@@ -43,7 +47,7 @@ fn panel_value_valid(key: &str, value: &str) -> bool {
             "daylight" | "device_dark" | "high_contrast" | "solarized"
         ),
         "voice_auto_insert" | "llm_enabled" => matches!(value, "true" | "false"),
-        "llm_model" => value == "llama32_3b",
+        "llm_model" => matches!(value, "configured" | "llama32_3b"),
         "llm_temperature" => {
             matches!(value, "focused" | "balanced" | "expressive")
                 || value
@@ -186,6 +190,15 @@ impl Backup {
             }),
         ])
     }
+
+    fn for_restore(&self) -> Result<Self, String> {
+        let mut checked = Self::parse(&self.to_json().to_string())?;
+        // A backup cannot grant a new installation permission to transmit input.
+        if let Some(ime) = checked.ime.as_mut() {
+            ime["llm_cloud_consent"] = false.into();
+        }
+        Ok(checked)
+    }
 }
 
 pub fn backup_now(paths: &DataPaths) -> Result<PathBuf, String> {
@@ -206,10 +219,11 @@ fn new_backup_path(paths: &DataPaths, prefix: &str) -> PathBuf {
 }
 
 pub fn preview(paths: &DataPaths, backup: &Backup) -> Result<Vec<String>, String> {
+    let checked = backup.for_restore()?;
     let mut report = Vec::new();
     for (path, next) in [&paths.ime, &paths.panel]
         .into_iter()
-        .zip(backup.contents()?)
+        .zip(checked.contents()?)
     {
         let before = read_setting(path)?;
         let operation = if before == next {
@@ -220,6 +234,13 @@ pub fn preview(paths: &DataPaths, backup: &Backup) -> Result<Vec<String>, String
             "写入设置"
         };
         report.push(format!("{operation}: {}", path.display()));
+    }
+    if checked
+        .ime
+        .as_ref()
+        .is_some_and(|ime| ime["llm_scope"] == "cloud")
+    {
+        report.push("恢复后云端联想授权将关闭，需重新明确授权；密钥不在备份中。".into());
     }
     Ok(report)
 }
@@ -271,7 +292,7 @@ fn restore_with_publish(
     mut publish_file: impl FnMut(&Path, Option<StagedFile>) -> std::io::Result<()>,
 ) -> Result<Option<PathBuf>, String> {
     // Validate again, including values constructed by Rust callers.
-    let checked = Backup::parse(&backup.to_json().to_string())?;
+    let checked = backup.for_restore()?;
     let destinations = [&paths.ime, &paths.panel];
     let lock_path = paths.lock_path()?;
     if paths.panel == lock_path {

@@ -72,6 +72,7 @@ where
                 label: text.clone(),
                 text,
                 score: confidence + exact_bonus + sentence_bonus + continuation_bonus,
+                ..Default::default()
             }
         })
         .collect()

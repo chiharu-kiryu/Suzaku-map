@@ -337,11 +337,11 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
-                "Model",
+                "Provider",
                 vec![(
-                    InteractionKind::SetLlmModel(LlmModelPreset::Llama32_3b),
-                    "Llama3.2 3B (default)",
-                    chrome.llm_model == LlmModelPreset::Llama32_3b,
+                    InteractionKind::SetLlmModel(LlmModelPreset::Configured),
+                    "Configured service",
+                    chrome.llm_model == LlmModelPreset::Configured,
                 )],
             ),
             (

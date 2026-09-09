@@ -60,10 +60,12 @@ for suzaku_package_bin in panel linux_ime_host linux_ime_probe suzaku_tool; do
   readelf -h "$suzaku_package_bins/$suzaku_package_bin" >/dev/null
   install -m 755 -- "$suzaku_package_bins/$suzaku_package_bin" "$suzaku_package_tree/bin/$suzaku_package_bin"
 done
-install -m 644 -- README.md LICENSE Cargo.lock docs/linux-packaging-data.md "$suzaku_package_tree/share/doc/suzaku/"
+install -m 644 -- README.md LICENSE Cargo.lock docs/linux-packaging-data.md docs/model-providers.md docs/ibus-candidates.md "$suzaku_package_tree/share/doc/suzaku/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"
 install -m 644 -- src/assets/icons/suzaku-bird.svg "$suzaku_package_tree/share/icons/hicolor/scalable/apps/dev.suzaku.Suzaku.svg"
 install -m 644 -- docs/linux-packaging-data.md "$suzaku_package_tree/README.md"
+install -m 644 -- docs/model-providers.md "$suzaku_package_tree/model-providers.md"
+install -m 644 -- docs/ibus-candidates.md "$suzaku_package_tree/ibus-candidates.md"
 
 # Include declared licenses and the license/notice files supplied by locked Cargo dependencies.
 # This inventory covers the resolved lockfile, including other-platform dependencies.
@@ -108,7 +110,7 @@ if [[ $suzaku_package_format != tar ]]; then
     -e"$suzaku_package_deb/usr/lib/suzaku/panel" -e"$suzaku_package_deb/usr/lib/suzaku/linux_ime_host" \
     -e"$suzaku_package_deb/usr/lib/suzaku/linux_ime_probe" -e"$suzaku_package_deb/usr/lib/suzaku/suzaku_tool")
   suzaku_package_depends=${suzaku_package_depends#shlibs:Depends=}
-  printf 'Package: suzaku\nVersion: %s\nArchitecture: %s\nSection: utils\nPriority: optional\nMaintainer: Suzaku contributors\nInstalled-Size: %s\nDepends: %s, ibus, libglib2.0-bin, libxkbcommon0, libwayland-client0, libx11-6, libegl1, libgl1, libvulkan1\nRecommends: fonts-noto-cjk, mesa-vulkan-drivers\nHomepage: https://github.com/chiharu-kiryu/Suzaku-map\nDescription: Local multilingual IBus input method and candidate panel\n English, Chinese and Japanese candidates with optional local Llama predictions.\n User registration is explicit; installation never switches the active input method.\n' \
+  printf 'Package: suzaku\nVersion: %s\nArchitecture: %s\nSection: utils\nPriority: optional\nMaintainer: Suzaku contributors\nInstalled-Size: %s\nDepends: %s, ibus, libglib2.0-bin, libxkbcommon0, libwayland-client0, libx11-6, libegl1, libgl1, libvulkan1\nRecommends: fonts-noto-cjk, mesa-vulkan-drivers\nHomepage: https://github.com/chiharu-kiryu/Suzaku-map\nDescription: Local-first multilingual IBus input method and candidate panel\n English, Chinese and Japanese candidates with optional local or cloud models.\n User registration is explicit; installation never switches the active input method.\n' \
     "$suzaku_package_version" "$suzaku_package_arch" "$(du -sk "$suzaku_package_deb/usr" | cut -f1)" "$suzaku_package_depends" > "$suzaku_package_deb/DEBIAN/control"
   SOURCE_DATE_EPOCH="$suzaku_package_epoch" dpkg-deb --root-owner-group --build "$suzaku_package_deb" "$suzaku_package_tmp/suzaku_${suzaku_package_version}_${suzaku_package_arch}.deb"
 fi

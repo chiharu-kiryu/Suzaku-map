@@ -3,7 +3,7 @@ use crate::ime::{
     CommitOptions, CommitResult, EngineConfig, InputSource, SignalState, Snapshot,
     XRTabletImeEngine,
 };
-use crate::languages::{BuiltinLanguage, llama::OpenAiCompatibleLlamaProvider};
+use crate::languages::{BuiltinLanguage, model::HttpModelProvider};
 use std::ffi::{CStr, CString};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -107,14 +107,18 @@ impl HostImeSession {
     }
 
     pub fn apply_settings(&mut self, settings: ImeSettings) {
-        if self.settings.language != settings.language {
+        if self.settings.language != settings.language
+            || self.settings.provider.scope != settings.provider.scope
+            || self.settings.provider.endpoint != settings.provider.endpoint
+            || self.settings.provider.model != settings.provider.model
+            || self.settings.provider.protocol != settings.provider.protocol
+        {
             self.engine.clear_session_context();
         }
         self.engine.set_language(settings.language.id());
         let provider = (settings.llm_enabled && !self.private).then(|| {
-            Arc::new(OpenAiCompatibleLlamaProvider::new(
-                settings.provider.clone(),
-            )) as Arc<dyn crate::languages::llm::LlmCompletionProvider>
+            Arc::new(HttpModelProvider::new(settings.provider.clone()))
+                as Arc<dyn crate::languages::llm::LlmCompletionProvider>
         });
         self.engine.configure_prediction(provider);
         self.settings = settings;
@@ -338,6 +342,9 @@ pub extern "C" fn suzaku_host_ime_companion_snapshot_utf8(
                     .map(|c| NativeCandidate {
                         text: c.text.clone(),
                         label: c.label.clone(),
+                        kind: c.kind,
+                        source: c.source,
+                        weight: c.score.clamp(0.0, 100.0).round() as u8,
                     })
                     .collect()
             } else {
@@ -492,6 +499,48 @@ pub extern "C" fn suzaku_host_ime_selected_index() -> usize {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_enable_ibus_candidates() {
+    with_shared_host_ime_session(|session| session.engine.enable_ibus_candidate_mix());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_completion_text_utf8(
+    explicit_only: bool,
+) -> *mut std::os::raw::c_char {
+    with_shared_host_ime_session(|session| {
+        if !session.active {
+            return std::ptr::null_mut();
+        }
+        session
+            .engine
+            .selected_completion_text(explicit_only)
+            .map(|text| into_raw_c_string(text.to_owned()))
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_ibus_candidate_label_utf8(
+    index: usize,
+) -> *mut std::os::raw::c_char {
+    with_shared_host_ime_session(|session| {
+        session
+            .engine
+            .candidates()
+            .get(index)
+            .map(|c| {
+                into_raw_c_string(crate::ime::candidate_mix::display_label(
+                    &c.text,
+                    c.kind,
+                    c.source,
+                    c.score.clamp(0.0, 100.0).round() as u8,
+                ))
+            })
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_candidate_label_utf8(index: usize) -> *mut std::os::raw::c_char {
     let snapshot = host_bridge_snapshot();
     match snapshot.candidate_labels.get(index) {
@@ -568,6 +617,42 @@ mod tests {
         assert!(update.active);
         assert_eq!(update.marked_text, "ni hao");
         assert!(!update.candidates.is_empty());
+    }
+
+    #[test]
+    fn authorized_cloud_provider_stays_disabled_in_private_fields() {
+        use crate::languages::model::{ModelProviderConfig, ModelScope};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut session = HostImeSession::new(EngineConfig::default());
+        session.set_private(true);
+        let started = std::time::Instant::now();
+        session.apply_settings(crate::ime::settings::ImeSettings {
+            llm_enabled: true,
+            provider: ModelProviderConfig {
+                scope: ModelScope::Cloud,
+                cloud_consent: true,
+                endpoint: format!(
+                    "https://{}/v1/chat/completions",
+                    listener.local_addr().unwrap()
+                ),
+                model: "arbitrary-family".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        session.activate();
+        let update = session.replace_marked_text("hel", InputSource::HardwareKeyboard);
+        assert!(!update.candidates.is_empty());
+        assert_eq!(
+            session.engine.prediction_status(),
+            crate::ime::PredictionStatus::Disabled
+        );
+        assert!(started.elapsed() < std::time::Duration::from_millis(300));
+        listener.set_nonblocking(true).unwrap();
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
     }
 
     #[test]

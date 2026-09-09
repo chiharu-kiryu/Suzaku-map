@@ -2,7 +2,32 @@
 
 Suzaku Map is a multimodal IME project.
 
-Current release: **0.5.2**.
+Current release: **0.5.3**.
+
+### 0.5.3 Model services and IBus candidate experience
+
+Model identity, local/cloud scope and API protocol are now independent. Local discovery prefers
+an installed LLaMA through fixed loopback metadata endpoints; explicitly configured HTTPS cloud
+services require opt-in consent. Credentials are read from a named environment variable, never
+saved in settings/backups; restoring a backup revokes cloud consent. Legacy Llama configuration
+and command aliases remain compatible. See [model provider configuration](docs/model-providers.md).
+
+IBus now mixes alphabet/Pinyin/Romaji word completions with short phrase/sentence candidates.
+There are six rows per page and at most twelve candidates. Superscripts distinguish words (`ᵂ`),
+sentences/phrases (`ˢ`), literal input (`ᴿ`) and model suggestions (`ᴬᴵ`); subscripts show bounded
+ranking weights, not confidence percentages. The first page reserves room for both types when
+available, while preserving the literal/best-offline typing anchors. Offline collocations work
+without a model; enabled local or cloud providers can add typed word and sentence suggestions.
+See [IBus candidate UX and keyboard controls](docs/ibus-candidates.md).
+
+Continuous CJK input now completes an unfinished final word without losing the converted prefix
+(`woxihuanbei` → `我喜欢北京`, `watashihanihong` → `私は日本語`). Pinyin spaces preserve
+syllable boundaries (`xi an` / `xi'an` → `西安`, distinct from `xian`).
+
+Shift+Enter adopts a full candidate into editable preedit; Shift+Space continues from an explicitly
+selected candidate. Immediate Backspace restores the previous spelling. This one-step undo stays
+in memory and is cleared at editing, reset, language, privacy and focus boundaries. No candidate
+annotation or truncated preview enters the committed text.
 
 ### 0.5.2 Linux packaging and data management
 
@@ -90,7 +115,7 @@ and a small Kanji vocabulary. Large dictionaries, learned user vocabulary, relia
 conversion and automatic next-word suggestions after commit remain follow-up work. Language
 profiles can be extended independently of the LLM provider and platform host.
 
-### Using multilingual Llama candidates locally
+### Using multilingual model candidates (local or cloud)
 
 After building/installing the native host, right-click the Suzaku tray icon and select **输入语言**:
 
@@ -120,15 +145,24 @@ refreshing an unchanged list still permits the click.
 On native IBus, use **Tab** to select the best completion, then **Space** to commit it with one
 space; **Shift+Tab** moves back. Plain Space keeps the literal unless another candidate is selected.
 English digits (including keypad digits) are literal input, so `hel2`, `v123` and `2026` are not
-candidate shortcuts. Chinese/Japanese retain the lookup window's numeric selection shortcuts.
+candidate shortcuts. **Alt+1–6** selects the current page's candidate in any language;
+Chinese/Japanese also accept plain **1–6**. **PageUp/PageDown** changes pages.
+Use **Shift+Space** to keep composing across a word/spelling separator without committing;
+e.g. `please` → Shift+Space → `sen`, or `nihongo` → Shift+Space → `wobenkyoushitai`.
+After explicitly selecting a candidate, Shift+Space adopts that candidate before adding the space.
+**Shift+Enter** adopts the current full candidate into preedit without adding a space or committing.
+An immediate **Backspace** undoes the replacement and restores the exact previous spelling;
+ordinary editing, another selection, reset, language/privacy changes and focus loss clear this
+one-step, memory-only undo. AI sentence previews also expand to their full editable text.
 Shift, Caps Lock and other non-text keys do not submit pending input; printable punctuation still
 commits the selected word before being forwarded to the application.
 
-Enable **本地 LLM 联想** to enrich the current composition. Offline candidates remain usable
+Enable **LLM 联想** to enrich the current composition. Offline candidates remain usable
 immediately; the local first candidate never changes under Space. The model gets a structured
 language ID, raw composition, local conversion, and up to 160 characters committed in the current
 focused session. Context is cleared on focus loss and never written to settings. No surrounding
-desktop text is collected. This version accepts only loopback HTTP endpoints, not cloud services.
+desktop text is collected. Local discovery is the default; cloud input requires an explicit HTTPS
+endpoint, model and separate consent. Private input fields never request model candidates.
 The former synchronous `IME_NEXT_TOKEN_MODEL_*` environment-variable path has been removed;
 use the shared settings and LLM switch below. Panel refreshes never make their own model requests,
 and Chinese/Japanese previews do not insert English next-word fillers.
@@ -140,15 +174,22 @@ On Linux the model configuration is `$XDG_CONFIG_HOME/suzaku-ime/settings.json`,
 {
   "language": "en",
   "llm_enabled": false,
+  "llm_scope": "local",
+  "llm_protocol": "auto",
   "llm_endpoint": "http://127.0.0.1:11434/api/chat",
-  "llm_model": "llama3.2:3b",
+  "llm_model": "auto",
+  "llm_api_key_env": null,
+  "llm_cloud_consent": false,
   "llm_timeout_ms": 1200,
   "llm_temperature_tenths": 4
 }
 ```
 
-The primary local baseline is **Llama 3.2 3B through Ollama**. The native `/api/chat` integration
-uses a bounded JSON candidate schema, a 2,048-token context, and a five-minute idle residency.
+The provider is model-agnostic: model identity, local/cloud scope and API protocol are independent.
+Default `auto` discovery prefers an installed **LLaMA** without pinning a particular release or size;
+other local model families can also be selected. The native Ollama `/api/chat` integration
+uses a bounded typed JSON candidate schema (up to three words and three short sentences),
+a 256-token output budget, a 2,048-token context, and a five-minute idle residency.
 Existing `/v1/chat/completions` configurations remain compatible, including local llama.cpp servers.
 English completions and already-converted CJK phrases keep their local prefix; unrelated output,
 unchanged input and pronunciation-only replacements are filtered out. Unknown Pinyin/Romaji can
@@ -158,7 +199,8 @@ English model requests distinguish incomplete-word completion from next-word con
 reject outputs that merely append words to an unfinished fragment. The literal and best offline
 English completion keep their positions when AI results arrive; selecting a candidate freezes
 the list until the next edit. `suzaku_tool llama probe en` exercises five fixed English examples.
-Set `llm_model` to an **already installed** local model and run its local service separately.
+Leave `llm_model` as `auto` to discover local models, or set an **already installed** model explicitly.
+Start its service separately. Existing saved model names are preserved, not silently migrated to auto.
 Suzaku never downloads a model during typing or starts a model server implicitly.
 Choose **重新加载模型配置** after editing. `SUZAKU_IME_CONFIG` can select an isolated settings file
 for development. An absent, slow or invalid model response leaves offline candidates available.
@@ -169,7 +211,7 @@ temperatures remain exact and appear as **Custom**, rather than being rounded to
 Tone changes preserve the current composition and do not change the model or language.
 The compatible API's line parser preserves decimal/version prefixes such as `3.14` and `1.2.3`.
 
-The tray provides **检查本机 Llama 模型** and **预热 Llama**. Checking only reads model metadata;
+The tray provides **发现 / 检查本机模型** and **预热本机 Ollama 模型**. Checking only reads metadata;
 preheating sends an empty request, not typed text, and runs independently of input-method switching.
 The configured service, missing model, timeout, malformed response, and empty candidates are
 distinguishable instead of silently appearing as one generic failure. Status reports describe the
@@ -177,18 +219,30 @@ last explicit check, not continuous monitoring.
 
 ```sh
 # Install/start Ollama separately first; keep it local-only (OLLAMA_NO_CLOUD=1).
-ollama pull llama3.2:3b
 cargo build --release --all-features --bin suzaku_tool
-target/release/suzaku_tool llama configure    # selects the baseline; preserves language and opt-in
-target/release/suzaku_tool llama status
-target/release/suzaku_tool llama warmup       # empty request, bounded to 30 seconds
-target/release/suzaku_tool llama probe all    # fixed zh-Hans/en/ja examples, not desktop input
+target/release/suzaku_tool model configure   # local auto; preserves language and opt-in
+target/release/suzaku_tool model discover    # metadata only; no downloads or warmup
+target/release/suzaku_tool model status
+target/release/suzaku_tool model warmup      # Ollama only; empty request, bounded to 30 seconds
+target/release/suzaku_tool model probe all   # fixed zh-Hans/en/ja examples, not desktop input
 ```
 
-`llama configure --model NAME --endpoint URL --timeout-ms N` updates only the supplied fields;
-no-argument `configure` selects the default Llama/Ollama model and endpoint. Reload from the tray
-afterward. `probe` preheats Ollama and reports local-conversion time, model-request time and actual
+`model configure --model NAME --endpoint URL --timeout-ms N` updates only the supplied fields;
+no-argument `configure` restores local auto discovery and clears cloud credentials/consent references.
+Reload from the tray afterward. `llama` remains a command alias. `probe` preheats explicitly configured
+Ollama models and reports local-conversion time, model-request time and actual
 candidate text. It does not change the active input method or enable LLM input by itself.
+
+Discovery checks only `127.0.0.1:11434` (Ollama), `127.0.0.1:8080` (llama.cpp) and
+`127.0.0.1:1234` (compatible desktop servers), using `/api/tags` or `/v1/models`. A custom
+endpoint is checked alone. It uses an 800 ms total metadata budget, caches success for 60 seconds
+and failure for 5 seconds, and runs on the prediction worker when first needed, never the UI thread.
+It does not scan files/ports, load/download weights, or fall back to cloud. Ollama entries marked
+remote are excluded even when an explicit local model alias is configured. Keep Ollama in local-only
+mode as an additional runtime safeguard. The inventory describes the service at check time.
+
+For HTTPS services exposing compatible chat completions, see [model configuration](docs/model-providers.md).
+The panel now says **Configured service**, not a fixed Llama preset; `settings.json` is authoritative.
 
 Meta's Llama 3.2 model card does not list Chinese or Japanese among officially supported languages;
 these profiles retain deterministic local candidates, and model-quality evaluation is still needed.
@@ -793,8 +847,9 @@ Wayland.
 - Ubuntu / Arch / SteamOS capability profiles
 - Linux voice backend and probe path
 - native IBus `Factory`/`Engine` host backed by the shared Rust candidate engine
-- IBus preedit and a cursor-anchored minimal candidate window with three visible rows and bounded
-  label previews; arrow/Tab navigation, paging, `1`–`3` selection, candidate clicks, and commit
+- IBus preedit and a cursor-anchored candidate window with six visible rows, mixed word/sentence
+  ranking, and bounded annotated previews; arrow/Tab navigation, paging, Alt+1–6 selection
+  (plain 1–6 also in Chinese/Japanese), candidate clicks, Shift+Space continuation, and commit
 - tray-controlled IBus activation/restoration with verified switches, bounded off-thread host I/O,
   on-menu-open status refresh, and no global keyboard hook or input polling
 - native roundtrip probe coverage for input-triggered preedit/candidates, final commit, and dismissal

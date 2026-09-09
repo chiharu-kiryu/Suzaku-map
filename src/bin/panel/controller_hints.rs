@@ -413,7 +413,7 @@ pub(super) fn llm_temperature_label(
 
 pub(super) fn llm_model_label(value: LlmModelPreset) -> &'static str {
     match value {
-        LlmModelPreset::Llama32_3b => "Llama 3.2 3B",
+        LlmModelPreset::Configured => "Configured service (suzaku_tool model configure)",
     }
 }
 
@@ -606,6 +606,9 @@ mod tests {
 
     #[test]
     fn panel_hint_llm_model_label() {
-        assert_eq!(llm_model_label(LlmModelPreset::Llama32_3b), "Llama 3.2 3B");
+        assert_eq!(
+            llm_model_label(LlmModelPreset::Configured),
+            "Configured service (suzaku_tool model configure)"
+        );
     }
 }

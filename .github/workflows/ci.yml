@@ -57,7 +57,7 @@ jobs:
             build-essential pkg-config libibus-1.0-dev libglib2.0-dev \
             libx11-dev libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev \
             libegl1-mesa-dev libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers \
-            dbus-daemon ibus gir1.2-ibus-1.0 python3-gi \
+            dbus-daemon ibus gir1.2-ibus-1.0 gir1.2-pango-1.0 python3-gi \
             xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck \
             dpkg-dev jq desktop-file-utils
       - name: Install Rust

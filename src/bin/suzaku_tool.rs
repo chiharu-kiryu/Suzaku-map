@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, exit};
 use std::time::Duration;
 
-#[path = "suzaku_tool/llama.rs"]
-mod llama;
+#[path = "suzaku_tool/model.rs"]
+mod model;
 
 #[path = "suzaku_tool/data.rs"]
 mod data;
@@ -40,7 +40,7 @@ fn run() -> i32 {
             0
         }
         "data" => data::run(&args[2..]),
-        "llama" => llama::run(&args[2..]),
+        "model" | "llama" => model::run(&args[2..]),
         "linux-register" => linux_register(&args[2..]),
         "linux-register-ime" => linux_register(&args[2..]),
         "android" => android_dispatch(&args[2..]),
@@ -72,7 +72,7 @@ fn print_help() {
         "  suzaku_tool data [status|backup [FILE]|validate FILE|restore FILE [--apply]|open [ime|panel|backups]]"
     );
     println!(
-        "  suzaku_tool llama [status|warmup|probe [all|en|zh-Hans|ja]|configure [--model NAME] [--endpoint URL] [--timeout-ms N]]"
+        "  suzaku_tool model [status|discover|warmup|probe [all|en|zh-Hans|ja]|configure [--scope local|cloud] [--protocol auto|ollama|openai-compatible] [--model auto|NAME] [--endpoint URL] [--timeout-ms N] [--api-key-env NAME|none] [--cloud-consent true|false]] (alias: llama)"
     );
     println!("  suzaku_tool linux-register [install|status|verify|uninstall|diag]");
     println!("  suzaku_tool linux-register-ime [install|status|verify|uninstall|diag]");
