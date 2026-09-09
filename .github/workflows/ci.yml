@@ -58,7 +58,8 @@ jobs:
             libx11-dev libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev \
             libegl1-mesa-dev libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers \
             dbus-daemon ibus gir1.2-ibus-1.0 python3-gi \
-            xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck
+            xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck \
+            dpkg-dev jq desktop-file-utils
       - name: Install Rust
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
       - name: Cache Cargo downloads and build outputs
@@ -73,7 +74,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-linux-ci-v1-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
       - name: Lint the native test runner
-        run: shellcheck scripts/test-linux-ci.sh
+        run: shellcheck scripts/test-linux-ci.sh scripts/package-linux.sh scripts/test-linux-package.sh
       - name: Run the feature-enabled regression suite
         # Some FFI tests share process-wide state and must execute serially.
         run: cargo test --locked --all-features -- --test-threads=1
@@ -81,10 +82,25 @@ jobs:
         run: bash scripts/test-linux-ci.sh ibus
       - name: Test isolated windows, keyboard input and multilingual GPU rendering
         run: bash scripts/test-linux-ci.sh ui
+      - name: Test data-folder actions against a private file-manager service
+        run: >-
+          timeout --kill-after=3s 25s dbus-run-session -- env SUZAKU_DATA_QA=1
+          /usr/bin/python3 scripts/test-data-folders.py
       - name: Build Linux release binaries
         run: >-
           cargo build --locked --release --all-features
           --bin panel --bin linux_ime_host --bin linux_ime_probe --bin suzaku_tool
+      - name: Build Linux distribution packages without installing
+        run: bash scripts/package-linux.sh --skip-build
+      - name: Verify package contents and launchers in temporary directories
+        run: bash scripts/test-linux-package.sh dist
+      - name: Upload Linux packages and checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: suzaku-linux-${{ runner.arch }}-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
 
   desktop-check:
     name: Desktop compile check (${{ matrix.os }})

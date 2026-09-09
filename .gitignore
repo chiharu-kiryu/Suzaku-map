@@ -1,6 +1,7 @@
 .DS_Store
 ._*
 target/
+dist/
 .suzaku-panel-settings
 android/.gradle/
 android/build/

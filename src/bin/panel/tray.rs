@@ -34,8 +34,37 @@ mod platform {
         CheckModel(LlamaProviderConfig),
         WarmModel(LlamaProviderConfig),
         ModelReport(LlamaProviderConfig, Result<String, String>),
+        ManageData(DataAction),
+        DataReport(Result<String, String>),
         Quit,
         Shutdown,
+    }
+
+    #[derive(Clone, Copy)]
+    enum DataAction {
+        Backup,
+        OpenIme,
+        OpenPanel,
+        OpenBackups,
+    }
+
+    fn manage_data(action: DataAction) -> Result<String, String> {
+        use suzaku_map::data::{backup, open_directory, paths::DataPaths};
+        let paths = DataPaths::current()?;
+        if matches!(action, DataAction::Backup) {
+            let path = backup::backup_now(&paths)?;
+            return Ok(format!(
+                "已备份：{}（可在备份目录查看）",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            ));
+        }
+        let path = match action {
+            DataAction::OpenIme => paths.ime.parent().ok_or("配置路径无效")?,
+            DataAction::OpenPanel => paths.panel.parent().ok_or("配置路径无效")?,
+            _ => &paths.backups,
+        };
+        open_directory(path)?;
+        Ok(format!("已打开：{}", path.display()))
     }
 
     #[derive(Default)]
@@ -123,6 +152,8 @@ mod platform {
         icons: Vec<Icon>,
         panel_visible: bool,
         input_method: InputMethodMenuState,
+        data_busy: bool,
+        data_report: Option<String>,
     }
 
     impl SuzakuTray {
@@ -154,6 +185,18 @@ mod platform {
                     TrayControl::CheckModel(config)
                 };
                 self.input_method.model_busy = self.control_tx.send(command).is_ok();
+            }
+        }
+
+        fn request_data(&mut self, action: DataAction) {
+            if !self.data_busy {
+                self.data_busy = self
+                    .control_tx
+                    .send(TrayControl::ManageData(action))
+                    .is_ok();
+                if !self.data_busy {
+                    self.data_report = Some("数据管理服务不可用".into());
+                }
             }
         }
     }
@@ -391,6 +434,67 @@ mod platform {
                     ..Default::default()
                 }
                 .into(),
+                SubMenu {
+                    label: "数据管理".into(),
+                    submenu: vec![
+                        StandardItem {
+                            label: menu_label(if self.data_busy {
+                                "正在处理数据…"
+                            } else {
+                                self.data_report
+                                    .as_deref()
+                                    .unwrap_or("仅管理配置，不保存输入历史或模型权重")
+                            }),
+                            enabled: false,
+                            ..Default::default()
+                        }
+                        .into(),
+                        StandardItem {
+                            label: "立即备份配置".into(),
+                            enabled: !self.data_busy,
+                            activate: Box::new(|tray: &mut Self| {
+                                tray.request_data(DataAction::Backup)
+                            }),
+                            ..Default::default()
+                        }
+                        .into(),
+                        StandardItem {
+                            label: "打开备份目录".into(),
+                            enabled: !self.data_busy,
+                            activate: Box::new(|tray: &mut Self| {
+                                tray.request_data(DataAction::OpenBackups)
+                            }),
+                            ..Default::default()
+                        }
+                        .into(),
+                        StandardItem {
+                            label: "打开输入法配置目录".into(),
+                            enabled: !self.data_busy,
+                            activate: Box::new(|tray: &mut Self| {
+                                tray.request_data(DataAction::OpenIme)
+                            }),
+                            ..Default::default()
+                        }
+                        .into(),
+                        StandardItem {
+                            label: "打开面板配置目录".into(),
+                            enabled: !self.data_busy,
+                            activate: Box::new(|tray: &mut Self| {
+                                tray.request_data(DataAction::OpenPanel)
+                            }),
+                            ..Default::default()
+                        }
+                        .into(),
+                        StandardItem {
+                            label: "恢复：退出后使用 suzaku-tool data restore".into(),
+                            enabled: false,
+                            ..Default::default()
+                        }
+                        .into(),
+                    ],
+                    ..Default::default()
+                }
+                .into(),
                 MenuItem::Separator,
                 StandardItem {
                     label: "退出 Suzaku".into(),
@@ -418,6 +522,8 @@ mod platform {
             icons,
             panel_visible,
             input_method: InputMethodMenuState::default(),
+            data_busy: false,
+            data_report: None,
         })
         .spawn()
         {
@@ -502,6 +608,29 @@ mod platform {
                                 tray.input_method.model_busy = false;
                                 tray.input_method.model_status =
                                     Some((config, result.unwrap_or_else(|error| error)));
+                            });
+                        }
+                        TrayControl::ManageData(action) => {
+                            let report_tx = model_report_tx.clone();
+                            if thread::Builder::new()
+                                .name("suzaku-data".into())
+                                .spawn(move || {
+                                    let result = std::panic::catch_unwind(|| manage_data(action))
+                                        .unwrap_or_else(|_| Err("数据操作未完成，请重试".into()));
+                                    let _ = report_tx.send(TrayControl::DataReport(result));
+                                })
+                                .is_err()
+                            {
+                                let _ = handle.update(|tray| {
+                                    tray.data_busy = false;
+                                    tray.data_report = Some("无法启动数据管理任务".into());
+                                });
+                            }
+                        }
+                        TrayControl::DataReport(result) => {
+                            let _ = handle.update(|tray| {
+                                tray.data_busy = false;
+                                tray.data_report = Some(result.unwrap_or_else(|error| error));
                             });
                         }
                         TrayControl::ActivateInputMethod

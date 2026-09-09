@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Suzaku
+Name[zh_CN]=Suzaku 输入法
+Comment=Local multilingual input method and candidate panel
+Comment[zh_CN]=本地多语言输入法与候选面板
+Exec=suzaku-panel
+TryExec=suzaku-panel
+Icon=dev.suzaku.Suzaku
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=IME;input;keyboard;Llama;
+StartupNotify=false

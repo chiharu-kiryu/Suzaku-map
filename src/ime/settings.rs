@@ -5,11 +5,7 @@ use crate::languages::{
     llama::{LlamaProviderConfig, is_local_llm_endpoint},
 };
 use serde_json::{Value, json};
-use std::{
-    fs,
-    io::{Read, Write},
-    path::PathBuf,
-};
+use std::{fs, io::Read, path::PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImeSettings {
@@ -152,49 +148,21 @@ impl ImeSettings {
     }
 
     pub fn save(&self) -> Result<(), String> {
+        let _lease = crate::data::files::DataLease::current_shared()?;
         let path = settings_path().ok_or("无法定位输入法设置目录")?;
-        let directory = path.parent().ok_or("输入法设置路径无效")?;
-        fs::create_dir_all(directory)
-            .map_err(|error| format!("无法创建输入法设置目录：{error}"))?;
-        let suffix = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let temporary =
-            directory.join(format!(".ime-settings-{}-{suffix}.tmp", std::process::id()));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let result = (|| {
-            let mut file = options.open(&temporary)?;
-            file.write_all(serde_json::to_string_pretty(&self.to_json())?.as_bytes())?;
-            file.sync_all()?;
-            fs::rename(&temporary, &path)
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        result.map_err(|error| format!("无法保存输入法设置（未应用修改）：{error}"))
+        let validated = Self::from_json(&self.to_json().to_string())?;
+        let contents =
+            serde_json::to_vec_pretty(&validated.to_json()).map_err(|e| e.to_string())?;
+        crate::data::files::atomic_write(&path, &contents)
+            .map_err(|error| format!("无法保存输入法设置（未应用修改）：{error}"))
     }
 }
 
 pub fn settings_path() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("SUZAKU_IME_CONFIG") {
-        return Some(PathBuf::from(path));
+        return (!path.is_empty()).then(|| PathBuf::from(path));
     }
-    #[cfg(target_os = "windows")]
-    let root = std::env::var_os("APPDATA").map(PathBuf::from);
-    #[cfg(target_os = "macos")]
-    let root = std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Application Support"));
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let root = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
+    let root = crate::data::paths::config_home();
     root.map(|root| root.join("suzaku-ime/settings.json"))
 }
 

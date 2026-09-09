@@ -2,7 +2,22 @@
 
 Suzaku Map is a multimodal IME project.
 
-Current release: **0.5.1**.
+Current release: **0.5.2**.
+
+### 0.5.2 Linux packaging and data management
+
+- Build binary `.tar.gz` and Debian/Ubuntu `.deb` packages with
+  `bash scripts/package-linux.sh`. Packages include the four Linux programs, desktop launcher
+  (for `.deb`), manifest, checksums and dependency license inventory. Installation never starts
+  a service, registers an input source or downloads a model automatically.
+- Tray **数据管理** provides configuration backup and folder shortcuts. `suzaku-tool data`
+  supports status, backup, validation and preview-first restore. Linux restore requires stopped
+  hosts/panel, saves a before-restore backup and preserves unrelated user files.
+- Existing configuration locations are retained; new configuration writes are private and atomic.
+  No input history, drafts, caches or external model weights are collected.
+
+See [Linux packaging and data management](docs/linux-packaging-data.md) for installation,
+upgrade/uninstall, path conventions, restore commands and compatibility limits.
 
 ### 0.5.1 Patch fixes
 
@@ -203,7 +218,7 @@ not latency percentiles, end-to-end keypress timings, or a comprehensive quality
 An isolated real IBus session also successfully selected and committed AI candidates for `nihao`,
 `hello`, and `nihongo`, retained local-only candidates in private fields, bypassed password fields,
 and restored its previous engine after each probe. The desktop's active `rime` engine and LLM
-opt-in remained unchanged. The current feature-enabled regression suite passes 615 tests, with eight
+opt-in remained unchanged. The current feature-enabled regression suite passes 634 tests, with eight
 opt-in tests ignored by default. All seven isolated UI/GPU checks pass separately; the live-desktop IME
 activation test is intentionally not run. The local service binds loopback only with cloud use disabled;
 model residency expires after five idle minutes.
@@ -248,7 +263,9 @@ New commits cancel superseded runs on the same branch or pull request.
   resizing/dragging, Tone acknowledgement/reload, voice/handwriting handoff safety, slow status
   probes, native-worker cancellation, and multilingual GPU readback using Mesa software rendering
   and installed CJK fonts.
-  The job also builds the four Linux release binaries.
+  The job also verifies data-folder actions against a private FileManager1 fixture, builds the four
+  Linux release binaries, packages `.tar.gz`/`.deb`, checks extracted contents and uploads packages
+  plus checksums as 14-day CI artifacts. None of these checks installs a package on the host.
 - **macOS and Windows** compile-check GPU-enabled desktop code and test targets on native runners;
   these checks do not claim native input-method or graphical runtime coverage.
 

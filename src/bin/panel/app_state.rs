@@ -1,6 +1,3 @@
-use std::fs;
-use std::path::PathBuf;
-
 use suzaku_map::ime::gpu::{
     CandidateDensity, DisplayTextScale, FontFaceChoice, LlmModelPreset, LlmTemperaturePreset,
     PANEL_SCALE_MAX, PANEL_SCALE_MIN, PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing,
@@ -110,6 +107,8 @@ pub(crate) fn apply_display_settings(
 }
 
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
+    let _lease =
+        suzaku_map::data::files::DataLease::current_shared().map_err(std::io::Error::other)?;
     let contents = format!(
         "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
         encode_text_scale(settings.text_scale),
@@ -137,12 +136,15 @@ pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std:
         settings.window_scale,
     );
     let path = display_settings_path();
-    ensure_settings_parent(&path)?;
-    fs::write(path, contents)
+    suzaku_map::data::files::atomic_write(&path, contents.as_bytes())
 }
 
 pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
-    let contents = fs::read_to_string(display_settings_path()).ok()?;
+    let contents = suzaku_map::data::files::read_optional(
+        &display_settings_path(),
+        suzaku_map::data::files::SETTINGS_LIMIT,
+    )
+    .ok()??;
     let mut settings = PersistedDisplaySettings {
         text_scale: DisplayTextScale::Medium,
         candidate_density: CandidateDensity::Cozy,
@@ -286,13 +288,6 @@ fn normalize_display_readability(chrome: &mut PanelChromeState) {
     if chrome.text_smoothing == TextSmoothing::Smooth {
         chrome.text_smoothing = TextSmoothing::Sharp;
     }
-}
-
-fn ensure_settings_parent(path: &PathBuf) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    Ok(())
 }
 
 pub(crate) fn encode_text_scale(value: DisplayTextScale) -> &'static str {

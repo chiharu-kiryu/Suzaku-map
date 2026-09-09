@@ -9,6 +9,9 @@ use std::time::Duration;
 #[path = "suzaku_tool/llama.rs"]
 mod llama;
 
+#[path = "suzaku_tool/data.rs"]
+mod data;
+
 const CONNECTION_NAME: &str = "dev.suzaku.linux.ime";
 const IBUS_COMPONENT_NAME: &str = "org.freedesktop.IBus.Suzaku";
 const IBUS_USER_SERVICE_NAME: &str = "suzaku-ibus.service";
@@ -32,6 +35,11 @@ fn run() -> i32 {
     }
 
     match args[1].as_str() {
+        "--version" | "-V" => {
+            println!("suzaku-map {}", env!("CARGO_PKG_VERSION"));
+            0
+        }
+        "data" => data::run(&args[2..]),
         "llama" => llama::run(&args[2..]),
         "linux-register" => linux_register(&args[2..]),
         "linux-register-ime" => linux_register(&args[2..]),
@@ -60,6 +68,9 @@ fn run() -> i32 {
 
 fn print_help() {
     println!("Usage:");
+    println!(
+        "  suzaku_tool data [status|backup [FILE]|validate FILE|restore FILE [--apply]|open [ime|panel|backups]]"
+    );
     println!(
         "  suzaku_tool llama [status|warmup|probe [all|en|zh-Hans|ja]|configure [--model NAME] [--endpoint URL] [--timeout-ms N]]"
     );
@@ -224,8 +235,16 @@ fn linux_home_path() -> Result<PathBuf, String> {
 }
 
 fn ibus_component_path(home: &Path) -> PathBuf {
-    home.join(".local/share/ibus/component")
+    linux_xdg_directory("XDG_DATA_HOME", home.join(".local/share"))
+        .join("ibus/component")
         .join(format!("{CONNECTION_NAME}.xml"))
+}
+
+fn linux_xdg_directory(name: &str, fallback: PathBuf) -> PathBuf {
+    env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .unwrap_or(fallback)
 }
 
 fn fcitx_config_paths(home: &Path) -> Vec<PathBuf> {
@@ -959,7 +978,8 @@ fn resolve_linux_ime_host_binary() -> Result<PathBuf, String> {
 }
 
 fn ibus_user_service_path(home: &Path) -> PathBuf {
-    home.join(".config/systemd/user")
+    linux_xdg_directory("XDG_CONFIG_HOME", home.join(".config"))
+        .join("systemd/user")
         .join(IBUS_USER_SERVICE_NAME)
 }
 
@@ -968,6 +988,11 @@ fn installed_linux_ime_host_path(home: &Path) -> PathBuf {
 }
 
 fn install_linux_ime_host_binary(home: &Path, source: &Path) -> Result<PathBuf, String> {
+    // The Debian package owns this binary. Point the user's service to it directly so
+    // upgrades do not leave a stale per-user copy shadowing the new package version.
+    if source == Path::new("/usr/lib/suzaku/linux_ime_host") && is_executable_file(source) {
+        return Ok(source.into());
+    }
     let destination = installed_linux_ime_host_path(home);
     if fs::canonicalize(source).ok().as_ref() == fs::canonicalize(&destination).ok().as_ref()
         && is_executable_file(&destination)

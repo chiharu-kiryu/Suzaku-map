@@ -200,6 +200,9 @@ fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
 "#;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    #[cfg(target_os = "linux")]
+    let _data_lease =
+        suzaku_map::data::files::DataLease::current_shared().map_err(std::io::Error::other)?;
     let event_loop = build_event_loop()?;
     let event_proxy = event_loop.create_proxy();
     let instance = match claim_single_instance(event_proxy.clone()) {
