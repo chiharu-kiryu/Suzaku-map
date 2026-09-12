@@ -4,6 +4,54 @@ pub(crate) use crate::font_atlas::{FontAtlas, create_font_atlas};
 use bytemuck::{Pod, Zeroable};
 use suzaku_map::ime::gpu::{AtlasGlyph, CandidateQuad, RenderScene};
 
+pub(super) fn surface_alpha_mode(
+    supported: &[wgpu::CompositeAlphaMode],
+) -> wgpu::CompositeAlphaMode {
+    use wgpu::CompositeAlphaMode::{Inherit, Opaque, PreMultiplied};
+    // Linux/XWayland Vulkan surfaces commonly expose only Opaque + Inherit.
+    // Winit's transparent native window supplies the ARGB visual / Wayland alpha
+    // semantics in that case; selecting Opaque would discard all rendered alpha.
+    [PreMultiplied, Inherit, Opaque]
+        .into_iter()
+        .filter(|mode| *mode != Inherit || cfg!(target_os = "linux"))
+        .find(|mode| supported.contains(mode))
+        .or_else(|| supported.first().copied())
+        .unwrap_or(Opaque)
+}
+
+pub(super) fn surface_clear_color(
+    alpha_mode: wgpu::CompositeAlphaMode,
+    floating: bool,
+    opaque_background: wgpu::Color,
+) -> wgpu::Color {
+    if floating && surface_supports_alpha(alpha_mode) {
+        wgpu::Color::TRANSPARENT
+    } else {
+        // Opaque-only drivers keep a themed backdrop, never a transparent-black clear.
+        opaque_background
+    }
+}
+
+pub(super) fn surface_supports_alpha(alpha_mode: wgpu::CompositeAlphaMode) -> bool {
+    alpha_mode == wgpu::CompositeAlphaMode::PreMultiplied
+        || (cfg!(target_os = "linux") && alpha_mode == wgpu::CompositeAlphaMode::Inherit)
+}
+
+pub(super) fn prefer_transparent_adapter(
+    current_alpha: wgpu::CompositeAlphaMode,
+    candidate_type: wgpu::DeviceType,
+    candidate_alpha: &[wgpu::CompositeAlphaMode],
+) -> bool {
+    !surface_supports_alpha(current_alpha)
+        && matches!(
+            candidate_type,
+            wgpu::DeviceType::DiscreteGpu
+                | wgpu::DeviceType::IntegratedGpu
+                | wgpu::DeviceType::VirtualGpu
+        )
+        && surface_supports_alpha(surface_alpha_mode(candidate_alpha))
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub(crate) struct PanelVertex {
@@ -109,7 +157,7 @@ pub(super) fn build_frame_vertices(
     overlays: &[PanelOverlay],
     width: f32,
     height: f32,
-    uv_for: impl Fn(char) -> [f32; 4],
+    quad_for: impl Fn(&AtlasGlyph) -> ([f32; 4], [f32; 4]),
 ) -> FrameVertices {
     let shape_count = scene.quads.len()
         + overlays
@@ -138,7 +186,12 @@ pub(super) fn build_frame_vertices(
             push_quad_vertices(&mut frame.shapes, quad, width, height);
         }
         for glyph in glyphs {
-            push_text_quad_vertices(&mut frame.text, glyph, uv_for(glyph.ch), width, height);
+            let (rect, uv) = quad_for(glyph);
+            let ink = AtlasGlyph {
+                rect,
+                ..glyph.clone()
+            };
+            push_text_quad_vertices(&mut frame.text, &ink, uv, width, height);
         }
         frame.layers.push(LayerDrawRanges {
             shapes: shape_start..frame.shapes.len() as u32,
@@ -207,8 +260,8 @@ fn push_text_quad_vertices(
     if !glyph.rect.iter().all(|value| value.is_finite()) || w <= 0.0 || h <= 0.0 {
         return;
     }
-    // Layout and UV cropping share subpixel geometry; rounding each glyph separately
-    // stretches narrow letters and makes fractional zoom/scroll positions jump.
+    // The atlas supplies pixel-aligned native ink, without changing layout advances.
+    // Preserve that geometry through clipping; never round each cropped edge separately.
     let Some(([x, y, w, h], uv)) = clipped_text_quad([x, y, w, h], uv, glyph.clip_rect) else {
         return;
     };
@@ -296,6 +349,83 @@ mod tests {
     };
 
     #[test]
+    fn transparent_surfaces_prefer_explicit_alpha_then_linux_native_inheritance() {
+        use wgpu::CompositeAlphaMode::{Inherit, Opaque, PostMultiplied, PreMultiplied};
+        assert_eq!(
+            super::surface_alpha_mode(&[Opaque, Inherit, PreMultiplied]),
+            PreMultiplied
+        );
+        assert_eq!(
+            super::surface_alpha_mode(&[Opaque, Inherit]),
+            if cfg!(target_os = "linux") {
+                Inherit
+            } else {
+                Opaque
+            }
+        );
+        assert_eq!(super::surface_alpha_mode(&[Opaque, PostMultiplied]), Opaque);
+        assert_eq!(super::surface_alpha_mode(&[Opaque]), Opaque);
+        assert_eq!(super::surface_alpha_mode(&[]), Opaque);
+    }
+
+    #[test]
+    fn floating_windows_clear_to_transparent_only_with_compatible_compositing() {
+        use wgpu::CompositeAlphaMode::{Auto, Inherit, Opaque, PostMultiplied, PreMultiplied};
+        let backdrop = wgpu::Color {
+            r: 0.5,
+            g: 0.4,
+            b: 0.3,
+            a: 1.0,
+        };
+        for mode in [Auto, Inherit, Opaque, PostMultiplied, PreMultiplied] {
+            assert_eq!(super::surface_clear_color(mode, false, backdrop), backdrop);
+            let compatible =
+                mode == PreMultiplied || (cfg!(target_os = "linux") && mode == Inherit);
+            assert_eq!(
+                super::surface_clear_color(mode, true, backdrop),
+                if compatible {
+                    wgpu::Color::TRANSPARENT
+                } else {
+                    backdrop
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn alpha_capable_hardware_can_replace_opaque_rendering_without_forcing_software() {
+        use wgpu::{
+            CompositeAlphaMode::{Opaque, PreMultiplied},
+            DeviceType::{Cpu, DiscreteGpu, IntegratedGpu},
+        };
+        assert!(super::prefer_transparent_adapter(
+            Opaque,
+            IntegratedGpu,
+            &[PreMultiplied]
+        ));
+        assert!(super::prefer_transparent_adapter(
+            Opaque,
+            DiscreteGpu,
+            &[PreMultiplied]
+        ));
+        assert!(!super::prefer_transparent_adapter(
+            Opaque,
+            Cpu,
+            &[PreMultiplied]
+        ));
+        assert!(!super::prefer_transparent_adapter(
+            Opaque,
+            IntegratedGpu,
+            &[Opaque]
+        ));
+        assert!(!super::prefer_transparent_adapter(
+            PreMultiplied,
+            DiscreteGpu,
+            &[PreMultiplied]
+        ));
+    }
+
+    #[test]
     fn fractional_glyph_geometry_is_not_rounded_or_stretched() {
         let glyph = super::AtlasGlyph {
             ch: 'i',
@@ -370,8 +500,9 @@ mod tests {
             }],
             atlas_glyphs: text.atlas_glyphs,
         };
-        let frame =
-            build_frame_vertices(&scene, &[overlay], 520.0, 340.0, |_| [0.0, 0.0, 1.0, 1.0]);
+        let frame = build_frame_vertices(&scene, &[overlay], 520.0, 340.0, |glyph| {
+            (glyph.rect, [0.0, 0.0, 1.0, 1.0])
+        });
         assert_eq!(frame.layers.len(), 2);
         assert_eq!(frame.layers[0].shapes, 0..scene.quads.len() as u32 * 6);
         assert_eq!(frame.layers[1].shapes.start, frame.layers[0].shapes.end);

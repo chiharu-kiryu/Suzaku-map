@@ -1,0 +1,36 @@
+name: Bug report / 问题反馈
+description: Report a reproducible Alpha bug using synthetic text.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never attach passwords, tokens, real typing logs or unredacted settings.
+        请使用测试文字，不要提交真实输入记录或密钥。安全问题请先阅读 SECURITY.md。
+  - type: input
+    id: version
+    attributes:
+      label: Suzaku version and installation method
+      placeholder: 0.5.5, deb / tar / source
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS/version, architecture, desktop, X11/Wayland, IBus version, app/version.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction
+      description: Input language, exact synthetic text and keys, panel/native input, model enabled or disabled.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior
+      description: Redact private information in screenshots.
+    validations:
+      required: true

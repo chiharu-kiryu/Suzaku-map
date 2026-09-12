@@ -413,7 +413,7 @@ def observe_lookup(context):
     return lookup
 
 
-def check_candidate_presentation(watch, lookup):
+def check_candidate_presentation(watch, lookup, require_mix=True):
     frame = watch.latest
     wait(lambda: lookup["visible"] and lookup["aux_visible"] and
          lookup.get("text") == [c["ibus_label"] for c in frame["candidates"]], "IBus candidate metadata/labels")
@@ -422,7 +422,8 @@ def check_candidate_presentation(watch, lookup):
     assert "1–6 选词续写" in lookup["aux"]
     assert "Alt+数字" in lookup["aux"] and "空格连写" in lookup["aux"]
     assert "Enter/点击提交" in lookup["aux"]
-    assert {"word", "sentence"} <= {c["kind"] for c in frame["candidates"][:6]}
+    if require_mix:
+        assert {"word", "sentence"} <= {c["kind"] for c in frame["candidates"][:6]}
     assert any(c["text"] == frame["seed"] for c in frame["candidates"])
     for candidate in frame["candidates"]:
         assert candidate["source"] in ["local", "model"]
@@ -889,6 +890,122 @@ def check_english_key_regressions(context, watch, commits):
          "only Enter commits the complete writing stream")
 
 
+def check_numeric_field_routing(context, watch, commits):
+    assert json.loads(command("Len"))["ok"]
+    for purpose in [IBus.InputPurpose.DIGITS, IBus.InputPurpose.NUMBER, IBus.InputPurpose.PHONE]:
+        context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+        context.reset()
+        wait(lambda: not watch.latest["seed"] and not watch.latest["private"], "numeric fixture reset")
+        type_seed(context, "hel")
+        context.set_content_type(purpose, 0)
+        wait(lambda: not watch.latest["seed"] and watch.latest["private"], "numeric transition clears the old draft")
+        before, requested = len(commits), len(model_requests)
+        keys = [ord(ch) for ch in "1234567890+-.()"] + [IBus.KEY_KP_1, IBus.KEY_BackSpace,
+                IBus.KEY_Return, IBus.KEY_space, IBus.KEY_Tab]
+        for key in keys:
+            assert not context.process_key_event(key, 0, 0), (purpose, key)
+            assert not context.process_key_event(key, 0, IBus.ModifierType.RELEASE_MASK)
+        assert not action(watch.latest, "Twrong target")
+        assert command("Cwrong target") == b"0"
+        pump()
+        assert not watch.latest["seed"] and not watch.latest["candidates"]
+        assert len(commits) == before and len(model_requests) == requested
+    context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+    wait(lambda: not watch.latest["private"], "return to normal text input")
+    type_seed(context, "hel")
+    assert context.process_key_event(IBus.KEY_2, 0, 0)
+    wait(lambda: watch.latest["seed"] == "hello", "ordinary fields retain numeric candidate choices")
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "finish numeric field fixture")
+    print("PASS: numeric/decimal/phone fields bypass candidate keys and panel injection; normal-field choices resume")
+
+
+def check_english_writing_flow(context, watch, commits, lookup):
+    assert json.loads(command("Len"))["ok"]
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "start English writing flow")
+    before = len(commits)
+    type_seed(context, "please send")
+    for suffix, expected_word, expected_sentence in [
+        (" ", "please send me", "please send me the details."),
+        ("m", "please send me", "please send me the details."),
+        ("e the d", "please send me the details", "please send me the details."),
+    ]:
+        type_seed(context, suffix)
+        check_candidate_presentation(watch, lookup)
+        first = watch.latest["candidates"][:6]
+        assert any(c["text"] == expected_word and c["kind"] == "word" for c in first), first
+        assert any(c["text"] == expected_sentence and c["kind"] == "sentence" for c in first), first
+        assert len(commits) == before
+    # Number choice continues the draft; Backspace still restores its exact spelling.
+    seed = watch.latest["seed"]
+    index = next(i for i, c in enumerate(first) if c["text"] == expected_word)
+    assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+    wait(lambda: watch.latest["seed"] == expected_word, "complete English word without committing")
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+    wait(lambda: watch.latest["seed"] == seed, "undo English completion")
+
+    # Deleting a completed word must discard its old one-step completion undo.
+    index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == expected_word)
+    assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+    wait(lambda: watch.latest["seed"] == expected_word, "complete before deleting the word")
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, IBus.ModifierType.CONTROL_MASK)
+    wait(lambda: watch.latest["seed"] == "please send me the ", "delete completed word, not undo it")
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+    wait(lambda: watch.latest["seed"] == "please send me the", "ordinary Backspace must not restore an old completion")
+    assert len(commits) == before
+
+    # Long previews must identify the tail, while number/Enter retain full text.
+    seed = "For the next release please review the current docu"
+    expected = seed + "ment"
+    assert action(watch.latest, "T" + seed)
+    wait(lambda: watch.latest["seed"] == seed, "prepare long English draft")
+    check_candidate_presentation(watch, lookup, require_mix=False)
+    index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == expected)
+    assert index < 6
+    label = watch.latest["candidates"][index]["ibus_label"]
+    assert label.startswith("…") and "document" in label, label
+    assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+    wait(lambda: watch.latest["seed"] == expected, "long preview must not become replacement text")
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == [expected] and not watch.latest["seed"], "long English commit stays complete")
+
+    control = IBus.ModifierType.CONTROL_MASK
+    for text, shortened in [
+        ("please send the details", "please send the "),
+        ("please send the details  ", "please send the "),
+        ("hello can't", "hello "), ("hello world!", "hello "),
+        ("hello 日本😀", "hello "), ("  hello", "  "),
+        ("word", ""), ("  ", ""),
+    ]:
+        assert action(watch.latest, "T" + text)
+        wait(lambda: watch.latest["seed"] == text, "prepare English word deletion")
+        before = len(commits)
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, control)
+        assert not context.process_key_event(IBus.KEY_BackSpace, 0, control | IBus.ModifierType.RELEASE_MASK)
+        wait(lambda: watch.latest["seed"] == shortened, "Ctrl+Backspace edits only the draft")
+        assert len(commits) == before
+    assert not context.process_key_event(IBus.KEY_BackSpace, 0, control), "empty draft stole application shortcut"
+    for language in ["en", "zh-Hans", "ja"]:
+        assert json.loads(command("L" + language))["ok"]
+        type_seed(context, "hel")
+        before = watch.latest
+        masks = [control | flag for flag in [IBus.ModifierType.SHIFT_MASK, IBus.ModifierType.MOD1_MASK,
+                                             IBus.ModifierType.MOD5_MASK, IBus.ModifierType.SUPER_MASK,
+                                             IBus.ModifierType.MOD4_MASK, IBus.ModifierType.META_MASK,
+                                             IBus.ModifierType.HYPER_MASK]]
+        if language != "en":
+            masks.append(control)
+        for mask in masks:
+            assert not context.process_key_event(IBus.KEY_BackSpace, 0, mask)
+        pump()
+        assert watch.latest == before
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "clear English shortcut boundary")
+    assert json.loads(command("Len"))["ok"]
+    print("PASS: English word/sentence continuity, readable long previews, lossless acceptance/undo and draft-only Ctrl+Backspace")
+
+
 try:
     processes.append(subprocess.Popen(["ibus-daemon", "--single", "--address=" + os.environ["IBUS_ADDRESS"], "--cache=none"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     wait(lambda: (runtime / "ibus.sock").exists(), "isolated IBus did not start")
@@ -964,6 +1081,8 @@ try:
     check_lossless_commit_chunks(other, watch, other_commits)
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
+    check_english_writing_flow(other, watch, other_commits, other_lookup)
+    check_numeric_field_routing(other, watch, other_commits)
     type_seed(other, "hel")
     # A deterministic local model fixture tests asynchronous publication, not model quality.
     settings = json.loads(command("S"))["settings"]

@@ -16,6 +16,10 @@ use suzaku_map::{
 };
 use winit::event_loop::EventLoopProxy;
 
+#[path = "native_typing.rs"]
+mod typing;
+use typing::NativeTyping;
+
 #[cfg(all(test, target_os = "linux"))]
 #[path = "native_sync_test.rs"]
 mod tests;
@@ -29,6 +33,7 @@ pub(super) struct NativeView {
     draft: Option<(String, usize, bool)>,
     pub sender: Option<SyncSender<ActionRequest>>,
     pending: Option<PendingAction>,
+    typing: Option<NativeTyping>,
 }
 
 struct PendingAction {
@@ -39,6 +44,7 @@ struct PendingAction {
 /// Retain the source until the revision-bound replacement is acknowledged. A
 /// snapshot plus generation prevents a late reply from clearing newer work.
 pub(super) enum NativeInsertion {
+    Translation(super::translation::TranslationInsertion),
     Voice {
         transcript: String,
         generation: u64,
@@ -185,10 +191,106 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
 }
 
 impl PanelState {
+    /// A screen-keyboard event edits a retained local draft until the native host
+    /// acknowledges it. Only the unsent suffix/edit is coalesced into the next write.
+    pub(super) fn native_keyboard_edit(&mut self, text: Option<&str>) -> bool {
+        if !self.native.showing {
+            return false;
+        }
+        if self.native.typing.is_none() {
+            let Some(frame) = self
+                .native
+                .frame
+                .as_ref()
+                .filter(|f| f.focused && !f.private)
+            else {
+                self.native_typing_feedback();
+                return true;
+            };
+            let mut typing = NativeTyping::new(frame);
+            // A pending translation/commit is a different operation, not a keyboard edit.
+            typing.blocked =
+                self.native.pending.is_some() || self.is_focused || self.chrome.settings_open;
+            self.native.typing = Some(typing);
+        }
+        if !self.native.typing.as_mut().unwrap().edit(text) {
+            self.last_commit_feedback =
+                Some("Input exceeds the native draft limit; existing text was retained.".into());
+            self.commit_feedback_ticks = 180;
+        }
+        self.cancel_translation();
+        self.flush_native_typing();
+        self.refresh_native_view();
+        true
+    }
+
+    fn native_typing_feedback(&mut self) {
+        self.last_commit_feedback = Some(
+            "Keyboard draft is pending or unconfirmed. Click the input field to recover and edit it.".into());
+        self.commit_feedback_ticks = 180;
+    }
+
+    pub(super) fn take_native_typing_draft(&mut self) -> Option<String> {
+        self.native.typing.take().map(|typing| typing.draft)
+    }
+
+    fn flush_native_typing(&mut self) {
+        if self
+            .native
+            .typing
+            .as_ref()
+            .is_some_and(NativeTyping::settled)
+        {
+            self.native.typing = None;
+            return;
+        }
+        if self
+            .native
+            .typing
+            .as_ref()
+            .is_some_and(|typing| typing.blocked)
+        {
+            self.native_typing_feedback();
+            return;
+        }
+        if self.native.pending.is_some() {
+            return;
+        }
+        let ready = self
+            .native
+            .typing
+            .as_ref()
+            .zip(self.native.frame.as_ref())
+            .filter(|(typing, frame)| typing.ready(frame))
+            .map(|(typing, frame)| (typing.draft.clone(), frame.revision));
+        if let Some((text, revision)) = ready {
+            if self.enqueue_native_action(NativeOperation::Replace(text), None) {
+                self.native.typing.as_mut().unwrap().sent(revision);
+            } else {
+                self.native.typing.as_mut().unwrap().blocked = true;
+                self.native_typing_feedback();
+            }
+        }
+    }
+
     pub(super) fn view_snapshot(&self) -> Snapshot {
         if self.native.showing {
             if let Some(frame) = &self.native.frame {
-                return frame.snapshot();
+                let mut snapshot = frame.snapshot();
+                if let Some(typing) = &self.native.typing
+                    && typing.matches(frame)
+                {
+                    snapshot.seed_text = typing.draft.clone();
+                    snapshot.draft_text = typing.draft.clone();
+                    snapshot.mode = if typing.draft.is_empty() {
+                        Mode::Idle
+                    } else {
+                        Mode::Composing
+                    };
+                    snapshot.candidate_labels.clear();
+                    snapshot.selected_index = 0;
+                }
+                return snapshot;
             }
             let mut snapshot = self.engine.snapshot();
             snapshot.mode = Mode::Idle;
@@ -206,6 +308,30 @@ impl PanelState {
         if let (Some(previous), Some(next)) = (&self.native.frame, &frame) {
             if previous.host == next.host && previous.revision >= next.revision {
                 return;
+            }
+        }
+        let keyboard_target_unchanged =
+            self.native
+                .frame
+                .as_ref()
+                .zip(frame.as_ref())
+                .is_some_and(|(old, new)| {
+                    old.host == new.host
+                        && old.context == new.context
+                        && old.language == new.language
+                        && new.focused
+                        && !new.private
+                });
+        if let Some(typing) = &mut self.native.typing {
+            if let Some(next) = &frame {
+                if typing.matches(next) {
+                    typing.observe(next);
+                } else {
+                    self.native.typing = None;
+                }
+            } else {
+                // Keep a local recovery copy, but never send it on reconnect automatically.
+                typing.blocked = true;
             }
         }
         let visible = frame.as_ref().is_some_and(NativeComposition::visible);
@@ -237,24 +363,32 @@ impl PanelState {
             Some(
                 suzaku_map::ime::gpu::InteractionKind::Candidate(_)
                     | suzaku_map::ime::gpu::InteractionKind::SelectNextToken(_)
-                    | suzaku_map::ime::gpu::InteractionKind::VirtualKeyboardKey(_)
             )
-        ) {
+        ) || (!keyboard_target_unchanged
+            && matches!(
+                self.interaction.pressed_interaction,
+                Some(suzaku_map::ime::gpu::InteractionKind::VirtualKeyboardKey(_))
+            ))
+        {
             self.clear_pressed_interaction();
             self.interaction.touch_tap_pending = false;
         }
+        self.flush_native_typing();
         self.refresh_native_view();
         self.window.request_redraw();
     }
 
     pub(super) fn refresh_native_view(&mut self) {
         let snapshot = self.view_snapshot();
-        let candidates = self
+        let mut candidates = self
             .native
             .frame
             .as_ref()
             .map(|f| f.engine_candidates())
             .unwrap_or_default();
+        if self.native.typing.is_some() {
+            candidates.clear();
+        }
         let previews = composition_candidate_previews(
             &snapshot.seed_text,
             &snapshot.active_language,
@@ -278,6 +412,7 @@ impl PanelState {
         ) = previews.sentences.into_iter().unzip();
         self.clear_sentence_candidate_scroll();
         self.last_scene = None;
+        self.poll_translation();
     }
 
     pub(super) fn leave_native_view(&mut self) {
@@ -285,6 +420,7 @@ impl PanelState {
             return;
         }
         self.native.showing = false;
+        self.native.typing = None;
         if let Some((seed, caret, expanded)) = self.native.draft.take() {
             self.chrome.set_seed_text(seed);
             self.chrome.caret_index = caret;
@@ -312,7 +448,7 @@ impl PanelState {
         self.native_action_with_source(NativeOperation::Replace(seed), Some(source))
     }
 
-    fn native_action_with_source(
+    pub(super) fn native_action_with_source(
         &mut self,
         operation: NativeOperation,
         insertion: Option<NativeInsertion>,
@@ -320,6 +456,21 @@ impl PanelState {
         if !self.native.showing {
             return false;
         }
+        if self.native.typing.is_some() {
+            // Even Clear must not discard a retained draft while its write is
+            // unconfirmed. Explicit local recovery remains available in the field.
+            self.native_typing_feedback();
+            return true;
+        }
+        self.enqueue_native_action(operation, insertion);
+        true
+    }
+
+    fn enqueue_native_action(
+        &mut self,
+        operation: NativeOperation,
+        insertion: Option<NativeInsertion>,
+    ) -> bool {
         #[cfg(target_os = "linux")]
         if !self.is_focused && !self.chrome.settings_open && self.native.pending.is_none() {
             if let Some(frame) = self.native.frame.as_ref() {
@@ -357,7 +508,7 @@ impl PanelState {
             .into(),
         );
         self.commit_feedback_ticks = 120;
-        true
+        false
     }
 
     pub(super) fn native_action_finished(
@@ -370,6 +521,22 @@ impl PanelState {
             return;
         }
         let pending = self.native.pending.take().unwrap();
+        if self
+            .native
+            .typing
+            .as_mut()
+            .is_some_and(|typing| typing.acknowledge(revision, matches!(result, Ok(true))))
+        {
+            if let (Some(typing), Some(frame)) = (&mut self.native.typing, &self.native.frame) {
+                if typing.matches(frame) {
+                    typing.observe(frame);
+                }
+            }
+            self.flush_native_typing();
+            self.refresh_native_view();
+            self.window.request_redraw();
+            return;
+        }
         if matches!(result, Ok(true)) {
             if let Some(insertion) = pending.insertion {
                 self.finish_native_insertion(insertion);
@@ -388,9 +555,25 @@ impl PanelState {
         }
     }
 
+    pub(super) fn native_translation_replacement_visible(&self) -> bool {
+        self.native.pending.as_ref().is_some_and(|pending| {
+            matches!(
+                &pending.insertion,
+                Some(NativeInsertion::Translation(insertion))
+                    if self.translation_replacement_visible(insertion)
+            )
+        })
+    }
+
     fn finish_native_insertion(&mut self, insertion: NativeInsertion) {
         use suzaku_map::ime::gpu::InputMode;
         let completed_mode = match insertion {
+            NativeInsertion::Translation(insertion) => {
+                if !self.finish_translation_insertion(&insertion) {
+                    return;
+                }
+                InputMode::Translation
+            }
             NativeInsertion::Voice {
                 transcript,
                 generation,

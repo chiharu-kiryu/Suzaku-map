@@ -108,16 +108,28 @@ fn edit_action<'a>(
 
 impl PanelState {
     pub(super) fn begin_text_editing(&mut self) {
+        let recovery = self.take_native_typing_draft();
         self.leave_native_view();
         match self
             .text_focus
             .request(&self.window, self.runs_without_window_focus)
         {
             Ok(()) => {
+                if let Some(text) = recovery {
+                    self.chrome.set_seed_text(text);
+                    self.sync_manual_seed_base();
+                    self.refresh_seed();
+                }
                 self.chrome.focus_input();
                 self.chrome.move_caret_to_end();
             }
             Err(_) => {
+                // Focus failure must not erase a draft recovered from native typing.
+                if let Some(text) = recovery {
+                    self.chrome.set_seed_text(text);
+                    self.sync_manual_seed_base();
+                    self.refresh_seed();
+                }
                 self.chrome.blur_input();
                 self.last_commit_feedback =
                     Some("Could not focus the input field. Click it to retry.".into());

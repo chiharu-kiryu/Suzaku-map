@@ -3,6 +3,8 @@
 这一版以 Linux / IBus 为核心。macOS 和 Windows 的原有构建入口保留；
 `.deb` 只针对构建它的 Debian/Ubuntu 系列及相容 ABI，压缩包也不是静态万能包。
 Fcitx 目前仍不是完整的原生输入法后端。
+当前验证基线是 Ubuntu 24.04 / amd64 / IBus，面板走 X11 或 GNOME 下的 XWayland。
+其他发行版、ARM64 和完整原生 Wayland 会话尚不能视为通过同一安装验收。
 
 ## 构建分发包
 
@@ -22,6 +24,8 @@ bash scripts/package-linux.sh --format tar --output dist-tar
 `dpkg-dev`。`.deb` 的链接库依赖由 `dpkg-shlibdeps` 从 ELF 推导，另外声明通过
 运行时加载的图形库和 IBus 工具。CI 在 Ubuntu 24.04 上构建；在更新的系统本机构建
 可能要求更新的 glibc。请检查 `manifest.json` 的 `build_libc` 和 `.deb` 的 `Depends`。
+输入法必需的 CJK/拉丁字体、Fontconfig、systemd 用户服务工具以及 X11 键盘运行库均为
+明确依赖；使用 `--no-install-recommends` 也不应出现缺字或缺失键盘库。
 
 压缩包内还有逐文件 `SHA256SUMS`、版本/架构/源码提交/工作区是否有改动的清单、
 项目许可证、锁定依赖的许可证声明和其源码目录提供的 LICENSE/COPYING/NOTICE 文件。
@@ -35,10 +39,10 @@ Debian/Ubuntu，先在包所在目录检查校验和，再明确安装：
 ```bash
 sha256sum -c suzaku_VERSION_ARCH.deb.sha256
 sudo apt install ./suzaku_VERSION_ARCH.deb
-suzaku-panel
+/usr/bin/suzaku-panel
 # 需要正式作为输入法使用时，在当前桌面用户会话里执行，不要 sudo：
-suzaku-tool linux-register install
-suzaku-tool linux-register verify
+/usr/bin/suzaku-tool linux-register install
+/usr/bin/suzaku-tool linux-register verify
 ```
 
 系统应用菜单会出现 Suzaku。安装 `.deb` 本身不注册输入源、不启动用户服务、不启用
@@ -46,6 +50,20 @@ suzaku-tool linux-register verify
 原活动输入法。打包版本的用户服务直接引用 `/usr/lib/suzaku/linux_ime_host`，不复制
 一个会在升级后过期的宿主。升级前从托盘完整退出 Suzaku，更新后重新打开面板即可；
 有输入正在进行时请先完成或取消组合。
+
+注册与注销必须显式指定动作；裸 `linux-register` 只显示帮助，多余参数会拒绝执行，
+没有 `--dry-run` 之类的隐式选项。root/sudo、无效 HOME、缺失宿主、不可用的用户服务
+管理器会被拒绝；当前正在使用 Suzaku 时也拒绝重装/注销，请先释放回原输入法。
+初次注册启用宿主自启，重新注册保留已有的启用/禁用偏好。宿主文件采用独占临时文件和
+原子替换，含空格、中文、引号、`$`、`%` 的用户路径经过专门的启动参数转义。
+服务通过固定的 `/usr/bin/env --` 直接执行绝对路径，不经过 shell；这是为了兼容
+[systemd 对可执行路径中引号和反斜杠的限制](https://github.com/systemd/systemd/blob/v255/src/core/load-fragment.c)，
+并与 IBus 实际使用的 GLib 参数解析器分别验证。
+已屏蔽或由符号链接提供的用户服务不会被重装命令擅自覆盖、解除屏蔽。
+
+系统菜单启动器直接指向包内程序，不经过 PATH 中可能残留的旧用户安装。
+如果曾手动安装到 `~/.local/bin` 或创建了用户级桌面快捷方式，请检查这些入口：
+包管理器不会擅自删除它们；终端可用上面的 `/usr/bin/...` 明确运行 `.deb` 版本。
 
 ### 面板与输入法服务的生命周期
 
@@ -173,9 +191,23 @@ sudo apt remove suzaku
 cargo test --locked --all-features -- --test-threads=1
 bash scripts/package-linux.sh --output dist-check
 bash scripts/test-linux-package.sh dist-check
+# 需要 Docker；联网仅用于测试容器安装 Ubuntu 软件源依赖：
+bash scripts/test-linux-install.sh dist-check
 timeout --kill-after=3s 25s dbus-run-session -- env SUZAKU_DATA_QA=1 /usr/bin/python3 scripts/test-data-folders.py
 ```
 
-包装测试仅解压到临时目录并运行无副作用命令，不在本机安装包或连接真实桌面。
+包装检查逐个要求包与校验文件配对，随后检查解压内容；不能只凭一个孤立校验文件通过。
+安装验收在全新的 Ubuntu 24.04 容器中进行：无 Recommends 安装、运行库/字体检查、
+从合成旧包升级、启动已安装的面板、remove/purge，并逐字节检查用户设置和备份保留。
+合成旧包用于验证包管理器的升级行为，不等于覆盖所有历史版本的数据迁移。
+容器不挂载 HOME、会话总线、GPU 设备或 Docker socket；X11 显示与 D-Bus 会话都是私有的。
+另有 CLI 隔离测试覆盖用户注册、重复安装、原输入源和自启保留、特殊路径与拒绝危险操作。
+这些检查不在本机安装包，不连接真实桌面，也不强行重启用户服务；完整 GNOME 用户会话的
+开机/注销行为仍需桌面验收，不能由容器中的服务命令替身证明。
+
+默认测试网络为 Docker bridge。如本机代理只监听 localhost，可明确设置
+`SUZAKU_PACKAGE_QA_NETWORK=host`，同时传入 `http_proxy` / `https_proxy`；只改变测试容器
+网络，不修改宿主网络设置。`SUZAKU_PACKAGE_QA_CACHE` 可指定一个已有的 `.deb` 下载缓存目录，
+以只读方式预填容器缓存；APT 仍会校验包。单轮安装验收上限 15 分钟，结束删除测试容器。
 桌面文件按 [Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry/latest/)
 验证；Debian 依赖遵循 [dpkg-shlibdeps](https://manpages.debian.org/bookworm/dpkg-dev/dpkg-shlibdeps.1.en.html)。

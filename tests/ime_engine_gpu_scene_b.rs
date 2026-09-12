@@ -85,18 +85,22 @@ fn render_scene_exposes_display_settings_when_open() {
         ..PanelChromeState::default()
     };
     let mut controls = Vec::new();
-    loop {
-        let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
-        let scroll = scene
-            .settings_scroll_metadata
-            .expect("embedded settings viewport");
-        controls.extend(scene.interactive_targets.iter().map(|target| target.kind));
-        if chrome.settings_scroll_offset >= scroll.max_scroll_offset {
-            break;
+    for category in suzaku_map::ime::gpu::SettingsCategory::ALL {
+        chrome.settings_category = category;
+        chrome.settings_scroll_offset = 0.0;
+        loop {
+            let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
+            let scroll = scene
+                .settings_scroll_metadata
+                .expect("embedded settings viewport");
+            controls.extend(scene.interactive_targets.iter().map(|target| target.kind));
+            if chrome.settings_scroll_offset >= scroll.max_scroll_offset {
+                break;
+            }
+            chrome.settings_scroll_offset = (chrome.settings_scroll_offset
+                + scroll.visible_height.max(1.0) * 0.5)
+                .min(scroll.max_scroll_offset);
         }
-        chrome.settings_scroll_offset = (chrome.settings_scroll_offset
-            + scroll.visible_height.max(1.0) * 0.5)
-            .min(scroll.max_scroll_offset);
     }
 
     // All controls remain reachable by scrolling, without placing offscreen click targets.
@@ -110,6 +114,8 @@ fn render_scene_exposes_display_settings_when_open() {
         InteractionKind::SetPreviewStyle(PreviewStyle::Full),
         InteractionKind::SetTextSpacing(TextSpacing::Relaxed),
         InteractionKind::SetTextSmoothing(TextSmoothing::Smooth),
+        InteractionKind::SetHideSystemTitlebar(true),
+        InteractionKind::SetHideSystemTitlebar(false),
         InteractionKind::SetVoiceAutoInsert(true),
         InteractionKind::SetLlmEnabled(true),
         InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Balanced),

@@ -295,6 +295,9 @@ impl PanelSceneMetrics {
         sentence_count: usize,
         hero_cards_enabled: bool,
     ) -> Self {
+        let translating = chrome.input_modes_expanded
+            && chrome.active_input_mode == super::InputMode::Translation;
+        let sentence_count = if translating { 0 } else { sentence_count };
         let collapsed_daily_mode = !chrome.input_modes_expanded;
         let scene_margin = (4.2 * responsive_scale).max(3.0);
         let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0);
@@ -342,6 +345,14 @@ impl PanelSceneMetrics {
                 crate::ime::gpu::InputMode::Dictation => 170.0 * responsive_scale,
                 // Real title/hint line heights plus a readable footer and drawing area.
                 crate::ime::gpu::InputMode::Handwriting => 220.0 * responsive_scale,
+                crate::ime::gpu::InputMode::Translation => {
+                    super::translation_scene::preferred_translation_height(
+                        panel_width - 12.0 * responsive_scale,
+                        responsive_scale,
+                        chrome.text_scale,
+                        chrome.ui_language,
+                    ) + 6.4 * responsive_scale
+                }
             }
         } else {
             0.0
@@ -367,7 +378,7 @@ impl PanelSceneMetrics {
             && max_panel_width < 560.0
             && !chrome.next_token_candidates.is_empty();
 
-        let chip_section_h = if chrome.next_token_candidates.is_empty() {
+        let chip_section_h = if chrome.next_token_candidates.is_empty() || translating {
             0.0
         } else if collapsed_daily_mode {
             32.5 * responsive_scale

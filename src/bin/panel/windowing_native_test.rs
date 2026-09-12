@@ -262,7 +262,7 @@ impl ApplicationHandler for FitProbe {
                 assert!(!state.chrome.compact_mode);
                 assert_eq!(
                     state.window.is_decorated(),
-                    state.expanded_window_decorations
+                    !state.chrome.hide_system_titlebar
                 );
             }
             println!(

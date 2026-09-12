@@ -480,6 +480,7 @@ impl PanelState {
         snapshot: &Snapshot,
         include_overlays: bool,
     ) -> (RenderScene, Vec<crate::render::PanelOverlay>) {
+        self.poll_translation();
         use suzaku_map::ime::gpu::with_font_metrics;
         // The scene and floating hints must use one font revision. Learning a glyph
         // from an overlay (or switching languages/evicting the atlas) can change both.
@@ -505,8 +506,7 @@ impl PanelState {
                 scene
                     .atlas_glyphs
                     .iter()
-                    .chain(overlays.iter().flat_map(|overlay| &overlay.atlas_glyphs))
-                    .map(|glyph| glyph.ch),
+                    .chain(overlays.iter().flat_map(|overlay| &overlay.atlas_glyphs)),
             );
             if before == self.font_atlas.layout_revision || attempt == 3 {
                 return (scene, overlays);
@@ -648,9 +648,11 @@ impl PanelState {
 
         if settings_changed {
             apply_display_settings(&mut self.chrome, &incoming_settings);
+            self.apply_window_decorations();
             self.persist_display_settings();
         }
         self.chrome.settings_search_query = other.settings_search_query.clone();
+        self.chrome.settings_category = other.settings_category;
         self.chrome.settings_search_focused = other.settings_search_focused;
         self.chrome.settings_collapsed_sections = other.settings_collapsed_sections.clone();
         self.chrome.settings_scroll_offset = other.settings_scroll_offset;
@@ -671,12 +673,12 @@ impl PanelState {
         if self.size.width == width && self.size.height == height {
             return;
         }
+        let external_resize =
+            self.is_external_window_resize(winit::dpi::PhysicalSize::new(width, height));
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
             let logical_size = winit::dpi::PhysicalSize::new(width, height)
                 .to_logical::<f64>(self.window.scale_factor());
-            if self.is_external_window_resize(winit::dpi::PhysicalSize::new(width, height))
-                && self.size.width != width
-            {
+            if external_resize && self.size.width != width {
                 self.record_scaled_expanded_size(logical_size);
             }
             self.note_expanded_window_position();
@@ -709,7 +711,9 @@ impl PanelState {
                 self.font_atlas.uses_runtime_font,
                 &self.font_atlas.status_label(),
             ),
-            PanelWindowKind::Settings => "Suzaku Panel Settings".to_string(),
+            PanelWindowKind::Settings => {
+                format!("Suzaku · {}", self.chrome.ui_language.tr("Panel Settings"))
+            }
         };
         if next_window_title != self.last_window_title {
             self.window.set_title(&next_window_title);
@@ -720,7 +724,7 @@ impl PanelState {
             &overlays,
             self.config.width as f32,
             self.config.height as f32,
-            |ch| self.font_atlas.uv_for(ch),
+            |glyph| self.font_atlas.quad_for(glyph),
         );
         upload_vertex_data(
             &self.device,
@@ -810,14 +814,12 @@ impl PanelState {
             },
         };
 
-        let background = if self.kind == PanelWindowKind::Main
-            && self.chrome.compact_mode
-            && self.config.alpha_mode == wgpu::CompositeAlphaMode::PreMultiplied
-        {
-            wgpu::Color::TRANSPARENT
-        } else {
-            background
-        };
+        let background = crate::render::surface_clear_color(
+            self.config.alpha_mode,
+            self.chrome.hide_system_titlebar
+                || (self.kind == PanelWindowKind::Main && self.chrome.compact_mode),
+            background,
+        );
 
         let mut encoder = self
             .device
@@ -976,6 +978,9 @@ impl PanelState {
                     }
                 }
                 InteractionKind::InputModeButton(mode) => {
+                    if mode != InputMode::Translation {
+                        self.cancel_translation();
+                    }
                     if self.chrome.input_modes_expanded && self.chrome.active_input_mode == mode {
                         if mode == InputMode::Dictation
                             && self.chrome.voice_state == VoiceCaptureState::Listening
@@ -987,7 +992,7 @@ impl PanelState {
                     } else if mode == InputMode::Dictation {
                         self.chrome.input_modes_expanded = true;
                         self.enter_voice_mode();
-                    } else if mode == InputMode::VirtualKeyboard {
+                    } else if mode == InputMode::VirtualKeyboard || mode == InputMode::Translation {
                         self.chrome.active_input_mode = mode;
                         self.chrome.input_modes_expanded = true;
                         self.chrome.focus_input();
@@ -997,11 +1002,37 @@ impl PanelState {
                         self.chrome.input_modes_expanded = true;
                     }
                 }
+                InteractionKind::SetTranslationSource(source) => {
+                    if self.chrome.translation.source != source {
+                        self.cancel_translation();
+                        self.chrome.translation.source = source;
+                    }
+                }
+                InteractionKind::SetTranslationTarget(target) => {
+                    if self.chrome.translation.target != target {
+                        self.cancel_translation();
+                        self.chrome.translation.target = target;
+                    }
+                }
+                InteractionKind::TranslateText => self.start_translation(),
+                InteractionKind::CancelTranslation => self.cancel_translation(),
+                InteractionKind::ApplyTranslation => self.apply_translation(),
+                InteractionKind::TranslationPage(page) => {
+                    self.chrome.translation.page = page.min(2000)
+                }
                 InteractionKind::SettingsToggle => {
                     self.chrome.settings_open = !self.chrome.settings_open;
                     if self.chrome.settings_open {
                         self.chrome.settings_scroll_offset = 0.0;
                     }
+                }
+                InteractionKind::SetSettingsCategory(category) => {
+                    self.chrome.settings_category = category;
+                    self.clear_settings_search_text();
+                    self.chrome.settings_search_focused = false;
+                    self.chrome.settings_scroll_offset = 0.0;
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
                 }
                 InteractionKind::SettingsSearchInput => {
                     self.interaction.settings_option_text_scroll_target = None;
@@ -1106,6 +1137,25 @@ impl PanelState {
                     }
                     self.note_interaction_action(action);
                     self.chrome.candidate_density = density;
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetUiLanguage(language) => {
+                    self.chrome.ui_language = language;
+                    self.chrome.settings_search_query.clear();
+                    self.chrome.settings_scroll_offset = 0.0;
+                    self.interaction.tooltip.clear();
+                    self.persist_display_settings();
+                }
+                InteractionKind::SetHideSystemTitlebar(hide) => {
+                    let action = InteractionKind::SetHideSystemTitlebar(hide);
+                    if self.is_repeating_interaction(action) {
+                        return;
+                    }
+                    self.note_interaction_action(action);
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
+                    self.chrome.hide_system_titlebar = hide;
+                    self.apply_window_decorations();
                     self.persist_display_settings();
                 }
                 InteractionKind::SetPreviewStyle(style) => {

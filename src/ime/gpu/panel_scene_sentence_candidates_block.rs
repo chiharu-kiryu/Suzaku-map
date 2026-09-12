@@ -469,17 +469,17 @@
 
     if !collapsed_daily_mode {
         let meta_label = if literal_english {
-            "Keep typed text".to_string()
+            ui.tr("Keep typed text").to_string()
         } else if snapshot.active_language == "en" && label.split_whitespace().count() == 1 {
-            "Word · tap to commit".to_string()
+            ui.tr("Word · tap to commit").to_string()
         } else if selected && is_hero {
-            "primary sentence selected".to_string()
+            ui.tr("primary sentence selected").to_string()
         } else if selected {
-            "alternate sentence selected".to_string()
+            ui.tr("alternate sentence selected").to_string()
         } else if is_hero {
-            "sentence best match · tap to commit".to_string()
+            ui.tr("sentence best match · tap to commit").to_string()
         } else {
-            format!("sentence {style_label} phrase · tap to commit")
+            ui.message(&format!("sentence {style_label} phrase · tap to commit")).into_owned()
         };
 
         let meta_height = helper_px * 7.0;

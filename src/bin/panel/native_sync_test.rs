@@ -115,6 +115,7 @@ impl ApplicationHandler for SourceProbe {
         let mut state = pollster::block_on(PanelState::new(window)).unwrap();
         // Never start a microphone or connect an action writer in this fixture.
         let voice_bridge = state.voice.bridge.take();
+        assert_screen_keyboard_handoffs(&mut state);
         for source in [InputMode::Dictation, InputMode::Handwriting] {
             for blocked in [
                 "no sender",
@@ -274,6 +275,212 @@ impl ApplicationHandler for SourceProbe {
         event_loop.exit();
     }
     fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+}
+
+fn keyboard_frame(seed: &str, revision: u64) -> NativeComposition {
+    use suzaku_map::ime::{EngineConfig, XRTabletImeEngine, companion::NativeCandidate};
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    engine.enable_ibus_candidate_mix();
+    engine.seed(seed);
+    NativeComposition {
+        host: "11111111-1111-1111-1111-111111111111".into(),
+        context: 1,
+        revision,
+        focused: true,
+        private: false,
+        language: "en".into(),
+        seed: seed.into(),
+        selected: 0,
+        candidates: engine
+            .candidates()
+            .iter()
+            .map(|candidate| NativeCandidate {
+                text: candidate.text.clone(),
+                label: candidate.label.clone(),
+                kind: candidate.kind,
+                source: candidate.source,
+                weight: candidate.score.round() as u8,
+            })
+            .collect(),
+    }
+}
+
+fn prepare_keyboard(state: &mut PanelState) -> mpsc::Receiver<ActionRequest> {
+    state.native = Default::default();
+    state.is_focused = false;
+    state.chrome = PanelChromeState::default();
+    state.chrome.llm_enabled = false;
+    state.clear_pressed_interaction();
+    state.interaction.touch_tap_pending = false;
+    state.receive_native_frame(Some(keyboard_frame("hel", 10)));
+    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+    state.chrome.input_modes_expanded = true;
+    state.last_scene = None;
+    let (sender, receiver) = mpsc::sync_channel(8);
+    state.native.sender = Some(sender);
+    receiver
+}
+
+fn point_key(state: &mut PanelState, ch: char) {
+    use suzaku_map::ime::gpu::{InteractionKind, VirtualKeyboardKey};
+    let key = InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character(ch));
+    let rect = state.interaction_rect(key).unwrap();
+    state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+}
+
+fn assert_screen_keyboard_handoffs(state: &mut PanelState) {
+    for frame_first in [true, false] {
+        let receiver = prepare_keyboard(state);
+        point_key(state, 'l');
+        state.select_at_cursor();
+        let first = receiver.try_recv().unwrap();
+        assert!(first.command.ends_with(" 10 Thell"));
+        point_key(state, 'o');
+        state.select_at_cursor();
+        assert_eq!(state.chrome.seed_text, "hello");
+        assert!(state.chrome.sentence_candidates.is_empty());
+        assert!(receiver.try_recv().is_err(), "one write at a time");
+        // Neither a stale reply nor another action may consume the retained draft.
+        state.native_action_finished(first.host.clone(), 9, Ok(true));
+        state.native_action(NativeOperation::Clear);
+        assert_eq!(state.native.typing.as_ref().unwrap().draft, "hello");
+        assert!(receiver.try_recv().is_err());
+        if frame_first {
+            state.receive_native_frame(Some(keyboard_frame("hell", 11)));
+            assert!(receiver.try_recv().is_err());
+        }
+        state.native_action_finished(first.host, first.revision, Ok(true));
+        if !frame_first {
+            assert!(
+                receiver.try_recv().is_err(),
+                "ack alone cannot advance the revision"
+            );
+            state.receive_native_frame(Some(keyboard_frame("hell", 11)));
+        }
+        let second = receiver.try_recv().unwrap();
+        assert!(second.command.ends_with(" 11 Thello"));
+        state.native_action_finished(second.host, second.revision, Ok(true));
+        state.receive_native_frame(Some(keyboard_frame("hello", 12)));
+        assert!(state.native.typing.is_none());
+        assert_eq!(state.chrome.seed_text, "hello");
+        assert!(!state.chrome.sentence_candidates.is_empty());
+        assert!(receiver.try_recv().is_err());
+    }
+
+    // Backspace/Unicode edits coalesce too, including an entirely empty draft.
+    let receiver = prepare_keyboard(state);
+    state.native_keyboard_edit(Some("日本😀"));
+    let first = receiver.try_recv().unwrap();
+    state.backspace_seed();
+    assert_eq!(state.chrome.seed_text, "hel日本");
+    state.native_action_finished(first.host, first.revision, Ok(true));
+    state.receive_native_frame(Some(keyboard_frame("hel日本😀", 11)));
+    let second = receiver.try_recv().unwrap();
+    assert!(second.command.ends_with(" 11 Thel日本"));
+    state.native_action_finished(second.host, second.revision, Ok(true));
+    state.receive_native_frame(Some(keyboard_frame("hel日本", 12)));
+    for _ in 0..5 {
+        state.backspace_seed();
+    }
+    assert_eq!(state.chrome.seed_text, "");
+    assert_eq!(state.view_snapshot().mode, Mode::Idle);
+    let deletion = receiver.try_recv().unwrap();
+    state.native_action_finished(deletion.host, deletion.revision, Ok(true));
+    state.receive_native_frame(Some(keyboard_frame("hel日", 13)));
+    let empty = receiver.try_recv().unwrap();
+    assert!(empty.command.ends_with(" 13 T"));
+    state.native_action_finished(empty.host, empty.revision, Ok(true));
+    state.receive_native_frame(Some(keyboard_frame("", 14)));
+    assert!(state.native.typing.is_none());
+
+    for result in [Ok(false), Err("timeout".into()), Err("disconnected".into())] {
+        let receiver = prepare_keyboard(state);
+        state.native_keyboard_edit(Some("l"));
+        let first = receiver.try_recv().unwrap();
+        state.native_keyboard_edit(Some("o"));
+        state.native_action_finished(first.host, first.revision, result);
+        state.receive_native_frame(Some(keyboard_frame("hell", 11)));
+        state.native_keyboard_edit(Some("!"));
+        assert!(
+            receiver.try_recv().is_err(),
+            "never replay uncertain writes"
+        );
+        assert_eq!(state.take_native_typing_draft().as_deref(), Some("hello!"));
+    }
+    let receiver = prepare_keyboard(state);
+    state.native_keyboard_edit(Some("l"));
+    let first = receiver.try_recv().unwrap();
+    state.native_keyboard_edit(Some("o"));
+    state.receive_native_frame(Some(keyboard_frame("physical edit", 11)));
+    state.native_action_finished(first.host, first.revision, Ok(true));
+    assert!(
+        receiver.try_recv().is_err(),
+        "never overwrite physical edits"
+    );
+    assert_eq!(state.take_native_typing_draft().as_deref(), Some("hello"));
+
+    let receiver = prepare_keyboard(state);
+    state.native_keyboard_edit(Some("l"));
+    let first = receiver.try_recv().unwrap();
+    state.native_keyboard_edit(Some("o"));
+    state.receive_native_frame(None);
+    state.native_action_finished(first.host, first.revision, Err("disconnected".into()));
+    state.receive_native_frame(Some(keyboard_frame("hell", 11)));
+    assert!(receiver.try_recv().is_err());
+    state.begin_text_editing(); // Explicit recovery edits locally, never replays to the host.
+    assert!(!state.native.showing);
+    assert_eq!(state.chrome.seed_text, "hello");
+    assert_eq!(state.engine.snapshot().seed_text, "hello");
+    assert!(receiver.try_recv().is_err());
+
+    for change in ["context", "host", "private", "focus", "language"] {
+        let receiver = prepare_keyboard(state);
+        state.native_keyboard_edit(Some("l"));
+        let first = receiver.try_recv().unwrap();
+        state.native_keyboard_edit(Some("o"));
+        let mut next = keyboard_frame("", 11);
+        match change {
+            "context" => next.context += 1,
+            "host" => next.host = "22222222-2222-2222-2222-222222222222".into(),
+            "private" => next.private = true,
+            "focus" => next.focused = false,
+            "language" => next.language = "ja".into(),
+            _ => unreachable!(),
+        }
+        state.receive_native_frame(Some(next));
+        state.native_action_finished(first.host, first.revision, Ok(true));
+        assert!(state.native.typing.is_none(), "{change}");
+        assert!(
+            receiver.try_recv().is_err(),
+            "must not replay across {change}"
+        );
+    }
+
+    // A metadata refresh may invalidate candidate presses, but not a stable key.
+    for touch in [false, true] {
+        for new_context in [false, true] {
+            let receiver = prepare_keyboard(state);
+            point_key(state, 'l');
+            state.begin_primary_press(touch);
+            assert!(state.interaction.pressed_interaction.is_some());
+            let mut next = keyboard_frame("hel", 11);
+            next.candidates[1].weight = next.candidates[1].weight.saturating_add(1);
+            if new_context {
+                next.context += 1;
+            }
+            state.receive_native_frame(Some(next));
+            state.complete_primary_release(touch);
+            if new_context {
+                assert!(receiver.try_recv().is_err());
+            } else {
+                assert!(receiver.try_recv().unwrap().command.ends_with(" 11 Thell"));
+            }
+        }
+    }
+    state.native = Default::default();
+    println!(
+        "PASS: screen-keyboard edits survive delayed replies and candidate refreshes; uncertain writes retain recovery text and never replay across fields"
+    );
 }
 
 fn assert_consume_once_voice(state: &mut PanelState) {

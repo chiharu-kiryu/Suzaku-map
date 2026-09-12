@@ -2,7 +2,10 @@
 //! Does not capture the desktop, activate an IME, read live text or request a model.
 use super::*;
 use crate::render::{PanelVertex, TextVertex, build_frame_vertices};
-use suzaku_map::ime::gpu::{InputMode, PanelChromeState, ThemePreset, WgpuCandidateRenderer};
+use suzaku_map::ime::gpu::{
+    DisplayTextScale, InputMode, PanelChromeState, SettingsCategory, ThemePreset,
+    WgpuCandidateRenderer,
+};
 use suzaku_map::ime::{EngineConfig, XRTabletImeEngine};
 use wgpu::util::DeviceExt;
 
@@ -13,7 +16,14 @@ enum PreviewKind {
     Settings,
 }
 
-fn write_bitmap(path: &std::path::Path, width: u32, height: u32, stride: u32, rgba: &[u8]) {
+fn write_bitmap(
+    path: &std::path::Path,
+    width: u32,
+    height: u32,
+    stride: u32,
+    rgba: &[u8],
+    floating: bool,
+) {
     let mut bytes = vec![0; 54 + (width * height * 4) as usize];
     bytes[..2].copy_from_slice(b"BM");
     let length = bytes.len() as u32;
@@ -24,12 +34,21 @@ fn write_bitmap(path: &std::path::Path, width: u32, height: u32, stride: u32, rg
     bytes[22..26].copy_from_slice(&(-(height as i32)).to_le_bytes());
     bytes[26..28].copy_from_slice(&1u16.to_le_bytes());
     bytes[28..30].copy_from_slice(&32u16.to_le_bytes());
-    let preview_background = suzaku_map::ime::gpu::srgb_color(0xF5EEE7);
     for y in 0..height as usize {
         for x in 0..width as usize {
+            let preview_background = suzaku_map::ime::gpu::srgb_color(if floating {
+                if (x / 16 + y / 16) % 2 == 0 {
+                    0xD2D9E2
+                } else {
+                    0xE8EDF3
+                }
+            } else {
+                0xF5EEE7
+            });
             let source = y * stride as usize + x * 4;
             let dest = 54 + (y * width as usize + x) * 4;
-            // BMP previews use a warm backdrop. The raw GPU alpha is asserted separately.
+            // Floating previews use a checkerboard to make exterior alpha visible.
+            // The raw GPU alpha is asserted separately before compositing this preview.
             let alpha = rgba[source + 3] as f32 / 255.0;
             for channel in 0..3 {
                 let value = rgba[source + channel] as f32 / 255.0;
@@ -141,6 +160,13 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
             ("en", "hel", FontFaceChoice::Auto, 1.0, true),
             ("en", "hel", FontFaceChoice::Auto, 1.0, false),
             ("en", "hel", FontFaceChoice::Auto, 0.75, false),
+            (
+                "en",
+                "Wiil  90%  + − × …",
+                FontFaceChoice::Monaco,
+                0.9,
+                false,
+            ),
             ("en", "hel", FontFaceChoice::Auto, 1.25, true),
             ("en", "hel", FontFaceChoice::Auto, 1.5, false),
             ("ja", "nihongo", FontFaceChoice::Monaco, 1.0, true),
@@ -259,8 +285,169 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                 )
             })
         });
-        for ((language, seed, face, scale, expanded, mode, text_scale), preview_kind, theme) in
-            panel_cases.chain(extra_cases).chain(guardian_cases)
+        let mut checked_eviction = false;
+        let mut checked_size_reuse = false;
+        let floating_cases = [
+            ThemePreset::Suzaku,
+            ThemePreset::Baihu,
+            ThemePreset::Qinglong,
+            ThemePreset::Xuanwu,
+        ]
+        .into_iter()
+        .flat_map(|theme| {
+            [
+                (
+                    PreviewKind::Panel,
+                    0.72,
+                    "",
+                    true,
+                    InputMode::VirtualKeyboard,
+                ),
+                (PreviewKind::Panel, 0.9, "hel", true, InputMode::Handwriting),
+                (
+                    PreviewKind::Panel,
+                    0.52,
+                    "hel",
+                    false,
+                    InputMode::VirtualKeyboard,
+                ),
+                (PreviewKind::Settings, 0.52, "", true, InputMode::Dictation),
+                (PreviewKind::Settings, 0.64, "", true, InputMode::Dictation),
+            ]
+            .into_iter()
+            .map(move |(kind, scale, seed, expanded, mode)| {
+                (
+                    (
+                        "en",
+                        seed,
+                        FontFaceChoice::Monaco,
+                        scale,
+                        expanded,
+                        mode,
+                        suzaku_map::ime::gpu::DisplayTextScale::Medium,
+                    ),
+                    kind,
+                    theme,
+                    true,
+                )
+            })
+        });
+        let settings_cases = SettingsCategory::ALL.into_iter().flat_map(|category| {
+            [
+                (0.4, DisplayTextScale::Large),
+                (0.62, DisplayTextScale::Medium),
+                (0.96, DisplayTextScale::Medium),
+            ]
+            .into_iter()
+            .map(move |(scale, text_scale)| {
+                (
+                    (
+                        "en",
+                        "",
+                        FontFaceChoice::Monaco,
+                        scale,
+                        true,
+                        InputMode::Dictation,
+                        text_scale,
+                    ),
+                    PreviewKind::Settings,
+                    ThemePreset::Suzaku,
+                    true,
+                    category,
+                )
+            })
+        });
+        let translation_cases = [
+            (0.42, DisplayTextScale::Large),
+            (0.72, DisplayTextScale::Medium),
+            (1.25, DisplayTextScale::Medium),
+        ]
+        .into_iter()
+        .map(|(scale, text_scale)| {
+            (
+                (
+                    "en",
+                    "Hello, how are you?",
+                    FontFaceChoice::Monaco,
+                    scale,
+                    true,
+                    InputMode::Translation,
+                    text_scale,
+                ),
+                PreviewKind::Panel,
+                ThemePreset::Suzaku,
+                true,
+                SettingsCategory::Appearance,
+            )
+        });
+        let localized_cases = suzaku_map::ui::UiLanguage::ALL
+            .into_iter()
+            .skip(1)
+            .flat_map(|ui_language| {
+                [
+                    (
+                        0.42,
+                        DisplayTextScale::Large,
+                        PreviewKind::Settings,
+                        InputMode::VirtualKeyboard,
+                    ),
+                    (
+                        0.62,
+                        DisplayTextScale::Medium,
+                        PreviewKind::Settings,
+                        InputMode::VirtualKeyboard,
+                    ),
+                    (
+                        0.72,
+                        DisplayTextScale::Medium,
+                        PreviewKind::Panel,
+                        InputMode::Translation,
+                    ),
+                ]
+                .into_iter()
+                .map(move |(scale, text_scale, kind, mode)| {
+                    (
+                        (
+                            (
+                                "en",
+                                "Settings",
+                                FontFaceChoice::Monaco,
+                                scale,
+                                true,
+                                mode,
+                                text_scale,
+                            ),
+                            kind,
+                            ThemePreset::Suzaku,
+                            true,
+                            SettingsCategory::Appearance,
+                        ),
+                        ui_language,
+                    )
+                })
+            });
+        let cases = panel_cases
+            .chain(extra_cases)
+            .chain(guardian_cases)
+            .map(|(case, kind, theme)| (case, kind, theme, false))
+            .chain(floating_cases)
+            .map(|(case, kind, theme, floating)| {
+                (case, kind, theme, floating, SettingsCategory::Appearance)
+            })
+            .chain(settings_cases)
+            .chain(translation_cases)
+            .map(|case| (case, suzaku_map::ui::UiLanguage::English))
+            .chain(localized_cases);
+        for (
+            (
+                (language, seed, face, scale, expanded, mode, text_scale),
+                preview_kind,
+                theme,
+                floating,
+                settings_category,
+            ),
+            ui_language,
+        ) in cases
         {
             let width = (1000.0 * scale) as u32;
             let mut engine = XRTabletImeEngine::new(EngineConfig {
@@ -290,7 +477,19 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                 active_input_mode: mode,
                 text_scale,
                 theme_preset: theme,
+                ui_language,
+                hide_system_titlebar: floating,
                 settings_open: preview_kind == PreviewKind::Settings,
+                settings_category,
+                translation: if mode == InputMode::Translation {
+                    suzaku_map::ime::gpu::TranslationView {
+                        phase:suzaku_map::ime::gpu::TranslationPhase::Ready,
+                        text:"你好，最近怎么样？\nこんにちは。안녕하세요! Hello! ¡Hola! Bonjour! Guten Tag! Olá!".into(),
+                        ..Default::default()
+                    }
+                } else {
+                    Default::default()
+                },
                 voice_backend_label: "Local speech".into(),
                 voice_transcript: "Hello, welcome to Suzaku.".into(),
                 handwriting_candidates: vec!["O".into(), "A".into()],
@@ -306,17 +505,28 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                     .map(|edit| edit.label)
                     .collect(),
                 font_face: face,
+                text_smoothing: if face == FontFaceChoice::Monaco {
+                    TextSmoothing::Sharp
+                } else {
+                    TextSmoothing::Smooth
+                },
                 window_scale: scale,
                 ..Default::default()
             };
-            let height = match preview_kind {
+            let mut height = match preview_kind {
                 PreviewKind::Orb => width,
-                PreviewKind::Settings => 760,
+                PreviewKind::Settings => {
+                    if floating {
+                        380
+                    } else {
+                        760
+                    }
+                }
                 PreviewKind::Panel => WgpuCandidateRenderer::new(width as f32, 1.0)
                     .preferred_input_panel_height(&chrome)
                     as u32,
             };
-            let renderer = WgpuCandidateRenderer::new(width as f32, height as f32);
+            let mut renderer = WgpuCandidateRenderer::new(width as f32, height as f32);
             let mut scene = match preview_kind {
                 PreviewKind::Panel => {
                     renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None)
@@ -324,17 +534,15 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                 PreviewKind::Orb => renderer.build_compact_scene(&snapshot, &chrome, false, false),
                 PreviewKind::Settings => renderer.build_settings_scene(&chrome, None),
             };
-            let mut atlas = create_font_atlas(
-                &device,
-                &queue,
-                &bindings,
-                face,
-                TextSmoothing::Smooth,
-                scale,
-            );
+            let mut atlas =
+                create_font_atlas(&device, &queue, &bindings, face, chrome.text_smoothing);
             let mut characters: Vec<_> = scene.atlas_glyphs.iter().map(|glyph| glyph.ch).collect();
-            atlas.ensure_glyphs(&queue, language, characters.iter().copied());
-            for _ in 0..3 {
+            atlas.ensure_glyphs(&queue, language, &scene.atlas_glyphs);
+            for _ in 0..4 {
+                if let Some(metadata) = scene.settings_scroll_metadata {
+                    height = (metadata.preferred_window_height.ceil() as u32).clamp(220, 680);
+                    renderer = WgpuCandidateRenderer::new(width as f32, height as f32);
+                }
                 scene =
                     suzaku_map::ime::gpu::with_font_metrics(atlas.layout_metrics.clone(), || {
                         match preview_kind {
@@ -348,9 +556,31 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                     });
                 characters = scene.atlas_glyphs.iter().map(|glyph| glyph.ch).collect();
                 let revision = atlas.layout_revision;
-                atlas.ensure_glyphs(&queue, language, characters.iter().copied());
-                if revision == atlas.layout_revision {
+                atlas.ensure_glyphs(&queue, language, &scene.atlas_glyphs);
+                let height_settled = scene.settings_scroll_metadata.is_none_or(|metadata| {
+                    height == (metadata.preferred_window_height.ceil() as u32).clamp(220, 680)
+                });
+                if revision == atlas.layout_revision && height_settled {
                     break;
+                }
+            }
+            if let Some(metadata) = scene.settings_scroll_metadata {
+                assert_eq!(
+                    height,
+                    (metadata.preferred_window_height as u32).clamp(220, 680)
+                );
+                if metadata.preferred_window_height <= 680.0 {
+                    assert_eq!(metadata.max_scroll_offset, 0.0);
+                }
+                for category in SettingsCategory::ALL {
+                    assert!(
+                        scene
+                            .text_sections
+                            .iter()
+                            .flat_map(|section| &section.layouts)
+                            .any(|layout| layout.lines == [ui_language.tr(category.label())]
+                                && !layout.truncated)
+                    );
                 }
             }
             assert!(
@@ -364,20 +594,71 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
             {
                 if unicode_width::UnicodeWidthChar::width(ch) == Some(2) && characters.contains(&ch)
                 {
-                    assert_ne!(atlas.uv_for(ch), atlas.uv_for(MISSING));
+                    let glyph = scene
+                        .atlas_glyphs
+                        .iter()
+                        .find(|glyph| glyph.ch == ch)
+                        .unwrap();
+                    assert_ne!(
+                        atlas.quad_for(glyph).1,
+                        atlas.uv_map[&FontAtlas::fallback_key()].uv
+                    );
                 }
             }
-            let slots = atlas.next_slot;
+            let slots = atlas.uv_map.len();
             let mapping = atlas.uv_map.clone();
-            atlas.ensure_glyphs(&queue, language, characters);
+            atlas.ensure_glyphs(&queue, language, &scene.atlas_glyphs);
             assert_eq!(
-                slots, atlas.next_slot,
+                slots,
+                atlas.uv_map.len(),
                 "cached frame must not rasterize or allocate"
             );
             assert_eq!(mapping, atlas.uv_map, "cached UVs must remain stable");
-            let vertices = build_frame_vertices(&scene, &[], width as f32, height as f32, |ch| {
-                atlas.uv_for(ch)
-            });
+            if !checked_size_reuse && let Some(glyph) = scene.atlas_glyphs.first() {
+                checked_size_reuse = true;
+                let original = RasterKey::for_glyph(glyph).unwrap();
+                let original_uv = atlas.uv_map[&original].uv;
+                let revision = atlas.layout_revision;
+                let metrics = atlas.layout_metrics.clone();
+                let mut larger = glyph.clone();
+                larger.rect[3] *= 1.5;
+                atlas.ensure_glyphs(&queue, language, [&larger]);
+                let larger_key = RasterKey::for_glyph(&larger).unwrap();
+                assert_ne!(larger_key, original);
+                assert_ne!(atlas.uv_map[&larger_key].uv, original_uv);
+                assert_eq!(atlas.uv_map[&original].uv, original_uv);
+                assert_eq!(
+                    atlas.layout_revision, revision,
+                    "DPI/zoom must not alter advances"
+                );
+                assert!(Arc::ptr_eq(&atlas.layout_metrics, &metrics));
+                atlas.clear_rasters(&queue);
+                assert_eq!(
+                    atlas.layout_revision, revision,
+                    "raster eviction must not relayout text"
+                );
+                atlas.ensure_glyphs(&queue, language, &scene.atlas_glyphs);
+                assert!(Arc::ptr_eq(&atlas.layout_metrics, &metrics));
+            }
+            for glyph in &scene.atlas_glyphs {
+                let (rect, uv) = atlas.quad_for(glyph);
+                assert_eq!(rect[0].fract(), 0.0, "native ink x must align to pixels");
+                assert_eq!(rect[1].fract(), 0.0, "native ink y must align to pixels");
+                assert!(
+                    ((uv[2] - uv[0]) * atlas.page.dimension as f32 - rect[2]).abs() < 0.01,
+                    "{language} {scale}x {:?}: glyph width must not be resampled",
+                    glyph.ch
+                );
+                assert!(
+                    ((uv[3] - uv[1]) * atlas.page.dimension as f32 - rect[3]).abs() < 0.01,
+                    "{language} {scale}x {:?}: glyph height must not be resampled",
+                    glyph.ch
+                );
+            }
+            let vertices =
+                build_frame_vertices(&scene, &[], width as f32, height as f32, |glyph| {
+                    atlas.quad_for(glyph)
+                });
             let shape_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&vertices.shapes),
@@ -419,11 +700,11 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                         resolve_target: None,
                         depth_slice: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(if preview_kind == PreviewKind::Orb {
-                                wgpu::Color::TRANSPARENT
-                            } else {
-                                wgpu::Color::WHITE
-                            }),
+                            load: wgpu::LoadOp::Clear(crate::render::surface_clear_color(
+                                wgpu::CompositeAlphaMode::PreMultiplied,
+                                floating || preview_kind == PreviewKind::Orb,
+                                wgpu::Color::WHITE,
+                            )),
                             store: wgpu::StoreOp::Store,
                         },
                     })],
@@ -480,8 +761,19 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                 bytes.iter().any(|byte| *byte != 255),
                 "GPU output must contain actual pixels"
             );
-            if preview_kind == PreviewKind::Orb {
-                assert_eq!(bytes[3], 0, "orb corners must stay transparent");
+            if floating || preview_kind == PreviewKind::Orb {
+                for (x, y) in [
+                    (0, 0),
+                    (width - 1, 0),
+                    (0, height - 1),
+                    (width - 1, height - 1),
+                ] {
+                    assert_eq!(
+                        bytes[(y * stride + x * 4 + 3) as usize],
+                        0,
+                        "{preview_kind:?} {theme:?}: exterior corner {x},{y} must be transparent"
+                    );
+                }
                 assert!(
                     bytes
                         .chunks_exact(4)
@@ -489,45 +781,68 @@ fn multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
                     "curves need antialiased edge coverage"
                 );
             }
+            if floating {
+                let opaque_pixels = bytes
+                    .chunks(stride as usize)
+                    .flat_map(|row| row[..width as usize * 4].chunks_exact(4))
+                    .filter(|pixel| pixel[3] == 255)
+                    .count();
+                assert!(
+                    opaque_pixels > (width * height / 4) as usize,
+                    "transparency must not turn the content into a translucent glass sheet"
+                );
+            }
             if let Some(directory) = std::env::var_os("SUZAKU_GLYPH_QA_DIR") {
                 let directory = PathBuf::from(directory);
                 std::fs::create_dir_all(&directory).unwrap();
                 write_bitmap(
                     &directory.join(format!(
-                        "{language}-{scale}-{expanded}-{mode:?}-{text_scale:?}-{preview_kind:?}-{theme:?}.bmp"
+                        "{language}-{scale}-{expanded}-{mode:?}-{text_scale:?}-{preview_kind:?}-{theme:?}{}{}-{ui_language:?}.bmp",
+                        if floating { "-Floating" } else { "" },
+                        if preview_kind == PreviewKind::Settings {
+                            format!("-{settings_category:?}")
+                        } else {
+                            String::new()
+                        },
                     )),
                     width,
                     height,
                     stride,
                     &bytes,
+                    floating,
                 );
             }
             println!(
                 "{language} {scale}x {mode:?} {text_scale:?}: {} cached glyphs, {}, missing={}",
-                atlas.next_slot,
+                atlas.uv_map.len(),
                 atlas.font_label,
                 atlas.missing.len()
             );
             drop(bytes);
             readback.unmap();
-            // Exercise bounded eviction and recovery to the actual scene.
-            atlas.ensure_glyphs(
-                &queue,
-                language,
-                (0x3400..0x3400 + 5000).filter_map(char::from_u32),
-            );
-            assert!(atlas.next_slot <= atlas.grid.capacity && atlas.uv_map.len() <= 4096);
-            atlas.ensure_glyphs(
-                &queue,
-                language,
-                scene.atlas_glyphs.iter().map(|glyph| glyph.ch),
-            );
-            assert!(
-                scene
-                    .atlas_glyphs
-                    .iter()
-                    .all(|glyph| !atlas.missing.contains(&glyph.ch))
-            );
+            // One full pressure/recovery pass is enough; the real page now holds
+            // thousands of small native-size glyphs, rather than a few large cells.
+            if !checked_eviction {
+                checked_eviction = true;
+                let pressure: Vec<_> = (0x3400..0x3400 + 5000)
+                    .filter_map(char::from_u32)
+                    .map(|ch| AtlasGlyph {
+                        ch,
+                        rect: [0.0, 0.0, 18.0, 18.0],
+                        color: [1.0; 4],
+                        clip_rect: None,
+                    })
+                    .collect();
+                atlas.ensure_glyphs(&queue, language, &pressure);
+                assert!(atlas.fonts.len() <= MAX_GLYPHS && atlas.uv_map.len() <= MAX_GLYPHS);
+                atlas.ensure_glyphs(&queue, language, &scene.atlas_glyphs);
+                assert!(
+                    scene
+                        .atlas_glyphs
+                        .iter()
+                        .all(|glyph| !atlas.missing.contains(&glyph.ch))
+                );
+            }
         }
         assert!(device.pop_error_scope().await.is_none());
     });

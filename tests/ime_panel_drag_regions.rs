@@ -2,7 +2,7 @@
 
 use suzaku_map::ime::XRTabletImeEngine;
 use suzaku_map::ime::gpu::{
-    DisplayTextScale, InputMode, InteractionKind, PanelChromeState, RenderScene,
+    DisplayTextScale, InputMode, InteractionKind, PanelChromeState, RenderScene, SettingsCategory,
     WgpuCandidateRenderer,
 };
 
@@ -53,6 +53,7 @@ fn non_functional_panel_regions_drag_at_every_size_and_input_mode() {
                 for text_scale in [DisplayTextScale::Small, DisplayTextScale::Large] {
                     let chrome = PanelChromeState {
                         input_modes_expanded: expanded,
+                        hide_system_titlebar: true,
                         active_input_mode: mode,
                         text_scale,
                         seed_text: "hel".into(),
@@ -95,14 +96,18 @@ fn non_functional_panel_regions_drag_at_every_size_and_input_mode() {
 fn settings_background_drags_without_stealing_search_scroll_or_options() {
     for width in [420.0, 640.0, 900.0] {
         for offset in [0.0, 77.0, 10_000.0] {
-            let scene = WgpuCandidateRenderer::new(width, 340.0).build_settings_scene(
-                &PanelChromeState {
-                    settings_scroll_offset: offset,
-                    ..Default::default()
-                },
-                None,
-            );
-            assert_background_and_controls(&scene, width, 340.0);
+            for category in SettingsCategory::ALL {
+                let scene = WgpuCandidateRenderer::new(width, 340.0).build_settings_scene(
+                    &PanelChromeState {
+                        settings_category: category,
+                        settings_scroll_offset: offset,
+                        hide_system_titlebar: true,
+                        ..Default::default()
+                    },
+                    None,
+                );
+                assert_background_and_controls(&scene, width, 340.0);
+            }
         }
     }
 }

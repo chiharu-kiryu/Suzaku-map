@@ -244,184 +244,26 @@ impl FontResolver {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct AtlasGrid {
-    dimension: u32,
-    cell: u32,
-    columns: u32,
-    capacity: usize,
-    pixels: f32,
-}
-
-impl AtlasGrid {
-    fn new(scale: f32, limit: u32) -> Self {
-        let scale = if scale.is_finite() {
-            scale.clamp(1.0, 2.5)
-        } else {
-            1.0
-        };
-        let dimension = limit.min(if scale > 1.5 { 4096 } else { 2048 }).max(1);
-        let cell = ((48.0 * scale * 1.6).ceil() as u32).clamp(1, (dimension / 16).max(1));
-        let columns = dimension / cell;
-        Self {
-            dimension,
-            cell,
-            columns,
-            capacity: (columns * columns) as usize,
-            pixels: cell as f32 / 1.6,
-        }
-    }
-
-    fn origin(self, slot: usize) -> [u32; 2] {
-        [
-            (slot as u32 % self.columns) * self.cell,
-            (slot as u32 / self.columns) * self.cell,
-        ]
-    }
-}
-
-struct GlyphCell {
-    bytes: Vec<u8>,
-    // Coordinates inside the cell, excluding transparent packing padding.
-    sample: [u32; 4],
-    font_label: Option<String>,
-    missing: bool,
-}
-
-fn rasterize_cell(resolver: &mut FontResolver, ch: char, grid: AtlasGrid) -> GlyphCell {
-    let size = grid.cell;
-    let mut bytes = vec![0; (size * size) as usize];
-    let padding = (size / 16).max(1).min(size.saturating_sub(1));
-    let available = size.saturating_sub(2 * padding).max(1);
-    let mut pixels = grid.pixels;
-    if let Some((mut metrics, mut bitmap, mut font)) = resolver.rasterize(ch, pixels) {
-        let span = metrics.width.max(metrics.height) as f32;
-        if span > available as f32 {
-            pixels *= available as f32 / span;
-            if let Some(rendered) = resolver.rasterize(ch, pixels) {
-                (metrics, bitmap, font) = rendered;
-            }
-        }
-        let lines = font.font.horizontal_line_metrics(pixels);
-        let wide = unicode_width::UnicodeWidthChar::width(ch) == Some(2);
-        let ascent = if wide {
-            pixels * 0.88
-        } else {
-            lines.map(|line| line.ascent).unwrap_or(pixels)
-        };
-        let descent = if wide {
-            -pixels * 0.12
-        } else {
-            lines.map(|line| line.descent).unwrap_or(0.0)
-        };
-        let line_height = (ascent - descent)
-            .ceil()
-            .max(metrics.height as f32)
-            .min(available as f32) as u32;
-        let advance = if wide {
-            pixels.max(metrics.advance_width)
-        } else {
-            metrics.advance_width
-        };
-        let sample_width = advance
-            .ceil()
-            .max(metrics.width as f32)
-            .clamp(1.0, available as f32) as u32;
-        let left = (size - sample_width) / 2;
-        let top = (size - line_height) / 2;
-        let destination_x = (left as i32 + metrics.xmin).clamp(
-            padding as i32,
-            (size - padding - metrics.width.min(available as usize) as u32) as i32,
-        );
-        let destination_y =
-            (top as i32 + ascent.ceil() as i32 - metrics.ymin - metrics.height as i32).clamp(
-                padding as i32,
-                (size - padding - metrics.height.min(available as usize) as u32) as i32,
-            );
-        for y in 0..metrics.height.min(available as usize) {
-            for x in 0..metrics.width.min(available as usize) {
-                bytes[(destination_y as usize + y) * size as usize + destination_x as usize + x] =
-                    bitmap[y * metrics.width + x];
-            }
-        }
-        let x1 = left.min(destination_x as u32);
-        let y1 = top.min(destination_y as u32);
-        let x2 = (left + sample_width)
-            .max(destination_x as u32 + metrics.width as u32)
-            .min(size);
-        let y2 = (top + line_height)
-            .max(destination_y as u32 + metrics.height as u32)
-            .min(size);
-        return GlyphCell {
-            bytes,
-            sample: [x1, y1, x2, y2],
-            font_label: Some(font.label),
-            missing: false,
-        };
-    }
-    if ch.is_ascii() && !ch.is_control() {
-        let bitmap = suzaku_map::ime::gpu::glyph_bitmap(ch);
-        let step = (available / 7).max(1);
-        let left = size.saturating_sub(5 * step) / 2;
-        let top = size.saturating_sub(7 * step) / 2;
-        for (row, pattern) in bitmap.iter().enumerate() {
-            for col in 0..5 {
-                if (pattern >> (4 - col)) & 1 != 0 {
-                    for y in 0..step {
-                        for x in 0..step {
-                            let dx = left + col * step + x;
-                            let dy = top + row as u32 * step + y;
-                            if dx < size && dy < size {
-                                bytes[(dy * size + dx) as usize] = 255;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return GlyphCell {
-            bytes,
-            sample: [
-                left,
-                top,
-                (left + 5 * step).min(size),
-                (top + 7 * step).min(size),
-            ],
-            font_label: None,
-            missing: false,
-        };
-    }
-    // A distinct missing-glyph box, never a literal question mark or an empty candidate.
-    for y in padding..size.saturating_sub(padding) {
-        for x in padding..size.saturating_sub(padding) {
-            if x == padding || y == padding || x + padding + 1 == size || y + padding + 1 == size {
-                bytes[(y * size + x) as usize] = 255;
-            }
-        }
-    }
-    GlyphCell {
-        bytes,
-        sample: [0, 0, size, size],
-        font_label: None,
-        missing: true,
-    }
-}
+#[path = "font_raster.rs"]
+mod raster;
+use raster::{CachedGlyph, GlyphFont, MAX_GLYPHS, RasterKey, RasterPage};
+use suzaku_map::ime::gpu::AtlasGlyph;
 
 pub(crate) struct FontAtlas {
     pub(crate) bind_group: wgpu::BindGroup,
     pub(crate) uses_runtime_font: bool,
     pub(crate) font_label: String,
     texture: wgpu::Texture,
-    grid: AtlasGrid,
+    page: RasterPage,
     resolver: FontResolver,
-    uv_map: HashMap<char, [f32; 4]>,
+    fonts: HashMap<char, GlyphFont>,
+    uv_map: HashMap<RasterKey, CachedGlyph>,
     pub(super) layout_metrics: suzaku_map::ime::gpu::FontLayoutMetrics,
     pub(super) layout_revision: u64,
     missing: BTreeSet<char>,
     visible_missing: usize,
     face: FontFaceChoice,
     japanese: bool,
-    next_slot: usize,
 }
 
 impl FontAtlas {
@@ -436,19 +278,28 @@ impl FontAtlas {
         }
     }
 
-    pub(super) fn uv_for(&self, ch: char) -> [f32; 4] {
+    pub(super) fn quad_for(&self, glyph: &AtlasGlyph) -> ([f32; 4], [f32; 4]) {
+        let Some(key) = RasterKey::for_glyph(glyph) else {
+            return ([0.0; 4], [0.0; 4]);
+        };
         self.uv_map
-            .get(&ch)
-            .or_else(|| self.uv_map.get(&MISSING))
-            .copied()
-            .expect("missing-glyph cell")
+            .get(&key)
+            .or_else(|| self.uv_map.get(&Self::fallback_key()))
+            .map_or(([0.0; 4], [0.0; 4]), |cached| cached.quad(glyph))
     }
 
-    pub(super) fn ensure_glyphs(
+    fn fallback_key() -> RasterKey {
+        RasterKey {
+            ch: MISSING,
+            height: 18,
+        }
+    }
+
+    pub(super) fn ensure_glyphs<'a>(
         &mut self,
         queue: &wgpu::Queue,
         language: &str,
-        characters: impl IntoIterator<Item = char>,
+        glyphs: impl IntoIterator<Item = &'a AtlasGlyph>,
     ) {
         let japanese = BuiltinLanguage::resolve(language) == Some(BuiltinLanguage::Japanese);
         if self.japanese != japanese {
@@ -456,52 +307,108 @@ impl FontAtlas {
             self.resolver = FontResolver::new(self.face, japanese);
             self.clear(queue);
         }
-        let visible: BTreeSet<_> = characters.into_iter().take(16_384).collect();
-        let unseen = visible
+        let visible: BTreeSet<_> = glyphs
+            .into_iter()
+            .take(16_384)
+            .filter_map(RasterKey::for_glyph)
+            .collect();
+        let characters: BTreeSet<_> = visible.iter().map(|key| key.ch).collect();
+        let unseen = characters
             .iter()
-            .filter(|ch| !self.uv_map.contains_key(ch))
+            .filter(|ch| !self.fonts.contains_key(ch))
             .count();
-        if unseen == 0 {
-            self.visible_missing = visible
-                .iter()
-                .filter(|ch| self.missing.contains(ch))
-                .count();
-            return;
-        }
-        if self.next_slot + unseen > self.grid.capacity || self.uv_map.len() + unseen > 4096 {
+        if self.fonts.len() + unseen > MAX_GLYPHS {
             self.clear(queue);
         }
-        for &ch in &visible {
-            if !self.uv_map.contains_key(&ch)
-                && self.next_slot < self.grid.capacity
-                && self.uv_map.len() < 4096
-            {
-                self.insert(queue, ch);
+        for &ch in characters.iter().take(MAX_GLYPHS - 1) {
+            self.ensure_font(ch);
+        }
+        if !self.populate(queue, &visible) {
+            // Evict only bitmap placement. Stable font advances must not trigger a
+            // relayout cycle whenever a new size fills the raster page.
+            self.clear_rasters(queue);
+            self.populate(queue, &visible);
+        }
+        let mut unavailable: BTreeSet<_> =
+            self.missing.intersection(&characters).copied().collect();
+        unavailable.extend(
+            visible
+                .iter()
+                .filter(|key| !self.uv_map.contains_key(key))
+                .map(|key| key.ch),
+        );
+        self.visible_missing = unavailable.len();
+    }
+
+    fn ensure_font(&mut self, ch: char) {
+        if self.fonts.contains_key(&ch) {
+            return;
+        }
+        let glyph = GlyphFont::resolve(&mut self.resolver, ch);
+        if glyph.missing && ch != MISSING {
+            self.missing.insert(ch);
+        }
+        if let Some(font) = &glyph.font {
+            Arc::make_mut(&mut self.layout_metrics).insert(ch, glyph.width_ratio * 7.0);
+            self.layout_revision = self.layout_revision.wrapping_add(1);
+            self.uses_runtime_font = true;
+            if !self.font_label.contains(&font.label) {
+                if self.font_label == "Builtin bitmap" {
+                    self.font_label = font.label.clone();
+                } else {
+                    self.font_label.push_str(&format!(" + {}", font.label));
+                }
             }
         }
-        self.visible_missing = visible
-            .iter()
-            .filter(|ch| self.missing.contains(ch) || !self.uv_map.contains_key(ch))
-            .count();
+        self.fonts.insert(ch, glyph);
     }
 
     fn clear(&mut self, queue: &wgpu::Queue) {
-        self.uv_map.clear();
+        self.fonts.clear();
         Arc::make_mut(&mut self.layout_metrics).clear();
         self.layout_revision = self.layout_revision.wrapping_add(1);
         self.missing.clear();
-        self.next_slot = 0;
-        self.insert(queue, MISSING);
+        self.font_label = "Builtin bitmap".into();
+        self.uses_runtime_font = false;
+        self.ensure_font(MISSING);
+        self.clear_rasters(queue);
     }
 
-    fn insert(&mut self, queue: &wgpu::Queue, ch: char) {
-        let cell = rasterize_cell(&mut self.resolver, ch, self.grid);
-        if cell.missing && ch != MISSING {
-            self.missing.insert(ch);
-            self.uv_map.insert(ch, self.uv_for(MISSING));
-            return;
+    fn clear_rasters(&mut self, queue: &wgpu::Queue) {
+        self.uv_map.clear();
+        self.page = RasterPage::new(self.page.dimension);
+        self.insert(queue, Self::fallback_key());
+    }
+
+    fn populate(&mut self, queue: &wgpu::Queue, visible: &BTreeSet<RasterKey>) -> bool {
+        for &key in visible {
+            if !self.uv_map.contains_key(&key) && !self.insert(queue, key) {
+                return false;
+            }
         }
-        let [x, y] = self.grid.origin(self.next_slot);
+        true
+    }
+
+    fn insert(&mut self, queue: &wgpu::Queue, key: RasterKey) -> bool {
+        if self.uv_map.len() >= MAX_GLYPHS {
+            return false;
+        }
+        let Some(font) = self.fonts.get(&key.ch) else {
+            return false;
+        };
+        let glyph = font.rasterize(key);
+        let Some([x, y]) = self.page.allocate(glyph.width, glyph.height) else {
+            return false;
+        };
+        let width = glyph.width + 2;
+        let height = glyph.height + 2;
+        let mut padded = vec![0; (width * height) as usize];
+        for row in 0..glyph.height as usize {
+            let start = (row + 1) * width as usize + 1;
+            padded[start..start + glyph.width as usize].copy_from_slice(
+                &glyph.bytes[row * glyph.width as usize..(row + 1) * glyph.width as usize],
+            );
+        }
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
@@ -509,50 +416,33 @@ impl FontAtlas {
                 origin: wgpu::Origin3d { x, y, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
-            &cell.bytes,
+            &padded,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(self.grid.cell),
-                rows_per_image: Some(self.grid.cell),
+                bytes_per_row: Some(width),
+                rows_per_image: Some(height),
             },
             wgpu::Extent3d {
-                width: self.grid.cell,
-                height: self.grid.cell,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
         );
-        let [left, top, right, bottom] = cell.sample;
-        if cell.font_label.is_some() {
-            // Glyph sampling and layout use the exact same aspect ratio. CJK remains square.
-            let width = if unicode_width::UnicodeWidthChar::width(ch) == Some(2) {
-                7.0
-            } else {
-                7.0 * (right - left) as f32 / (bottom - top).max(1) as f32
-            };
-            Arc::make_mut(&mut self.layout_metrics).insert(ch, width);
-        }
-        self.layout_revision = self.layout_revision.wrapping_add(1);
-        let dimension = self.grid.dimension as f32;
+        let dimension = self.page.dimension as f32;
         self.uv_map.insert(
-            ch,
-            [
-                (x + left) as f32 / dimension,
-                (y + top) as f32 / dimension,
-                (x + right) as f32 / dimension,
-                (y + bottom) as f32 / dimension,
-            ],
+            key,
+            CachedGlyph {
+                uv: [
+                    (x + 1) as f32 / dimension,
+                    (y + 1) as f32 / dimension,
+                    (x + 1 + glyph.width) as f32 / dimension,
+                    (y + 1 + glyph.height) as f32 / dimension,
+                ],
+                size: [glyph.width, glyph.height],
+                offset: glyph.offset,
+            },
         );
-        self.next_slot += 1;
-        if let Some(label) = cell.font_label {
-            self.uses_runtime_font = true;
-            if !self.font_label.contains(&label) {
-                if self.font_label == "Builtin bitmap" {
-                    self.font_label = label;
-                } else {
-                    self.font_label.push_str(&format!(" + {label}"));
-                }
-            }
-        }
+        true
     }
 }
 
@@ -566,14 +456,14 @@ pub(crate) fn create_font_atlas(
     layout: &wgpu::BindGroupLayout,
     face: FontFaceChoice,
     smoothing: TextSmoothing,
-    scale: f32,
 ) -> FontAtlas {
-    let grid = AtlasGrid::new(scale, device.limits().max_texture_dimension_2d);
+    // Use each scene glyph's physical height, not a guessed window zoom/DPI factor.
+    let page = RasterPage::new(device.limits().max_texture_dimension_2d);
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("suzaku-unicode-glyph-cache"),
+        label: Some("suzaku-native-size-glyph-cache"),
         size: wgpu::Extent3d {
-            width: grid.dimension,
-            height: grid.dimension,
+            width: page.dimension,
+            height: page.dimension,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -604,8 +494,9 @@ pub(crate) fn create_font_atlas(
         uses_runtime_font: false,
         font_label: "Builtin bitmap".into(),
         texture,
-        grid,
+        page,
         resolver: FontResolver::new(face, false),
+        fonts: HashMap::new(),
         uv_map: HashMap::new(),
         layout_metrics: Arc::new(HashMap::new()),
         layout_revision: 0,
@@ -613,9 +504,9 @@ pub(crate) fn create_font_atlas(
         visible_missing: 0,
         face,
         japanese: false,
-        next_slot: 0,
     };
-    atlas.insert(queue, MISSING);
+    atlas.ensure_font(MISSING);
+    atlas.clear_rasters(queue);
     atlas
 }
 
@@ -626,7 +517,8 @@ fn font_sampler_descriptor(smoothing: TextSmoothing) -> wgpu::SamplerDescriptor<
     };
     wgpu::SamplerDescriptor {
         label: Some("suzaku-unicode-font-sampler"),
-        // The atlas has one mip level. Changing only mipmap_filter did nothing.
+        // Native-size ink maps one texel to one pixel; keep the preference for
+        // exceptional text above the bounded raster-size limit.
         mag_filter: filter,
         min_filter: filter,
         ..Default::default()
@@ -638,7 +530,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_smoothing_changes_filters_used_by_the_single_level_atlas() {
+    fn text_smoothing_retains_the_selected_sampler() {
         for (smoothing, expected) in [
             (TextSmoothing::Smooth, wgpu::FilterMode::Linear),
             (TextSmoothing::Sharp, wgpu::FilterMode::Nearest),
@@ -650,28 +542,22 @@ mod tests {
     }
 
     #[test]
-    fn atlas_is_bounded_at_low_texture_limits_and_high_dpi() {
-        for scale in [1.0, 1.25, 2.0, 2.5, f32::NAN] {
-            for limit in [256, 512, 2048, 8192] {
-                let grid = AtlasGrid::new(scale, limit);
-                assert!(grid.dimension <= limit);
-                assert!(grid.capacity >= 256);
-                let [x, y] = grid.origin(grid.capacity - 1);
-                assert!(x + grid.cell <= grid.dimension && y + grid.cell <= grid.dimension);
-            }
-        }
-    }
-
-    #[test]
     fn no_system_fonts_keep_ascii_but_mark_unknown_unicode_distinctly() {
         let mut resolver = FontResolver {
             sources: vec![],
             loaded: HashMap::new(),
         };
-        let grid = AtlasGrid::new(1.0, 2048);
-        let ascii = rasterize_cell(&mut resolver, '?', grid);
-        let missing = rasterize_cell(&mut resolver, '你', grid);
+        let ascii = GlyphFont::resolve(&mut resolver, '?');
+        let missing = GlyphFont::resolve(&mut resolver, '你');
         assert!(!ascii.missing && missing.missing);
+        let ascii = ascii.rasterize(RasterKey {
+            ch: '?',
+            height: 18,
+        });
+        let missing = missing.rasterize(RasterKey {
+            ch: '你',
+            height: 18,
+        });
         assert!(ascii.bytes.iter().any(|value| *value != 0));
         assert!(missing.bytes.iter().any(|value| *value != 0));
         assert_ne!(ascii.bytes, missing.bytes);
@@ -689,26 +575,25 @@ mod tests {
     }
 
     #[test]
-    fn narrow_system_glyphs_expose_their_native_aspect_ratio() {
+    fn narrow_system_glyphs_keep_proportional_advances_and_native_ink_at_each_size() {
         let mut resolver = FontResolver::new(FontFaceChoice::Auto, false);
-        if resolver.rasterize('i', 48.0).is_none() {
+        let narrow = GlyphFont::resolve(&mut resolver, 'i');
+        if narrow.font.is_none() {
             return;
         }
-        let grid = AtlasGrid::new(1.0, 2048);
-        let narrow = rasterize_cell(&mut resolver, 'i', grid);
-        let normal = rasterize_cell(&mut resolver, 'n', grid);
-        let narrow_width = narrow.sample[2] - narrow.sample[0];
-        let normal_width = normal.sample[2] - normal.sample[0];
-        assert!(narrow_width <= normal_width);
-        assert_eq!(
-            narrow.sample[3] - narrow.sample[1],
-            normal.sample[3] - normal.sample[1]
-        );
+        let normal = GlyphFont::resolve(&mut resolver, 'n');
+        assert!(narrow.width_ratio < normal.width_ratio);
+        for height in [11, 14, 18, 23, 36, 64] {
+            let narrow = narrow.rasterize(RasterKey { ch: 'i', height });
+            let normal = normal.rasterize(RasterKey { ch: 'n', height });
+            assert!(narrow.width <= normal.width);
+            assert!(narrow.height <= u32::from(height) + 1);
+            assert!(narrow.bytes.iter().any(|&a| a != 0));
+        }
     }
 
     #[test]
     fn installed_cjk_fallback_rasterizes_real_candidate_glyphs_in_all_font_choices() {
-        // Portable CI may not ship a CJK font. The explicit local visual test requires it.
         let mut available = FontResolver::new(FontFaceChoice::Auto, false);
         if available.rasterize('你', 48.0).is_none() {
             return;
@@ -727,14 +612,13 @@ mod tests {
                 {
                     assert_eq!(primary.index, locale.index);
                 }
-                for ch in "你好世界日本語こんにちは、。！？hello".chars() {
-                    for scale in [1.0, 2.5] {
-                        let grid = AtlasGrid::new(scale, 2048);
-                        let cell = rasterize_cell(&mut resolver, ch, grid);
-                        assert!(!cell.missing, "missing {ch:?}");
-                        assert!(cell.bytes.iter().any(|byte| *byte != 0));
-                        assert!(cell.sample[0] < cell.sample[2] && cell.sample[1] < cell.sample[3]);
-                        assert!(cell.sample[2] <= grid.cell && cell.sample[3] <= grid.cell);
+                for ch in "你好世界日本語こんにちは、。！？hello+−×…".chars() {
+                    let font = GlyphFont::resolve(&mut resolver, ch);
+                    assert!(!font.missing, "missing {ch:?}");
+                    for height in [14, 18, 23, 36] {
+                        let glyph = font.rasterize(RasterKey { ch, height });
+                        assert!(glyph.bytes.iter().any(|&a| a != 0), "{ch:?} at {height}");
+                        assert_eq!(glyph.bytes.len(), (glyph.width * glyph.height) as usize);
                     }
                 }
             }

@@ -24,6 +24,8 @@ pub(crate) struct PersistedDisplaySettings {
     pub(crate) text_spacing: TextSpacing,
     pub(crate) text_smoothing: TextSmoothing,
     pub(crate) theme_preset: ThemePreset,
+    pub(crate) hide_system_titlebar: bool,
+    pub(crate) ui_language: suzaku_map::ui::UiLanguage,
     pub(crate) voice_auto_insert: bool,
     pub(crate) llm_enabled: bool,
     pub(crate) llm_model: LlmModelPreset,
@@ -71,6 +73,8 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             text_spacing: chrome.text_spacing,
             text_smoothing: chrome.text_smoothing,
             theme_preset: chrome.theme_preset,
+            hide_system_titlebar: chrome.hide_system_titlebar,
+            ui_language: chrome.ui_language,
             voice_auto_insert: chrome.voice_auto_insert,
             llm_enabled: chrome.llm_enabled,
             llm_model: chrome.llm_model,
@@ -94,6 +98,8 @@ pub(crate) fn apply_display_settings(
     chrome.text_spacing = settings.text_spacing;
     chrome.text_smoothing = settings.text_smoothing;
     chrome.theme_preset = settings.theme_preset;
+    chrome.hide_system_titlebar = settings.hide_system_titlebar;
+    chrome.ui_language = settings.ui_language;
     chrome.voice_auto_insert = settings.voice_auto_insert;
     chrome.llm_enabled = settings.llm_enabled;
     chrome.llm_model = settings.llm_model;
@@ -108,8 +114,13 @@ pub(crate) fn apply_display_settings(
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
     let _lease =
         suzaku_map::data::files::DataLease::current_shared().map_err(std::io::Error::other)?;
-    let contents = format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
+    let path = display_settings_path();
+    suzaku_map::data::files::atomic_write(&path, encode_display_settings(settings).as_bytes())
+}
+
+fn encode_display_settings(settings: &PersistedDisplaySettings) -> String {
+    format!(
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nhide_system_titlebar={}\nui_language={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
@@ -117,6 +128,8 @@ pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std:
         encode_text_spacing(settings.text_spacing),
         encode_text_smoothing(settings.text_smoothing),
         encode_theme_preset(settings.theme_preset),
+        settings.hide_system_titlebar,
+        settings.ui_language.id(),
         if settings.voice_auto_insert {
             "true"
         } else {
@@ -133,9 +146,7 @@ pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std:
         settings.pointer_tap_max_ms,
         settings.pointer_target_slop_tenths,
         settings.window_scale,
-    );
-    let path = display_settings_path();
-    suzaku_map::data::files::atomic_write(&path, contents.as_bytes())
+    )
 }
 
 pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
@@ -144,6 +155,10 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         suzaku_map::data::files::SETTINGS_LIMIT,
     )
     .ok()??;
+    Some(decode_display_settings_payload(&contents))
+}
+
+fn decode_display_settings_payload(contents: &str) -> PersistedDisplaySettings {
     let mut settings = PersistedDisplaySettings {
         text_scale: DisplayTextScale::Medium,
         candidate_density: CandidateDensity::Cozy,
@@ -152,6 +167,8 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         text_spacing: TextSpacing::Normal,
         text_smoothing: TextSmoothing::Smooth,
         theme_preset: ThemePreset::Suzaku,
+        hide_system_titlebar: false,
+        ui_language: Default::default(),
         voice_auto_insert: true,
         llm_enabled: false,
         llm_model: LlmModelPreset::Configured,
@@ -202,6 +219,16 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
                     settings.theme_preset = parsed;
                 }
             }
+            "ui_language" => {
+                if let Some(parsed) = suzaku_map::ui::UiLanguage::from_id(value.trim()) {
+                    settings.ui_language = parsed;
+                }
+            }
+            "hide_system_titlebar" => {
+                if let Ok(parsed) = value.trim().parse::<bool>() {
+                    settings.hide_system_titlebar = parsed;
+                }
+            }
             "voice_auto_insert" => settings.voice_auto_insert = value.trim() == "true",
             "llm_enabled" => settings.llm_enabled = value.trim() == "true",
             "llm_model" => {
@@ -240,7 +267,29 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
 
     normalize_display_pointer_settings(&mut settings);
 
-    Some(settings)
+    settings
+}
+
+#[test]
+fn interface_language_round_trips_without_changing_other_settings() {
+    use suzaku_map::ui::UiLanguage;
+    let original = decode_display_settings_payload("theme_preset=baihu\nfont_face=monaco\n");
+    assert_eq!(original.ui_language, UiLanguage::System);
+    assert_eq!(
+        decode_display_settings_payload("ui_language=unsupported\n").ui_language,
+        UiLanguage::System
+    );
+    for language in UiLanguage::ALL {
+        let mut settings = original.clone();
+        settings.ui_language = language;
+        let decoded = decode_display_settings_payload(&encode_display_settings(&settings));
+        assert_eq!(settings, decoded);
+        let mut chrome = PanelChromeState::default();
+        apply_display_settings(&mut chrome, &decoded);
+        assert_eq!(chrome.ui_language, language);
+        assert_eq!(chrome.theme_preset, original.theme_preset);
+        assert_eq!(chrome.font_face, original.font_face);
+    }
 }
 
 pub(crate) fn normalize_pointer_stability_settings(chrome: &mut PanelChromeState) {
@@ -467,97 +516,6 @@ mod tests {
         settings: PersistedDisplaySettings,
     }
 
-    fn encode_display_settings(settings: &PersistedDisplaySettings) -> String {
-        format!(
-            "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
-            encode_text_scale(settings.text_scale),
-            encode_candidate_density(settings.candidate_density),
-            encode_preview_style(settings.preview_style),
-            encode_font_face(settings.font_face),
-            encode_text_spacing(settings.text_spacing),
-            encode_text_smoothing(settings.text_smoothing),
-            encode_theme_preset(settings.theme_preset),
-            if settings.voice_auto_insert {
-                "true"
-            } else {
-                "false"
-            },
-            if settings.llm_enabled {
-                "true"
-            } else {
-                "false"
-            },
-            encode_llm_model(settings.llm_model),
-            encode_llm_temperature(settings.llm_temperature),
-            settings.pointer_tap_slop_tenths,
-            settings.pointer_tap_max_ms,
-            settings.pointer_target_slop_tenths,
-            settings.window_scale,
-        )
-    }
-
-    fn decode_display_settings_payload(payload: &str) -> PersistedDisplaySettings {
-        let mut decoded = PersistedDisplaySettings {
-            text_scale: DisplayTextScale::Medium,
-            candidate_density: CandidateDensity::Cozy,
-            preview_style: PreviewStyle::Compact,
-            font_face: FontFaceChoice::Auto,
-            text_spacing: TextSpacing::Normal,
-            text_smoothing: TextSmoothing::Sharp,
-            theme_preset: ThemePreset::Daylight,
-            voice_auto_insert: true,
-            llm_enabled: true,
-            llm_model: LlmModelPreset::Configured,
-            llm_temperature: LlmTemperaturePreset::Balanced,
-            pointer_tap_slop_tenths: 100,
-            pointer_tap_max_ms: 420,
-            pointer_target_slop_tenths: 50,
-            window_scale: 1.0,
-        };
-
-        for line in payload.lines() {
-            let (key, value) = line.split_once('=').expect("kv");
-            match key {
-                "text_scale" => decoded.text_scale = decode_text_scale(value).expect("scale"),
-                "candidate_density" => {
-                    decoded.candidate_density = decode_candidate_density(value).expect("density")
-                }
-                "preview_style" => {
-                    decoded.preview_style = decode_preview_style(value).expect("preview")
-                }
-                "font_face" => decoded.font_face = decode_font_face(value).expect("font"),
-                "text_spacing" => {
-                    decoded.text_spacing = decode_text_spacing(value).expect("spacing")
-                }
-                "text_smoothing" => {
-                    decoded.text_smoothing = decode_text_smoothing(value).expect("smooth")
-                }
-                "theme_preset" => decoded.theme_preset = decode_theme_preset(value).expect("theme"),
-                "voice_auto_insert" => decoded.voice_auto_insert = value == "true",
-                "llm_enabled" => decoded.llm_enabled = value == "true",
-                "llm_model" => decoded.llm_model = decode_llm_model(value).expect("llm model"),
-                "llm_temperature" => {
-                    decoded.llm_temperature = decode_llm_temperature(value).expect("llm temp")
-                }
-                "pointer_tap_slop_tenths" => {
-                    decoded.pointer_tap_slop_tenths = decode_u16(value).expect("tap slop")
-                }
-                "pointer_tap_max_ms" => {
-                    decoded.pointer_tap_max_ms = decode_u16(value).expect("tap max")
-                }
-                "pointer_target_slop_tenths" => {
-                    decoded.pointer_target_slop_tenths = decode_u16(value).expect("target slop")
-                }
-                "window_scale" => {
-                    decoded.window_scale = decode_window_scale(value).expect("window scale")
-                }
-                _ => {}
-            }
-        }
-
-        decoded
-    }
-
     fn run_display_settings_codec_round_trip_cases(cases: &[DisplaySettingsCodecRoundTripCase]) {
         for case in cases {
             let encoded = encode_display_settings(&case.settings);
@@ -583,6 +541,8 @@ mod tests {
                     text_spacing: TextSpacing::Relaxed,
                     text_smoothing: TextSmoothing::Sharp,
                     theme_preset: ThemePreset::DeviceDark,
+                    hide_system_titlebar: true,
+                    ui_language: Default::default(),
                     voice_auto_insert: false,
                     llm_enabled: false,
                     llm_model: LlmModelPreset::Configured,
@@ -603,6 +563,8 @@ mod tests {
                     text_spacing: TextSpacing::Normal,
                     text_smoothing: TextSmoothing::Smooth,
                     theme_preset: ThemePreset::HighContrast,
+                    hide_system_titlebar: false,
+                    ui_language: Default::default(),
                     voice_auto_insert: true,
                     llm_enabled: true,
                     llm_model: LlmModelPreset::Configured,
@@ -623,6 +585,8 @@ mod tests {
                     text_spacing: TextSpacing::Tight,
                     text_smoothing: TextSmoothing::Smooth,
                     theme_preset: ThemePreset::Daylight,
+                    hide_system_titlebar: true,
+                    ui_language: Default::default(),
                     voice_auto_insert: false,
                     llm_enabled: true,
                     llm_model: LlmModelPreset::Configured,
@@ -636,6 +600,31 @@ mod tests {
         ];
 
         run_display_settings_codec_round_trip_cases(&cases);
+    }
+
+    #[test]
+    fn titlebar_preference_defaults_to_visible_and_round_trips() {
+        for legacy in ["", "theme_preset=baihu\n", "hide_system_titlebar=invalid\n"] {
+            assert!(!decode_display_settings_payload(legacy).hide_system_titlebar);
+        }
+        assert!(
+            decode_display_settings_payload(" hide_system_titlebar = true \n").hide_system_titlebar
+        );
+        for hide in [true, false] {
+            let original = PanelChromeState {
+                hide_system_titlebar: hide,
+                font_face: FontFaceChoice::Monaco,
+                text_smoothing: TextSmoothing::Sharp,
+                window_scale: 0.9,
+                ..Default::default()
+            };
+            let settings = PersistedDisplaySettings::from(&original);
+            let decoded = decode_display_settings_payload(&encode_display_settings(&settings));
+            assert_eq!(decoded, settings);
+            let mut restored = PanelChromeState::default();
+            apply_display_settings(&mut restored, &decoded);
+            assert_eq!(PersistedDisplaySettings::from(&restored), settings);
+        }
     }
 
     struct VoiceControllerSampleCase {
@@ -726,6 +715,8 @@ mod tests {
                 text_spacing: TextSpacing::Normal,
                 text_smoothing: TextSmoothing::Sharp,
                 theme_preset: ThemePreset::Daylight,
+                hide_system_titlebar: false,
+                ui_language: Default::default(),
                 voice_auto_insert: true,
                 llm_enabled: false,
                 llm_model: LlmModelPreset::Configured,
@@ -821,6 +812,8 @@ mod tests {
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Sharp,
             theme_preset: ThemePreset::Daylight,
+            hide_system_titlebar: false,
+            ui_language: Default::default(),
             voice_auto_insert: true,
             llm_enabled: false,
             llm_model: LlmModelPreset::Configured,
@@ -919,6 +912,8 @@ mod tests {
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Sharp,
             theme_preset: ThemePreset::Daylight,
+            hide_system_titlebar: false,
+            ui_language: Default::default(),
             voice_auto_insert: true,
             llm_enabled: false,
             llm_model: LlmModelPreset::Configured,

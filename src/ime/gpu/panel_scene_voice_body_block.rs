@@ -43,12 +43,14 @@
                     } else {
                         chrome.voice_transcript.clone()
                     };
+                    let transcript = if chrome.voice_transcript.is_empty() { ui.message(&transcript).into_owned() } else { transcript };
                     let status_text = voice_status_text(
                         chrome.voice_state,
                         chrome.voice_permission,
                         !chrome.voice_transcript.is_empty(),
                         &chrome.voice_backend_label,
                     );
+                    let status_text = ui.message(&status_text).into_owned();
                     let live_hint = if chrome.voice_state == VoiceCaptureState::Listening {
                         if chrome.voice_transcript.is_empty() {
                             "Listening now..."
@@ -112,7 +114,7 @@
                     }
                     let voice_layouts = vec![
                         TextBlock {
-                            text: "Voice input".to_string(),
+                            text: ui.tr("Voice input").to_string(),
                             origin: [voice_content_x, voice_header_y],
                             max_width: drawer_rect[2]
                                 - if live_hint.is_empty() {
@@ -142,7 +144,7 @@
                             text: if live_hint.is_empty() {
                                 status_text
                             } else {
-                                live_hint.to_string()
+                                ui.tr(live_hint).to_string()
                             },
                             origin: [
                                 live_hint_x,
@@ -401,7 +403,7 @@
                             }
                         _ => {
                             let layout = TextBlock {
-                                text: label.to_string(),
+                                text: ui.tr(label).to_string(),
                                     origin: [
                                 visual_rect[0] + 7.2 * responsive_scale * voice_scale,
                                 visual_rect[1] + 5.8 * responsive_scale * voice_scale,

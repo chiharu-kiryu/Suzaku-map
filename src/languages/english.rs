@@ -57,6 +57,11 @@ fn dictionary() -> &'static [Word] {
                     .iter()
                     .flat_map(|(_, words)| words.iter().copied()),
             )
+            .chain(lexicon::SENTENCES.iter().flat_map(|sentence| {
+                sentence
+                    .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                    .filter(|word| !word.is_empty())
+            }))
             .enumerate()
             .map(|(rank, text)| Word {
                 text: text.to_lowercase(),
@@ -167,8 +172,19 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
         }
     };
     if seed.ends_with(char::is_whitespace) {
-        for next in context_words(&context) {
-            add(format!("{seed}{next}"));
+        if !seed.trim_end().ends_with(',') {
+            for next in context_words(&context) {
+                add(format!("{seed}{next}"));
+            }
+        }
+        for (_, remaining) in sentence_remainders(seed, committed_context) {
+            let next = remaining
+                .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                .next()
+                .unwrap_or("");
+            if !next.is_empty() {
+                add(format!("{seed}{next}"));
+            }
         }
         return output;
     }
@@ -185,6 +201,24 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
         if word.starts_with(&lower) && word != lower {
             matched_context = true;
             add(format!("{left}{}", case_completion(&word, prefix)));
+        }
+    }
+    for (matched, remaining) in sentence_remainders(seed, committed_context) {
+        // A known phrase can finish its next word even when that word has no
+        // dedicated NEXT_WORDS entry. A bare prefix still uses vocabulary ranks.
+        if matched <= prefix.chars().count() {
+            continue;
+        }
+        let suffix = remaining
+            .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+            .next()
+            .unwrap_or("");
+        if !suffix.is_empty() {
+            matched_context = true;
+            add(format!(
+                "{left}{}",
+                case_completion(&format!("{lower}{suffix}"), prefix)
+            ));
         }
     }
     // Do not dilute "good m -> morning" with "my/me", or "please sen -> send"
@@ -223,62 +257,95 @@ pub fn english_sentence_variants(seed: &str) -> Vec<String> {
     english_variants(seed, "")
 }
 
-/// Explicit collocations only. Finish a word before offering a sentence; never
-/// fabricate a suffix for an unknown word, identifier, URL or password-like token.
+/// Match a typed prefix without changing its spelling, case or spacing. Return
+/// only new characters from the authored phrase, never committed context.
+fn phrase_remainder<'a>(typed: &str, phrase: &'a str) -> Option<&'a str> {
+    let mut typed = typed.chars().peekable();
+    let mut phrase_chars = phrase.char_indices().peekable();
+    while let Some(ch) = typed.next() {
+        let (_, expected) = phrase_chars.next()?;
+        if ch.is_whitespace() && expected.is_whitespace() {
+            while typed.peek().is_some_and(|ch| ch.is_whitespace()) {
+                typed.next();
+            }
+            while phrase_chars
+                .peek()
+                .is_some_and(|(_, ch)| ch.is_whitespace())
+            {
+                phrase_chars.next();
+            }
+        } else if !ch.eq_ignore_ascii_case(&expected) {
+            return None;
+        }
+    }
+    let start = phrase_chars
+        .peek()
+        .map_or(phrase.len(), |(index, _)| *index);
+    (start < phrase.len()).then_some(&phrase[start..])
+}
+
+fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> {
+    if seed.len() > 4096 || english_word_prefix(seed.trim_end().trim_end_matches(',')).is_none() {
+        return Vec::new();
+    }
+    let combined = format!("{} {seed}", bounded_context(context));
+    let mut boundary = true;
+    let starts: Vec<_> = combined
+        .char_indices()
+        .filter_map(|(index, ch)| {
+            let start = boundary && ch.is_ascii_alphabetic();
+            boundary = ch.is_whitespace() || matches!(ch, '(' | '[' | '{' | '"' | '“' | '‘');
+            start.then_some(index)
+        })
+        .collect();
+    // Longest matching context first; a later word must not displace a full
+    // phrase match. A failed match never falls back to a fabricated suffix.
+    for start in starts {
+        let typed = &combined[start..];
+        let matches: Vec<_> = lexicon::SENTENCES
+            .iter()
+            .filter_map(|phrase| {
+                phrase_remainder(typed, phrase).map(|rest| (typed.chars().count(), rest))
+            })
+            .collect();
+        if !matches.is_empty() {
+            return matches;
+        }
+    }
+    Vec::new()
+}
+
+/// Explicit collocations only, including a partly typed continuation. Unknown
+/// words, identifiers and URLs still have no made-up sentence fallback.
 pub(crate) fn mixed_candidates(
     seed: &str,
     context: &str,
 ) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
     use crate::ime::candidate_mix::CandidateKind;
-    const ENDINGS: &[(&str, &[&str])] = &[
-        ("hello", &[", how are you?", ", nice to meet you."]),
-        ("help", &[" me with this, please."]),
-        ("good morning", &[", how are you?", ", have a nice day."]),
-        ("good evening", &[", nice to see you."]),
-        ("thank you", &[" for your help.", " very much."]),
-        ("thank you for", &[" your help.", " the update."]),
-        ("hello world", &[", nice to meet you."]),
-        ("thanks", &[" for your help.", " for the update."]),
-        ("please send", &[" me the details.", " me a message."]),
-        ("please check", &[" the latest version.", " the details."]),
-        ("please", &[" let me know.", " check the details."]),
-        ("how", &[" are you?", " can I help you?"]),
-        ("how are", &[" you?", " things going?"]),
-        ("let me", &[" know what you think.", " check the details."]),
-        ("let me know", &[" what you think.", " if you need help."]),
-        ("see you", &[" tomorrow.", " later."]),
-        ("i would like", &[" to know more.", " to ask a question."]),
-        ("i am", &[" happy to help.", " working on it."]),
-        ("we can", &[" discuss it later.", " try again."]),
-        ("sorry", &[" for the delay.", " about that."]),
-        ("welcome", &[" to the team."]),
-        ("looking forward", &[" to hearing from you."]),
-    ];
     let mut output = Vec::new();
-    for completed in english_variants(seed, context).into_iter().take(6) {
-        let Some(tail) = english_word_prefix(&completed) else {
-            continue;
+    for (_, remaining) in sentence_remainders(seed, context) {
+        let text = if let Some(prefix) = english_word_prefix(seed) {
+            let split = remaining
+                .find(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                .unwrap_or(remaining.len());
+            let word = case_completion(
+                &format!(
+                    "{}{suffix}",
+                    prefix.to_lowercase(),
+                    suffix = &remaining[..split]
+                ),
+                prefix,
+            );
+            format!(
+                "{}{word}{}",
+                &seed[..seed.len() - prefix.len()],
+                &remaining[split..]
+            )
+        } else {
+            format!("{seed}{remaining}")
         };
-        if !is_known_english_word(tail) {
-            continue;
-        }
-        let combined = format!("{} {completed}", bounded_context(context)).to_lowercase();
-        let matched = ENDINGS
-            .iter()
-            .filter(|(prefix, _)| {
-                combined == *prefix
-                    || combined
-                        .strip_suffix(prefix)
-                        .is_some_and(|left| left.ends_with(char::is_whitespace))
-            })
-            .max_by_key(|(prefix, _)| prefix.len());
-        if let Some((_, endings)) = matched {
-            for ending in *endings {
-                let text = format!("{completed}{ending}");
-                if output.len() < 6 && !output.iter().any(|(value, _)| value == &text) {
-                    output.push((text, CandidateKind::Sentence));
-                }
-            }
+        if output.len() < 6 && !output.iter().any(|(value, _)| value == &text) {
+            output.push((text, CandidateKind::Sentence));
         }
     }
     output
@@ -324,6 +391,83 @@ mod tests {
             english_variants("m", "")[1]
         );
         assert_eq!(english_sentence_variants("unknownword "), ["unknownword "]);
+    }
+
+    #[test]
+    fn writing_flow_keeps_words_and_sentences_through_spaces_and_partial_words() {
+        for (seed, word, sentence) in [
+            (
+                "please send ",
+                "please send me",
+                "please send me the details.",
+            ),
+            (
+                "please send m",
+                "please send me",
+                "please send me the details.",
+            ),
+            (
+                "please send me the d",
+                "please send me the details",
+                "please send me the details.",
+            ),
+            (
+                "let me know ",
+                "let me know what",
+                "let me know what you think.",
+            ),
+            (
+                "let me know w",
+                "let me know what",
+                "let me know what you think.",
+            ),
+            (
+                "  Please  send  ",
+                "  Please  send  me",
+                "  Please  send  me the details.",
+            ),
+            ("hello, ", "hello, how", "hello, how are you?"),
+            ("hello, h", "hello, how", "hello, how are you?"),
+            ("HEL", "HELLO", "HELLO, how are you?"),
+            ("Please SEN", "Please SEND", "Please SEND me the details."),
+        ] {
+            let words = english_variants(seed, "");
+            let sentences = mixed_candidates(seed, "");
+            assert_eq!(words[0], seed);
+            assert!(words.contains(&word.into()), "{seed}: {words:?}");
+            assert!(
+                sentences.iter().any(|(text, _)| text == sentence),
+                "{seed}: {sentences:?}"
+            );
+            assert!(sentences.iter().all(|(text, _)| text.starts_with(seed)));
+        }
+    }
+
+    #[test]
+    fn writing_flow_extends_only_the_draft_and_stops_at_unknown_or_finished_text() {
+        assert!(
+            mixed_candidates("me the d", "please send")
+                .iter()
+                .any(|(text, _)| text == "me the details.")
+        );
+        assert!(
+            mixed_candidates("know ", "let me")
+                .iter()
+                .any(|(text, _)| text == "know what you think.")
+        );
+        for seed in [
+            "let me know zzz",
+            "please send!",
+            "please send me the details.",
+            "https://please",
+            "src/please",
+            "user_please",
+            "please-send",
+            "don't",
+        ] {
+            assert!(mixed_candidates(seed, "").is_empty(), "{seed}");
+        }
+        assert!(mixed_candidates("x".repeat(5000).as_str(), "please").is_empty());
     }
 
     #[test]

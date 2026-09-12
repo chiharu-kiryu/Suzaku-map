@@ -384,7 +384,30 @@ impl PanelState {
     }
 
     pub(super) fn fit_window_to_content(&mut self) {
-        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+        if self.kind == PanelWindowKind::Settings {
+            let Some(metadata) = self
+                .last_scene
+                .as_ref()
+                .and_then(|scene| scene.settings_scroll_metadata)
+            else {
+                return;
+            };
+            let dpi = self.window.scale_factor();
+            let max_height = (680.0 * dpi).round() as u32;
+            let max_height = self
+                .window
+                .current_monitor()
+                .map_or(max_height, |monitor| {
+                    max_height.min(monitor.size().height.saturating_sub((60.0 * dpi) as u32))
+                })
+                .max(1);
+            let min_height = ((220.0 * dpi).ceil() as u32).min(max_height);
+            let height =
+                (metadata.preferred_window_height.ceil() as u32).clamp(min_height, max_height);
+            self.request_panel_size(PhysicalSize::new(self.window.inner_size().width, height));
+            return;
+        }
+        if self.chrome.compact_mode {
             return;
         }
         let current = self.window.inner_size();
@@ -399,6 +422,19 @@ impl PanelState {
 
     pub(super) fn is_external_window_resize(&mut self, size: PhysicalSize<u32>) -> bool {
         self.window_resize_state.observe(size, Instant::now())
+    }
+
+    pub(super) fn apply_window_decorations(&mut self) {
+        // The orb is always borderless. Expanded windows follow the saved preference,
+        // not the window manager's possibly delayed decoration acknowledgement.
+        let decorated = !self.chrome.hide_system_titlebar
+            && (self.kind == PanelWindowKind::Settings || !self.chrome.compact_mode);
+        // Track requests ourselves: Wayland may still report the old decoration state
+        // when the user changes their preference again before the configure event.
+        if self.applied_window_decorations != Some(decorated) {
+            self.window.set_decorations(decorated);
+            self.applied_window_decorations = Some(decorated);
+        }
     }
 
     pub(super) fn apply_compact_mode(&mut self, compact: bool) {
@@ -420,10 +456,9 @@ impl PanelState {
                     .to_logical::<f64>(self.window.scale_factor()),
             );
             self.expanded_window_pos = self.window.outer_position().ok();
-            self.expanded_window_decorations = self.window.is_decorated();
             self.chrome.settings_open = false;
             self.chrome.compact_mode = true;
-            self.window.set_decorations(false);
+            self.apply_window_decorations();
             self.window.set_resizable(false);
             let compact_size =
                 LogicalSize::new(COMPACT_PANEL_INNER_WIDTH, COMPACT_PANEL_INNER_HEIGHT);
@@ -448,10 +483,9 @@ impl PanelState {
                 MIN_PANEL_INNER_WIDTH,
                 MIN_PANEL_INNER_HEIGHT,
             )));
-            self.window
-                .set_decorations(self.expanded_window_decorations);
             self.window.set_resizable(true);
             self.chrome.compact_mode = false;
+            self.apply_window_decorations();
             let target = self.fitted_size_for_width(
                 restored
                     .to_physical::<u32>(self.window.scale_factor())
@@ -653,7 +687,7 @@ impl PanelState {
     }
 
     pub(super) fn constrain_expanded_window_position(&mut self) {
-        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+        if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             return;
         }
         let Ok(position) = self.window.outer_position() else {
@@ -781,7 +815,6 @@ impl PanelState {
             self.interaction.scale_dragging = false;
             self.interaction.scale_drag_start_cursor_x = None;
             self.interaction.scale_drag_start_scale = self.window_scale;
-            self.rebuild_font_atlas();
         }
     }
 
@@ -810,9 +843,8 @@ impl PanelState {
         self.request_panel_size(target);
         self.expanded_window_size = Some(target.to_logical(self.window.scale_factor()));
         self.persist_display_settings();
-        if quantize {
-            self.rebuild_font_atlas();
-        }
+        // Native-size glyphs are cached from the next scene's physical heights.
+        // Keep already resolved fonts and layout metrics across zoom/DPI changes.
     }
 
     pub(super) fn reset_window_scale(&mut self) {

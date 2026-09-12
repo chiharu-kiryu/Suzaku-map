@@ -19,6 +19,7 @@ mod settings_scene;
 mod shapes;
 mod text_helpers;
 mod theme_metrics;
+mod translation_scene;
 mod types;
 
 pub use self::brand::{suzaku_badge_quads, suzaku_icon_argb, theme_badge_quads, theme_icon_argb};

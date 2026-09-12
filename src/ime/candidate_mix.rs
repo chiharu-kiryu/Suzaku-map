@@ -278,6 +278,19 @@ pub fn display_label(
     source: CandidateSource,
     weight: u8,
 ) -> String {
+    display_label_for_seed("", "", text, kind, source, weight)
+}
+
+/// English long drafts elide only text shared with the preedit, keeping the
+/// changing word/continuation visible. Replacement and commit text stay untouched.
+pub fn display_label_for_seed(
+    language: &str,
+    seed: &str,
+    text: &str,
+    kind: CandidateKind,
+    source: CandidateSource,
+    weight: u8,
+) -> String {
     let marker = match kind {
         CandidateKind::Word => "ᵂ",
         CandidateKind::Sentence => "ˢ",
@@ -299,7 +312,16 @@ pub fn display_label(
         }
     );
     let room = PREVIEW_CHARS.saturating_sub(suffix.chars().count());
-    let preview = if text.chars().count() > room {
+    let preview = if language == "en" {
+        english_preview(seed, text, room)
+    } else {
+        bounded_preview(text, room)
+    };
+    format!("{preview}{suffix}")
+}
+
+fn bounded_preview(text: &str, room: usize) -> String {
+    if text.chars().count() > room {
         format!(
             "{}…",
             text.chars()
@@ -308,14 +330,112 @@ pub fn display_label(
         )
     } else {
         text.into()
-    };
-    format!("{preview}{suffix}")
+    }
+}
+
+fn english_preview(seed: &str, text: &str, room: usize) -> String {
+    let characters: Vec<_> = text.char_indices().collect();
+    let shared = seed
+        .chars()
+        .zip(text.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    if characters.len() <= room || shared <= room / 2 {
+        return bounded_preview(text, room);
+    }
+    let starts: Vec<_> = characters
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (_, ch))| {
+            (index > 0
+                && index <= shared
+                && !ch.is_whitespace()
+                && characters[index - 1].1.is_whitespace())
+            .then_some(index)
+        })
+        .collect();
+    let start = starts
+        .iter()
+        .find(|&&index| characters.len() - index < room)
+        .or_else(|| starts.last());
+    match start {
+        Some(&index) => format!(
+            "…{}",
+            bounded_preview(&text[characters[index].0..], room.saturating_sub(1))
+        ),
+        None => bounded_preview(text, room),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ime::{CommitOptions, EngineConfig, XRTabletImeEngine};
+
+    #[test]
+    fn english_long_previews_show_the_changed_tail_without_changing_payloads() {
+        let seed = "For the next release please review the current docu";
+        let one = format!("{seed}ment");
+        let two = format!("{seed}mentation");
+        let label = |text: &str| {
+            display_label_for_seed(
+                "en",
+                seed,
+                text,
+                CandidateKind::Word,
+                CandidateSource::Local,
+                92,
+            )
+        };
+        assert_ne!(label(&one), label(&two));
+        assert!(label(&one).starts_with('…') && label(&one).contains("document"));
+        assert!(label(&two).contains("documentation"));
+        for text in [
+            &one,
+            &two,
+            &format!("{seed}ment before we publish the next stable version tomorrow."),
+        ] {
+            assert!(label(text).chars().count() <= PREVIEW_CHARS);
+        }
+        let rewritten = format!("Instead {}", "a different opening ".repeat(6));
+        assert!(label(&rewritten).starts_with("Instead "));
+        let unicode_seed = format!("日本語 café 😀 {seed}");
+        let unicode_text = format!("{unicode_seed}mentation");
+        let unicode_label = display_label_for_seed(
+            "en",
+            &unicode_seed,
+            &unicode_text,
+            CandidateKind::Word,
+            CandidateSource::Local,
+            92,
+        );
+        assert!(unicode_label.starts_with('…') && unicode_label.contains("documentation"));
+        assert!(unicode_label.chars().count() <= PREVIEW_CHARS);
+        assert_eq!(
+            display_label_for_seed(
+                "ja",
+                seed,
+                &one,
+                CandidateKind::Word,
+                CandidateSource::Local,
+                92
+            ),
+            display_label(&one, CandidateKind::Word, CandidateSource::Local, 92)
+        );
+        let mut engine = engine("en", seed);
+        let index = engine
+            .candidates()
+            .iter()
+            .position(|c| c.text == one)
+            .unwrap();
+        assert_eq!(engine.ibus_candidate_label(index), Some(label(&one)));
+        engine.select_candidate(index);
+        assert_eq!(engine.selected_completion_text(true), Some(one.as_str()));
+        assert_eq!(
+            engine.commit(CommitOptions { force: true }).text.as_deref(),
+            Some(one.as_str())
+        );
+    }
 
     fn engine(language: &str, seed: &str) -> XRTabletImeEngine {
         let mut engine = XRTabletImeEngine::new(EngineConfig {

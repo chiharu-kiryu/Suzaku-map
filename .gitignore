@@ -9,3 +9,16 @@ android/app/build/
 android/app/src/main/jniLibs/
 android/local.properties
 *.hprof
+
+# Local secrets; sanitized examples remain reviewable.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials.json

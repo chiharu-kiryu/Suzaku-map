@@ -215,6 +215,56 @@ fn handwriting_candidate_labels_stay_inside_short_footer_buttons() {
 }
 
 #[test]
+fn titlebar_setting_is_searchable_and_keeps_controls_usable_without_native_chrome() {
+    for width in [420.0, 520.0, 760.0] {
+        for text_scale in [DisplayTextScale::Small, DisplayTextScale::Large] {
+            for query in ["title", "gnome", "标题栏"] {
+                let chrome = PanelChromeState {
+                    hide_system_titlebar: true,
+                    settings_search_query: query.into(),
+                    settings_collapsed_sections: vec![true; 20],
+                    text_scale,
+                    ..Default::default()
+                };
+                let scene =
+                    WgpuCandidateRenderer::new(width, 340.0).build_settings_scene(&chrome, None);
+                for (hide, label) in [(false, "Show"), (true, "Hide")] {
+                    let kind = InteractionKind::SetHideSystemTitlebar(hide);
+                    let target = scene
+                        .interactive_targets
+                        .iter()
+                        .find(|t| t.kind == kind)
+                        .unwrap();
+                    let layout = scene
+                        .text_sections
+                        .iter()
+                        .flat_map(|s| &s.layouts)
+                        .find(|layout| layout.lines == [label])
+                        .unwrap();
+                    assert!(!layout.truncated);
+                    assert_inside(layout.bounds, target.rect);
+                    assert_eq!(
+                        scene.hit_interaction(
+                            target.rect[0] + target.rect[2] / 2.0,
+                            target.rect[1] + target.rect[3] / 2.0,
+                        ),
+                        Some(kind)
+                    );
+                }
+                for control in [InteractionKind::DragWindow, InteractionKind::SettingsToggle] {
+                    assert!(
+                        scene
+                            .interactive_targets
+                            .iter()
+                            .any(|target| target.kind == control)
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn settings_search_expands_matching_options_and_keeps_labels_aligned() {
     for width in [420.0, 520.0, 760.0] {
         for text_scale in [
@@ -261,6 +311,102 @@ fn settings_search_expands_matching_options_and_keeps_labels_aligned() {
 }
 
 #[test]
+fn settings_categories_align_and_global_search_crosses_pages() {
+    use suzaku_map::ime::gpu::{LlmTemperaturePreset, SettingsCategory};
+    for width in [400.0, 520.0, 620.0, 960.0] {
+        for text_scale in [
+            DisplayTextScale::Small,
+            DisplayTextScale::Medium,
+            DisplayTextScale::Large,
+        ] {
+            let mut heights = Vec::new();
+            for category in SettingsCategory::ALL {
+                let mut chrome = PanelChromeState {
+                    settings_category: category,
+                    text_scale,
+                    ..Default::default()
+                };
+                let renderer = WgpuCandidateRenderer::new(width, 1200.0);
+                let scene = renderer.build_settings_scene(&chrome, None);
+                let metadata = scene.settings_scroll_metadata.unwrap();
+                heights.push(metadata.preferred_window_height);
+                assert_eq!(metadata.max_scroll_offset, 0.0);
+                for tab in SettingsCategory::ALL {
+                    let kind = InteractionKind::SetSettingsCategory(tab);
+                    let target = scene
+                        .interactive_targets
+                        .iter()
+                        .find(|t| t.kind == kind)
+                        .unwrap();
+                    let label = scene
+                        .text_sections
+                        .iter()
+                        .flat_map(|s| &s.layouts)
+                        .find(|l| l.lines == [tab.label()])
+                        .unwrap_or_else(|| {
+                            panic!("{width}px {text_scale:?}: missing full {tab:?} label")
+                        });
+                    assert!(!label.truncated);
+                    assert_inside(label.bounds, target.rect);
+                    assert_eq!(
+                        scene.hit_interaction(
+                            target.rect[0] + target.rect[2] / 2.0,
+                            target.rect[1] + target.rect[3] / 2.0
+                        ),
+                        Some(kind)
+                    );
+                    assert!(target.rect[1] + target.rect[3] <= metadata.track_rect[1]);
+                }
+                let model_visible = scene
+                    .interactive_targets
+                    .iter()
+                    .any(|t| t.kind == InteractionKind::SetLlmEnabled(true));
+                assert_eq!(model_visible, category == SettingsCategory::Model);
+                let exact = WgpuCandidateRenderer::new(width, metadata.preferred_window_height)
+                    .build_settings_scene(&chrome, None);
+                assert!(exact.settings_scroll_metadata.unwrap().max_scroll_offset < 0.01);
+                chrome.settings_search_query = "Tone".into();
+                let results = renderer.build_settings_scene(&chrome, None);
+                assert!(
+                    results.interactive_targets.iter().any(|t| t.kind
+                        == InteractionKind::SetLlmTemperature(LlmTemperaturePreset::Focused))
+                );
+                assert!(
+                    results
+                        .interactive_targets
+                        .iter()
+                        .any(|t| t.kind == InteractionKind::SettingsSearchClear)
+                );
+                let clear = results
+                    .interactive_targets
+                    .iter()
+                    .find(|t| t.kind == InteractionKind::SettingsSearchClear)
+                    .unwrap()
+                    .rect;
+                assert_eq!(
+                    results.hit_interaction(clear[0] + clear[2] / 2.0, clear[1] + clear[3] / 2.0),
+                    Some(InteractionKind::SettingsSearchClear)
+                );
+                chrome.settings_search_query.clear();
+                chrome.settings_collapsed_sections = vec![true; 15];
+                let collapsed = renderer.build_settings_scene(&chrome, None);
+                assert!(
+                    collapsed
+                        .settings_scroll_metadata
+                        .unwrap()
+                        .preferred_window_height
+                        <= metadata.preferred_window_height
+                );
+            }
+            assert!(
+                heights[2] < heights[0],
+                "short model page should not keep appearance-page whitespace"
+            );
+        }
+    }
+}
+
+#[test]
 fn settings_scroll_clips_text_and_click_targets_below_the_search_bar() {
     for offset in [0.0, 13.0, 77.0, 10_000.0] {
         let scene = WgpuCandidateRenderer::new(420.0, 300.0).build_settings_scene(
@@ -278,6 +424,7 @@ fn settings_scroll_clips_text_and_click_targets_below_the_search_bar() {
                 target.kind,
                 InteractionKind::DragWindow
                     | InteractionKind::SettingsToggle
+                    | InteractionKind::SetSettingsCategory(_)
                     | InteractionKind::SettingsSearchInput
                     | InteractionKind::SettingsSearchClear
                     | InteractionKind::SettingsScrollTrack

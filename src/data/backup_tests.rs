@@ -1,6 +1,24 @@
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[test]
+fn interface_languages_are_backed_up_and_unknown_values_are_rejected() {
+    let fixture = Fixture::new();
+    fixture.write_settings();
+    for language in crate::ui::UiLanguage::ALL {
+        files::atomic_write(
+            &fixture.paths.panel,
+            format!("ui_language={}\n", language.id()).as_bytes(),
+        )
+        .unwrap();
+        let backup = Backup::collect(&fixture.paths).unwrap();
+        let restored = Backup::parse(&backup.to_json().to_string()).unwrap();
+        assert_eq!(restored.panel.unwrap()["ui_language"], language.id());
+        assert_eq!(restored.ime.unwrap()["language"], "ja");
+    }
+    assert!(!panel_value_valid("ui_language", "arbitrary"));
+}
+
 struct Fixture {
     root: PathBuf,
     paths: DataPaths,
@@ -57,6 +75,30 @@ fn guardian_themes_and_smooth_system_font_survive_backup_round_trip() {
         assert_eq!(panel["theme_preset"], theme);
         assert_eq!(panel["font_face"], "auto");
         assert_eq!(panel["text_smoothing"], "smooth");
+    }
+}
+
+#[test]
+fn system_titlebar_preference_survives_backup_and_restore() {
+    let fixture = Fixture::new();
+    for hide in ["true", "false"] {
+        files::atomic_write(
+            &fixture.paths.panel,
+            format!("hide_system_titlebar={hide}\nfont_face=monaco\n").as_bytes(),
+        )
+        .unwrap();
+        let backup = Backup::collect(&fixture.paths).unwrap();
+        let restored = Backup::parse(&backup.to_json().to_string()).unwrap();
+        assert_eq!(
+            restored.panel.as_ref().unwrap()["hide_system_titlebar"],
+            hide
+        );
+        files::atomic_write(&fixture.paths.panel, b"theme_preset=suzaku\n").unwrap();
+        restore_locked(&fixture.paths, &restored).unwrap();
+        assert_eq!(
+            Backup::collect(&fixture.paths).unwrap().panel,
+            restored.panel
+        );
     }
 }
 
@@ -186,6 +228,8 @@ fn panel_unknown_duplicate_or_invalid_values_are_not_exported() {
         "history=secret",
         "window_scale=inf",
         "theme_preset=unknown",
+        "hide_system_titlebar=1",
+        "hide_system_titlebar=true\nhide_system_titlebar=false",
         "text_scale=large\ntext_scale=small",
         "not-a-key",
     ] {

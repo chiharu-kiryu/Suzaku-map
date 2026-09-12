@@ -38,7 +38,7 @@ typedef struct _SuzakuIBusEngine {
     IBusEngine parent_instance;
     GString *input;
     gchar *completion_undo;
-    gboolean sensitive;
+    gboolean bypass_input;
     gboolean private_input;
 } SuzakuIBusEngine;
 
@@ -122,8 +122,8 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     guint language = suzaku_host_ime_language_kind();
     const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
     gchar *help = g_strdup_printf(
-        "%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | 1–6 选词续写 · Alt+数字 输入数字 · 空格连写 · Enter/点击提交",
-        mode);
+        "%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | 1–6 选词续写 · Alt+数字 输入数字 · 空格连写 · %sEnter/点击提交",
+        mode, language == 2 ? "Ctrl+Backspace 删词 · " : "");
     ibus_engine_update_auxiliary_text(engine, ibus_text_new_from_string(help), TRUE);
     g_free(help);
 }
@@ -146,6 +146,24 @@ static void suzaku_ibus_engine_append_character(SuzakuIBusEngine *self, gunichar
     suzaku_ibus_engine_sync_input(self);
 }
 
+/* Edit only this uncommitted English draft. Preserve preceding whitespace;
+ * contractions, Unicode and attached punctuation belong to the last word. */
+static void suzaku_ibus_engine_delete_word(SuzakuIBusEngine *self) {
+    const gchar *start = self->input->str;
+    const gchar *end = start + self->input->len;
+    const gchar *previous;
+    while ((previous = g_utf8_find_prev_char(start, end)) != NULL &&
+           g_unichar_isspace(g_utf8_get_char(previous))) {
+        end = previous;
+    }
+    while ((previous = g_utf8_find_prev_char(start, end)) != NULL &&
+           !g_unichar_isspace(g_utf8_get_char(previous))) {
+        end = previous;
+    }
+    g_string_truncate(self->input, (gsize)(end - start));
+    suzaku_ibus_engine_sync_input(self);
+}
+
 static void suzaku_ibus_engine_clear_local(SuzakuIBusEngine *self) {
     g_string_truncate(self->input, 0);
     g_clear_pointer(&self->completion_undo, g_free);
@@ -162,7 +180,7 @@ static void suzaku_ibus_engine_clear(SuzakuIBusEngine *self) {
  * Backspace immediately after a replacement restores the exact previous spelling. */
 static gboolean suzaku_ibus_engine_complete(SuzakuIBusEngine *self, gboolean append_space) {
     if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
-        self->sensitive || self->input->len == 0) { return FALSE; }
+        self->bypass_input || self->input->len == 0) { return FALSE; }
     char *candidate = suzaku_host_ime_completion_text_utf8(append_space);
     if (!append_space && candidate == NULL) { return FALSE; }
     const gchar *text = candidate != NULL ? candidate : self->input->str;
@@ -210,7 +228,7 @@ static void suzaku_ibus_schedule_prediction(void) {
 
 static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self) {
     if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
-        self->sensitive || self->input->len == 0 || !suzaku_host_ime_commit_selected(true)) {
+        self->bypass_input || self->input->len == 0 || !suzaku_host_ime_commit_selected(true)) {
         return FALSE;
     }
 
@@ -229,7 +247,7 @@ static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self) {
 static void suzaku_ibus_engine_move_selection(
     SuzakuIBusEngine *self, ptrdiff_t delta) {
     if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
-        self->sensitive || self->input->len == 0) {
+        self->bypass_input || self->input->len == 0) {
         return;
     }
     g_clear_pointer(&self->completion_undo, g_free);
@@ -242,9 +260,17 @@ static gboolean suzaku_ibus_engine_process_key_event(
     (void)keycode;
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
 
-    if (!suzaku_ibus_engine_is_focused(engine) || self->sensitive) { return FALSE; }
+    if (!suzaku_ibus_engine_is_focused(engine) || self->bypass_input) { return FALSE; }
 
-    if ((state & (IBUS_RELEASE_MASK | SUZAKU_SYSTEM_MODIFIERS)) != 0) {
+    if ((state & IBUS_RELEASE_MASK) != 0) { return FALSE; }
+    if (keyval == IBUS_KEY_BackSpace && self->input->len > 0 &&
+        suzaku_host_ime_language_kind() == 2 && (state & IBUS_CONTROL_MASK) != 0 &&
+        (state & ((SUZAKU_SYSTEM_MODIFIERS & ~IBUS_CONTROL_MASK) |
+                  IBUS_SHIFT_MASK | IBUS_MOD1_MASK | IBUS_MOD5_MASK)) == 0) {
+        suzaku_ibus_engine_delete_word(self);
+        return TRUE;
+    }
+    if ((state & SUZAKU_SYSTEM_MODIFIERS) != 0) {
         return FALSE;
     }
     /* Alt+digits enter literal numbers. Leave Shift's layout-resolved symbols
@@ -404,16 +430,20 @@ static void suzaku_ibus_engine_reset(IBusEngine *engine) {
 static void suzaku_ibus_engine_set_content_type(IBusEngine *engine, guint purpose, guint hints) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
     gboolean was_private = self->private_input;
-    self->sensitive = purpose == IBUS_INPUT_PURPOSE_PASSWORD || purpose == IBUS_INPUT_PURPOSE_PIN;
+    /* Numeric widgets own their literal keys, including decimals, signs and
+     * phone punctuation. Candidate-number shortcuts must never consume them. */
+    self->bypass_input = purpose == IBUS_INPUT_PURPOSE_PASSWORD || purpose == IBUS_INPUT_PURPOSE_PIN ||
+        purpose == IBUS_INPUT_PURPOSE_DIGITS || purpose == IBUS_INPUT_PURPOSE_NUMBER ||
+        purpose == IBUS_INPUT_PURPOSE_PHONE;
     /* PRIVATE was added in IBus 1.5.26; use its ABI bit for older headers as well. */
-    self->private_input = self->sensitive || (hints & (1u << 11)) != 0;
+    self->private_input = self->bypass_input || (hints & (1u << 11)) != 0;
     if (!suzaku_ibus_engine_is_focused(engine)) {
-        if (self->sensitive || was_private != self->private_input) { suzaku_ibus_engine_clear_local(self); }
+        if (self->bypass_input || was_private != self->private_input) { suzaku_ibus_engine_clear_local(self); }
         return;
     }
     suzaku_host_ime_set_private(self->private_input);
     /* A privacy transition must not carry an old private preedit into a later model request. */
-    if (self->sensitive || was_private != self->private_input) {
+    if (self->bypass_input || was_private != self->private_input) {
         suzaku_ibus_engine_clear(self);
     }
     suzaku_ibus_schedule_prediction();
@@ -455,7 +485,7 @@ static void suzaku_ibus_engine_page_down(IBusEngine *engine) {
 static void suzaku_ibus_engine_candidate_clicked(
     IBusEngine *engine, guint index, guint button, guint state) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
-    if (!suzaku_ibus_engine_is_focused(engine) || self->sensitive || button != 1 ||
+    if (!suzaku_ibus_engine_is_focused(engine) || self->bypass_input || button != 1 ||
         (state & (SUZAKU_SYSTEM_MODIFIERS | IBUS_MOD1_MASK | IBUS_RELEASE_MASK)) != 0) {
         return;
     }
@@ -565,7 +595,7 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
         GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
         if (focused != NULL) {
             SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
-            if (!engine->sensitive) {
+            if (!engine->bypass_input) {
                 ibus_engine_commit_text(
                     IBUS_ENGINE(engine), ibus_text_new_from_string(request + 1));
                 delivered = TRUE;

@@ -56,6 +56,7 @@ else
     keyboard_native_test::native_keyboard_editing_and_focus_return \
     candidates_native_test::native_candidate_clicks_and_async_refresh_are_safe \
     settings_native_test::native_tone_controls_follow_acknowledgements_and_reload \
+    translation::tests::native_translation_preserves_drafts_and_rejects_stale_contexts \
     native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
     status_native_test::native_panel_input_does_not_wait_for_status_probes \
     font_atlas::visual_tests::multilingual_candidates_render_through_the_gpu_without_question_mark_fallback

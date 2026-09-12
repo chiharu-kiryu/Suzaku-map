@@ -66,7 +66,7 @@
                     // During a pending native resize, fit text within the old short viewport.
                     let vertical_fit = (drawer_rect[3].max(0.0) / reserved_h).clamp(0.0, 1.0);
                     let header_y = drawer_rect[1] + top_padding * vertical_fit;
-                    let status_w = measure_text_prefix_width("Trace on canvas", 15, handwriting_hint_px, ui_tracking * handwriting_scale)
+                    let status_w = measure_text_prefix_width(ui.tr("Trace on canvas"), ui.tr("Trace on canvas").chars().count(), handwriting_hint_px, ui_tracking * handwriting_scale)
                         .min(footer_width * 0.46);
                     let title_rect = [footer_left, header_y,
                         (footer_width - status_w - handwriting_footer_gap_x).max(0.0), header_h * vertical_fit];
@@ -133,7 +133,7 @@
 
                     let handwriting_layouts = vec![
                         TextBlock {
-                            text: "Handwrite input".to_string(),
+                            text: ui.tr("Handwrite input").to_string(),
                             origin: [title_rect[0], title_rect[1]],
                             max_width: title_rect[2],
                             pixel_size: handwriting_title_px,
@@ -146,7 +146,7 @@
                         }
                         .layout_in_rect(title_rect, [0.0, 2.0 * responsive_scale * vertical_fit]),
                         TextBlock {
-                            text: "Trace on canvas".to_string(),
+                            text: ui.tr("Trace on canvas").to_string(),
                             origin: [status_rect[0], status_rect[1]],
                             max_width: status_rect[2],
                             pixel_size: handwriting_hint_px,
@@ -159,7 +159,7 @@
                         }
                         .layout_in_rect(status_rect, [0.0, 2.0 * responsive_scale * vertical_fit]),
                         TextBlock {
-                            text: chrome.handwriting_hint.clone(),
+                            text: ui.message(&chrome.handwriting_hint).into_owned(),
                             origin: [hint_rect[0], hint_rect[1]],
                             max_width: hint_rect[2],
                             pixel_size: handwriting_hint_px,

@@ -15,6 +15,7 @@ impl WgpuCandidateRenderer {
         if chrome.compact_mode {
             return self.build_compact_scene(snapshot, chrome, false, false);
         }
+        let ui = chrome.ui_language;
         let theme = PanelTheme::for_preset(chrome.theme_preset);
         let page_bg = theme.page_bg;
         let shell = theme.shell;
@@ -253,7 +254,14 @@ impl WgpuCandidateRenderer {
         let visible_sentence_candidates: Vec<(usize, String)> = chrome
             .sentence_candidates
             .iter()
-            .take(4)
+            .take(
+                if chrome.input_modes_expanded && chrome.active_input_mode == InputMode::Translation
+                {
+                    0
+                } else {
+                    4
+                },
+            )
             .enumerate()
             .map(|(display_index, label)| {
                 (
@@ -381,7 +389,7 @@ impl WgpuCandidateRenderer {
         };
         // No full-screen background here to keep panel bounds-based layout tests stable.
         // Candidate scenes are rendered on top of the host surface directly.
-        if self.scene_height > 0.0 && self.scene_width > 0.0 {
+        if !chrome.hide_system_titlebar && self.scene_height > 0.0 && self.scene_width > 0.0 {
             let bg_left = (panel_x - 1.6 * responsive_scale).max(0.0);
             let bg_width = panel_width + 3.2 * responsive_scale;
             quads.push(CandidateQuad {
@@ -399,7 +407,14 @@ impl WgpuCandidateRenderer {
         let panel_shell_y = (panel_y - 2.0 * responsive_scale).max(0.0);
         let panel_shell_h = (panel_height + 4.2 * responsive_scale)
             .min((self.scene_height - panel_shell_y).max(1.0));
-        let shell_left = panel_x.max(0.0);
+        // Keep content/hit geometry fixed; center only the exterior shell around it.
+        let shell_left = (panel_x
+            - if chrome.hide_system_titlebar {
+                4.0 * responsive_scale
+            } else {
+                0.0
+            })
+        .max(0.0);
         let (seed_input_hovered, seed_input_pressed) =
             interaction_state(InteractionKind::SeedInput);
         append_soft_card_quads(
@@ -519,7 +534,7 @@ impl WgpuCandidateRenderer {
         let (input_layout, input_caret) = layout_input_line(
             &TextBlock {
                 text: if chrome.seed_text.is_empty() {
-                    "Type a seed word or phrase".to_string()
+                    ui.tr("Type a seed word or phrase").to_string()
                 } else {
                     chrome.display_text()
                 },
@@ -547,14 +562,15 @@ impl WgpuCandidateRenderer {
         );
         let header_layouts = vec![
             TextBlock {
-                text: match chrome.theme_preset {
-                    ThemePreset::Suzaku => "Suzaku · Input",
-                    ThemePreset::Baihu => "Baihu · Input",
-                    ThemePreset::Qinglong => "Qinglong · Input",
-                    ThemePreset::Xuanwu => "Xuanwu · Input",
-                    _ => "Seed input",
-                }
-                .to_string(),
+                text: ui
+                    .tr(match chrome.theme_preset {
+                        ThemePreset::Suzaku => "Suzaku · Input",
+                        ThemePreset::Baihu => "Baihu · Input",
+                        ThemePreset::Qinglong => "Qinglong · Input",
+                        ThemePreset::Xuanwu => "Xuanwu · Input",
+                        _ => "Seed input",
+                    })
+                    .to_string(),
                 origin: [
                     panel_x + 16.0 * responsive_scale,
                     input_box_y + 9.0 * responsive_scale,
@@ -1079,6 +1095,10 @@ impl WgpuCandidateRenderer {
                     InteractionKind::InputModeButton(InputMode::Handwriting),
                     chrome.active_input_mode == InputMode::Handwriting,
                 ),
+                (
+                    InteractionKind::InputModeButton(InputMode::Translation),
+                    chrome.active_input_mode == InputMode::Translation,
+                ),
             ]);
         }
         let toolbar_margin_x = 8.0 * responsive_scale;
@@ -1148,6 +1168,28 @@ impl WgpuCandidateRenderer {
                 }
                 InteractionKind::InputModeButton(InputMode::Handwriting) => {
                     append_pen_icon_quads(&mut quads, visual_rect, icon_color)
+                }
+                InteractionKind::InputModeButton(InputMode::Translation) => {
+                    // Code-native vector/text icon, consistent with the existing toolbar.
+                    let layout = TextBlock {
+                        text: "文".into(),
+                        origin: [0.0; 2],
+                        max_width: visual_rect[2],
+                        pixel_size: micro_px,
+                        letter_spacing: 0.0,
+                        line_gap: 0.0,
+                        max_lines: 1,
+                        color: icon_color,
+                        align: TextAlign::Center,
+                        role: TextRole::ToolButton,
+                    }
+                    .layout_in_rect(visual_rect, [1.0, 1.0]);
+                    text_quads.extend(layout.quads.iter().copied());
+                    atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+                    text_sections.push(TextSection {
+                        role: TextRole::ToolButton,
+                        layouts: vec![layout],
+                    });
                 }
                 InteractionKind::SettingsToggle => append_gear_icon_quads(
                     &mut quads,
@@ -1295,6 +1337,18 @@ impl WgpuCandidateRenderer {
                     let handwriting_candidate_scroll = handwriting_candidate_scroll.as_ref();
                     let handwriting_candidate_truncated = &mut handwriting_candidate_truncated;
                     include!("panel_scene_handwriting_body_block.rs");
+                }
+                InputMode::Translation => {
+                    let tool = super::translation_scene::build_translation_tool(
+                        chrome,
+                        drawer_rect,
+                        responsive_scale,
+                    );
+                    quads.extend(tool.quads);
+                    text_quads.extend(tool.text_quads);
+                    atlas_glyphs.extend(tool.atlas_glyphs);
+                    text_sections.extend(tool.text_sections);
+                    interactive_targets.extend(tool.interactive_targets);
                 }
             }
         }

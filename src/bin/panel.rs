@@ -48,6 +48,8 @@ mod status_native_test;
 #[cfg(test)]
 #[path = "panel/tests.rs"]
 mod tests;
+#[path = "panel/translation.rs"]
+mod translation;
 #[path = "panel/tray.rs"]
 mod tray;
 #[path = "panel/voice.rs"]
@@ -232,6 +234,7 @@ fn panel_window_attributes() -> WindowAttributes {
         .with_title(panel_dispatch.default_panel_title())
         .with_window_icon(panel_window_icon())
         .with_transparent(true)
+        .with_decorations(!chrome.hide_system_titlebar)
         .with_inner_size(LogicalSize::new(
             width,
             height.clamp(MIN_PANEL_INNER_HEIGHT, MAX_PANEL_INNER_HEIGHT),
@@ -248,11 +251,15 @@ fn panel_window_attributes() -> WindowAttributes {
     decorate_main_window_attributes(attrs)
 }
 
-fn settings_window_attributes() -> WindowAttributes {
+fn settings_window_attributes(chrome: &PanelChromeState) -> WindowAttributes {
     let attrs = WindowAttributes::default()
         .with_title("Suzaku Panel Settings")
         .with_window_icon(panel_window_icon())
-        .with_inner_size(LogicalSize::new(520.0, 340.0))
+        .with_transparent(true)
+        .with_decorations(!chrome.hide_system_titlebar)
+        .with_inner_size(LogicalSize::new(620.0, 460.0))
+        .with_min_inner_size(LogicalSize::new(400.0, 220.0))
+        .with_max_inner_size(LogicalSize::new(960.0, 800.0))
         .with_visible(false)
         .with_resizable(true);
     decorate_settings_window_attributes(attrs)
@@ -334,6 +341,7 @@ impl PanelApp {
             self.native_hidden_context = Some((frame.host.clone(), frame.context));
         }
         if !visible {
+            panel.cancel_translation();
             panel.finish_text_editing();
         }
         panel.window.set_visible(visible);
@@ -362,6 +370,11 @@ impl PanelApp {
         self.last_native_ime_settings = Some(ime_settings.clone());
         if let Some(panel) = self.panel.as_mut() {
             let previous = (panel.chrome.llm_enabled, panel.chrome.llm_temperature);
+            if configuration_changed {
+                panel.cancel_translation();
+            }
+            panel.chrome.translation.cloud =
+                ime_settings.provider.scope == suzaku_map::languages::model::ModelScope::Cloud;
             if write_finished {
                 self.prediction_settings_sync
                     .finish(Some(&ime_settings), &mut panel.chrome);
@@ -441,6 +454,7 @@ impl PanelApp {
         if let Some(settings) = self.settings.as_mut() {
             if settings.chrome != chrome {
                 settings.chrome = chrome;
+                settings.apply_window_decorations();
                 settings.window.request_redraw();
             }
             settings.window.set_visible(true);
@@ -449,7 +463,7 @@ impl PanelApp {
 
         let window = Arc::new(
             event_loop
-                .create_window(settings_window_attributes())
+                .create_window(settings_window_attributes(&chrome))
                 .expect("create settings window"),
         );
         let settings = pollster::block_on(PanelState::new_settings(window, chrome))
@@ -530,7 +544,12 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                 .expect("initialized panel")
                 .chrome
                 .theme_preset;
-            self.tray = start_system_tray(self.event_proxy.clone(), true, theme);
+            self.tray = start_system_tray(
+                self.event_proxy.clone(),
+                true,
+                theme,
+                self.panel.as_ref().unwrap().chrome.ui_language,
+            );
         }
     }
 
@@ -562,6 +581,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     if panel.chrome.settings_open {
                         if settings.chrome != panel.chrome {
                             settings.chrome = panel.chrome.clone();
+                            settings.apply_window_decorations();
                             settings.window.request_redraw();
                         }
                     } else {
@@ -589,6 +609,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                 if let Some(frame) = panel.native.frame.as_ref().filter(|f| f.visible()) {
                     self.native_hidden_context = Some((frame.host.clone(), frame.context));
                 }
+                panel.cancel_translation();
                 panel.finish_text_editing();
                 panel.clear_pointer_hover();
                 panel.chrome.settings_open = false;
@@ -611,7 +632,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         } else if panel.chrome.settings_open && self.settings.is_none() {
             let window = Arc::new(
                 event_loop
-                    .create_window(settings_window_attributes())
+                    .create_window(settings_window_attributes(&panel.chrome))
                     .expect("create settings window"),
             );
             let settings =
@@ -627,6 +648,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             && settings.chrome != panel.chrome
         {
             settings.chrome = panel.chrome.clone();
+            settings.apply_window_decorations();
             settings.window.request_redraw();
         }
     }
@@ -703,6 +725,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         self.native_sync = None;
         if let Some(panel) = self.panel.as_mut() {
+            panel.cancel_translation();
             panel.finish_text_editing();
         }
         if let Some(tray) = self.tray.take() {
@@ -718,6 +741,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         self.push_prediction_settings();
         if let (Some(tray), Some(panel)) = (self.tray.as_mut(), self.panel.as_ref()) {
             tray.set_theme(panel.chrome.theme_preset);
+            tray.set_ui_language(panel.chrome.ui_language);
         }
         let mut tooltip_deadline = None;
         for state in self
@@ -726,6 +750,12 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             .filter(|_| self.panel_visible)
             .chain(self.settings.iter_mut())
         {
+            if state.poll_translation() {
+                state.window.request_redraw();
+            }
+            if state.chrome.translation.phase == suzaku_map::ime::gpu::TranslationPhase::Pending {
+                tooltip_deadline = Some(now + Duration::from_millis(40));
+            }
             if !state.native.showing && state.engine.poll_prediction() {
                 state.refresh_composition_candidates();
                 state.window.request_redraw();
@@ -801,6 +831,7 @@ struct PanelState {
     engine: XRTabletImeEngine,
     chrome: PanelChromeState,
     voice: VoiceInputController,
+    translation: translation::PanelTranslation,
     cursor_position: Option<(f32, f32)>,
     modifiers: ModifiersState,
     interaction: PanelInteractionState,
@@ -814,7 +845,7 @@ struct PanelState {
     expanded_window_size: Option<LogicalSize<f64>>,
     expanded_window_base_size: Option<LogicalSize<f64>>,
     expanded_window_pos: Option<PhysicalPosition<i32>>,
-    expanded_window_decorations: bool,
+    applied_window_decorations: Option<bool>,
     window_scale: f32,
     window_resize_state: windowing::WindowResizeState,
     compact_dock_edge: Option<DockEdge>,
@@ -874,7 +905,7 @@ impl PanelState {
             kind == PanelWindowKind::Main && main_window_runs_without_focus();
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(window.clone())?;
-        let adapter = instance
+        let mut adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
@@ -882,16 +913,50 @@ impl PanelState {
             })
             .await?;
 
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("suzaku-panel-device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::Performance,
-                experimental_features: Default::default(),
-                trace: Default::default(),
-            })
-            .await?;
+        let device_descriptor = wgpu::DeviceDescriptor {
+            label: Some("suzaku-panel-device"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
+            experimental_features: Default::default(),
+            trace: Default::default(),
+        };
+        let current_alpha =
+            render::surface_alpha_mode(&surface.get_capabilities(&adapter).alpha_modes);
+        // Hybrid-GPU Linux may prefer opaque discrete GLES over integrated Vulkan
+        // with native alpha. Prefer alpha-capable hardware, never software solely
+        // for transparent corners, and keep the working adapter on device failure.
+        let transparent_adapter =
+            if cfg!(target_os = "linux") && !render::surface_supports_alpha(current_alpha) {
+                instance
+                    .enumerate_adapters(wgpu::Backends::all())
+                    .into_iter()
+                    .filter(|candidate| candidate.is_surface_supported(&surface))
+                    .find(|candidate| {
+                        render::prefer_transparent_adapter(
+                            current_alpha,
+                            candidate.get_info().device_type,
+                            &surface.get_capabilities(candidate).alpha_modes,
+                        )
+                    })
+            } else {
+                None
+            };
+        let transparent_device = if let Some(candidate) = transparent_adapter {
+            match candidate.request_device(&device_descriptor).await {
+                Ok(device) => {
+                    adapter = candidate;
+                    Some(device)
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        let (device, queue) = match transparent_device {
+            Some(device) => device,
+            None => adapter.request_device(&device_descriptor).await?,
+        };
 
         let caps = surface.get_capabilities(&adapter);
         let format = caps
@@ -908,18 +973,19 @@ impl PanelState {
             height: size.height.max(1),
             desired_maximum_frame_latency: 2,
             present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: if kind == PanelWindowKind::Main
-                && caps
-                    .alpha_modes
-                    .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
-            {
-                wgpu::CompositeAlphaMode::PreMultiplied
-            } else {
-                caps.alpha_modes[0]
-            },
+            alpha_mode: render::surface_alpha_mode(&caps.alpha_modes),
             view_formats: vec![],
         };
         surface.configure(&device, &config);
+        if std::env::var_os("SUZAKU_PANEL_SURFACE_DIAGNOSTICS").is_some() {
+            eprintln!(
+                "Suzaku {kind:?} surface: {:?} ({:?}); format={format:?}; supported alpha={:?}; selected alpha={:?}",
+                adapter.get_info().name,
+                adapter.get_info().backend,
+                caps.alpha_modes,
+                config.alpha_mode,
+            );
+        }
 
         let shape_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("suzaku-panel-shader"),
@@ -998,11 +1064,13 @@ impl PanelState {
             compact_mode: false,
             input_modes_expanded: true,
             active_input_mode: InputMode::VirtualKeyboard,
+            translation: Default::default(),
             input_focused: is_focused,
             caret_index: 0,
             keyboard_shifted: false,
             keyboard_numeric: false,
             settings_open: false,
+            settings_category: Default::default(),
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Compact,
@@ -1010,6 +1078,8 @@ impl PanelState {
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Smooth,
             theme_preset: suzaku_map::ime::gpu::ThemePreset::Suzaku,
+            hide_system_titlebar: false,
+            ui_language: Default::default(),
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Unknown Voice Host".to_string(),
@@ -1059,7 +1129,6 @@ impl PanelState {
             &text_bind_group_layout,
             chrome.font_face,
             chrome.text_smoothing,
-            chrome.window_scale,
         );
         let text_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("suzaku-panel-text-layout"),
@@ -1142,6 +1211,7 @@ impl PanelState {
             engine,
             chrome,
             voice,
+            translation: Default::default(),
             cursor_position: None,
             modifiers: ModifiersState::default(),
             interaction: PanelInteractionState {
@@ -1158,7 +1228,7 @@ impl PanelState {
             expanded_window_size: None,
             expanded_window_base_size: initial_base_size,
             expanded_window_pos: None,
-            expanded_window_decorations: true,
+            applied_window_decorations: None,
             window_scale: initial_window_scale,
             window_resize_state: Default::default(),
             compact_dock_edge: None,
@@ -1185,6 +1255,7 @@ impl PanelState {
             state.reconfigure_model_provider();
         }
 
+        state.apply_window_decorations();
         state.sync_text_input_state();
         Ok(state)
     }

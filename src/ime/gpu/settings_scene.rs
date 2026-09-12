@@ -7,6 +7,7 @@ impl WgpuCandidateRenderer {
         chrome: &PanelChromeState,
         settings_option_text_scroll: Option<(InteractionKind, Instant)>,
     ) -> RenderScene {
+        let ui = chrome.ui_language;
         let theme = PanelTheme::for_preset(chrome.theme_preset);
         let page_bg = theme.page_bg;
         let shell = theme.shell;
@@ -39,17 +40,46 @@ impl WgpuCandidateRenderer {
         } else {
             6.4 * ui_scale
         };
-        let title_px = (label_px * 1.52_f32).max(2.8_f32 * ui_scale);
+        let title_px = (label_px * 1.32_f32).max(2.8_f32 * ui_scale);
         let section_px = (label_px * 1.01_f32).max(2.0_f32 * ui_scale);
         let chip_px = (label_px * 0.94_f32).max(1.88_f32 * ui_scale);
-        let panel_width = (self.scene_width - 16.0).clamp(0.0, 760.0);
+        let panel_width = (self.scene_width - 16.0).max(0.0);
         let panel_x = (self.scene_width - panel_width) / 2.0;
         let row_height = (24.8 * ui_scale).max(section_px.max(chip_px) * 7.0 + 8.0 * ui_scale);
         let section_gap_y = 4.8 * ui_scale;
         let label_col_x = panel_x + 30.0 * ui_scale;
-        let label_max_width =
-            measure_text_prefix_width("Tap Timeout", 11, section_px, heading_tracking).ceil() + 1.0;
-        let chip_start_x = label_col_x + label_max_width + 12.0 * ui_scale;
+        let label_max_width = [
+            "Text",
+            "Theme",
+            "Title Bar",
+            "Font",
+            "Density",
+            "Spacing",
+            "Smooth",
+            "Preview",
+            "Tap Slop",
+            "Tap Timeout",
+            "Target Slop",
+            "Voice Auto",
+            "LLM",
+            "Provider",
+            "Tone",
+            "Interface",
+        ]
+        .into_iter()
+        .map(|label| {
+            let label = ui.tr(label);
+            measure_text_prefix_width(label, label.chars().count(), section_px, heading_tracking)
+        })
+        .fold(0.0_f32, f32::max)
+        .ceil()
+            + 1.0;
+        let stacked_labels = label_max_width > panel_width * 0.32;
+        let chip_start_x = if stacked_labels {
+            label_col_x
+        } else {
+            label_col_x + label_max_width + 12.0 * ui_scale
+        };
         let scroll_track_width = 5.8 * ui_scale;
         let scroll_track_padding = 8.0 * ui_scale;
         let chip_max_x = panel_x + panel_width - (scroll_track_width + scroll_track_padding * 2.0);
@@ -74,12 +104,15 @@ impl WgpuCandidateRenderer {
         let min_panel_height = 166.0;
         let chip_area_width = (chip_max_x - chip_start_x).max(0.0);
 
-        let custom_tone_label = format!(
-            "Custom ({:.1})",
-            chrome.llm_temperature.tenths() as f32 / 10.0
-        );
-        let mut sections: Vec<(&str, Vec<(InteractionKind, &str, bool)>)> = vec![
+        let custom_tone_label = ui
+            .message(&format!(
+                "Custom ({:.1})",
+                chrome.llm_temperature.tenths() as f32 / 10.0
+            ))
+            .into_owned();
+        let mut sections: Vec<(SettingsCategory, &str, Vec<(InteractionKind, &str, bool)>)> = vec![
             (
+                SettingsCategory::Appearance,
                 "Text",
                 [
                     (
@@ -101,6 +134,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Appearance,
                 "Theme",
                 ThemePreset::ALL
                     .into_iter()
@@ -114,6 +148,23 @@ impl WgpuCandidateRenderer {
                     .collect(),
             ),
             (
+                SettingsCategory::Appearance,
+                "Title Bar",
+                vec![
+                    (
+                        InteractionKind::SetHideSystemTitlebar(false),
+                        "Show",
+                        !chrome.hide_system_titlebar,
+                    ),
+                    (
+                        InteractionKind::SetHideSystemTitlebar(true),
+                        "Hide",
+                        chrome.hide_system_titlebar,
+                    ),
+                ],
+            ),
+            (
+                SettingsCategory::Appearance,
                 "Font",
                 [
                     (
@@ -155,6 +206,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Input,
                 "Density",
                 [
                     (
@@ -171,6 +223,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Appearance,
                 "Spacing",
                 [
                     (
@@ -192,6 +245,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Appearance,
                 "Smooth",
                 [
                     (
@@ -208,6 +262,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Input,
                 "Preview",
                 [
                     (
@@ -224,6 +279,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Input,
                 "Tap Slop",
                 [
                     (
@@ -245,6 +301,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Input,
                 "Tap Timeout",
                 [
                     (
@@ -271,6 +328,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Input,
                 "Target Slop",
                 [
                     (
@@ -292,6 +350,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Input,
                 "Voice Auto",
                 [
                     (
@@ -308,6 +367,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Model,
                 "LLM",
                 [
                     (
@@ -324,6 +384,7 @@ impl WgpuCandidateRenderer {
                 .to_vec(),
             ),
             (
+                SettingsCategory::Model,
                 "Provider",
                 vec![(
                     InteractionKind::SetLlmModel(LlmModelPreset::Configured),
@@ -332,6 +393,7 @@ impl WgpuCandidateRenderer {
                 )],
             ),
             (
+                SettingsCategory::Model,
                 "Tone",
                 [
                     (
@@ -355,7 +417,9 @@ impl WgpuCandidateRenderer {
         ];
 
         if matches!(chrome.llm_temperature, LlmTemperaturePreset::Custom(_)) {
-            if let Some((_, options)) = sections.iter_mut().find(|(title, _)| *title == "Tone") {
+            if let Some((_, _, options)) =
+                sections.iter_mut().find(|(_, title, _)| *title == "Tone")
+            {
                 options.push((
                     InteractionKind::SetLlmTemperature(chrome.llm_temperature),
                     &custom_tone_label,
@@ -364,6 +428,39 @@ impl WgpuCandidateRenderer {
             }
         }
 
+        // Append instead of renumbering existing collapse identities.
+        sections.push((
+            SettingsCategory::Appearance,
+            "Interface",
+            crate::ui::UiLanguage::ALL
+                .into_iter()
+                .map(|language| {
+                    (
+                        InteractionKind::SetUiLanguage(language),
+                        if language == crate::ui::UiLanguage::System {
+                            ui.tr("System")
+                        } else {
+                            language.native_name()
+                        },
+                        chrome.ui_language == language,
+                    )
+                })
+                .collect(),
+        ));
+        let original_sections = sections.clone();
+        for (_, label, options) in &mut sections {
+            *label = ui.tr(label);
+            for (kind, text, _) in options {
+                // Endonyms and font/model identities are not translated.
+                if !matches!(
+                    kind,
+                    InteractionKind::SetUiLanguage(_) | InteractionKind::SetFontFace(_)
+                ) || *text == "Auto"
+                {
+                    *text = ui.tr(text);
+                }
+            }
+        }
         let estimated_chip_width = |label: &str| {
             (measure_text_prefix_width(label, label.chars().count(), chip_px, ui_tracking)
                 + 20.0 * ui_scale
@@ -385,12 +482,15 @@ impl WgpuCandidateRenderer {
             }
             rows
         };
-        let search_query = chrome.settings_search_query.trim().to_ascii_lowercase();
+        let search_query = chrome.settings_search_query.trim().to_lowercase();
         let is_searching = !search_query.is_empty();
         let mut visible_sections: Vec<(usize, &str, Vec<(InteractionKind, &str, bool)>, bool)> =
             Vec::new();
 
-        for (index, (label, options)) in sections.iter().enumerate() {
+        for (index, (category, label, options)) in sections.iter().enumerate() {
+            if !is_searching && *category != chrome.settings_category {
+                continue;
+            }
             let is_collapsed = chrome
                 .settings_collapsed_sections
                 .get(index)
@@ -399,9 +499,25 @@ impl WgpuCandidateRenderer {
             let mut filtered_options = Vec::new();
 
             if is_searching {
-                let label_matches = label.to_ascii_lowercase().contains(&search_query);
+                let label_matches = label.to_lowercase().contains(&search_query)
+                    || original_sections[index]
+                        .1
+                        .to_lowercase()
+                        .contains(&search_query)
+                    || (original_sections[index].1 == "Title Bar"
+                        && ["system titlebar", "gnome", "系统标题栏", "隐藏标题栏"]
+                            .iter()
+                            .any(|alias| alias.contains(&search_query)));
                 for (kind, option_label, selected) in options {
-                    if label_matches || option_label.to_ascii_lowercase().contains(&search_query) {
+                    if label_matches
+                        || option_label.to_lowercase().contains(&search_query)
+                        || original_sections[index]
+                            .2
+                            .iter()
+                            .any(|(original_kind, text, _)| {
+                                original_kind == kind && text.to_lowercase().contains(&search_query)
+                            })
+                    {
                         filtered_options.push((*kind, *option_label, *selected));
                     }
                 }
@@ -460,7 +576,14 @@ impl WgpuCandidateRenderer {
             } else {
                 estimate_chip_rows(options)
             };
-            section_margin * 2.0 + rows as f32 * row_height + (rows - 1) as f32 * chip_gap_y
+            section_margin * 2.0
+                + rows as f32 * row_height
+                + (rows - 1) as f32 * chip_gap_y
+                + if stacked_labels && !collapsed && !options.is_empty() {
+                    row_height + chip_gap_y
+                } else {
+                    0.0
+                }
         };
         let estimated_height: f32 = visible_sections
             .iter()
@@ -471,16 +594,15 @@ impl WgpuCandidateRenderer {
 
         let title_section_h = title_px * 7.0 + 12.0 * ui_scale;
         let search_bar_h = (24.0 * ui_scale).max(section_px * 7.0 + 8.0 * ui_scale);
-        let panel_padding_y = 7.0;
-        let panel_height =
-            (title_section_h + search_bar_h + 8.0 * ui_scale + estimated_height + panel_padding_y)
-                .max(min_panel_height)
-                .min((self.scene_height - 16.0).max(0.0));
-        let panel_y = if self.scene_height > panel_height + 20.0 {
-            8.0
-        } else {
-            0.0
-        };
+        let tabs_h = row_height + 6.0 * ui_scale;
+        let header_h = title_section_h + tabs_h + 6.0 * ui_scale + search_bar_h + 8.0;
+        // Native windows use whole pixels. Round outward so fractional layout
+        // arithmetic cannot create a scrollbar for an otherwise fully fitted page.
+        let preferred_window_height = (header_h + estimated_height + 24.0).max(220.0).ceil();
+        let panel_height = (preferred_window_height - 16.0)
+            .max(min_panel_height)
+            .min((self.scene_height - 16.0).max(0.0));
+        let panel_y = 8.0;
 
         let mut quads = Vec::new();
         let mut text_quads = Vec::new();
@@ -516,12 +638,14 @@ impl WgpuCandidateRenderer {
             next
         };
 
-        quads.push(CandidateQuad {
-            shape: Default::default(),
-            clip_rect: None,
-            rect: [0.0, 0.0, self.scene_width, self.scene_height],
-            color: page_bg,
-        });
+        if !chrome.hide_system_titlebar {
+            quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
+                rect: [0.0, 0.0, self.scene_width, self.scene_height],
+                color: page_bg,
+            });
+        }
         append_soft_card_quads(
             &mut quads,
             [panel_x, panel_y, panel_width, panel_height],
@@ -630,7 +754,7 @@ impl WgpuCandidateRenderer {
         });
 
         let title_layout = TextBlock {
-            text: "Panel Settings".to_string(),
+            text: ui.tr("Panel Settings").to_string(),
             origin: [panel_x + 15.0, panel_y + 9.0],
             max_width: (panel_width - 60.0).max(0.0),
             pixel_size: title_px,
@@ -660,10 +784,10 @@ impl WgpuCandidateRenderer {
         let mut label_layouts = Vec::new();
         let mut option_layouts = Vec::new();
         let search_bar_x = panel_x + 14.0 * ui_scale;
-        let search_bar_w = (panel_width - 72.0 * ui_scale).max(140.0 * ui_scale);
-        let search_bar_y = panel_y + title_section_h;
+        let search_bar_w = (panel_width - 28.0 * ui_scale).max(0.0);
+        let search_bar_y = panel_y + title_section_h + tabs_h + 6.0 * ui_scale;
         let search_clear_size = search_bar_h;
-        let search_clear_x = search_bar_x + search_bar_w + 6.0 * ui_scale;
+        let search_clear_x = search_bar_x + search_bar_w - search_clear_size;
         let search_clear_y = search_bar_y;
         let clear_search_text = !chrome.settings_search_query.is_empty();
         let clear_search_visible = clear_search_text;
@@ -705,7 +829,7 @@ impl WgpuCandidateRenderer {
         });
 
         let search_text = if chrome.settings_search_query.is_empty() {
-            "Search settings".to_string()
+            ui.tr("Search all settings").to_string()
         } else {
             chrome.settings_search_query.clone()
         };
@@ -728,7 +852,21 @@ impl WgpuCandidateRenderer {
             align: TextAlign::Left,
             role: TextRole::InputValue,
         }
-        .layout_in_rect(search_bar_rect, [8.0 * ui_scale, 3.0 * ui_scale]);
+        .layout_in_rect(
+            [
+                search_bar_x,
+                search_bar_y,
+                (search_bar_w
+                    - if clear_search_visible {
+                        search_clear_size + 4.0 * ui_scale
+                    } else {
+                        0.0
+                    })
+                .max(0.0),
+                search_bar_h,
+            ],
+            [8.0 * ui_scale, 3.0 * ui_scale],
+        );
         text_quads.extend(search_layout.quads.iter().copied());
         atlas_glyphs.extend(search_layout.atlas_glyphs.iter().cloned());
 
@@ -785,8 +923,86 @@ impl WgpuCandidateRenderer {
             layouts: vec![search_layout],
         });
 
+        let tabs_x = search_bar_x;
+        let tabs_y = panel_y + title_section_h;
+        let tab_gap = 5.0 * ui_scale;
+        let tab_content_width = (search_bar_w - 2.0 * tab_gap).max(0.0);
+        let tab_label_widths = SettingsCategory::ALL.map(|category| {
+            measure_text_prefix_width(
+                ui.tr(category.label()),
+                ui.tr(category.label()).chars().count(),
+                chip_px,
+                ui_tracking,
+            )
+            .ceil()
+                + 16.0 * ui_scale
+        });
+        let tab_labels_width: f32 = tab_label_widths.iter().sum();
+        let tab_extra_width = ((tab_content_width - tab_labels_width) / 3.0).max(0.0);
+        let mut tab_x = tabs_x;
+        let mut tab_layouts = Vec::new();
+        for (index, category) in SettingsCategory::ALL.into_iter().enumerate() {
+            // Give longer labels their actual text width before distributing
+            // spare space; large text must not truncate the first tab at 400px.
+            let tab_width = if tab_labels_width <= tab_content_width {
+                tab_label_widths[index] + tab_extra_width
+            } else {
+                tab_label_widths[index] * tab_content_width / tab_labels_width
+            };
+            let rect = [tab_x, tabs_y, tab_width, tabs_h];
+            tab_x += tab_width + tab_gap;
+            let selected = !is_searching && chrome.settings_category == category;
+            let kind = InteractionKind::SetSettingsCategory(category);
+            let (hovered, pressed) = interaction_state(kind);
+            append_rounded_rect_quads(
+                &mut quads,
+                rect,
+                if selected || pressed {
+                    accent_soft
+                } else if hovered {
+                    surface_alt
+                } else {
+                    shell
+                },
+                settings_chip_radius,
+            );
+            if selected {
+                quads.push(CandidateQuad::outline(
+                    rect,
+                    accent,
+                    settings_chip_radius,
+                    0.8,
+                ));
+            }
+            interactive_targets.push(InteractiveTarget { kind, rect });
+            let layout = TextBlock {
+                text: ui.tr(category.label()).into(),
+                origin: [0.0; 2],
+                max_width: tab_width,
+                pixel_size: chip_px,
+                letter_spacing: ui_tracking,
+                line_gap: 0.0,
+                max_lines: 1,
+                color: if selected {
+                    accent_text
+                } else {
+                    text_secondary
+                },
+                align: TextAlign::Center,
+                role: TextRole::ToolButton,
+            }
+            .layout_in_rect(rect, [8.0 * ui_scale, 3.0 * ui_scale]);
+            text_quads.extend(layout.quads.iter().copied());
+            atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+            tab_layouts.push(layout);
+        }
+        text_sections.push(TextSection {
+            role: TextRole::ToolButton,
+            layouts: tab_layouts,
+        });
+
         let settings_content_top = search_bar_y + search_bar_h + 8.0;
-        let settings_content_bottom = panel_y + panel_height - 4.0;
+        let settings_content_bottom = panel_y + panel_height - 8.0;
         let visible_content_height = (settings_content_bottom - settings_content_top).max(0.0);
         let max_scroll_offset = (estimated_height - visible_content_height).max(0.0);
         let settings_scroll_offset = chrome
@@ -831,6 +1047,7 @@ impl WgpuCandidateRenderer {
             settings_scroll_handle_height,
         ];
         let settings_scroll_metadata = SettingsScrollMetadata {
+            preferred_window_height,
             track_rect: settings_scroll_track_rect,
             handle_rect: settings_scroll_handle_rect,
             content_height: estimated_height.max(0.0),
@@ -899,7 +1116,7 @@ impl WgpuCandidateRenderer {
         let content_target_start = interactive_targets.len();
         if visible_sections.is_empty() {
             let mut empty_layout = TextBlock {
-                text: "No matching settings".to_string(),
+                text: ui.tr("No matching settings").to_string(),
                 origin: [label_col_x, settings_content_top],
                 max_width: panel_width - 40.0 * ui_scale,
                 pixel_size: section_px,
@@ -976,7 +1193,11 @@ impl WgpuCandidateRenderer {
                         rect: interaction_hit_rect([
                             panel_x + 10.0 * ui_scale,
                             row_y,
-                            chip_start_x - panel_x - 16.0 * ui_scale,
+                            if stacked_labels {
+                                chip_area_width
+                            } else {
+                                chip_start_x - panel_x - 16.0 * ui_scale
+                            },
                             row_height,
                         ]),
                     });
@@ -984,7 +1205,12 @@ impl WgpuCandidateRenderer {
             }
 
             let mut chip_x = chip_start_x;
-            let mut chip_y = row_y;
+            let mut chip_y = row_y
+                + if stacked_labels {
+                    row_height + chip_gap_y
+                } else {
+                    0.0
+                };
             if !section_effectively_collapsed {
                 for (kind, chip_label, selected) in options {
                     let (hovered, pressed) = interaction_state(*kind);

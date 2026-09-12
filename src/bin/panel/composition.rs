@@ -110,6 +110,7 @@ impl PanelState {
     }
 
     fn refresh_seed_with_text(&mut self, text: &str) {
+        self.cancel_translation();
         if self.native_action(suzaku_map::ime::companion::NativeOperation::Replace(
             text.to_string(),
         )) {
@@ -298,7 +299,6 @@ impl PanelState {
             &text_bind_group_layout,
             self.chrome.font_face,
             self.chrome.text_smoothing,
-            self.window_scale,
         );
     }
 
@@ -310,6 +310,9 @@ impl PanelState {
         let accepted = sanitize_text_input(text);
 
         if !accepted.is_empty() {
+            if self.native_keyboard_edit(Some(&accepted)) {
+                return;
+            }
             self.chrome.insert_text(&accepted);
             self.sync_manual_seed_base();
             self.refresh_seed();
@@ -338,6 +341,9 @@ impl PanelState {
     }
 
     pub(super) fn backspace_seed(&mut self) {
+        if self.native_keyboard_edit(None) {
+            return;
+        }
         self.chrome.backspace();
         self.sync_manual_seed_base();
         self.refresh_seed();

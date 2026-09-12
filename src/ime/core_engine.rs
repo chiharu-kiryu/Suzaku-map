@@ -396,6 +396,19 @@ impl XRTabletImeEngine {
         &self.state.candidates
     }
 
+    pub fn ibus_candidate_label(&self, index: usize) -> Option<String> {
+        self.state.candidates.get(index).map(|candidate| {
+            super::candidate_mix::display_label_for_seed(
+                &self.state.active_language,
+                &self.state.seed_text,
+                &candidate.text,
+                candidate.kind,
+                candidate.source,
+                candidate.score.clamp(0.0, 100.0).round() as u8,
+            )
+        })
+    }
+
     /// Read a full replacement for continuing a composition, never its decorated label
     /// or the session's committed context. Reading it does not commit or request a model.
     pub fn selected_completion_text(&self, explicit_only: bool) -> Option<&str> {

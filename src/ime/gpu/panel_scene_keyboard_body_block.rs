@@ -13,7 +13,7 @@
                     let mut keyboard_layouts = Vec::new();
                     let keyboard_header_layouts = vec![
                         TextBlock {
-                            text: "Keyboard input".to_string(),
+                            text: ui.tr("Keyboard input").to_string(),
                             origin: [
                                 drawer_rect[0] + 12.0 * responsive_scale * keyboard_scale,
                                 keyboard_title_y,
@@ -30,7 +30,7 @@
                         }
                         .layout(),
                         TextBlock {
-                            text: "Tap to type".to_string(),
+                            text: ui.tr("Tap to type").to_string(),
                             origin: [
                                 drawer_rect[0] + drawer_rect[2]
                                     - (142.0 * responsive_scale * keyboard_scale),
@@ -200,7 +200,7 @@
                             let label = match key {
                                 VirtualKeyboardKey::Character(ch) => ch.to_string(),
                                 VirtualKeyboardKey::Text(text) => (*text).to_string(),
-                                VirtualKeyboardKey::Space => "Space".to_string(),
+                                VirtualKeyboardKey::Space => ui.tr("Space").to_string(),
                                 VirtualKeyboardKey::Backspace => "".to_string(),
                                 VirtualKeyboardKey::Shift => "Shift".to_string(),
                                 VirtualKeyboardKey::ToggleNumeric => "123".to_string(),
@@ -477,7 +477,7 @@
                             2.2 * responsive_scale * keyboard_scale
                         };
                         let layout = TextBlock {
-                            text: label.to_string(),
+                            text: ui.tr(label).to_string(),
                             origin: [
                                 rect[0] + 10.0 * responsive_scale * keyboard_scale,
                                 rect[1] + 7.4 * responsive_scale * keyboard_scale,

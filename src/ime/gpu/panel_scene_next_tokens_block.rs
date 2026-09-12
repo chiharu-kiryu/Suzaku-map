@@ -39,7 +39,8 @@
     };
 
     let chip_section_y = suggestions_y;
-    let chip_section_h = if chrome.next_token_candidates.is_empty() {
+    let chip_section_h = if chrome.next_token_candidates.is_empty()
+        || (chrome.input_modes_expanded && chrome.active_input_mode == InputMode::Translation) {
         0.0
     } else {
         (candidate_area_bottom - chip_section_y - 4.0 * responsive_scale).max(0.0)
@@ -73,9 +74,9 @@
             let next_label_layouts = vec![
                 TextBlock {
                     text: if chrome.composed_tokens.is_empty() {
-                        "Word suggestions".to_string()
+                        ui.tr("Word suggestions").to_string()
                     } else {
-                        format!("Word suggestions  |  {}", chrome.composed_tokens.join(" "))
+                        ui.message(&format!("Word suggestions  |  {}", chrome.composed_tokens.join(" "))).into_owned()
                     },
                     origin: [
                         panel_x + 6.0 * responsive_scale,
@@ -156,7 +157,7 @@
                 text: if collapsed_daily_mode {
                     "←".to_string()
                 } else {
-                    "Back".to_string()
+                    ui.tr("Back").to_string()
                 },
             origin: [
                     visual_back_rect[0] + 6.8 * responsive_scale,

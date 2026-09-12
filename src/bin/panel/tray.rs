@@ -15,6 +15,7 @@ mod platform {
     use suzaku_map::languages::BuiltinLanguage;
     use suzaku_map::languages::model::{ModelProviderConfig, ModelScope, runtime as model_runtime};
     use suzaku_map::platform::linux_ime_control::{self, NativeImeStatus};
+    use suzaku_map::ui::UiLanguage;
 
     const TRAY_ICON_SIZES: [i32; 4] = [22, 32, 48, 64];
 
@@ -22,12 +23,14 @@ mod platform {
         control_tx: Sender<TrayControl>,
         worker: Option<JoinHandle<()>>,
         theme: ThemePreset,
+        ui_language: UiLanguage,
         has_icon: bool,
     }
 
     enum TrayControl {
         SetPanelVisible(bool),
         SetTheme(ThemePreset),
+        SetUiLanguage(UiLanguage),
         RefreshInputMethod,
         ActivateInputMethod,
         ReleaseInputMethod,
@@ -58,7 +61,7 @@ mod platform {
         if matches!(action, DataAction::Backup) {
             let path = backup::backup_now(&paths)?;
             return Ok(format!(
-                "已备份：{}（可在备份目录查看）",
+                "Backup saved: {} (see backup folder)",
                 path.file_name().unwrap_or_default().to_string_lossy()
             ));
         }
@@ -68,7 +71,7 @@ mod platform {
             _ => &paths.backups,
         };
         open_directory(path)?;
-        Ok(format!("已打开：{}", path.display()))
+        Ok(format!("Opened: {}", path.display()))
     }
 
     #[derive(Default)]
@@ -94,7 +97,7 @@ mod platform {
 
         fn description(&self) -> String {
             if self.busy {
-                return "正在处理输入法服务 / 切换输入法…".into();
+                return "Updating input method…".into();
             }
             if let Some(error) = self
                 .operation_error
@@ -106,32 +109,40 @@ mod platform {
             }
             if self.system.active() {
                 if self.system.restore_engine.is_some() {
-                    "Suzaku 已激活，输入时自动显示候选窗".into()
+                    "Suzaku active; candidates appear while typing".into()
                 } else {
-                    "Suzaku 由系统选中；请通过系统菜单切换回其他输入法".into()
+                    "System-selected; switch back using the system input menu".into()
                 }
             } else if let Some(current) = self.system.current_engine.as_deref() {
-                format!("当前输入法：{current}")
+                format!("Current input method: {current}")
             } else {
-                "正在读取输入法状态…".into()
+                "Reading input method status…".into()
             }
         }
 
         fn release_label(&self) -> String {
             match self.system.restore_engine.as_deref() {
                 Some(_) if self.system.current_engine.is_some() && !self.system.active() => {
-                    "结束激活（保留当前输入法）".into()
+                    "End activation (keep current input method)".into()
                 }
-                Some(previous) => format!("释放并恢复：{previous}"),
-                None => "释放并恢复原输入法".into(),
+                Some(previous) => format!("Release and restore: {previous}"),
+                None => "Release and restore previous input method".into(),
             }
         }
 
         fn native_unavailable_hint(&self) -> &str {
             self.native_error
                 .as_deref()
-                .unwrap_or("输入法服务尚未就绪；激活时会自动启动")
+                .unwrap_or("Input service not ready; activation starts it automatically")
         }
+    }
+
+    fn input_language_label(language: BuiltinLanguage, ui: UiLanguage) -> &'static str {
+        ui.tr(match language {
+            BuiltinLanguage::English => "English",
+            BuiltinLanguage::ChineseSimplified => "Chinese · Pinyin",
+            BuiltinLanguage::Japanese => "Japanese · Romaji",
+        })
     }
 
     fn menu_label(text: &str) -> String {
@@ -162,6 +173,17 @@ mod platform {
             let _ = self.control_tx.send(TrayControl::SetPanelVisible(visible));
         }
 
+        pub(crate) fn set_ui_language(&mut self, language: UiLanguage) {
+            if self.ui_language != language
+                && self
+                    .control_tx
+                    .send(TrayControl::SetUiLanguage(language))
+                    .is_ok()
+            {
+                self.ui_language = language;
+            }
+        }
+
         pub(crate) fn set_theme(&mut self, theme: ThemePreset) {
             // The app can sync this at idle; only actual changes enqueue raster work.
             if self.theme != theme && self.control_tx.send(TrayControl::SetTheme(theme)).is_ok() {
@@ -182,6 +204,7 @@ mod platform {
         control_tx: Sender<TrayControl>,
         icons: Vec<Icon>,
         panel_visible: bool,
+        ui_language: UiLanguage,
         input_method: InputMethodMenuState,
         data_busy: bool,
         data_report: Option<String>,
@@ -223,7 +246,7 @@ mod platform {
                 if self.control_tx.send(command).is_err() {
                     self.input_method.busy = false;
                     self.input_method.operation_error =
-                        Some("托盘控制服务不可用，请重新启动 Suzaku".into());
+                        Some("Tray controller unavailable; restart Suzaku".into());
                 }
             }
         }
@@ -250,7 +273,7 @@ mod platform {
                     .send(TrayControl::ManageData(action))
                     .is_ok();
                 if !self.data_busy {
-                    self.data_report = Some("数据管理服务不可用".into());
+                    self.data_report = Some("Data manager unavailable".into());
                 }
             }
         }
@@ -264,7 +287,7 @@ mod platform {
         }
 
         fn title(&self) -> String {
-            "Suzaku 输入法".into()
+            self.ui_language.tr("Suzaku Input Method").into()
         }
 
         fn activate(&mut self, _x: i32, _y: i32) {
@@ -285,8 +308,10 @@ mod platform {
                 icon_pixmap: self.icons.clone(),
                 title: self.title(),
                 description: format!(
-                    "{}\n右键切换输入法，左键显示或隐藏面板",
-                    self.input_method.description()
+                    "{}\n{}",
+                    self.ui_language.message(&self.input_method.description()),
+                    self.ui_language
+                        .tr("Right-click for input options; left-click to show or hide")
                 ),
                 ..Default::default()
             }
@@ -300,9 +325,9 @@ mod platform {
         }
 
         fn menu(&self) -> Vec<MenuItem<Self>> {
-            vec![
+            let mut menu = vec![
                 CheckmarkItem {
-                    label: "激活 Suzaku 输入法".into(),
+                    label: "Activate Suzaku".into(),
                     checked: self.input_method.system.active(),
                     enabled: self.input_method.can_activate(),
                     activate: Box::new(|tray: &mut Self| {
@@ -314,7 +339,7 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: menu_label(&self.input_method.release_label()),
+                    label: self.input_method.release_label(),
                     enabled: self.input_method.can_release(),
                     icon_name: "edit-undo".into(),
                     activate: Box::new(|tray: &mut Self| {
@@ -326,7 +351,7 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: menu_label(&self.input_method.description()),
+                    label: self.input_method.description(),
                     enabled: false,
                     ..Default::default()
                 }
@@ -337,14 +362,19 @@ mod platform {
                         .input_method
                         .native
                         .as_ref()
-                        .map(|state| format!("输入语言：{}", state.settings.language.label()))
-                        .unwrap_or_else(|| "输入语言（宿主未连接）".into()),
+                        .map(|state| {
+                            format!(
+                                "Input language: {}",
+                                input_language_label(state.settings.language, self.ui_language)
+                            )
+                        })
+                        .unwrap_or_else(|| "Input language (host disconnected)".into()),
                     enabled: !self.input_method.busy && self.input_method.native.is_some(),
                     submenu: BuiltinLanguage::ALL
                         .into_iter()
                         .map(|language| {
                             CheckmarkItem {
-                                label: language.label().into(),
+                                label: input_language_label(language, self.ui_language).into(),
                                 checked: self
                                     .input_method
                                     .native
@@ -368,12 +398,12 @@ mod platform {
                         .as_ref()
                         .map(|state| {
                             if state.settings.provider.scope == ModelScope::Cloud {
-                                "LLM 联想（云端，需单独授权）"
+                                "LLM suggestions (cloud, consent required)"
                             } else {
-                                "LLM 联想（本机）"
+                                "LLM suggestions (local)"
                             }
                         })
-                        .unwrap_or("LLM 联想")
+                        .unwrap_or("LLM suggestions")
                         .into(),
                     enabled: !self.input_method.busy && self.input_method.native.is_some(),
                     checked: self
@@ -397,31 +427,30 @@ mod platform {
                         .native
                         .as_ref()
                         .map(|state| match state.prediction.as_str() {
-                            "Pending" => "LLM 正在联想，本地候选可立即使用".into(),
-                            "Ready" => "LLM 候选已就绪（标记 AI）".into(),
-                            "Unavailable" => state
-                                .prediction_error
-                                .clone()
-                                .unwrap_or_else(|| "模型暂无结果或不可用，已保留本地候选".into()),
+                            "Pending" => "Generating; local candidates remain available".into(),
+                            "Ready" => "Model candidates ready (marked AI)".into(),
+                            "Unavailable" => state.prediction_error.clone().unwrap_or_else(|| {
+                                "Model unavailable; local candidates retained".into()
+                            }),
                             _ if state.settings.llm_enabled => {
                                 if state.settings.provider.scope == ModelScope::Cloud
                                     && !state.settings.provider.cloud_consent
                                 {
-                                    "云端联想尚未授权，不会发送输入内容".into()
+                                    "Cloud consent required; no input text is sent".into()
                                 } else {
-                                    "LLM 已启用，等待输入".into()
+                                    "LLM enabled; waiting for input".into()
                                 }
                             }
-                            _ => "使用本地基础候选，未请求模型".into(),
+                            _ => "Using local candidates; no model request".into(),
                         })
-                        .unwrap_or_else(|| menu_label(self.input_method.native_unavailable_hint())),
+                        .unwrap_or_else(|| self.input_method.native_unavailable_hint().into()),
                     enabled: false,
                     ..Default::default()
                 }
                 .into(),
                 StandardItem {
-                    label: menu_label(&if self.input_method.model_busy {
-                        "正在检查 / 预热模型，本地输入可继续使用…".into()
+                    label: if self.input_method.model_busy {
+                        "Checking / warming model; typing remains available…".into()
                     } else if let Some(state) = &self.input_method.native {
                         self.input_method
                             .model_status
@@ -431,24 +460,27 @@ mod platform {
                             .unwrap_or_else(|| {
                                 if state.settings.provider.scope == ModelScope::Cloud {
                                     format!(
-                                        "云端模型：{}（配置状态；未联网检查）",
+                                        "Cloud model: {} (not checked online)",
                                         state.settings.provider.model
                                     )
                                 } else if state.settings.provider.model == "auto" {
-                                    "模型：自动发现本机服务，优先 LLaMA".into()
+                                    "Model: local discovery, preferring LLaMA".into()
                                 } else {
-                                    format!("模型：{}（尚未检查）", state.settings.provider.model)
+                                    format!(
+                                        "Model: {} (not checked)",
+                                        state.settings.provider.model
+                                    )
                                 }
                             })
                     } else {
-                        "模型服务状态未知".into()
-                    }),
+                        "Model status unknown".into()
+                    },
                     enabled: false,
                     ..Default::default()
                 }
                 .into(),
                 StandardItem {
-                    label: "发现 / 检查本机模型".into(),
+                    label: "Discover / check local models".into(),
                     enabled: !self.input_method.model_busy
                         && self.input_method.native.as_ref().is_some_and(|state| {
                             state.settings.provider.scope == ModelScope::Local
@@ -458,7 +490,7 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: "预热本机 Ollama 模型（空闲 5 分钟后释放）".into(),
+                    label: "Warm Ollama model (unload after 5 minutes idle)".into(),
                     enabled: !self.input_method.model_busy
                         && self.input_method.native.as_ref().is_some_and(|state| {
                             state.settings.provider.scope == ModelScope::Local
@@ -469,7 +501,7 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: "重新加载模型配置".into(),
+                    label: "Reload model settings".into(),
                     enabled: !self.input_method.busy && self.input_method.native.is_some(),
                     activate: Box::new(|tray: &mut Self| {
                         tray.request_input_method(TrayControl::ReloadImeSettings)
@@ -480,9 +512,9 @@ mod platform {
                 MenuItem::Separator,
                 StandardItem {
                     label: if self.panel_visible {
-                        "隐藏面板".into()
+                        "Hide panel".into()
                     } else {
-                        "显示面板".into()
+                        "Show panel".into()
                     },
                     icon_name: if self.panel_visible {
                         "view-hidden".into()
@@ -501,7 +533,7 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: "设置".into(),
+                    label: "Settings".into(),
                     icon_name: "preferences-system".into(),
                     activate: Box::new(|tray: &mut Self| {
                         tray.panel_visible = true;
@@ -511,7 +543,7 @@ mod platform {
                 }
                 .into(),
                 StandardItem {
-                    label: "重置窗口位置".into(),
+                    label: "Reset window position".into(),
                     icon_name: "view-restore".into(),
                     activate: Box::new(|tray: &mut Self| {
                         tray.panel_visible = true;
@@ -521,22 +553,23 @@ mod platform {
                 }
                 .into(),
                 SubMenu {
-                    label: "数据管理".into(),
+                    label: "Data management".into(),
                     submenu: vec![
                         StandardItem {
-                            label: menu_label(if self.data_busy {
-                                "正在处理数据…"
+                            label: if self.data_busy {
+                                "Managing data…"
                             } else {
                                 self.data_report
                                     .as_deref()
-                                    .unwrap_or("仅管理配置，不保存输入历史或模型权重")
-                            }),
+                                    .unwrap_or("Settings only; no input history or model weights")
+                            }
+                            .into(),
                             enabled: false,
                             ..Default::default()
                         }
                         .into(),
                         StandardItem {
-                            label: "立即备份配置".into(),
+                            label: "Back up settings now".into(),
                             enabled: !self.data_busy,
                             activate: Box::new(|tray: &mut Self| {
                                 tray.request_data(DataAction::Backup)
@@ -545,7 +578,7 @@ mod platform {
                         }
                         .into(),
                         StandardItem {
-                            label: "打开备份目录".into(),
+                            label: "Open backup folder".into(),
                             enabled: !self.data_busy,
                             activate: Box::new(|tray: &mut Self| {
                                 tray.request_data(DataAction::OpenBackups)
@@ -554,7 +587,7 @@ mod platform {
                         }
                         .into(),
                         StandardItem {
-                            label: "打开输入法配置目录".into(),
+                            label: "Open input method settings folder".into(),
                             enabled: !self.data_busy,
                             activate: Box::new(|tray: &mut Self| {
                                 tray.request_data(DataAction::OpenIme)
@@ -563,7 +596,7 @@ mod platform {
                         }
                         .into(),
                         StandardItem {
-                            label: "打开面板配置目录".into(),
+                            label: "Open panel settings folder".into(),
                             enabled: !self.data_busy,
                             activate: Box::new(|tray: &mut Self| {
                                 tray.request_data(DataAction::OpenPanel)
@@ -572,7 +605,7 @@ mod platform {
                         }
                         .into(),
                         StandardItem {
-                            label: "恢复：退出后使用 suzaku-tool data restore".into(),
+                            label: "Restore after quitting: suzaku-tool data restore".into(),
                             enabled: false,
                             ..Default::default()
                         }
@@ -583,7 +616,7 @@ mod platform {
                 .into(),
                 MenuItem::Separator,
                 StandardItem {
-                    label: "退出 Suzaku".into(),
+                    label: "Quit Suzaku".into(),
                     enabled: !self.input_method.busy,
                     icon_name: "application-exit".into(),
                     activate: Box::new(|tray: &mut Self| {
@@ -592,7 +625,27 @@ mod platform {
                     ..Default::default()
                 }
                 .into(),
-            ]
+            ];
+            localize_menu(&mut menu, self.ui_language);
+            menu
+        }
+    }
+
+    // Localize the complete message before truncation, otherwise a long payload
+    // can remove a template's suffix and prevent localization. Escape access-key
+    // underscores exactly once here, including external prediction diagnostics.
+    fn localize_menu<T>(menu: &mut [MenuItem<T>], language: UiLanguage) {
+        for item in menu {
+            let label = match item {
+                MenuItem::Standard(item) => &mut item.label,
+                MenuItem::Checkmark(item) => &mut item.label,
+                MenuItem::SubMenu(item) => {
+                    localize_menu(&mut item.submenu, language);
+                    &mut item.label
+                }
+                _ => continue,
+            };
+            *label = menu_label(&language.message(label));
         }
     }
 
@@ -600,6 +653,7 @@ mod platform {
         proxy: EventLoopProxy<PanelUserEvent>,
         panel_visible: bool,
         theme: ThemePreset,
+        ui_language: UiLanguage,
     ) -> Option<SystemTray> {
         let icons: Vec<Icon> = TRAY_ICON_SIZES
             .into_iter()
@@ -611,6 +665,7 @@ mod platform {
             control_tx: control_tx.clone(),
             icons: icons.clone(),
             panel_visible,
+            ui_language,
             input_method: InputMethodMenuState {
                 busy: true,
                 ..Default::default()
@@ -629,7 +684,7 @@ mod platform {
             live,
             fallback: std::sync::Mutex::new(make_tray()),
         };
-        start_tray_control_worker(handle, control_tx, control_rx, theme)
+        start_tray_control_worker(handle, control_tx, control_rx, theme, ui_language)
     }
 
     fn start_tray_control_worker(
@@ -637,6 +692,7 @@ mod platform {
         control_tx: Sender<TrayControl>,
         control_rx: mpsc::Receiver<TrayControl>,
         theme: ThemePreset,
+        ui_language: UiLanguage,
     ) -> Option<SystemTray> {
         let model_report_tx = control_tx.clone();
         let has_icon = handle.live.is_some();
@@ -657,6 +713,9 @@ mod platform {
                     match command {
                         TrayControl::SetPanelVisible(visible) => {
                             let _ = handle.update(|tray| tray.panel_visible = visible);
+                        }
+                        TrayControl::SetUiLanguage(language) => {
+                            let _ = handle.update(|tray| tray.ui_language = language);
                         }
                         TrayControl::SetTheme(theme) => {
                             let icons = TRAY_ICON_SIZES
@@ -701,7 +760,7 @@ mod platform {
                                     let result = if warmup {
                                         model_runtime::warm_up(&config).map(|()| {
                                             format!(
-                                                "模型已预热：{}（未发送输入文本）",
+                                                "Model warmed: {} (no input text sent)",
                                                 config.model
                                             )
                                         })
@@ -730,14 +789,17 @@ mod platform {
                                 .name("suzaku-data".into())
                                 .spawn(move || {
                                     let result = std::panic::catch_unwind(|| manage_data(action))
-                                        .unwrap_or_else(|_| Err("数据操作未完成，请重试".into()));
+                                        .unwrap_or_else(|_| {
+                                            Err("Data operation failed; please retry".into())
+                                        });
                                     let _ = report_tx.send(TrayControl::DataReport(result));
                                 })
                                 .is_err()
                             {
                                 let _ = handle.update(|tray| {
                                     tray.data_busy = false;
-                                    tray.data_report = Some("无法启动数据管理任务".into());
+                                    tray.data_report =
+                                        Some("Could not start data operation".into());
                                 });
                             }
                         }
@@ -805,6 +867,7 @@ mod platform {
             control_tx,
             worker: Some(worker),
             theme,
+            ui_language,
             has_icon,
         })
     }
@@ -900,6 +963,54 @@ mod platform {
         use crate::input_method::SUZAKU_ENGINE;
 
         #[test]
+        fn language_updates_are_deduplicated_and_nested_menus_keep_actions_and_ids() {
+            use super::*;
+            let (control_tx, control_rx) = std::sync::mpsc::channel();
+            let mut tray = SystemTray {
+                control_tx,
+                worker: None,
+                theme: ThemePreset::Suzaku,
+                ui_language: UiLanguage::English,
+                has_icon: true,
+            };
+            tray.set_ui_language(UiLanguage::English);
+            assert!(control_rx.try_recv().is_err());
+            for language in UiLanguage::ALL {
+                tray.set_ui_language(language);
+                assert!(
+                    matches!(control_rx.try_recv(), Ok(TrayControl::SetUiLanguage(actual)) if actual == language)
+                );
+                tray.set_ui_language(language);
+                assert!(control_rx.try_recv().is_err());
+                let mut menu: Vec<MenuItem<()>> = vec![
+                    SubMenu {
+                        label: "Settings".into(),
+                        submenu: vec![
+                            StandardItem {
+                                label: "Current input method: some_ime".into(),
+                                enabled: false,
+                                ..Default::default()
+                            }
+                            .into(),
+                        ],
+                        ..Default::default()
+                    }
+                    .into(),
+                ];
+                localize_menu(&mut menu, language);
+                let MenuItem::SubMenu(item) = &menu[0] else {
+                    panic!("submenu retained")
+                };
+                assert_eq!(item.label, language.tr("Settings"));
+                let MenuItem::Standard(child) = &item.submenu[0] else {
+                    panic!("item retained")
+                };
+                assert!(!child.enabled);
+                assert!(child.label.ends_with("some__ime"));
+            }
+        }
+
+        #[test]
         fn unchanged_theme_does_not_enqueue_tray_raster_work() {
             use super::{SystemTray, ThemePreset, TrayControl};
             let (control_tx, control_rx) = std::sync::mpsc::channel();
@@ -907,6 +1018,7 @@ mod platform {
                 control_tx,
                 worker: None,
                 theme: ThemePreset::Suzaku,
+                ui_language: Default::default(),
                 has_icon: true,
             };
             tray.set_theme(ThemePreset::Suzaku);
@@ -939,12 +1051,16 @@ mod platform {
             };
             assert!(!state.can_activate());
             assert!(state.can_release());
-            assert!(state.description().contains("自动显示候选窗"));
-            assert_eq!(state.release_label(), "释放并恢复：rime");
+            assert!(
+                state
+                    .description()
+                    .contains("candidates appear while typing")
+            );
+            assert_eq!(state.release_label(), "Release and restore: rime");
             state.system.current_engine = Some("mozc-jp".into());
             assert!(state.can_activate());
             assert!(state.can_release());
-            assert!(state.release_label().contains("保留当前输入法"));
+            assert!(state.release_label().contains("keep current input method"));
         }
 
         #[test]
@@ -959,7 +1075,7 @@ mod platform {
             };
             assert!(!state.can_activate());
             assert!(!state.can_release());
-            assert!(state.description().contains("切换输入法"));
+            assert!(state.description().contains("Updating input method"));
         }
 
         #[test]
@@ -994,7 +1110,7 @@ mod platform {
             assert!(
                 InputMethodMenuState::default()
                     .native_unavailable_hint()
-                    .contains("自动启动")
+                    .contains("starts it automatically")
             );
         }
 
@@ -1008,7 +1124,7 @@ mod platform {
                 ..Default::default()
             };
             assert!(!state.can_release());
-            assert!(state.description().contains("由系统选中"));
+            assert!(state.description().contains("System-selected"));
         }
 
         #[test]
@@ -1017,6 +1133,39 @@ mod platform {
             let label = menu_label(&"错".repeat(100));
             assert_eq!(label.chars().count(), 73);
             assert!(label.ends_with('…'));
+        }
+
+        #[test]
+        fn final_menu_labels_localize_before_bounding_and_escape_external_identifiers_once() {
+            use super::*;
+            for language in UiLanguage::ALL {
+                for (key, payload) in [
+                    ("Model: {} (not checked)", "long_model_name_".repeat(12)),
+                    (
+                        "Backup saved: {} (see backup folder)",
+                        "备份_file_".repeat(12),
+                    ),
+                    ("Current input method: {}", "some_ime".into()),
+                    ("{}", "external_error_".repeat(12)),
+                ] {
+                    let raw = key.replace("{}", &payload);
+                    let expected = menu_label(&language.message(&raw));
+                    let mut menu: Vec<MenuItem<()>> = vec![
+                        StandardItem {
+                            label: raw,
+                            enabled: false,
+                            ..Default::default()
+                        }
+                        .into(),
+                    ];
+                    localize_menu(&mut menu, language);
+                    let MenuItem::Standard(item) = &menu[0] else {
+                        panic!("status retained")
+                    };
+                    assert_eq!(item.label, expected, "{language:?} {key}");
+                    assert!(!item.enabled);
+                }
+            }
         }
 
         #[test]
@@ -1065,6 +1214,7 @@ mod platform {
         }
         pub(crate) fn set_panel_visible(&self, _visible: bool) {}
         pub(crate) fn set_theme(&mut self, _theme: suzaku_map::ime::gpu::ThemePreset) {}
+        pub(crate) fn set_ui_language(&mut self, _language: suzaku_map::ui::UiLanguage) {}
         pub(crate) fn set_prediction_settings(
             &self,
             _patch: suzaku_map::ime::settings::PredictionSettingsPatch,
@@ -1079,6 +1229,7 @@ mod platform {
         _proxy: EventLoopProxy<PanelUserEvent>,
         _panel_visible: bool,
         _theme: suzaku_map::ime::gpu::ThemePreset,
+        _language: suzaku_map::ui::UiLanguage,
     ) -> Option<SystemTray> {
         None
     }

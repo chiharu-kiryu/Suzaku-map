@@ -113,6 +113,76 @@ fn themes_keep_the_same_candidate_actions_and_curved_toolbar() {
 }
 
 #[test]
+fn borderless_panel_and_settings_drop_the_backplate_without_moving_controls() {
+    use suzaku_map::ime::gpu::InputMode;
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    for seed in ["", "hello"] {
+        let snapshot = engine.seed(seed);
+        for theme in ThemePreset::ALL {
+            for width in [420.0, 720.0, 1040.0] {
+                for mode in [
+                    InputMode::VirtualKeyboard,
+                    InputMode::Dictation,
+                    InputMode::Handwriting,
+                ] {
+                    for settings in [false, true] {
+                        let mut chrome = PanelChromeState {
+                            theme_preset: theme,
+                            active_input_mode: mode,
+                            input_modes_expanded: true,
+                            seed_text: seed.into(),
+                            ..Default::default()
+                        };
+                        let height = if settings {
+                            340.0
+                        } else {
+                            WgpuCandidateRenderer::new(width, 1.0)
+                                .preferred_input_panel_height(&chrome)
+                        };
+                        let renderer = WgpuCandidateRenderer::new(width, height);
+                        let build = |chrome: &PanelChromeState| {
+                            if settings {
+                                renderer.build_settings_scene(chrome, None)
+                            } else {
+                                renderer
+                                    .build_panel_scene(&snapshot, chrome, None, None, None, None)
+                            }
+                        };
+                        let decorated = build(&chrome);
+                        chrome.hide_system_titlebar = true;
+                        let floating = build(&chrome);
+                        assert_eq!(floating.interactive_targets, decorated.interactive_targets);
+                        // Show/Hide selected colors change, but text geometry must not.
+                        assert_eq!(floating.atlas_glyphs.len(), decorated.atlas_glyphs.len());
+                        for (actual, expected) in
+                            floating.atlas_glyphs.iter().zip(&decorated.atlas_glyphs)
+                        {
+                            assert_eq!(
+                                (actual.ch, actual.rect, actual.clip_rect),
+                                (expected.ch, expected.rect, expected.clip_rect)
+                            );
+                        }
+                        assert!(floating.quads.len() < decorated.quads.len());
+                        for point in [
+                            [0.5, 0.5],
+                            [width - 0.5, 0.5],
+                            [0.5, height - 0.5],
+                            [width - 0.5, height - 0.5],
+                        ] {
+                            assert!(
+                                floating.quads.iter().all(|quad| quad.color[3] == 0.0
+                                    || quad.signed_distance(point) > 1.0),
+                                "opaque corner at {point:?}: {theme:?}, {mode:?}, settings={settings}, {width}x{height}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn orb_keeps_drag_restore_hit_targets_but_has_no_square_background() {
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     let snapshot = engine.seed("hello");

@@ -199,7 +199,7 @@ impl PanelState {
         }
         let text = self.last_commit_feedback.as_ref()?;
         hint_overlay(
-            text.clone(),
+            self.chrome.ui_language.message(text).into_owned(),
             [0.0, 0.0, self.renderer.scene_width, 0.0],
             [self.renderer.scene_width, self.renderer.scene_height],
             self.tooltip_scale(),
@@ -208,7 +208,11 @@ impl PanelState {
     }
 
     pub(super) fn interaction_hint(&self, kind: InteractionKind) -> Option<String> {
-        match kind {
+        let ui = self.chrome.ui_language;
+        let message: Option<String> = match kind {
+            InteractionKind::SetUiLanguage(language) => {
+                Some(format!("Interface language: {}", language.native_name()))
+            }
             InteractionKind::SeedInput => Some(if self.is_focused && self.chrome.input_focused {
                 "Type here in any input tab; Enter / Esc finishes editing.".into()
             } else {
@@ -230,6 +234,30 @@ impl PanelState {
                 Some("Handwriting input".to_string())
             }
             // A grab cursor is enough; a viewport-wide tooltip would cover other controls.
+            InteractionKind::InputModeButton(suzaku_map::ime::gpu::InputMode::Translation) => {
+                Some("Translate the current draft".into())
+            }
+            InteractionKind::SetTranslationSource(language) => Some(format!(
+                "Translate from {}",
+                language
+                    .map(|l| ui.tr(l.name()))
+                    .unwrap_or(ui.tr("automatically detected language"))
+            )),
+            InteractionKind::SetTranslationTarget(language) => {
+                Some(format!("Translate into {}", ui.tr(language.name())))
+            }
+            InteractionKind::TranslateText => {
+                Some("Translate with the configured model; does not commit text".into())
+            }
+            InteractionKind::CancelTranslation => {
+                Some("Discard this translation; already-sent requests cannot be recalled".into())
+            }
+            InteractionKind::ApplyTranslation => {
+                Some("Replace the editable draft with the full translation; Enter sends it".into())
+            }
+            InteractionKind::TranslationPage(_) => {
+                Some("Read another page of the full translation".into())
+            }
             InteractionKind::DragWindow => None,
             InteractionKind::ClosePanel => Some("Hide panel to system tray".to_string()),
             InteractionKind::SettingsToggle => Some(if self.kind == PanelWindowKind::Settings {
@@ -237,25 +265,35 @@ impl PanelState {
             } else {
                 "Panel settings".to_string()
             }),
-            InteractionKind::SetTextScale(scale) => {
-                Some(format!("Text size: {}", display_text_scale_label(scale)))
-            }
-            InteractionKind::SetCandidateDensity(density) => {
-                Some(format!("Candidate density: {}", density_label(density)))
-            }
-            InteractionKind::SetPreviewStyle(style) => {
-                Some(format!("Preview style: {}", preview_style_label(style)))
-            }
+            InteractionKind::SetTextScale(scale) => Some(format!(
+                "Text size: {}",
+                ui.tr(display_text_scale_label(scale))
+            )),
+            InteractionKind::SetCandidateDensity(density) => Some(format!(
+                "Candidate density: {}",
+                ui.tr(density_label(density))
+            )),
+            InteractionKind::SetPreviewStyle(style) => Some(format!(
+                "Preview style: {}",
+                ui.tr(preview_style_label(style))
+            )),
             InteractionKind::SetFontFace(face) => Some(format!("Font: {}", font_face_label(face))),
-            InteractionKind::SetTextSpacing(spacing) => {
-                Some(format!("Text spacing: {}", text_spacing_label(spacing)))
-            }
-            InteractionKind::SetTextSmoothing(smoothing) => {
-                Some(format!("Text smoothing: {}", smoothing_label(smoothing)))
-            }
+            InteractionKind::SetTextSpacing(spacing) => Some(format!(
+                "Text spacing: {}",
+                ui.tr(text_spacing_label(spacing))
+            )),
+            InteractionKind::SetTextSmoothing(smoothing) => Some(format!(
+                "Text smoothing: {}",
+                ui.tr(smoothing_label(smoothing))
+            )),
             InteractionKind::SetThemePreset(theme) => {
-                Some(format!("Theme: {}", theme_preset_label(theme)))
+                Some(format!("Theme: {}", ui.tr(theme_preset_label(theme))))
             }
+            InteractionKind::SetHideSystemTitlebar(hide) => Some(if hide {
+                "Hide the system title bar; Suzaku drag and close controls stay available".into()
+            } else {
+                "Show the system title bar on the panel and settings".into()
+            }),
             InteractionKind::DecreaseWindowScale => Some("Shrink window scale".to_string()),
             InteractionKind::DragWindowScale => Some("Drag to resize window".to_string()),
             InteractionKind::IncreaseWindowScale => Some("Enlarge window scale".to_string()),
@@ -271,11 +309,12 @@ impl PanelState {
                 "LLM suggestions: off".to_string()
             }),
             InteractionKind::SetLlmModel(model) => {
-                Some(format!("LLM model: {}", llm_model_label(model)))
+                Some(format!("LLM model: {}", ui.tr(llm_model_label(model))))
             }
-            InteractionKind::SetLlmTemperature(temp) => {
-                Some(format!("LLM creativity: {}", llm_temperature_label(temp)))
-            }
+            InteractionKind::SetLlmTemperature(temp) => Some(format!(
+                "LLM creativity: {}",
+                ui.tr(llm_temperature_label(temp))
+            )),
             InteractionKind::SetPointerTapSlopTenths(value) => {
                 Some(format!("Tap slop: {:.1}px", value as f32 / 10.0))
             }
@@ -284,6 +323,9 @@ impl PanelState {
                 Some(format!("Target slop: {:.1}px", value as f32 / 10.0))
             }
             InteractionKind::SettingsSearchInput => None,
+            InteractionKind::SetSettingsCategory(category) => {
+                Some(format!("{} settings", ui.tr(category.label())))
+            }
             InteractionKind::SettingsSearchClear => Some("Clear settings search".to_string()),
             InteractionKind::ToggleSettingsSection(section_index) => {
                 Some(format!("Toggle settings section {section_index}"))
@@ -331,7 +373,17 @@ impl PanelState {
                     self.chrome.sentence_candidates.get(display_index).cloned()
                 })
                 .or_else(|| self.chrome.sentence_candidates.get(index).cloned()),
-        }
+        };
+        message.map(|text| {
+            if matches!(
+                kind,
+                InteractionKind::Candidate(_) | InteractionKind::UseHandwritingCandidate(_)
+            ) {
+                text
+            } else {
+                ui.message(&text).into_owned()
+            }
+        })
     }
 }
 

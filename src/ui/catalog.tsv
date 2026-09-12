@@ -1,0 +1,245 @@
+# English key, Simplified Chinese, Japanese, Korean, Spanish, French, German, Portuguese
+System	跟随系统	システム	시스템	Sistema	Système	System	Sistema
+Interface	界面语言	表示言語	표시 언어	Idioma	Langue	Sprache	Idioma
+Panel Settings	面板设置	パネル設定	패널 설정	Ajustes del panel	Réglages du panneau	Panel-Einstellungen	Configurações do painel
+Panel settings	面板设置	パネル設定	패널 설정	Ajustes del panel	Réglages du panneau	Panel-Einstellungen	Configurações do painel
+Appearance	外观	外観	모양	Apariencia	Apparence	Darstellung	Aparência
+Input	输入	入力	입력	Entrada	Saisie	Eingabe	Entrada
+Model	模型	モデル	모델	Modelo	Modèle	Modell	Modelo
+Search settings	搜索设置	設定を検索	설정 검색	Buscar ajustes	Rechercher un réglage	Einstellungen suchen	Buscar configurações
+No matching settings	没有匹配的设置	該当する設定なし	일치하는 설정 없음	Sin coincidencias	Aucun réglage trouvé	Keine Treffer	Nenhuma configuração encontrada
+Text	文字大小	文字サイズ	글자 크기	Texto	Texte	Textgröße	Texto
+Theme	主题	テーマ	테마	Tema	Thème	Design	Tema
+Title Bar	标题栏	タイトルバー	제목 표시줄	Barra de título	Barre de titre	Titelleiste	Barra de título
+Show	显示	表示	표시	Mostrar	Afficher	Anzeigen	Mostrar
+Hide	隐藏	非表示	숨기기	Ocultar	Masquer	Ausblenden	Ocultar
+Font	字体	フォント	글꼴	Fuente	Police	Schrift	Fonte
+Auto	自动	自動	자동	Auto	Auto	Auto	Auto
+Density	候选密度	候補の密度	후보 밀도	Densidad	Densité	Dichte	Densidade
+Compact	紧凑	コンパクト	좁게	Compacta	Compacte	Kompakt	Compacta
+Cozy	舒适	ゆったり	넓게	Cómoda	Confortable	Bequem	Confortável
+Spacing	字间距	文字間隔	자간	Espaciado	Espacement	Abstand	Espaçamento
+Tight	紧密	狭い	좁게	Estrecho	Serré	Eng	Estreito
+Normal	标准	標準	보통	Normal	Normal	Normal	Normal
+Relaxed	宽松	広い	넓게	Amplio	Large	Weit	Amplo
+Smooth	平滑	滑らか	부드럽게	Suave	Lissé	Glatt	Suave
+Sharp	清晰	くっきり	선명하게	Nítido	Net	Scharf	Nítido
+Preview	预览	プレビュー	미리 보기	Vista previa	Aperçu	Vorschau	Prévia
+Trim	简略	省略	간략히	Breve	Bref	Kurz	Breve
+Full	完整	全体	전체	Completa	Complet	Vollständig	Completa
+Tap Slop	点击容差	タップ許容幅	탭 허용 범위	Margen de toque	Marge du toucher	Tipptoleranz	Margem do toque
+Tap Timeout	点击时限	タップ制限時間	탭 제한 시간	Tiempo de toque	Durée du toucher	Tippdauer	Tempo do toque
+Target Slop	热区扩展	操作範囲の拡張	터치 영역 여유	Margen del botón	Marge de la cible	Zieltoleranz	Margem do botão
+Voice Auto	语音自动填入	音声の自動挿入	음성 자동 삽입	Voz automática	Saisie vocale auto	Sprache automatisch	Voz automática
+On	开启	オン	켜짐	Sí	Activé	An	Ativado
+Off	关闭	オフ	꺼짐	No	Désactivé	Aus	Desativado
+Provider	模型服务	モデルサービス	모델 서비스	Servicio	Service	Dienst	Serviço
+Configured service	已配置的服务	設定済みサービス	설정된 서비스	Servicio configurado	Service configuré	Konfigurierter Dienst	Serviço configurado
+Tone	生成风格	生成スタイル	생성 스타일	Estilo	Style	Stil	Estilo
+Focused	严谨	正確	정확하게	Preciso	Précis	Präzise	Preciso
+Balanced	均衡	バランス	균형 있게	Equilibrado	Équilibré	Ausgewogen	Equilibrado
+Expressive	丰富	表現豊か	풍부하게	Expresivo	Expressif	Ausdrucksstark	Expressivo
+Custom	自定义	カスタム	사용자 지정	Personalizado	Personnalisé	Benutzerdefiniert	Personalizado
+Custom ({})	自定义（{}）	カスタム（{}）	사용자 지정 ({})	Personalizado ({})	Personnalisé ({})	Benutzerdefiniert ({})	Personalizado ({})
+Daylight	明亮	ライト	밝게	Claro	Clair	Hell	Claro
+Device Dark	深色	ダーク	어둡게	Oscuro	Sombre	Dunkel	Escuro
+High Contrast	高对比度	高コントラスト	고대비	Alto contraste	Contraste élevé	Hoher Kontrast	Alto contraste
+Type a seed word or phrase	输入词语或句子	単語や文章を入力	단어나 문장을 입력하세요	Escribe una palabra o frase	Saisissez un mot ou une phrase	Wort oder Satz eingeben	Digite uma palavra ou frase
+Suzaku · Input	朱雀 · 输入	Suzaku · 入力	Suzaku · 입력	Suzaku · Entrada	Suzaku · Saisie	Suzaku · Eingabe	Suzaku · Entrada
+Baihu · Input	白虎 · 输入	Baihu · 入力	Baihu · 입력	Baihu · Entrada	Baihu · Saisie	Baihu · Eingabe	Baihu · Entrada
+Qinglong · Input	青龙 · 输入	Qinglong · 入力	Qinglong · 입력	Qinglong · Entrada	Qinglong · Saisie	Qinglong · Eingabe	Qinglong · Entrada
+Xuanwu · Input	玄武 · 输入	Xuanwu · 入力	Xuanwu · 입력	Xuanwu · Entrada	Xuanwu · Saisie	Xuanwu · Eingabe	Xuanwu · Entrada
+Keyboard input	键盘输入	キーボード入力	키보드 입력	Teclado	Clavier	Tastatureingabe	Teclado
+Tap to type	点击按键输入	タップして入力	눌러서 입력	Toca para escribir	Touchez pour saisir	Zum Tippen klicken	Toque para digitar
+Space	空格	スペース	공백	Espacio	Espace	Leertaste	Espaço
+Voice input	语音输入	音声入力	음성 입력	Entrada de voz	Saisie vocale	Spracheingabe	Entrada de voz
+Handwrite input	手写输入	手書き入力	손글씨 입력	Escritura a mano	Écriture manuscrite	Handschrift	Escrita à mão
+Handwriting input	手写输入	手書き入力	손글씨 입력	Escritura a mano	Écriture manuscrite	Handschrift	Escrita à mão
+Trace on canvas	在画布上书写	ここに書いてください	여기에 쓰세요	Escribe en el lienzo	Écrivez sur la zone	Hier schreiben	Escreva na área
+Word suggestions	词候选	単語候補	단어 후보	Palabras sugeridas	Mots proposés	Wortvorschläge	Sugestões de palavras
+Word suggestions  |  {}	词候选  |  {}	単語候補  |  {}	단어 후보  |  {}	Palabras  |  {}	Mots  |  {}	Wörter  |  {}	Palavras  |  {}
+Back	撤回	戻す	되돌리기	Atrás	Retour	Zurück	Voltar
+Translation	文本翻译	翻訳	번역	Traducción	Traduction	Übersetzung	Tradução
+From	原文	原文	원문	De	De	Von	De
+To	译为	訳文	대상	A	Vers	Nach	Para
+Local model	本机模型	ローカルモデル	로컬 모델	Modelo local	Modèle local	Lokales Modell	Modelo local
+Cloud model	云端模型	クラウドモデル	클라우드 모델	Modelo en la nube	Modèle cloud	Cloud-Modell	Modelo na nuvem
+Local · Review	本机 · 请核对	ローカル · 要確認	로컬 · 확인 필요	Local · Revisar	Local · À vérifier	Lokal · Prüfen	Local · Revisar
+Cloud · Review	云端 · 请核对	クラウド · 要確認	클라우드 · 확인 필요	Nube · Revisar	Cloud · À vérifier	Cloud · Prüfen	Nuvem · Revisar
+Translate	翻译	翻訳	번역	Traducir	Traduire	Übersetzen	Traduzir
+Cancel	取消	キャンセル	취소	Cancelar	Annuler	Abbrechen	Cancelar
+Use draft	填入草稿	下書きに反映	초안에 적용	Usar texto	Appliquer	Übernehmen	Usar texto
+English	英语	英語	영어	Inglés	Anglais	Englisch	Inglês
+Simplified Chinese	简体中文	簡体字中国語	중국어 간체	Chino simplificado	Chinois simplifié	Chinesisch (vereinfacht)	Chinês simplificado
+Japanese	日语	日本語	일본어	Japonés	Japonais	Japanisch	Japonês
+Korean	韩语	韓国語	한국어	Coreano	Coréen	Koreanisch	Coreano
+Spanish	西班牙语	スペイン語	스페인어	Español	Espagnol	Spanisch	Espanhol
+French	法语	フランス語	프랑스어	Francés	Français	Französisch	Francês
+German	德语	ドイツ語	독일어	Alemán	Allemand	Deutsch	Alemão
+Portuguese	葡萄牙语	ポルトガル語	포르투갈어	Portugués	Portugais	Portugiesisch	Português
+Font: {}	字体：{}	フォント：{}	글꼴: {}	Fuente: {}	Police : {}	Schrift: {}	Fonte: {}
+Search all settings	搜索全部设置	すべての設定を検索	모든 설정 검색	Buscar todos los ajustes	Rechercher un réglage	Alle Einstellungen suchen	Buscar configurações
+Seed input	草稿输入	下書き入力	초안 입력	Borrador	Brouillon	Entwurf	Rascunho
+Small	小	小	작게	Pequeño	Petit	Klein	Pequeno
+Medium	中	中	보통	Mediano	Moyen	Mittel	Médio
+Large	大	大	크게	Grande	Grand	Groß	Grande
+Keep typed text	保留原文	入力を保持	입력 유지	Conservar texto	Garder le texte	Text beibehalten	Manter texto
+Word · tap to commit	词语 · 点击发送	単語 · タップで確定	단어 · 눌러서 확정	Palabra · clic para enviar	Mot · clic pour envoyer	Wort · klicken zum Senden	Palavra · clique para enviar
+primary sentence selected	已选中首选句子	第一候補を選択中	첫 문장 선택됨	Frase principal elegida	Phrase principale choisie	Hauptsatz ausgewählt	Frase principal selecionada
+alternate sentence selected	已选中备选句子	別の候補を選択中	대체 문장 선택됨	Alternativa elegida	Autre phrase choisie	Alternative ausgewählt	Alternativa selecionada
+sentence best match · tap to commit	最佳句子 · 点击发送	最適な文 · タップで確定	추천 문장 · 눌러서 확정	Mejor frase · clic para enviar	Meilleure phrase · clic pour envoyer	Bester Satz · klicken zum Senden	Melhor frase · clique para enviar
+sentence {} phrase · tap to commit	{}句子 · 点击发送	{}の文 · タップで確定	{} 문장 · 눌러서 확정	Frase {} · clic para enviar	Phrase {} · clic pour envoyer	Satz {} · klicken zum Senden	Frase {} · clique para enviar
+Draft has {} characters. Translate up to 1,000 at a time; nothing has been sent.	草稿共 {} 字符，每次最多翻译 1,000 字符；尚未发送。	下書きは{}文字です。1回1,000文字まで翻訳できます。未送信です。	초안은 {}자입니다. 한 번에 1,000자까지 번역하며 아직 전송하지 않았습니다.	El borrador tiene {} caracteres. Máximo 1.000 por traducción; no se ha enviado nada.	Le brouillon compte {} caractères. Maximum 1 000 par traduction ; rien n’a été envoyé.	Der Entwurf hat {} Zeichen. Höchstens 1.000 pro Übersetzung; nichts gesendet.	O rascunho tem {} caracteres. Máximo de 1.000 por tradução; nada foi enviado.
+Translating… You can keep editing. Cancel discards the result, but cannot recall text already sent.	正在翻译…仍可编辑。取消会丢弃结果，但无法收回已发送的文本。	翻訳中…編集は続けられます。キャンセルしても送信済みの原文は取り消せません。	번역 중…계속 편집할 수 있습니다. 취소해도 이미 전송한 원문은 회수할 수 없습니다.	Traduciendo… Puedes seguir editando. Cancelar descarta el resultado, pero no retira el texto ya enviado.	Traduction… Vous pouvez continuer à modifier. Annuler écarte le résultat, sans rappeler le texte envoyé.	Übersetzung läuft… Bearbeiten bleibt möglich. Abbrechen verwirft das Ergebnis, ruft gesendeten Text aber nicht zurück.	Traduzindo… Você pode continuar editando. Cancelar descarta o resultado, mas não recupera o texto já enviado.
+Type a draft above, choose languages, then Translate. Up to 1,000 characters. Nothing is sent or inserted automatically.	在上方输入草稿，选择语言后点击翻译。最多 1,000 字符；不会自动发送或填入。	上に下書きを入力し、言語を選んで翻訳してください。最大1,000文字。自動送信・挿入はしません。	위에 초안을 쓰고 언어를 선택한 후 번역하세요. 최대 1,000자이며 자동 전송이나 삽입은 하지 않습니다.	Escribe arriba, elige los idiomas y pulsa Traducir. Máximo 1.000 caracteres. Nada se envía ni inserta automáticamente.	Saisissez le texte, choisissez les langues et traduisez. Maximum 1 000 caractères. Aucun envoi ni insertion automatique.	Oben Text eingeben, Sprachen wählen und übersetzen. Maximal 1.000 Zeichen. Kein automatisches Senden oder Einfügen.	Digite acima, escolha os idiomas e traduza. Até 1.000 caracteres. Nada é enviado ou inserido automaticamente.
+Enter text to translate; unsupported control characters are not allowed.	请输入待翻译文本，不支持特殊控制字符。	翻訳する文を入力してください。未対応の制御文字は使えません。	번역할 텍스트를 입력하세요. 지원하지 않는 제어 문자는 사용할 수 없습니다.	Introduce texto; no se admiten caracteres de control.	Saisissez du texte sans caractères de contrôle non pris en charge.	Text ohne nicht unterstützte Steuerzeichen eingeben.	Digite texto sem caracteres de controle não suportados.
+Translate up to 1,000 characters at a time; your draft is unchanged.	每次最多翻译 1,000 字符，草稿未改动。	1回1,000文字までです。下書きは変更していません。	한 번에 1,000자까지 번역합니다. 초안은 그대로입니다.	Máximo 1.000 caracteres por vez; el borrador no ha cambiado.	Maximum 1 000 caractères à la fois ; brouillon inchangé.	Maximal 1.000 Zeichen pro Anfrage; Entwurf unverändert.	Máximo de 1.000 caracteres por vez; rascunho inalterado.
+The model did not use the target language. Try a model with stronger multilingual support.	模型未使用目标语言，请尝试多语言能力更强的模型。	指定した言語で出力されませんでした。多言語に強いモデルをお試しください。	모델이 대상 언어로 응답하지 않았습니다. 다국어 지원이 더 나은 모델을 사용하세요.	El modelo no usó el idioma elegido. Prueba otro con mejor soporte multilingüe.	Le modèle n’a pas utilisé la langue choisie. Essayez un modèle multilingue plus performant.	Das Modell hat nicht in die Zielsprache übersetzt. Ein stärkeres mehrsprachiges Modell versuchen.	O modelo não usou o idioma escolhido. Tente um modelo com melhor suporte multilíngue.
+Translation timed out. Retry explicitly when the model is ready.	翻译超时。模型就绪后可手动重试。	翻訳がタイムアウトしました。モデルの準備後に再試行してください。	번역 시간이 초과되었습니다. 모델 준비 후 다시 시도하세요.	La traducción agotó el tiempo. Reintenta cuando el modelo esté listo.	Délai dépassé. Réessayez quand le modèle sera prêt.	Zeitüberschreitung. Erneut versuchen, sobald das Modell bereit ist.	A tradução excedeu o tempo. Tente novamente quando o modelo estiver pronto.
+Cloud access is not authorized. No text was sent.	云端访问未授权，未发送文本。	クラウド利用は未許可です。原文は送信していません。	클라우드 사용이 허가되지 않았습니다. 텍스트를 전송하지 않았습니다.	Acceso a la nube no autorizado. No se envió texto.	Accès cloud non autorisé. Aucun texte envoyé.	Cloud-Zugriff nicht genehmigt. Kein Text gesendet.	Acesso à nuvem não autorizado. Nenhum texto enviado.
+Model authorization failed. Check the configured credentials.	模型授权失败，请检查凭据配置。	モデルの認証に失敗しました。認証情報を確認してください。	모델 인증에 실패했습니다. 인증 정보를 확인하세요.	Falló la autorización del modelo. Revisa las credenciales.	Échec d’authentification du modèle. Vérifiez les identifiants.	Modell-Authentifizierung fehlgeschlagen. Zugangsdaten prüfen.	Falha na autorização do modelo. Verifique as credenciais.
+Local model or configured service unavailable. Check model settings.	本机模型或已配置服务不可用，请检查模型设置。	ローカルモデルまたはサービスを利用できません。設定を確認してください。	로컬 모델 또는 서비스에 연결할 수 없습니다. 모델 설정을 확인하세요.	Modelo local o servicio no disponible. Revisa los ajustes.	Modèle local ou service indisponible. Vérifiez les réglages.	Lokales Modell oder Dienst nicht verfügbar. Einstellungen prüfen.	Modelo local ou serviço indisponível. Verifique as configurações.
+Check the configured model and endpoint.	请检查配置的模型及服务地址。	モデルと接続先の設定を確認してください。	모델과 서비스 주소를 확인하세요.	Revisa el modelo y la dirección del servicio.	Vérifiez le modèle et l’adresse du service.	Modell und Dienstadresse prüfen.	Verifique o modelo e o endereço do serviço.
+No complete translation received. Your draft is unchanged.	未收到完整译文，草稿未改动。	完全な翻訳を受信できませんでした。下書きは変更していません。	완전한 번역을 받지 못했습니다. 초안은 그대로입니다.	No se recibió una traducción completa. Borrador sin cambios.	Traduction incomplète. Brouillon inchangé.	Keine vollständige Übersetzung erhalten. Entwurf unverändert.	Nenhuma tradução completa recebida. Rascunho inalterado.
+Interface language: {}	界面语言：{}	表示言語：{}	표시 언어: {}	Idioma de interfaz: {}	Langue de l’interface : {}	Oberflächensprache: {}	Idioma da interface: {}
+Type here in any input tab; Enter / Esc finishes editing.	各输入页均可在此编辑，回车或 Esc 结束编辑。	どの入力タブでも編集できます。Enter / Esc で終了。	모든 입력 탭에서 편집할 수 있습니다. Enter / Esc로 종료합니다.	Edita desde cualquier pestaña; Enter / Esc termina.	Modifiez depuis tout onglet ; Entrée / Échap termine.	In jedem Eingabetab bearbeitbar; Enter / Esc beendet.	Edite em qualquer aba; Enter / Esc termina.
+Click here to type with your keyboard.	点击此处使用键盘输入。	クリックしてキーボードで入力。	클릭하여 키보드로 입력하세요.	Haz clic para escribir con el teclado.	Cliquez pour saisir au clavier.	Hier klicken und mit der Tastatur schreiben.	Clique para digitar com o teclado.
+Toggle floating bubble	切换悬浮球	フローティングバブルを切替	플로팅 버블 전환	Alternar burbuja flotante	Basculer la bulle flottante	Schwebende Kugel umschalten	Alternar bolha flutuante
+Hide input methods	收起输入工具	入力ツールを折りたたむ	입력 도구 접기	Ocultar herramientas	Masquer les outils	Eingabewerkzeuge einklappen	Ocultar ferramentas
+Show input methods	展开输入工具	入力ツールを展開	입력 도구 펼치기	Mostrar herramientas	Afficher les outils	Eingabewerkzeuge ausklappen	Mostrar ferramentas
+Virtual keyboard	虚拟键盘	仮想キーボード	가상 키보드	Teclado virtual	Clavier virtuel	Virtuelle Tastatur	Teclado virtual
+Translate the current draft	翻译当前草稿	現在の下書きを翻訳	현재 초안 번역	Traducir el borrador	Traduire le brouillon	Aktuellen Entwurf übersetzen	Traduzir o rascunho
+automatically detected language	自动识别的语言	自動検出した言語	자동 감지한 언어	idioma detectado	langue détectée	automatisch erkannter Sprache	idioma detectado
+Translate from {}	原文语言：{}	原文の言語：{}	원문 언어: {}	Traducir desde: {}	Traduire depuis : {}	Übersetzen aus: {}	Traduzir de: {}
+Translate into {}	目标语言：{}	訳文の言語：{}	대상 언어: {}	Traducir a: {}	Traduire vers : {}	Übersetzen nach: {}	Traduzir para: {}
+Translate with the configured model; does not commit text	使用已配置模型翻译，不直接发送文本	設定済みモデルで翻訳。入力は確定しません	설정된 모델로 번역하며 텍스트를 확정하지 않습니다	Traducir con el modelo configurado, sin enviar el texto	Traduire avec le modèle configuré, sans valider le texte	Mit konfiguriertem Modell übersetzen, ohne Text zu senden	Traduzir com o modelo configurado, sem enviar o texto
+Discard this translation; already-sent requests cannot be recalled	丢弃译文，已发出的请求无法撤回	翻訳を破棄。送信済みのリクエストは取り消せません	번역을 버립니다. 전송된 요청은 회수할 수 없습니다	Descartar traducción; las peticiones enviadas no se pueden retirar	Écarter la traduction ; les requêtes envoyées restent envoyées	Übersetzung verwerfen; gesendete Anfragen sind nicht rückholbar	Descartar tradução; solicitações enviadas não podem ser recuperadas
+Replace the editable draft with the full translation; Enter sends it	完整译文填入可编辑草稿，回车才发送	翻訳全文を下書きに反映。Enter で確定	번역 전체를 편집 가능한 초안에 적용합니다. Enter로 전송합니다	Sustituir el borrador por la traducción; Enter envía	Remplacer le brouillon par la traduction ; Entrée envoie	Entwurf durch vollständige Übersetzung ersetzen; Enter sendet	Substituir rascunho pela tradução; Enter envia
+Read another page of the full translation	翻看完整译文的其他页面	翻訳の別のページを読む	번역의 다른 페이지 보기	Ver otra página de la traducción	Lire une autre page de la traduction	Andere Seite der Übersetzung lesen	Ler outra página da tradução
+Hide panel to system tray	隐藏到系统托盘	トレイに隠す	트레이로 숨기기	Ocultar en la bandeja	Masquer dans la zone de notification	In den Infobereich ausblenden	Ocultar na bandeja
+Close settings	关闭设置	設定を閉じる	설정 닫기	Cerrar ajustes	Fermer les réglages	Einstellungen schließen	Fechar configurações
+Text size: {}	文字大小：{}	文字サイズ：{}	글자 크기: {}	Tamaño: {}	Taille du texte : {}	Textgröße: {}	Tamanho do texto: {}
+Candidate density: {}	候选密度：{}	候補の密度：{}	후보 밀도: {}	Densidad: {}	Densité : {}	Kandidatendichte: {}	Densidade: {}
+Preview style: {}	预览样式：{}	プレビュー：{}	미리 보기: {}	Vista previa: {}	Aperçu : {}	Vorschau: {}	Prévia: {}
+Text spacing: {}	字间距：{}	文字間隔：{}	자간: {}	Espaciado: {}	Espacement : {}	Zeichenabstand: {}	Espaçamento: {}
+Text smoothing: {}	文字平滑：{}	文字の平滑化：{}	글자 부드러움: {}	Suavizado: {}	Lissage : {}	Textglättung: {}	Suavização: {}
+Theme: {}	主题：{}	テーマ：{}	테마: {}	Tema: {}	Thème : {}	Design: {}	Tema: {}
+Hide the system title bar; Suzaku drag and close controls stay available	隐藏系统标题栏，保留应用的拖动和关闭功能	システムのタイトルバーを隠し、ドラッグと閉じる操作を維持	시스템 제목 표시줄을 숨겨도 이동과 닫기는 사용할 수 있습니다	Ocultar barra del sistema; se mantiene mover y cerrar	Masquer la barre système ; déplacement et fermeture restent disponibles	Systemtitelleiste ausblenden; Verschieben und Schließen bleiben verfügbar	Ocultar barra do sistema; mover e fechar continuam disponíveis
+Show the system title bar on the panel and settings	显示面板和设置的系统标题栏	パネルと設定にシステムのタイトルバーを表示	패널과 설정의 시스템 제목 표시줄 표시	Mostrar barra del sistema en panel y ajustes	Afficher la barre système du panneau et des réglages	Systemtitelleiste für Panel und Einstellungen anzeigen	Mostrar barra do sistema no painel e nas configurações
+Shrink window scale	缩小窗口	ウィンドウを縮小	창 축소	Reducir ventana	Réduire la fenêtre	Fenster verkleinern	Diminuir janela
+Drag to resize window	拖动调整窗口大小	ドラッグしてサイズ変更	드래그하여 크기 조절	Arrastrar para cambiar tamaño	Glisser pour redimensionner	Ziehen zum Ändern der Größe	Arraste para redimensionar
+Enlarge window scale	放大窗口	ウィンドウを拡大	창 확대	Ampliar ventana	Agrandir la fenêtre	Fenster vergrößern	Ampliar janela
+Reset scale to 100%	恢复 100% 缩放	倍率を100%に戻す	배율을 100%로 복원	Restablecer al 100%	Rétablir à 100 %	Skalierung auf 100 % setzen	Restaurar para 100%
+Voice auto insert: on	语音自动填入：开	音声自動挿入：オン	음성 자동 삽입: 켜짐	Inserción de voz: sí	Insertion vocale : activée	Sprache automatisch einfügen: an	Inserção de voz: ativada
+Voice auto insert: off	语音自动填入：关	音声自動挿入：オフ	음성 자동 삽입: 꺼짐	Inserción de voz: no	Insertion vocale : désactivée	Sprache automatisch einfügen: aus	Inserção de voz: desativada
+LLM suggestions: on	模型联想：开	モデル候補：オン	모델 후보: 켜짐	Sugerencias LLM: sí	Suggestions LLM : activées	LLM-Vorschläge: an	Sugestões LLM: ativadas
+LLM suggestions: off	模型联想：关	モデル候補：オフ	모델 후보: 꺼짐	Sugerencias LLM: no	Suggestions LLM : désactivées	LLM-Vorschläge: aus	Sugestões LLM: desativadas
+LLM model: {}	模型：{}	モデル：{}	모델: {}	Modelo: {}	Modèle : {}	Modell: {}	Modelo: {}
+LLM creativity: {}	生成风格：{}	生成スタイル：{}	생성 스타일: {}	Creatividad: {}	Créativité : {}	Kreativität: {}	Criatividade: {}
+Tap slop: {}px	点击移动容差：{}px	タップ移動許容：{}px	탭 이동 허용: {}px	Margen de toque: {}px	Marge du toucher : {}px	Tipptoleranz: {}px	Margem do toque: {}px
+Tap timeout: {}ms	点击时限：{}ms	タップ制限：{}ms	탭 제한: {}ms	Tiempo de toque: {}ms	Durée du toucher : {}ms	Tippdauer: {}ms	Tempo do toque: {}ms
+Target slop: {}px	热区扩展：{}px	操作範囲の拡張：{}px	터치 영역 여유: {}px	Margen del botón: {}px	Marge de la cible : {}px	Zieltoleranz: {}px	Margem do botão: {}px
+{} settings	{}设置	{}の設定	{} 설정	Ajustes de {}	Réglages : {}	{}-Einstellungen	Configurações de {}
+Clear settings search	清空设置搜索	設定の検索をクリア	설정 검색 지우기	Borrar búsqueda	Effacer la recherche	Einstellungssuche leeren	Limpar busca
+Toggle settings section {}	收起或展开设置分组 {}	設定グループ{}を切り替え	설정 그룹 {} 전환	Alternar sección {}	Basculer la section {}	Einstellungsgruppe {} umschalten	Alternar seção {}
+Complete word: {}	补全为：{}	補完：{}	단어 완성: {}	Completar palabra: {}	Compléter le mot : {}	Wort vervollständigen: {}	Completar palavra: {}
+Undo last word completion	撤回上次词补全	最後の単語補完を戻す	마지막 단어 완성 취소	Deshacer última palabra	Annuler le dernier mot	Letzte Wortergänzung rückgängig	Desfazer última palavra
+Stop listening	停止收音	音声入力を停止	음성 입력 중지	Dejar de escuchar	Arrêter l’écoute	Aufnahme stoppen	Parar de ouvir
+Start listening	开始收音	音声入力を開始	음성 입력 시작	Empezar a escuchar	Démarrer l’écoute	Aufnahme starten	Começar a ouvir
+Open system voice settings	打开系统语音设置	システム音声設定を開く	시스템 음성 설정 열기	Abrir ajustes de voz	Ouvrir les réglages vocaux	System-Spracheinstellungen öffnen	Abrir configurações de voz
+Refresh microphone and speech permissions	刷新麦克风和语音权限	マイクと音声認識の権限を更新	마이크 및 음성 권한 새로 고침	Actualizar permisos de voz	Actualiser les autorisations vocales	Mikrofon- und Sprachrechte aktualisieren	Atualizar permissões de voz
+Use next sample transcript	使用下一段示例文本	次の音声サンプルを使用	다음 예시 텍스트 사용	Usar siguiente ejemplo	Utiliser l’exemple suivant	Nächsten Beispieltext verwenden	Usar próximo exemplo
+Insert transcript into seed input	将转写文本填入草稿	文字起こしを下書きに挿入	인식한 텍스트를 초안에 삽입	Insertar transcripción	Insérer la transcription	Transkript in den Entwurf einfügen	Inserir transcrição
+Clear captured transcript	清空转写文本	文字起こしをクリア	인식한 텍스트 지우기	Borrar transcripción	Effacer la transcription	Transkript leeren	Limpar transcrição
+Undo last handwriting stroke	撤销最后一笔	最後の筆画を戻す	마지막 획 취소	Deshacer último trazo	Annuler le dernier trait	Letzten Strich rückgängig	Desfazer último traço
+Clear handwriting strokes	清空笔迹	筆跡を消去	손글씨 지우기	Borrar trazos	Effacer les traits	Handschrift löschen	Limpar traços
+Backspace	退格	一文字削除	백스페이스	Borrar carácter	Effacer un caractère	Rücktaste	Apagar caractere
+Configured service (suzaku_tool model configure)	已配置服务（suzaku_tool model configure）	設定済みサービス（suzaku_tool model configure）	설정된 서비스 (suzaku_tool model configure)	Servicio configurado (suzaku_tool model configure)	Service configuré (suzaku_tool model configure)	Konfigurierter Dienst (suzaku_tool model configure)	Serviço configurado (suzaku_tool model configure)
+Updating input method…	正在处理输入法服务 / 切换输入法…	入力方式を更新中…	입력기 업데이트 중…	Actualizando método de entrada…	Mise à jour de la saisie…	Eingabemethode wird aktualisiert…	Atualizando método de entrada…
+Suzaku active; candidates appear while typing	Suzaku 已激活，输入时自动显示候选窗	Suzaku が有効です。入力時に候補を表示します	Suzaku 활성화됨; 입력 시 후보 표시	Suzaku activo; candidatos al escribir	Suzaku actif ; candidats pendant la saisie	Suzaku aktiv; Vorschläge beim Tippen	Suzaku ativo; sugestões ao digitar
+System-selected; switch back using the system input menu	Suzaku 由系统选中；请通过系统菜单切换回其他输入法	システムにより選択中。システムメニューから切り替えてください	시스템에서 선택됨; 시스템 메뉴에서 전환하세요	Seleccionado por el sistema; cambia desde su menú	Sélectionné par le système ; changez via son menu	Vom System gewählt; über das Systemmenü zurückwechseln	Selecionado pelo sistema; altere no menu do sistema
+Current input method: {}	当前输入法：{}	現在の入力方式：{}	현재 입력기: {}	Método actual: {}	Saisie actuelle : {}	Aktuelle Eingabemethode: {}	Método atual: {}
+Reading input method status…	正在读取输入法状态…	入力方式の状態を確認中…	입력기 상태 확인 중…	Leyendo estado de entrada…	Lecture de l’état de saisie…	Eingabestatus wird gelesen…	Lendo estado da entrada…
+End activation (keep current input method)	结束激活（保留当前输入法）	有効化を終了（現在の入力方式を維持）	활성화 종료 (현재 입력기 유지)	Desactivar (conservar método actual)	Désactiver (garder la saisie actuelle)	Aktivierung beenden (aktuelle Eingabe behalten)	Desativar (manter método atual)
+Release and restore: {}	释放并恢复：{}	解除して復元：{}	해제 후 복원: {}	Desactivar y restaurar: {}	Désactiver et rétablir : {}	Deaktivieren und wiederherstellen: {}	Desativar e restaurar: {}
+Release and restore previous input method	释放并恢复原输入法	解除して前の入力方式に戻す	해제하고 이전 입력기 복원	Desactivar y restaurar método anterior	Désactiver et rétablir la saisie précédente	Deaktivieren und vorige Eingabemethode wiederherstellen	Desativar e restaurar método anterior
+Input service not ready; activation starts it automatically	输入法服务尚未就绪；激活时会自动启动	サービス未準備。有効化時に自動起動します	서비스 준비 안 됨; 활성화 시 자동 시작	Servicio no preparado; se inicia al activar	Service non prêt ; démarrage à l’activation	Dienst nicht bereit; startet bei Aktivierung	Serviço não pronto; inicia ao ativar
+Tray controller unavailable; restart Suzaku	托盘控制服务不可用，请重新启动 Suzaku	トレイ制御を利用できません。Suzaku を再起動してください	트레이 제어 불가; Suzaku를 다시 시작하세요	Bandeja no disponible; reinicia Suzaku	Contrôleur indisponible ; redémarrez Suzaku	Tray-Steuerung nicht verfügbar; Suzaku neu starten	Bandeja indisponível; reinicie o Suzaku
+Data manager unavailable	数据管理服务不可用	データ管理を利用できません	데이터 관리 사용 불가	Gestor de datos no disponible	Gestionnaire de données indisponible	Datenverwaltung nicht verfügbar	Gerenciador de dados indisponível
+Suzaku Input Method	Suzaku 输入法	Suzaku 入力メソッド	Suzaku 입력기	Método de entrada Suzaku	Méthode de saisie Suzaku	Suzaku-Eingabemethode	Método de entrada Suzaku
+Activate Suzaku	激活 Suzaku 输入法	Suzaku を有効化	Suzaku 활성화	Activar Suzaku	Activer Suzaku	Suzaku aktivieren	Ativar Suzaku
+Input language: {}	输入语言：{}	入力言語：{}	입력 언어: {}	Idioma de entrada: {}	Langue de saisie : {}	Eingabesprache: {}	Idioma de entrada: {}
+Input language (host disconnected)	输入语言（宿主未连接）	入力言語（ホスト未接続）	입력 언어 (호스트 연결 안 됨)	Idioma de entrada (sin conexión)	Langue de saisie (hôte déconnecté)	Eingabesprache (Host getrennt)	Idioma de entrada (host desconectado)
+LLM suggestions (cloud, consent required)	LLM 联想（云端，需单独授权）	LLM 候補（クラウド・許可が必要）	LLM 후보 (클라우드, 동의 필요)	Sugerencias LLM (nube, requiere permiso)	Suggestions LLM (cloud, accord requis)	LLM-Vorschläge (Cloud, Zustimmung nötig)	Sugestões LLM (nuvem, requer permissão)
+LLM suggestions (local)	LLM 联想（本机）	LLM 候補（ローカル）	LLM 후보 (로컬)	Sugerencias LLM (local)	Suggestions LLM (local)	LLM-Vorschläge (lokal)	Sugestões LLM (local)
+LLM suggestions	LLM 联想	LLM 候補	LLM 후보	Sugerencias LLM	Suggestions LLM	LLM-Vorschläge	Sugestões LLM
+Generating; local candidates remain available	LLM 正在联想，本地候选可立即使用	生成中。ローカル候補は利用できます	생성 중; 로컬 후보는 사용 가능	Generando; candidatos locales disponibles	Génération ; candidats locaux disponibles	Generierung läuft; lokale Vorschläge verfügbar	Gerando; sugestões locais disponíveis
+Model candidates ready (marked AI)	LLM 候选已就绪（标记 AI）	モデル候補の準備完了（AI 表示）	모델 후보 준비됨 (AI 표시)	Candidatos listos (marca AI)	Candidats prêts (marqués AI)	Modellvorschläge bereit (Markierung AI)	Sugestões prontas (marca AI)
+Model unavailable; local candidates retained	模型暂无结果或不可用，已保留本地候选	モデル利用不可。ローカル候補を維持	모델 사용 불가; 로컬 후보 유지	Modelo no disponible; candidatos locales conservados	Modèle indisponible ; candidats locaux conservés	Modell nicht verfügbar; lokale Vorschläge bleiben	Modelo indisponível; sugestões locais mantidas
+Cloud consent required; no input text is sent	云端联想尚未授权，不会发送输入内容	クラウド未許可。入力内容は送信しません	클라우드 동의 필요; 입력 텍스트 전송 안 함	Se requiere permiso para la nube; no se envía texto	Accord cloud requis ; aucun texte envoyé	Cloud-Zustimmung nötig; kein Eingabetext gesendet	Permissão para nuvem necessária; nenhum texto enviado
+LLM enabled; waiting for input	LLM 已启用，等待输入	LLM が有効。入力待ち	LLM 켜짐; 입력 대기 중	LLM activado; esperando entrada	LLM activé ; saisie en attente	LLM aktiv; wartet auf Eingabe	LLM ativado; aguardando entrada
+Using local candidates; no model request	使用本地基础候选，未请求模型	ローカル候補を使用。モデルへ未送信	로컬 후보 사용; 모델 요청 없음	Candidatos locales; sin petición al modelo	Candidats locaux ; aucune requête au modèle	Lokale Vorschläge; keine Modellanfrage	Sugestões locais; sem solicitação ao modelo
+Checking / warming model; typing remains available…	正在检查 / 预热模型，本地输入可继续使用…	モデルを確認・準備中。入力は続けられます…	모델 확인/준비 중; 계속 입력할 수 있습니다…	Comprobando modelo; puedes seguir escribiendo…	Vérification du modèle ; saisie disponible…	Modell wird geprüft; Tippen bleibt möglich…	Verificando modelo; digitação disponível…
+Cloud model: {} (not checked online)	云端模型：{}（配置状态；未联网检查）	クラウドモデル：{}（オンライン未確認）	클라우드 모델: {} (온라인 확인 안 함)	Modelo en la nube: {} (sin verificar)	Modèle cloud : {} (non vérifié en ligne)	Cloud-Modell: {} (nicht online geprüft)	Modelo na nuvem: {} (não verificado)
+Model: local discovery, preferring LLaMA	模型：自动发现本机服务，优先 LLaMA	モデル：ローカルを自動検出、LLaMA 優先	모델: 로컬 자동 검색, LLaMA 우선	Modelo: búsqueda local, preferencia por LLaMA	Modèle : découverte locale, priorité à LLaMA	Modell: lokale Suche, LLaMA bevorzugt	Modelo: busca local, preferência por LLaMA
+Model: {} (not checked)	模型：{}（尚未检查）	モデル：{}（未確認）	모델: {} (확인 안 함)	Modelo: {} (sin verificar)	Modèle : {} (non vérifié)	Modell: {} (nicht geprüft)	Modelo: {} (não verificado)
+Model status unknown	模型服务状态未知	モデルの状態不明	모델 상태 알 수 없음	Estado del modelo desconocido	État du modèle inconnu	Modellstatus unbekannt	Estado do modelo desconhecido
+Discover / check local models	发现 / 检查本机模型	ローカルモデルを検索・確認	로컬 모델 검색/확인	Buscar / comprobar modelos locales	Découvrir / vérifier les modèles locaux	Lokale Modelle suchen / prüfen	Buscar / verificar modelos locais
+Warm Ollama model (unload after 5 minutes idle)	预热本机 Ollama 模型（空闲 5 分钟后释放）	Ollama モデルを準備（5分待機後に解放）	Ollama 모델 준비 (5분 유휴 후 해제)	Preparar Ollama (liberar tras 5 min inactivo)	Préparer Ollama (libérer après 5 min d’inactivité)	Ollama vorladen (nach 5 Min. Leerlauf entladen)	Preparar Ollama (liberar após 5 min ocioso)
+Reload model settings	重新加载模型配置	モデル設定を再読み込み	모델 설정 다시 불러오기	Recargar ajustes del modelo	Recharger les réglages du modèle	Modelleinstellungen neu laden	Recarregar configurações do modelo
+Hide panel	隐藏面板	パネルを隠す	패널 숨기기	Ocultar panel	Masquer le panneau	Panel ausblenden	Ocultar painel
+Show panel	显示面板	パネルを表示	패널 표시	Mostrar panel	Afficher le panneau	Panel anzeigen	Mostrar painel
+Settings	设置	設定	설정	Ajustes	Réglages	Einstellungen	Configurações
+Reset window position	重置窗口位置	ウィンドウ位置をリセット	창 위치 초기화	Restablecer posición	Réinitialiser la position	Fensterposition zurücksetzen	Restaurar posição
+Data management	数据管理	データ管理	데이터 관리	Gestión de datos	Gestion des données	Datenverwaltung	Gerenciamento de dados
+Managing data…	正在处理数据…	データ処理中…	데이터 처리 중…	Gestionando datos…	Traitement des données…	Daten werden verarbeitet…	Processando dados…
+Settings only; no input history or model weights	仅管理配置，不保存输入历史或模型权重	設定のみ。入力履歴・モデルの重みは含みません	설정만 관리; 입력 기록이나 모델 가중치 제외	Solo ajustes; sin historial ni pesos de modelos	Réglages uniquement ; sans historique ni poids de modèles	Nur Einstellungen; kein Eingabeverlauf oder Modellgewichte	Apenas configurações; sem histórico ou pesos de modelos
+Back up settings now	立即备份配置	設定を今すぐバックアップ	지금 설정 백업	Respaldar ajustes ahora	Sauvegarder les réglages	Einstellungen jetzt sichern	Fazer backup agora
+Open backup folder	打开备份目录	バックアップフォルダーを開く	백업 폴더 열기	Abrir carpeta de copias	Ouvrir les sauvegardes	Sicherungsordner öffnen	Abrir pasta de backups
+Open input method settings folder	打开输入法配置目录	入力方式の設定フォルダーを開く	입력기 설정 폴더 열기	Abrir carpeta de ajustes de entrada	Ouvrir le dossier des réglages de saisie	Ordner der Eingabeeinstellungen öffnen	Abrir pasta de configurações de entrada
+Open panel settings folder	打开面板配置目录	パネル設定フォルダーを開く	패널 설정 폴더 열기	Abrir carpeta de ajustes del panel	Ouvrir le dossier des réglages du panneau	Ordner der Panel-Einstellungen öffnen	Abrir pasta de configurações do painel
+Restore after quitting: suzaku-tool data restore	恢复：退出后使用 suzaku-tool data restore	終了後に復元：suzaku-tool data restore	종료 후 복원: suzaku-tool data restore	Restaurar tras salir: suzaku-tool data restore	Restaurer après fermeture : suzaku-tool data restore	Nach dem Beenden wiederherstellen: suzaku-tool data restore	Restaurar após sair: suzaku-tool data restore
+Quit Suzaku	退出 Suzaku	Suzaku を終了	Suzaku 종료	Salir de Suzaku	Quitter Suzaku	Suzaku beenden	Sair do Suzaku
+Backup saved: {} (see backup folder)	已备份：{}（可在备份目录查看）	バックアップ保存済み：{}（フォルダーで確認）	백업 저장됨: {} (백업 폴더 확인)	Copia guardada: {} (ver carpeta)	Sauvegarde créée : {} (voir le dossier)	Sicherung gespeichert: {} (siehe Sicherungsordner)	Backup salvo: {} (veja a pasta)
+Opened: {}	已打开：{}	開きました：{}	열림: {}	Abierto: {}	Ouvert : {}	Geöffnet: {}	Aberto: {}
+Model warmed: {} (no input text sent)	模型已预热：{}（未发送输入文本）	モデル準備済み：{}（入力内容は未送信）	모델 준비됨: {} (입력 텍스트 전송 안 함)	Modelo preparado: {} (sin enviar texto)	Modèle prêt : {} (aucun texte envoyé)	Modell vorgeladen: {} (kein Eingabetext gesendet)	Modelo preparado: {} (nenhum texto enviado)
+Data operation failed; please retry	数据操作未完成，请重试	データ操作に失敗。再試行してください	데이터 작업 실패; 다시 시도하세요	Falló la operación; reintenta	Échec de l’opération ; réessayez	Datenvorgang fehlgeschlagen; erneut versuchen	Operação falhou; tente novamente
+Could not start data operation	无法启动数据管理任务	データ操作を開始できません	데이터 작업을 시작할 수 없음	No se pudo iniciar la operación	Impossible de démarrer l’opération	Datenvorgang konnte nicht gestartet werden	Não foi possível iniciar a operação
+Right-click for input options; left-click to show or hide	右键选择输入选项，左键显示或隐藏面板	右クリックで入力設定、左クリックで表示切替	우클릭으로 입력 옵션, 좌클릭으로 표시 전환	Clic derecho: opciones; izquierdo: mostrar u ocultar	Clic droit : options ; gauche : afficher ou masquer	Rechtsklick: Eingabeoptionen; Linksklick: ein-/ausblenden	Clique direito: opções; esquerdo: mostrar ou ocultar
+Chinese · Pinyin	中文 · 拼音	中国語 · ピンイン	중국어 · 병음	Chino · Pinyin	Chinois · Pinyin	Chinesisch · Pinyin	Chinês · Pinyin
+Japanese · Romaji	日语 · 罗马音	日本語 · ローマ字	일본어 · 로마자	Japonés · Romaji	Japonais · Romaji	Japanisch · Romaji	Japonês · Romaji
+Listening now...	正在收音…	音声入力中…	듣는 중…	Escuchando…	Écoute…	Aufnahme…	Ouvindo…
+Heard just now	已识别	認識済み	인식됨	Reconocido	Reconnu	Erkannt	Reconhecido
+Ready to insert	可填入	挿入可能	삽입 준비됨	Listo para insertar	Prêt à insérer	Bereit zum Einfügen	Pronto para inserir
+Stop	停止	停止	중지	Parar	Arrêter	Stopp	Parar
+Denied	已拒绝	拒否	거부됨	Denegado	Refusé	Verweigert	Negado
+denied	权限被拒绝	権限が拒否されました	권한 거부됨	Permiso denegado	Autorisation refusée	Berechtigung verweigert	Permissão negada
+Mic	收音	録音	녹음	Grabar	Écouter	Aufnahme	Gravar
+Seed	填入	挿入	삽입	Insertar	Insérer	Einfügen	Inserir
+Next	示例	次の例	다음 예시	Ejemplo	Exemple	Beispiel	Exemplo
+Prefs	权限	権限	권한	Permisos	Accès	Rechte	Permissões
+Sync	刷新	更新	새로 고침	Actualizar	Actualiser	Aktualisieren	Atualizar
+Clear	清空	消去	지우기	Borrar	Effacer	Leeren	Limpar
+Enable Speech Recognition and Microphone access in System Settings first.	请先在系统设置中允许语音识别和麦克风访问。	まずシステム設定で音声認識とマイクを許可してください。	먼저 시스템 설정에서 음성 인식과 마이크를 허용하세요.	Permite voz y micrófono en los ajustes del sistema.	Autorisez la reconnaissance vocale et le micro dans les réglages système.	Spracherkennung und Mikrofon in den Systemeinstellungen erlauben.	Permita reconhecimento de voz e microfone nas configurações do sistema.
+Microphone or speech access was denied.	麦克风或语音识别权限被拒绝。	マイクまたは音声認識の権限が拒否されました。	마이크 또는 음성 인식 권한이 거부되었습니다.	Acceso al micrófono o a voz denegado.	Accès au micro ou à la reconnaissance vocale refusé.	Mikrofon- oder Sprachzugriff verweigert.	Acesso ao microfone ou à voz negado.
+Speech recognition hit an error. Try Listen again.	语音识别出错，请重新开始收音。	音声認識エラーです。録音をやり直してください。	음성 인식 오류입니다. 다시 녹음하세요.	Error de voz. Intenta escuchar de nuevo.	Erreur de reconnaissance vocale. Relancez l’écoute.	Spracherkennungsfehler. Aufnahme erneut starten.	Erro de reconhecimento de voz. Tente gravar novamente.
+Live voice capture is unavailable. Use sample voice text instead.	实时语音不可用，可先使用示例文本。	リアルタイム音声を利用できません。サンプルを使えます。	실시간 음성을 사용할 수 없습니다. 예시 텍스트를 사용하세요.	Voz en directo no disponible. Usa el ejemplo.	Capture vocale indisponible. Utilisez l’exemple.	Live-Spracheingabe nicht verfügbar. Beispieltext verwenden.	Voz ao vivo indisponível. Use o exemplo.
+Tap Listen, speak, then Use Seed with {}.	点击收音，说话后填入草稿。语音服务：{}。	録音して話し、下書きに挿入してください。音声サービス：{}。	녹음 후 말하고 초안에 삽입하세요. 음성 서비스: {}.	Graba, habla e inserta el texto. Servicio: {}.	Écoutez, parlez puis insérez le texte. Service : {}.	Aufnehmen, sprechen und Text einfügen. Dienst: {}.	Grave, fale e insira o texto. Serviço: {}.
+{} is connected, but live capture is not available yet.	{} 已连接，但实时语音尚不可用。	{}に接続済みですが、音声入力はまだ利用できません。	{}에 연결되었지만 실시간 음성은 아직 사용할 수 없습니다.	{} conectado, pero sin captura en directo.	{} connecté, mais la capture vocale est indisponible.	{} verbunden, aber Live-Aufnahme noch nicht verfügbar.	{} conectado, mas sem captura ao vivo.
+{} is preparing permission and recognition state.	{} 正在准备权限及识别状态。	{}が権限と認識の準備中です。	{}에서 권한과 인식 상태를 준비하고 있습니다.	{} está preparando permisos y reconocimiento.	{} prépare les autorisations et la reconnaissance.	{} bereitet Berechtigungen und Erkennung vor.	{} está preparando permissões e reconhecimento.
+Voice listening · {}	正在收音 · {}	音声入力中 · {}	듣는 중 · {}	Escuchando · {}	Écoute · {}	Aufnahme · {}	Ouvindo · {}
+Voice permission required in System Settings · {}	请在系统设置中授权语音 · {}	システム設定で音声の許可が必要 · {}	시스템 설정에서 음성 권한 필요 · {}	Permiso de voz requerido · {}	Autorisation vocale requise · {}	Sprachberechtigung erforderlich · {}	Permissão de voz necessária · {}
+Voice recognition error · {}	语音识别错误 · {}	音声認識エラー · {}	음성 인식 오류 · {}	Error de voz · {}	Erreur vocale · {}	Spracherkennungsfehler · {}	Erro de voz · {}
+Voice fallback mode · {}	语音备用模式 · {}	音声フォールバック · {}	음성 대체 모드 · {}	Modo de voz alternativo · {}	Mode vocal de secours · {}	Sprachersatzmodus · {}	Modo de voz alternativo · {}
+Transcript captured · tap Use Seed · {}	已识别，可填入草稿 · {}	認識済み・挿入できます · {}	인식됨 · 초안에 삽입 · {}	Texto listo · pulsa Insertar · {}	Texte reconnu · insérer · {}	Text erkannt · Einfügen klicken · {}	Texto pronto · clique Inserir · {}
+Voice ready · {}	语音就绪 · {}	音声準備完了 · {}	음성 준비됨 · {}	Voz lista · {}	Voix prête · {}	Sprache bereit · {}	Voz pronta · {}
+Voice setup · {}	语音准备中 · {}	音声設定中 · {}	음성 설정 중 · {}	Preparando voz · {}	Configuration vocale · {}	Spracheinrichtung · {}	Preparando voz · {}
+Draw a seed word with mouse or touch.	使用鼠标或触摸书写。	マウスまたはタッチで書いてください。	마우스나 터치로 써 보세요.	Escribe con el ratón o con el dedo.	Écrivez avec la souris ou au toucher.	Mit Maus oder Finger schreiben.	Escreva com o mouse ou por toque.
+Try a clearer trace, undo a stroke, or tap Clear.	请写清楚一些，也可撤销或清空笔迹。	はっきり書くか、筆画を戻す・消去してください。	더 선명하게 쓰거나 획을 취소 또는 지우세요.	Escribe más claro, deshaz un trazo o borra.	Écrivez plus clairement, annulez un trait ou effacez.	Deutlicher schreiben, Strich rückgängig machen oder leeren.	Escreva mais claro, desfaça um traço ou limpe.
+Tap a recognized seed, or undo the last stroke.	点击识别结果，或撤销最后一笔。	認識結果を選ぶか、最後の筆画を戻してください。	인식 결과를 선택하거나 마지막 획을 취소하세요.	Elige el resultado o deshaz el último trazo.	Choisissez le résultat ou annulez le dernier trait.	Ergebnis wählen oder letzten Strich rückgängig machen.	Escolha o resultado ou desfaça o último traço.
+Tracing… release to recognize	书写中…松开开始识别	書き込み中…離すと認識	쓰는 중…놓으면 인식	Trazando… suelta para reconocer	Écriture… relâchez pour reconnaître	Zeichnen… zum Erkennen loslassen	Escrevendo… solte para reconhecer
+Sent to active app: {}	已发送到当前应用：{}	アプリに送信済み：{}	현재 앱으로 전송됨: {}	Enviado a la aplicación: {}	Envoyé à l’application : {}	An aktive App gesendet: {}	Enviado ao aplicativo: {}
+Delivery not confirmed · draft retained; check target before retrying · {}	发送未确认 · 草稿已保留，请检查目标后再重试 · {}	送信未確認・下書きは保持。再試行前に入力先を確認 · {}	전송 미확인 · 초안 유지; 재시도 전 대상 확인 · {}	Envío sin confirmar · borrador conservado; comprueba el destino · {}	Envoi non confirmé · brouillon conservé ; vérifiez la cible · {}	Zustellung unbestätigt · Entwurf behalten; vor erneutem Senden Ziel prüfen · {}	Envio não confirmado · rascunho mantido; verifique o destino · {}
+Input added to the native composition.	已填入输入法草稿。	入力方式の下書きに挿入しました。	입력기 초안에 추가되었습니다.	Añadido al borrador del método de entrada.	Ajouté au brouillon de la méthode de saisie.	Zum Entwurf der Eingabemethode hinzugefügt.	Adicionado ao rascunho do método de entrada.
+Insertion was not confirmed; source retained. Nothing was retried; check the target before retrying.	填入未确认，原文已保留，未自动重试。重试前请检查目标。	挿入未確認。原文を保持し再試行していません。入力先を確認してください。	삽입 미확인; 원문 유지. 재시도하지 않았습니다. 먼저 대상을 확인하세요.	Inserción sin confirmar; original conservado. Sin reintento. Comprueba el destino.	Insertion non confirmée ; original conservé, sans nouvel essai. Vérifiez la cible.	Einfügen unbestätigt; Quelle behalten. Kein Wiederholungsversuch. Ziel prüfen.	Inserção não confirmada; original mantido, sem nova tentativa. Verifique o destino.
+Input changed; nothing was retried. Choose a current candidate.	输入已改变，未自动重试，请选择当前候选。	入力が変わりました。再試行せず、現在の候補を選んでください。	입력이 변경되어 재시도하지 않았습니다. 현재 후보를 선택하세요.	La entrada cambió; sin reintento. Elige un candidato actual.	Saisie modifiée ; aucun nouvel essai. Choisissez un candidat actuel.	Eingabe geändert; nicht erneut versucht. Aktuellen Vorschlag wählen.	Entrada alterada; sem nova tentativa. Escolha uma sugestão atual.

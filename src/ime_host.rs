@@ -516,16 +516,8 @@ pub extern "C" fn suzaku_host_ime_ibus_candidate_label_utf8(
     with_shared_host_ime_session(|session| {
         session
             .engine
-            .candidates()
-            .get(index)
-            .map(|c| {
-                into_raw_c_string(crate::ime::candidate_mix::display_label(
-                    &c.text,
-                    c.kind,
-                    c.source,
-                    c.score.clamp(0.0, 100.0).round() as u8,
-                ))
-            })
+            .ibus_candidate_label(index)
+            .map(into_raw_c_string)
             .unwrap_or(std::ptr::null_mut())
     })
 }

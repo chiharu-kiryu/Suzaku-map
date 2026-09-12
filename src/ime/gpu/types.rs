@@ -61,6 +61,9 @@ pub enum TextRole {
     NextTokenChip,
     CandidatePrimary,
     CandidateMeta,
+    TranslationLabel,
+    TranslationText,
+    TranslationButton,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +71,28 @@ pub enum InputMode {
     VirtualKeyboard,
     Dictation,
     Handwriting,
+    Translation,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TranslationPhase {
+    #[default]
+    Idle,
+    Pending,
+    Ready,
+    Failed,
+}
+
+/// Session-only view. Source and translated text are never persisted in settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TranslationView {
+    pub source: Option<crate::languages::translation::TranslationLanguage>,
+    pub target: crate::languages::translation::TranslationLanguage,
+    pub phase: TranslationPhase,
+    pub text: String,
+    pub message: String,
+    pub page: usize,
+    pub cloud: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -241,17 +266,39 @@ pub enum VoicePermissionState {
     Unavailable,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SettingsCategory {
+    #[default]
+    Appearance,
+    Input,
+    Model,
+}
+
+impl SettingsCategory {
+    pub const ALL: [Self; 3] = [Self::Appearance, Self::Input, Self::Model];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Appearance => "Appearance",
+            Self::Input => "Input",
+            Self::Model => "Model",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PanelChromeState {
     pub seed_text: String,
     pub compact_mode: bool,
     pub input_modes_expanded: bool,
     pub active_input_mode: InputMode,
+    pub translation: TranslationView,
     pub input_focused: bool,
     pub caret_index: usize,
     pub keyboard_shifted: bool,
     pub keyboard_numeric: bool,
     pub settings_open: bool,
+    pub settings_category: SettingsCategory,
     pub text_scale: DisplayTextScale,
     pub candidate_density: CandidateDensity,
     pub preview_style: PreviewStyle,
@@ -259,6 +306,8 @@ pub struct PanelChromeState {
     pub text_spacing: TextSpacing,
     pub text_smoothing: TextSmoothing,
     pub theme_preset: ThemePreset,
+    pub hide_system_titlebar: bool,
+    pub ui_language: crate::ui::UiLanguage,
     pub voice_state: VoiceCaptureState,
     pub voice_permission: VoicePermissionState,
     pub voice_backend_label: String,
@@ -295,11 +344,13 @@ impl Default for PanelChromeState {
             compact_mode: false,
             input_modes_expanded: false,
             active_input_mode: InputMode::VirtualKeyboard,
+            translation: TranslationView::default(),
             input_focused: true,
             caret_index: 0,
             keyboard_shifted: false,
             keyboard_numeric: false,
             settings_open: false,
+            settings_category: SettingsCategory::default(),
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Compact,
@@ -307,6 +358,8 @@ impl Default for PanelChromeState {
             text_spacing: TextSpacing::Normal,
             text_smoothing: TextSmoothing::Smooth,
             theme_preset: ThemePreset::Suzaku,
+            hide_system_titlebar: false,
+            ui_language: Default::default(),
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Unknown Voice Host".to_string(),
@@ -428,8 +481,15 @@ pub enum InteractionKind {
     ToggleCompactMode,
     InputModesToggle,
     InputModeButton(InputMode),
+    SetTranslationSource(Option<crate::languages::translation::TranslationLanguage>),
+    SetTranslationTarget(crate::languages::translation::TranslationLanguage),
+    TranslateText,
+    CancelTranslation,
+    ApplyTranslation,
+    TranslationPage(usize),
     VirtualKeyboardKey(VirtualKeyboardKey),
     SettingsToggle,
+    SetSettingsCategory(SettingsCategory),
     SetTextScale(DisplayTextScale),
     SetCandidateDensity(CandidateDensity),
     SetPreviewStyle(PreviewStyle),
@@ -437,6 +497,8 @@ pub enum InteractionKind {
     SetTextSpacing(TextSpacing),
     SetTextSmoothing(TextSmoothing),
     SetThemePreset(ThemePreset),
+    SetHideSystemTitlebar(bool),
+    SetUiLanguage(crate::ui::UiLanguage),
     DecreaseWindowScale,
     IncreaseWindowScale,
     DragWindowScale,
@@ -476,6 +538,7 @@ pub struct InteractiveTarget {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SettingsScrollMetadata {
+    pub preferred_window_height: f32,
     pub track_rect: [f32; 4],
     pub handle_rect: [f32; 4],
     pub content_height: f32,

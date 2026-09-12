@@ -33,6 +33,7 @@ pub struct Backup {
 
 fn panel_value_valid(key: &str, value: &str) -> bool {
     match key {
+        "ui_language" => crate::ui::UiLanguage::from_id(value).is_some(),
         "text_scale" => matches!(value, "small" | "medium" | "large"),
         "candidate_density" => matches!(value, "compact" | "cozy"),
         "preview_style" => matches!(value, "compact" | "full"),
@@ -53,7 +54,9 @@ fn panel_value_valid(key: &str, value: &str) -> bool {
                 | "high_contrast"
                 | "solarized"
         ),
-        "voice_auto_insert" | "llm_enabled" => matches!(value, "true" | "false"),
+        "voice_auto_insert" | "llm_enabled" | "hide_system_titlebar" => {
+            matches!(value, "true" | "false")
+        }
         "llm_model" => matches!(value, "configured" | "llama32_3b"),
         "llm_temperature" => {
             matches!(value, "focused" | "balanced" | "expressive")

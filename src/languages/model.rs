@@ -16,6 +16,7 @@ use crate::languages::llm::{
 pub mod runtime;
 #[cfg(test)]
 mod test_server;
+mod translation;
 mod transport;
 
 pub const DEFAULT_MODEL: &str = "auto";

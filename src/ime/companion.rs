@@ -1,6 +1,6 @@
 //! Versioned, bounded view of the active native composition. No surrounding text
 //! or committed history crosses this channel; private contexts are always blank.
-use super::candidate_mix::{CandidateKind, CandidateSource, display_label};
+use super::candidate_mix::{CandidateKind, CandidateSource, display_label_for_seed};
 use super::{Candidate, InputSource, Mode, Snapshot};
 use crate::languages::BuiltinLanguage;
 use serde_json::{Value, json};
@@ -49,7 +49,7 @@ impl NativeComposition {
             "focused":self.focused,"private":self.private,"language":self.language,
             "seed":self.seed,"selected":self.selected,"candidates":self.candidates.iter()
                 .map(|c| json!({"text":c.text,"label":c.label,"kind":c.kind.id(),"source":c.source.id(),"weight":c.weight,
-                    "ibus_label":display_label(&c.text,c.kind,c.source,c.weight)})).collect::<Vec<_>>()})
+                    "ibus_label":display_label_for_seed(&self.language,&self.seed,&c.text,c.kind,c.source,c.weight)})).collect::<Vec<_>>()})
     }
 
     pub fn parse(raw: &[u8]) -> Result<Self, String> {

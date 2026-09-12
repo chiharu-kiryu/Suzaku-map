@@ -205,7 +205,31 @@ fn linux_register(args: &[String]) -> i32 {
     } else {
         args
     };
-    let action = args.first().map(String::as_str).unwrap_or("install");
+    if args.len() > 1 {
+        eprintln!(
+            "linux-register takes exactly one action; no options or extra arguments are accepted"
+        );
+        return 1;
+    }
+    let action = args.first().map(String::as_str).unwrap_or("--help");
+    if matches!(action, "--help" | "-h" | "help") {
+        println!("Usage: suzaku-tool linux-register [install|status|verify|uninstall|diag]");
+        println!("Install/uninstall only in your desktop user session, never with sudo.");
+        return 0;
+    }
+    if matches!(action, "install" | "uninstall" | "diag") {
+        #[cfg(not(target_os = "linux"))]
+        {
+            eprintln!("Linux input-method registration is only available on Linux");
+            return 1;
+        }
+        #[cfg(target_os = "linux")]
+        // SAFETY: geteuid has no arguments or side effects.
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("Run input-method registration as your desktop user, not root or sudo");
+            return 1;
+        }
+    }
     let framework = LinuxFramework::from_env();
     match action {
         "install" => linux_install(framework),
@@ -231,7 +255,75 @@ fn linux_register(args: &[String]) -> i32 {
 fn linux_home_path() -> Result<PathBuf, String> {
     env::var_os("HOME")
         .map(PathBuf::from)
-        .ok_or_else(|| "HOME not set".to_string())
+        .filter(|path| {
+            path.is_absolute()
+                && path.parent().is_some()
+                && path.is_dir()
+                && path
+                    .to_str()
+                    .is_some_and(|value| !value.chars().any(char::is_control))
+        })
+        .ok_or_else(|| "HOME must name an existing absolute user directory".to_string())
+}
+
+fn linux_registration_output(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    #[cfg(target_os = "linux")]
+    let result = suzaku_map::platform::linux_command::run(command, timeout);
+    #[cfg(not(target_os = "linux"))]
+    let result = {
+        let _ = timeout;
+        command.output()
+    };
+    result.map_err(|error| format!("Linux registration command failed: {error}"))
+}
+
+fn linux_registration_status(mut command: Command) -> Result<(), String> {
+    let result = linux_registration_output(&mut command, Duration::from_secs(10))?;
+    check_exit_status(&result.status, "Linux registration command")
+}
+
+fn preflight_ibus_registration(home: &Path, installing: bool) -> Result<(), String> {
+    if installing {
+        if !is_executable_file(Path::new("/usr/bin/env")) {
+            return Err("/usr/bin/env is required to launch the IBus user service".into());
+        }
+        let unit = ibus_user_service_path(home);
+        match fs::symlink_metadata(&unit) {
+            Ok(metadata) if !metadata.is_file() => {
+                return Err(format!(
+                    "User service {} is masked, linked or not a regular file; it was not replaced. Resolve that explicitly before reinstalling.",
+                    unit.display()
+                ));
+            }
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("inspect user service {}: {error}", unit.display()));
+            }
+            _ => {}
+        }
+    }
+    let mut systemctl =
+        command("systemctl").ok_or("systemctl is required for user-level IBus registration")?;
+    let result = linux_registration_output(
+        systemctl.args(["--user", "show", "--property=Version", "--value"]),
+        Duration::from_secs(2),
+    )?;
+    if !result.status.success() {
+        return Err("No systemd user manager is available; run this in your desktop user session. No registration files were changed.".into());
+    }
+    let mut ibus = command("ibus").ok_or("ibus is required for input-method registration")?;
+    let result = linux_registration_output(ibus.arg("engine"), Duration::from_secs(2))?;
+    if !result.status.success() {
+        return Err(
+            "Could not query the current IBus engine. No registration files were changed.".into(),
+        );
+    }
+    if String::from_utf8_lossy(&result.stdout).trim() == CONNECTION_NAME {
+        return Err("Release Suzaku and finish the current composition before reinstalling or uninstalling it. No registration files were changed.".into());
+    }
+    Ok(())
 }
 
 fn ibus_component_path(home: &Path) -> PathBuf {
@@ -268,6 +360,10 @@ fn linux_install(framework: LinuxFramework) -> i32 {
     };
     match framework {
         LinuxFramework::IBus => {
+            if let Err(error) = preflight_ibus_registration(&home, true) {
+                eprintln!("{error}");
+                return 1;
+            }
             let previous_engine =
                 ibus_current_engine().filter(|engine| should_restore_ibus_engine(engine));
             let source_binary = match resolve_linux_ime_host_binary() {
@@ -330,7 +426,9 @@ fn linux_install(framework: LinuxFramework) -> i32 {
                             return 1;
                         }
                     }
-                    println!("Enabled user service: {IBUS_USER_SERVICE_NAME}");
+                    println!(
+                        "Installed user service: {IBUS_USER_SERVICE_NAME} (existing autostart preference preserved)"
+                    );
                     if let Some(engine) = previous_engine {
                         println!("Preserved active IBus engine: {engine}");
                     }
@@ -599,6 +697,10 @@ fn linux_uninstall(framework: LinuxFramework) -> i32 {
     };
     match framework {
         LinuxFramework::IBus => {
+            if let Err(error) = preflight_ibus_registration(&home, false) {
+                eprintln!("{error}");
+                return 1;
+            }
             match reconcile_gnome_ibus_input_source(false) {
                 Ok(DesktopInputSourceChange::Updated) => {
                     println!("Removed Suzaku from the GNOME input-source switcher.");
@@ -788,7 +890,7 @@ fn uninstall_ibus_user_service(home: &Path) -> Result<(), String> {
                 .arg("disable")
                 .arg("--now")
                 .arg(IBUS_USER_SERVICE_NAME);
-            run_status(systemctl)?;
+            linux_registration_status(systemctl)?;
         }
         fs::remove_file(&unit_path)
             .map_err(|error| format!("remove {}: {error}", unit_path.display()))?;
@@ -797,7 +899,7 @@ fn uninstall_ibus_user_service(home: &Path) -> Result<(), String> {
 
     if let Some(mut systemctl) = command("systemctl") {
         systemctl.arg("--user").arg("daemon-reload");
-        run_status(systemctl)?;
+        linux_registration_status(systemctl)?;
     }
     Ok(())
 }
@@ -926,9 +1028,15 @@ fn ibus_component_host_binary(path: &Path) -> Option<PathBuf> {
 }
 
 fn ibus_component_host_binary_from_contents(contents: &str) -> Option<PathBuf> {
-    let command = xml_tag_value(contents, "exec")?;
+    let command = xml_unescape(&xml_tag_value(contents, "exec")?);
     let path = command.strip_suffix(" --ibus").unwrap_or(&command).trim();
-    (!path.is_empty()).then(|| PathBuf::from(xml_unescape(path)))
+    if path.starts_with('\'') {
+        let inner = path.strip_prefix('\'')?.strip_suffix('\'')?;
+        let decoded = inner.replace("'\\''", "'");
+        return (ibus_quote(&decoded) == path).then(|| PathBuf::from(decoded));
+    }
+    // Continue reading components written by previous releases.
+    (!path.is_empty()).then(|| PathBuf::from(path))
 }
 
 fn xml_tag_value(contents: &str, tag: &str) -> Option<String> {
@@ -951,7 +1059,15 @@ fn xml_unescape(value: &str) -> String {
 fn resolve_linux_ime_host_binary() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Some(path) = env::var_os("SUZAKU_LINUX_IME_HOST_BIN") {
-        candidates.push(PathBuf::from(path));
+        let path = PathBuf::from(path);
+        if !is_executable_file(&path) {
+            return Err(format!(
+                "Configured SUZAKU_LINUX_IME_HOST_BIN is not executable: {}",
+                path.display()
+            ));
+        }
+        return fs::canonicalize(&path)
+            .map_err(|error| format!("resolve {}: {error}", path.display()));
     }
     if let Ok(current_exe) = env::current_exe()
         && let Some(parent) = current_exe.parent()
@@ -1004,32 +1120,43 @@ fn install_linux_ime_host_binary(home: &Path, source: &Path) -> Result<PathBuf, 
         return Err("unable to resolve Linux IME host install directory".to_string());
     };
     fs::create_dir_all(parent).map_err(|error| format!("create {}: {error}", parent.display()))?;
-    let temporary = parent.join(format!("linux_ime_host.new.{}", std::process::id()));
-    fs::copy(source, &temporary).map_err(|error| {
-        format!(
-            "copy {} to {}: {error}",
-            source.display(),
-            temporary.display()
-        )
-    })?;
-    #[cfg(unix)]
-    {
-        let mut permissions = fs::metadata(&temporary)
-            .map_err(|error| format!("read {} permissions: {error}", temporary.display()))?
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&temporary, permissions)
-            .map_err(|error| format!("set {} executable: {error}", temporary.display()))?;
+    static NEXT_HOST_COPY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    for _ in 0..32 {
+        let temporary = parent.join(format!(
+            ".linux_ime_host-new-{}-{}",
+            std::process::id(),
+            NEXT_HOST_COPY.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o700);
+        }
+        let mut staged = match options.open(&temporary) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("stage {}: {error}", destination.display())),
+        };
+        let copied = (|| -> std::io::Result<()> {
+            std::io::copy(&mut fs::File::open(source)?, &mut staged)?;
+            #[cfg(unix)]
+            staged.set_permissions(fs::Permissions::from_mode(0o755))?;
+            staged.sync_all()?;
+            fs::rename(&temporary, &destination)
+        })();
+        if let Err(error) = copied {
+            let _ = fs::remove_file(&temporary);
+            return Err(format!(
+                "install {} as {}: {error}",
+                source.display(),
+                destination.display()
+            ));
+        }
+        return Ok(destination);
     }
-    fs::rename(&temporary, &destination).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!(
-            "install {} as {}: {error}",
-            source.display(),
-            destination.display()
-        )
-    })?;
-    Ok(destination)
+    Err("unable to reserve a private host installation temporary file".into())
 }
 
 fn systemd_quote(value: &str) -> String {
@@ -1039,11 +1166,13 @@ fn systemd_quote(value: &str) -> String {
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('%', "%%")
+            .replace('$', "$$")
     )
 }
 
 fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), String> {
     let unit_path = ibus_user_service_path(home);
+    let newly_installed = !unit_path.exists();
     let Some(parent) = unit_path.parent() else {
         return Err("unable to resolve systemd user unit directory".to_string());
     };
@@ -1059,25 +1188,30 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
             host_binary.display()
         )
     })?;
+    // systemd rejects literal quotes/backslashes in ExecStart's executable even
+    // when quoted correctly. env directly execs the absolute host path as an
+    // argument, without a shell or PATH lookup, and $$ survives as a literal $.
     let unit = format!(
-        "[Unit]\nDescription=Suzaku native IBus engine host\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={} --ibus\nRestart=always\nRestartSec=1\nTimeoutStopSec=5\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription=Suzaku native IBus engine host\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/env -- {} --ibus\nRestart=always\nRestartSec=1\nTimeoutStopSec=5\n\n[Install]\nWantedBy=default.target\n",
         systemd_quote(executable)
     );
-    fs::write(&unit_path, unit)
+    suzaku_map::data::files::atomic_write(&unit_path, unit.as_bytes())
         .map_err(|error| format!("write {}: {error}", unit_path.display()))?;
 
     let mut reload = command("systemctl")
         .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
     reload.arg("--user").arg("daemon-reload");
-    run_status(reload)?;
+    linux_registration_status(reload)?;
 
-    let mut enable = command("systemctl")
-        .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
-    enable
-        .arg("--user")
-        .arg("enable")
-        .arg(IBUS_USER_SERVICE_NAME);
-    run_status(enable)?;
+    if newly_installed {
+        let mut enable = command("systemctl")
+            .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
+        enable
+            .arg("--user")
+            .arg("enable")
+            .arg(IBUS_USER_SERVICE_NAME);
+        linux_registration_status(enable)?;
+    }
 
     let mut restart = command("systemctl")
         .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
@@ -1085,7 +1219,7 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
         .arg("--user")
         .arg("restart")
         .arg(IBUS_USER_SERVICE_NAME);
-    run_status(restart)
+    linux_registration_status(restart)
 }
 
 fn ibus_user_service_active() -> bool {
@@ -1113,6 +1247,14 @@ fn xml_escape(value: &str) -> String {
 
 fn write_ibus_marker(home: &Path, host_binary: &Path) -> Result<(), String> {
     let path = ibus_component_path(home);
+    write_ibus_marker_at(&path, host_binary)
+}
+
+fn ibus_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn write_ibus_marker_at(path: &Path, host_binary: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create dir {}: {e}", parent.display()))?;
     }
@@ -1149,10 +1291,11 @@ fn write_ibus_marker(home: &Path, host_binary: &Path) -> Result<(), String> {
   </engines>
 </component>
 "#,
-        host_binary = xml_escape(host_binary),
+        host_binary = xml_escape(&ibus_quote(host_binary)),
         version = env!("CARGO_PKG_VERSION"),
     );
-    fs::write(&path, marker).map_err(|e| format!("write {}: {e}", path.display()))
+    suzaku_map::data::files::atomic_write(path, marker.as_bytes())
+        .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 fn process_running(name: &str) -> bool {
@@ -1716,7 +1859,7 @@ mod tests {
     use super::{
         CONNECTION_NAME, IBUS_COMPONENT_NAME, ibus_component_host_binary, ibus_component_is_valid,
         install_linux_ime_host_binary, should_restore_ibus_engine, split_gvariant_tuple_array,
-        updated_gnome_input_sources, write_ibus_marker, xml_escape, xml_unescape,
+        updated_gnome_input_sources, write_ibus_marker_at, xml_escape, xml_unescape,
     };
     use std::fs;
     #[cfg(unix)]
@@ -1796,10 +1939,10 @@ mod tests {
         permissions.set_mode(0o755);
         fs::set_permissions(&host, permissions).expect("make test host executable");
 
-        write_ibus_marker(&home, &host).expect("write component");
         let component = home
             .join(".local/share/ibus/component")
             .join(format!("{CONNECTION_NAME}.xml"));
+        write_ibus_marker_at(&component, &host).expect("write component");
         let contents = fs::read_to_string(&component).expect("read component");
 
         assert!(ibus_component_is_valid(&component));
@@ -1835,5 +1978,33 @@ mod tests {
         assert!(fs::metadata(&installed).unwrap().permissions().mode() & 0o111 != 0);
 
         fs::remove_dir_all(home).expect("remove test home");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn host_update_never_follows_a_leftover_temporary_symlink() {
+        let home = unique_test_dir("ibus-safe-upgrade");
+        let directory = home.join(".local/libexec/suzaku");
+        fs::create_dir_all(&directory).unwrap();
+        let unrelated = home.join("unrelated.txt");
+        fs::write(&unrelated, b"keep this file").unwrap();
+        let stale = directory.join(format!("linux_ime_host.new.{}", std::process::id()));
+        std::os::unix::fs::symlink(&unrelated, &stale).unwrap();
+        let source = home.join("source");
+        fs::write(&source, b"new host").unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+        let installed = install_linux_ime_host_binary(&home, &source).unwrap();
+        assert_eq!(fs::read(&installed).unwrap(), b"new host");
+        assert_eq!(fs::read(&unrelated).unwrap(), b"keep this file");
+        assert!(fs::symlink_metadata(stale).unwrap().is_symlink());
+        assert_eq!(
+            fs::metadata(&installed).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        // Failed preparation must retain the previous executable and clean its own temp file.
+        assert!(install_linux_ime_host_binary(&home, &home.join("missing")).is_err());
+        assert_eq!(fs::read(&installed).unwrap(), b"new host");
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
+        fs::remove_dir_all(home).unwrap();
     }
 }

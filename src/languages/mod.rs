@@ -4,6 +4,7 @@ pub mod japanese;
 pub mod llama;
 pub mod llm;
 pub mod model;
+pub mod translation;
 
 /// Language selection is independent of the prediction provider and host platform.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
