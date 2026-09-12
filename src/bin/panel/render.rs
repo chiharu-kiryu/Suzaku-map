@@ -9,6 +9,9 @@ use suzaku_map::ime::gpu::{AtlasGlyph, CandidateQuad, RenderScene};
 pub(crate) struct PanelVertex {
     pub(crate) position: [f32; 2],
     pub(crate) color: [f32; 4],
+    pub(crate) point: [f32; 2],
+    pub(crate) geometry: [f32; 4],
+    pub(crate) style: [f32; 4],
 }
 
 impl PanelVertex {
@@ -27,6 +30,21 @@ impl PanelVertex {
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 2]>() as u64,
                     shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: 24,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: 32,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: 48,
+                    shader_location: 4,
                     format: wgpu::VertexFormat::Float32x4,
                 },
             ],
@@ -137,38 +155,45 @@ fn push_quad_vertices(
     height: f32,
 ) {
     let [x, y, w, h] = quad.rect;
-    let color = quad.color;
-    let x1 = px_to_ndc_x(x, width);
-    let x2 = px_to_ndc_x(x + w, width);
-    let y1 = px_to_ndc_y(y, height);
-    let y2 = px_to_ndc_y(y + h, height);
-
-    vertices.extend_from_slice(&[
-        PanelVertex {
-            position: [x1, y1],
-            color,
-        },
-        PanelVertex {
-            position: [x2, y1],
-            color,
-        },
-        PanelVertex {
-            position: [x2, y2],
-            color,
-        },
-        PanelVertex {
-            position: [x1, y1],
-            color,
-        },
-        PanelVertex {
-            position: [x2, y2],
-            color,
-        },
-        PanelVertex {
-            position: [x1, y2],
-            color,
-        },
-    ]);
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    // Leave a pixel around curves for analytic coverage; hit geometry stays unchanged.
+    let fringe = if quad.shape == suzaku_map::ime::gpu::QuadShape::Rectangle {
+        0.0
+    } else {
+        1.0
+    };
+    let mut bounds = [x - fringe, y - fringe, x + w + fringe, y + h + fringe];
+    if let Some([cx, cy, cw, ch]) = quad.clip_rect {
+        bounds = [
+            bounds[0].max(cx),
+            bounds[1].max(cy),
+            bounds[2].min(cx + cw),
+            bounds[3].min(cy + ch),
+        ];
+    }
+    let [left, top, right, bottom] = bounds;
+    if right <= left || bottom <= top {
+        return;
+    }
+    let (geometry, style) = quad.shape_parameters();
+    for point in [
+        [left, top],
+        [right, top],
+        [right, bottom],
+        [left, top],
+        [right, bottom],
+        [left, bottom],
+    ] {
+        vertices.push(PanelVertex {
+            position: [px_to_ndc_x(point[0], width), px_to_ndc_y(point[1], height)],
+            color: quad.color,
+            point,
+            geometry,
+            style,
+        });
+    }
 }
 
 fn push_text_quad_vertices(
@@ -179,10 +204,11 @@ fn push_text_quad_vertices(
     height: f32,
 ) {
     let [x, y, w, h] = glyph.rect;
-    let x = x.round();
-    let y = y.round();
-    let w = w.round().max(1.0);
-    let h = h.round().max(1.0);
+    if !glyph.rect.iter().all(|value| value.is_finite()) || w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    // Layout and UV cropping share subpixel geometry; rounding each glyph separately
+    // stretches narrow letters and makes fractional zoom/scroll positions jump.
     let Some(([x, y, w, h], uv)) = clipped_text_quad([x, y, w, h], uv, glyph.clip_rect) else {
         return;
     };
@@ -270,6 +296,55 @@ mod tests {
     };
 
     #[test]
+    fn fractional_glyph_geometry_is_not_rounded_or_stretched() {
+        let glyph = super::AtlasGlyph {
+            ch: 'i',
+            rect: [10.25, 20.125, 4.375, 17.5],
+            color: [1.0; 4],
+            clip_rect: None,
+        };
+        let mut vertices = Vec::new();
+        super::push_text_quad_vertices(&mut vertices, &glyph, [0.0, 0.0, 1.0, 1.0], 100.0, 100.0);
+        assert_eq!(vertices.len(), 6);
+        for (index, point) in [(0, [10.25, 20.125]), (2, [14.625, 37.625])] {
+            let actual = [
+                (vertices[index].position[0] + 1.0) * 50.0,
+                (1.0 - vertices[index].position[1]) * 50.0,
+            ];
+            assert!((actual[0] - point[0]).abs() < 0.0001);
+            assert!((actual[1] - point[1]).abs() < 0.0001);
+        }
+    }
+
+    #[test]
+    fn empty_or_invalid_glyphs_do_not_turn_into_one_pixel_artifacts() {
+        for rect in [
+            [1.0, 2.0, 0.0, 7.0],
+            [1.0, 2.0, 4.0, 0.0],
+            [1.0, 2.0, -1.0, 7.0],
+            [f32::NAN, 2.0, 4.0, 7.0],
+        ] {
+            let mut vertices = Vec::new();
+            super::push_text_quad_vertices(
+                &mut vertices,
+                &super::AtlasGlyph {
+                    ch: 'i',
+                    rect,
+                    color: [1.0; 4],
+                    clip_rect: None,
+                },
+                [0.0, 0.0, 1.0, 1.0],
+                100.0,
+                100.0,
+            );
+            assert!(
+                vertices.is_empty(),
+                "invalid glyph {rect:?} should not render"
+            );
+        }
+    }
+
+    #[test]
     fn tooltip_layer_gets_its_own_surface_and_text_draws_after_the_base_scene() {
         let scene = WgpuCandidateRenderer::new(520.0, 340.0)
             .build_settings_scene(&PanelChromeState::default(), None);
@@ -288,6 +363,8 @@ mod tests {
         .layout();
         let overlay = PanelOverlay {
             quads: vec![CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: [12.0, 22.0, 120.0, 30.0],
                 color: [0.0, 0.0, 0.0, 1.0],
             }],
@@ -303,6 +380,24 @@ mod tests {
         assert_eq!(frame.layers[1].text.len(), 4 * 6);
         assert_eq!(frame.layers[1].shapes.end as usize, frame.shapes.len());
         assert_eq!(frame.layers[1].text.end as usize, frame.text.len());
+    }
+
+    #[test]
+    fn shape_clipping_preserves_curve_geometry_and_limits_the_antialias_fringe() {
+        let mut quad = CandidateQuad::rounded([10.0, 10.0, 20.0, 20.0], [1.0; 4], 10.0);
+        quad.clip_rect = Some([20.0, 0.0, 20.0, 40.0]);
+        let mut vertices = Vec::new();
+        super::push_quad_vertices(&mut vertices, &quad, 100.0, 100.0);
+        assert_eq!(vertices.len(), 6);
+        for vertex in &vertices {
+            assert!(vertex.point[0] >= 20.0 && vertex.point[0] <= 31.0);
+            assert_eq!(vertex.geometry, [20.0, 20.0, 10.0, 10.0]);
+            assert_eq!(vertex.style, [10.0, 0.0, 1.0, 0.0]);
+        }
+        quad.clip_rect = Some([60.0, 60.0, 1.0, 1.0]);
+        vertices.clear();
+        super::push_quad_vertices(&mut vertices, &quad, 100.0, 100.0);
+        assert!(vertices.is_empty());
     }
 
     #[test]

@@ -78,159 +78,84 @@ impl WgpuCandidateRenderer {
         pressed: bool,
     ) -> RenderScene {
         let theme = PanelTheme::for_preset(chrome.theme_preset);
-        let page_bg = theme.page_bg;
-        let halo = if pressed {
-            [0.42, 0.70, 0.97, 0.24]
-        } else if hovered {
-            [0.48, 0.75, 1.0, 0.20]
-        } else {
-            [0.40, 0.66, 0.95, 0.12]
-        };
-        let shell = if pressed {
-            [0.71, 0.83, 0.96, 1.0]
-        } else if hovered {
-            [0.78, 0.88, 0.98, 1.0]
-        } else {
-            [0.73, 0.84, 0.97, 1.0]
-        };
-        let shell_inner = if pressed {
-            [0.87, 0.93, 0.99, 1.0]
-        } else {
-            [0.91, 0.96, 1.0, 1.0]
-        };
-        let shell_core = if pressed {
-            [0.96, 0.98, 1.0, 1.0]
-        } else {
-            [0.98, 0.99, 1.0, 1.0]
-        };
-        let shell_shadow = match chrome.theme_preset {
-            ThemePreset::Daylight => [0.19, 0.28, 0.41, 0.24],
-            ThemePreset::Solarized => [0.31, 0.22, 0.12, 0.24],
-            ThemePreset::DeviceDark => [0.01, 0.03, 0.07, 0.42],
-            ThemePreset::HighContrast => [0.00, 0.00, 0.00, 0.52],
-        };
-        let glass_ring = if pressed {
-            [0.90, 0.95, 1.0, 0.22]
-        } else if hovered {
-            [0.93, 0.97, 1.0, 0.24]
-        } else {
-            [0.88, 0.94, 1.0, 0.18]
-        };
-        let contact_shadow = match chrome.theme_preset {
-            ThemePreset::Daylight => [0.15, 0.23, 0.35, 0.16],
-            ThemePreset::Solarized => [0.24, 0.16, 0.09, 0.16],
-            ThemePreset::DeviceDark => [0.01, 0.02, 0.05, 0.28],
-            ThemePreset::HighContrast => [0.06, 0.06, 0.06, 0.38],
-        };
-        let bird_primary = if pressed {
-            [0.77, 0.16, 0.16, 1.0]
-        } else if hovered {
-            [0.84, 0.19, 0.19, 1.0]
-        } else {
-            [0.85, 0.23, 0.23, 1.0]
-        };
-        let bird_secondary = [0.95, 0.47, 0.40, 1.0];
-        let bird_beak = [0.96, 0.67, 0.30, 1.0];
-        let bird_eye = [0.44, 0.09, 0.09, 1.0];
+        let orb_size = (self.scene_width.min(self.scene_height) - 16.0).clamp(1.0, 92.0);
+        let orb_rect = [
+            (self.scene_width - orb_size) * 0.5,
+            (self.scene_height - orb_size) * 0.5,
+            orb_size,
+            orb_size,
+        ];
         let mut quads = Vec::new();
+        // No opaque viewport quad: compositing-capable desktops get a truly round orb.
+        for (spread, alpha) in [(5.0, 0.025), (3.0, 0.04), (1.0, 0.07)] {
+            quads.push(CandidateQuad::rounded(
+                [
+                    orb_rect[0] - spread,
+                    orb_rect[1] - spread + 1.5,
+                    orb_size + spread * 2.0,
+                    orb_size + spread * 2.0,
+                ],
+                [
+                    theme.soft_shadow[0],
+                    theme.soft_shadow[1],
+                    theme.soft_shadow[2],
+                    if pressed { alpha * 0.5 } else { alpha },
+                ],
+                orb_size,
+            ));
+        }
+        if chrome.theme_preset.is_guardian() {
+            quads.extend(theme_badge_quads(
+                chrome.theme_preset,
+                orb_rect,
+                hovered,
+                pressed,
+            ));
+        } else {
+            let mut fill = theme.surface;
+            if hovered || pressed {
+                fill = theme.accent_soft;
+            }
+            quads.push(CandidateQuad::rounded(orb_rect, fill, orb_size * 0.5));
+            quads.push(CandidateQuad::outline(
+                orb_rect,
+                theme.accent,
+                orb_size * 0.5,
+                if hovered { 1.6 } else { 0.9 },
+            ));
+            append_suzaku_bird_icon_quads(
+                &mut quads,
+                [
+                    orb_rect[0] + orb_size * 0.12,
+                    orb_rect[1] + orb_size * 0.10,
+                    orb_size * 0.80,
+                    orb_size * 0.80,
+                ],
+                theme.accent,
+                theme.accent_text,
+                srgb_color(0xC79B59),
+                theme.text_primary,
+            );
+        }
+        if !snapshot.candidate_labels.is_empty() {
+            let dot = [
+                orb_rect[0] + orb_size * 0.79,
+                orb_rect[1] + orb_size * 0.12,
+                orb_size * 0.10,
+                orb_size * 0.10,
+            ];
+            let (dot_fill, dot_border) = if chrome.theme_preset == ThemePreset::Suzaku {
+                (srgb_color(0xFFF1D0), srgb_color(0x8B2933))
+            } else {
+                (theme.accent_soft, theme.accent)
+            };
+            quads.push(CandidateQuad::rounded(dot, dot_fill, orb_size));
+            quads.push(CandidateQuad::outline(dot, dot_border, orb_size, 0.7));
+        }
         let text_quads = Vec::new();
         let atlas_glyphs = Vec::new();
         let text_sections = Vec::new();
         let hit_targets = Vec::new();
-        quads.push(CandidateQuad {
-            rect: [0.0, 0.0, self.scene_width, self.scene_height],
-            color: page_bg,
-        });
-        let orb_size = self.scene_width.min(self.scene_height) - 16.0;
-        let orb_size = orb_size.clamp(56.0, 92.0);
-        let orb_rect = [
-            (self.scene_width - orb_size) / 2.0,
-            (self.scene_height - orb_size) / 2.0,
-            orb_size,
-            orb_size,
-        ];
-        let halo_rect = [
-            orb_rect[0] - orb_size * 0.10,
-            orb_rect[1] - orb_size * 0.10,
-            orb_size * 1.20,
-            orb_size * 1.20,
-        ];
-        let contact_rect = [
-            orb_rect[0] + orb_size * 0.18,
-            orb_rect[1] + orb_size * 0.90,
-            orb_size * 0.64,
-            orb_size * 0.09,
-        ];
-        let ring_rect = [
-            orb_rect[0] + orb_size * 0.08,
-            orb_rect[1] + orb_size * 0.08,
-            orb_size * 0.84,
-            orb_size * 0.84,
-        ];
-        let inner_rect = [
-            orb_rect[0] + orb_size * 0.11,
-            orb_rect[1] + orb_size * 0.11,
-            orb_size * 0.78,
-            orb_size * 0.78,
-        ];
-        let core_rect = [
-            orb_rect[0] + orb_size * 0.24,
-            orb_rect[1] + orb_size * 0.24,
-            orb_size * 0.52,
-            orb_size * 0.52,
-        ];
-        append_rounded_rect_quads(&mut quads, halo_rect, halo, halo_rect[2] * 0.5);
-        append_rounded_rect_quads(
-            &mut quads,
-            contact_rect,
-            contact_shadow,
-            contact_rect[3] * 0.5,
-        );
-        append_soft_card_quads(
-            &mut quads,
-            orb_rect,
-            shell,
-            [0.41, 0.55, 0.73, 1.0],
-            shell_shadow,
-            theme.shell,
-            orb_rect[2] * 0.5,
-        );
-        append_rounded_rect_quads(&mut quads, ring_rect, glass_ring, ring_rect[2] * 0.5);
-        append_rounded_rect_quads(
-            &mut quads,
-            [
-                orb_rect[0] + orb_size * 0.04,
-                orb_rect[1] + orb_size * 0.04,
-                orb_size * 0.92,
-                orb_size * 0.18,
-            ],
-            [1.0, 1.0, 1.0, 0.10],
-            orb_rect[2] * 0.26,
-        );
-        append_rounded_rect_quads(&mut quads, inner_rect, shell_inner, inner_rect[2] * 0.5);
-        append_rounded_rect_quads(
-            &mut quads,
-            [
-                inner_rect[0] + orb_size * 0.03,
-                inner_rect[1] + orb_size * 0.03,
-                inner_rect[2] - orb_size * 0.06,
-                inner_rect[3] * 0.28,
-            ],
-            [1.0, 1.0, 1.0, 0.12],
-            inner_rect[2] * 0.18,
-        );
-        append_rounded_rect_quads(&mut quads, core_rect, shell_core, core_rect[2] * 0.5);
-        append_rounded_rect_quads(
-            &mut quads,
-            [
-                orb_rect[0] + orb_size * 0.22,
-                orb_rect[1] + orb_size * 0.80,
-                orb_size * 0.56,
-                orb_size * 0.06,
-            ],
-            [0.33, 0.63, 0.96, 0.85],
-            orb_size * 0.03,
-        );
         let compact_hit_rect = self.interaction_hit_rect(
             orb_rect,
             1.0,
@@ -244,44 +169,6 @@ impl WgpuCandidateRenderer {
             kind: InteractionKind::ToggleCompactMode,
             rect: compact_hit_rect,
         }];
-        let icon_rect = [
-            orb_rect[0] + orb_size * 0.15,
-            orb_rect[1] + orb_size * 0.15,
-            orb_size * 0.70,
-            orb_size * 0.70,
-        ];
-        append_suzaku_bird_icon_quads(
-            &mut quads,
-            icon_rect,
-            bird_primary,
-            bird_secondary,
-            bird_beak,
-            bird_eye,
-        );
-        if !snapshot.candidate_labels.is_empty() {
-            append_rounded_rect_quads(
-                &mut quads,
-                [
-                    orb_rect[0] + orb_size * 0.74,
-                    orb_rect[1] + orb_size * 0.18,
-                    orb_size * 0.12,
-                    orb_size * 0.12,
-                ],
-                [0.96, 0.33, 0.30, 1.0],
-                orb_size * 0.06,
-            );
-            append_rounded_rect_quads(
-                &mut quads,
-                [
-                    orb_rect[0] + orb_size * 0.78,
-                    orb_rect[1] + orb_size * 0.22,
-                    orb_size * 0.04,
-                    orb_size * 0.04,
-                ],
-                [1.0, 0.95, 0.95, 0.95],
-                orb_size * 0.02,
-            );
-        }
         RenderScene {
             quads,
             text_quads,

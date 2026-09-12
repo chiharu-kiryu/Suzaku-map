@@ -104,7 +104,7 @@
                     append_soft_card_quads(
                         &mut quads,
                         canvas_rect,
-                            [0.98, 0.99, 1.0, 1.0],
+                            keyboard_surface,
                             border_dark,
                             soft_shadow,
                             surface,
@@ -119,7 +119,7 @@
 
                     for stroke in &chrome.handwriting_strokes {
                         for point in sample_stroke_points(stroke) {
-                            quads.push(CandidateQuad {
+                            quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
                                 rect: intersect_rect([
                                     point[0] - 2.5 * responsive_scale * handwriting_scale,
                                     point[1] - 2.5 * responsive_scale * handwriting_scale,
@@ -186,7 +186,7 @@
                         handwriting_footer_rect,
                         surface,
                         border_dark,
-                        [0.25, 0.34, 0.48, 0.06],
+                        soft_shadow,
                         shell,
                         7.2 * responsive_scale * handwriting_scale,
                     );
@@ -199,13 +199,13 @@
                         &mut quads,
                         undo_visual_rect,
                         if undo_pressed {
-                            [0.67, 0.82, 0.97, 1.0]
+                            press_surface
                         } else if undo_hovered {
-                            [0.95, 0.97, 1.0, 1.0]
+                            hover_surface
                         } else if undo_enabled {
-                            [0.92, 0.95, 0.99, 1.0]
+                            surface_alt
                         } else {
-                            [0.97, 0.98, 1.0, 1.0]
+                            surface
                         },
                         border_dark,
                         animated_shadow(soft_shadow, undo_hovered, undo_pressed),
@@ -224,11 +224,11 @@
                         &mut quads,
                         clear_visual_rect,
                         if clear_pressed {
-                            [0.67, 0.82, 0.97, 1.0]
+                            press_surface
                         } else if clear_hovered {
-                            [0.95, 0.97, 1.0, 1.0]
+                            hover_surface
                         } else {
-                            [0.92, 0.95, 0.99, 1.0]
+                            surface_alt
                         },
                         border_dark,
                         animated_shadow(soft_shadow, clear_hovered, clear_pressed),
@@ -278,20 +278,20 @@
                             &mut quads,
                             visual_rect,
                             if pressed {
-                                [0.67, 0.82, 0.97, 1.0]
+                                press_surface
                             } else if index == 0 {
                                 accent_soft
                             } else if hovered {
-                                [0.93, 0.96, 1.0, 1.0]
+                                hover_surface
                             } else {
-                                [0.97, 0.98, 1.0, 1.0]
+                                surface
                             },
                             if pressed {
-                                [0.08, 0.35, 0.68, 1.0]
+                                accent
                             } else if index == 0 {
                                 accent
                             } else if hovered {
-                                [0.46, 0.62, 0.82, 1.0]
+                                hover_border
                             } else {
                                 border_dark
                             },

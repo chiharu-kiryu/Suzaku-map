@@ -1,72 +1,20 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="152" y1="118" x2="858" y2="916" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF7F1"/>
-      <stop offset="0.48" stop-color="#FFE9E0"/>
-      <stop offset="1" stop-color="#FFD7CC"/>
-    </linearGradient>
-    <linearGradient id="halo" x1="284" y1="188" x2="782" y2="782" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF9F6" stop-opacity="0.95"/>
-      <stop offset="1" stop-color="#FFD5C8" stop-opacity="0.2"/>
-    </linearGradient>
-    <linearGradient id="body" x1="292" y1="262" x2="743" y2="814" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#B91C1C"/>
-      <stop offset="0.45" stop-color="#D9342B"/>
-      <stop offset="1" stop-color="#F1633E"/>
-    </linearGradient>
-    <linearGradient id="wing" x1="270" y1="350" x2="612" y2="706" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FF9A4D"/>
-      <stop offset="1" stop-color="#F24B2A"/>
-    </linearGradient>
-    <linearGradient id="tail" x1="472" y1="628" x2="808" y2="908" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FF8E45"/>
-      <stop offset="1" stop-color="#B31217"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="88" y="88" width="848" height="848" rx="228" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="308" fill="url(#halo)"/>
-
-  <path
-    d="M315 701C375 643 428 585 463 519C421 522 381 511 344 486C283 446 244 391 226 320C292 362 346 387 388 395C392 338 409 288 441 245C497 292 538 342 564 394C597 348 639 317 692 300C675 356 647 412 608 468C668 489 727 533 786 602C716 611 655 610 604 599C570 654 523 704 465 748C426 736 376 720 315 701Z"
-    fill="url(#body)"
-  />
-
-  <path
-    d="M252 354C311 388 366 407 417 411C404 458 380 503 344 544C297 520 255 484 219 436C213 416 224 389 252 354Z"
-    fill="url(#wing)"
-  />
-
-  <path
-    d="M408 246C465 282 509 322 540 366C511 379 484 399 459 427C430 381 413 321 408 246Z"
-    fill="#FFB27A"
-    fill-opacity="0.88"
-  />
-
-  <path
-    d="M583 439C628 401 684 377 752 368C722 430 678 480 620 518C610 492 597 466 583 439Z"
-    fill="#8F1117"
-    fill-opacity="0.86"
-  />
-
-  <path
-    d="M487 587C551 623 619 636 690 627C707 695 744 759 801 818C712 816 637 791 578 742C538 770 487 794 426 813C445 757 466 693 487 587Z"
-    fill="url(#tail)"
-  />
-
-  <path
-    d="M654 343L793 308L710 424L654 343Z"
-    fill="#F6B24E"
-  />
-
-  <circle cx="593" cy="361" r="24" fill="#6E0F12"/>
-  <circle cx="600" cy="354" r="8" fill="#FFF5EF"/>
-
-  <path
-    d="M371 739C438 708 493 667 534 616"
-    stroke="#FFD7B8"
-    stroke-width="34"
-    stroke-linecap="round"
-    stroke-opacity="0.72"
-  />
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 100 100" fill="none" role="img" aria-labelledby="title">
+  <title id="title">Suzaku — vermilion phoenix</title>
+  <circle cx="50" cy="50" r="46" fill="#B5393F"/>
+  <circle cx="50" cy="50" r="41.3" stroke="#F3CD8A" stroke-opacity=".55" stroke-width="1"/>
+  <g transform="translate(15.04 13.2) scale(.736)" fill="#F3CD8A">
+    <!-- Swept wings and flame-tail ribbons, matching the panel's curved emblem. -->
+    <path d="M50 53C25 48 13 23 18 9C18 31 30 39 46 46Z"/>
+    <path d="M46 55C25 53 11 40 8 24C16 40 29 44 43 47Z"/>
+    <path d="M48 57C24 64 13 50 10 43C25 55 35 49 44 50Z"/>
+    <path d="M44 46C60 51 65 40 63 32C61 21 74 22 74 30C75 35 69 35 69 32C72 53 57 61 43 56Z"/>
+    <path d="M42 52C67 78 34 93 14 79C36 87 53 73 45 59Z"/>
+    <path d="M47 52C82 63 69 87 41 92C61 82 66 66 49 58Z"/>
+    <path d="M63 28C56 21 65 17 60 11C70 17 61 22 67 26Z"/>
+    <path d="M69 28C77 28 80 31 83 34L70 33Z" fill="#FFE5AB"/>
+    <path d="M40 46C32 33 28 20 30 16" stroke="#FFF1D0" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M49 57C54 75 43 81 32 83" stroke="#FFF1D0" stroke-width="1.8" stroke-linecap="round"/>
+    <ellipse cx="67" cy="30" rx="6.5" ry="6"/>
+    <circle cx="70.3" cy="29.5" r="1.05" fill="#70232C"/>
+  </g>
 </svg>

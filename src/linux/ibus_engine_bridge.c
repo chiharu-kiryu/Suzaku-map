@@ -7,6 +7,9 @@
 #include <unistd.h>
 
 #define SUZAKU_LOOKUP_PAGE_SIZE 6
+/* Desktop shortcuts can arrive with physical Mod4 or virtual Super/Hyper/Meta. */
+#define SUZAKU_SYSTEM_MODIFIERS \
+    (IBUS_CONTROL_MASK | IBUS_MOD4_MASK | IBUS_SUPER_MASK | IBUS_HYPER_MASK | IBUS_META_MASK)
 
 extern bool suzaku_host_ime_activate(void);
 extern void suzaku_host_ime_deactivate(void);
@@ -68,13 +71,17 @@ static size_t suzaku_ibus_candidate_page_start(void) {
     return (selected / SUZAKU_LOOKUP_PAGE_SIZE) * SUZAKU_LOOKUP_PAGE_SIZE;
 }
 
+static void suzaku_ibus_engine_hide(IBusEngine *engine) {
+    ibus_engine_hide_preedit_text(engine);
+    ibus_engine_hide_lookup_table(engine);
+    ibus_engine_hide_auxiliary_text(engine);
+}
+
 static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     suzaku_companion_publish();
     IBusEngine *engine = IBUS_ENGINE(self);
     if (self->input->len == 0) {
-        ibus_engine_hide_preedit_text(engine);
-        ibus_engine_hide_lookup_table(engine);
-        ibus_engine_hide_auxiliary_text(engine);
+        suzaku_ibus_engine_hide(engine);
         return;
     }
 
@@ -114,8 +121,9 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     ibus_engine_update_lookup_table(engine, table, TRUE);
     guint language = suzaku_host_ime_language_kind();
     const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
-    gchar *help = g_strdup_printf("%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | %s · Shift+Space/Enter 连写/补全", mode,
-        language == 2 ? "Alt+1–6" : "1–6");
+    gchar *help = g_strdup_printf(
+        "%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | 1–6 选词续写 · Alt+数字 输入数字 · 空格连写 · Enter/点击提交",
+        mode);
     ibus_engine_update_auxiliary_text(engine, ibus_text_new_from_string(help), TRUE);
     g_free(help);
 }
@@ -129,6 +137,13 @@ static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
     }
     suzaku_ibus_engine_render(self);
     suzaku_ibus_schedule_prediction();
+}
+
+static void suzaku_ibus_engine_append_character(SuzakuIBusEngine *self, gunichar character) {
+    gchar utf8[7] = {0};
+    gint length = g_unichar_to_utf8(character, utf8);
+    g_string_append_len(self->input, utf8, length);
+    suzaku_ibus_engine_sync_input(self);
 }
 
 static void suzaku_ibus_engine_clear_local(SuzakuIBusEngine *self) {
@@ -146,7 +161,8 @@ static void suzaku_ibus_engine_clear(SuzakuIBusEngine *self) {
 /* Keep the replacement in preedit; no commit event or committed context is created.
  * Backspace immediately after a replacement restores the exact previous spelling. */
 static gboolean suzaku_ibus_engine_complete(SuzakuIBusEngine *self, gboolean append_space) {
-    if (self->sensitive || self->input->len == 0) { return FALSE; }
+    if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
+        self->sensitive || self->input->len == 0) { return FALSE; }
     char *candidate = suzaku_host_ime_completion_text_utf8(append_space);
     if (!append_space && candidate == NULL) { return FALSE; }
     const gchar *text = candidate != NULL ? candidate : self->input->str;
@@ -192,8 +208,9 @@ static void suzaku_ibus_schedule_prediction(void) {
     }
 }
 
-static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self, gboolean append_space) {
-    if (self->sensitive || self->input->len == 0 || !suzaku_host_ime_commit_selected(true)) {
+static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self) {
+    if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
+        self->sensitive || self->input->len == 0 || !suzaku_host_ime_commit_selected(true)) {
         return FALSE;
     }
 
@@ -203,9 +220,7 @@ static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self, gboolean appen
         return FALSE;
     }
 
-    gchar *output = append_space ? g_strconcat(committed, " ", NULL) : g_strdup(committed);
-    ibus_engine_commit_text(IBUS_ENGINE(self), ibus_text_new_from_string(output));
-    g_free(output);
+    ibus_engine_commit_text(IBUS_ENGINE(self), ibus_text_new_from_string(committed));
     suzaku_host_ime_free_utf8(committed);
     suzaku_ibus_engine_clear(self);
     return TRUE;
@@ -213,7 +228,8 @@ static gboolean suzaku_ibus_engine_commit(SuzakuIBusEngine *self, gboolean appen
 
 static void suzaku_ibus_engine_move_selection(
     SuzakuIBusEngine *self, ptrdiff_t delta) {
-    if (self->input->len == 0) {
+    if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
+        self->sensitive || self->input->len == 0) {
         return;
     }
     g_clear_pointer(&self->completion_undo, g_free);
@@ -226,24 +242,20 @@ static gboolean suzaku_ibus_engine_process_key_event(
     (void)keycode;
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
 
-    if (self->sensitive) { return FALSE; }
+    if (!suzaku_ibus_engine_is_focused(engine) || self->sensitive) { return FALSE; }
 
-    if ((state & IBUS_RELEASE_MASK) != 0) {
+    if ((state & (IBUS_RELEASE_MASK | SUZAKU_SYSTEM_MODIFIERS)) != 0) {
         return FALSE;
     }
-    /* Use Alt+digits for lookup choices without stealing English literal digits.
-     * Do not intercept AltGr (MOD5) or application shortcuts with other modifiers. */
-    if (self->input->len > 0 && (state & IBUS_MOD1_MASK) != 0 &&
-        (state & (IBUS_CONTROL_MASK | IBUS_SUPER_MASK | IBUS_SHIFT_MASK | IBUS_MOD5_MASK)) == 0 &&
-        keyval >= IBUS_KEY_1 && keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
-        size_t index = suzaku_ibus_candidate_page_start() + (size_t)(keyval - IBUS_KEY_1);
-        if (index < suzaku_host_ime_candidate_count()) {
-            suzaku_host_ime_select_candidate(index);
-            return suzaku_ibus_engine_commit(self, FALSE);
-        }
+    /* Alt+digits enter literal numbers. Leave Shift's layout-resolved symbols
+     * intact, and never interpret AltGr or desktop shortcuts as number choices. */
+    if ((state & IBUS_MOD1_MASK) != 0 &&
+        (state & (IBUS_SHIFT_MASK | IBUS_MOD5_MASK)) == 0 &&
+        keyval >= IBUS_KEY_0 && keyval <= IBUS_KEY_9) {
+        suzaku_ibus_engine_append_character(self, '0' + keyval - IBUS_KEY_0);
         return TRUE;
     }
-    if ((state & (IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_SUPER_MASK)) != 0) {
+    if ((state & IBUS_MOD1_MASK) != 0) {
         return FALSE;
     }
     if ((state & IBUS_MOD5_MASK) != 0 &&
@@ -294,53 +306,64 @@ static gboolean suzaku_ibus_engine_process_key_event(
             self, keyval == IBUS_KEY_Page_Down ? SUZAKU_LOOKUP_PAGE_SIZE : 1);
         return TRUE;
     }
-    if (keyval == IBUS_KEY_space && (state & IBUS_SHIFT_MASK) != 0 && self->input->len > 0) {
+    /* Space is a separator within one writing stream, not a commit boundary.
+     * Only an explicitly selected candidate may replace the user's spelling. */
+    if (keyval == IBUS_KEY_space && self->input->len > 0) {
         return suzaku_ibus_engine_complete(self, TRUE);
     }
     if ((keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter) &&
         (state & IBUS_SHIFT_MASK) != 0 && self->input->len > 0) {
         return suzaku_ibus_engine_complete(self, FALSE);
     }
-    if (keyval == IBUS_KEY_space || keyval == IBUS_KEY_Return ||
-        keyval == IBUS_KEY_KP_Enter) {
-        return suzaku_ibus_engine_commit(self, keyval == IBUS_KEY_space && suzaku_host_ime_language_kind() == 2);
+    if (keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter) {
+        return suzaku_ibus_engine_commit(self);
     }
 
-    guint language = suzaku_host_ime_language_kind();
-    /* English digits belong to the literal input; Tab/arrows select completions. */
-    if (language != 2 && self->input->len > 0 && keyval >= IBUS_KEY_1 &&
-        keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
-        size_t index = suzaku_ibus_candidate_page_start() +
-                       (size_t)(keyval - IBUS_KEY_1);
-        if (index < suzaku_host_ime_candidate_count()) {
-            suzaku_host_ime_select_candidate(index);
-            return suzaku_ibus_engine_commit(self, FALSE);
+    if (self->input->len > 0 && suzaku_host_ime_candidate_count() > 0 &&
+        (state & (IBUS_SHIFT_MASK | IBUS_MOD5_MASK)) == 0 &&
+        keyval >= IBUS_KEY_0 && keyval <= IBUS_KEY_9) {
+        if (keyval >= IBUS_KEY_1 && keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
+            size_t index = suzaku_ibus_candidate_page_start() +
+                           (size_t)(keyval - IBUS_KEY_1);
+            if (index < suzaku_host_ime_candidate_count()) {
+                g_clear_pointer(&self->completion_undo, g_free);
+                suzaku_host_ime_select_candidate(index);
+                return suzaku_ibus_engine_complete(self, FALSE);
+            }
         }
-    }
-
-    gunichar character = ibus_keyval_to_unicode(keyval);
-    if ((character >= 'a' && character <= 'z') ||
-        (character >= 'A' && character <= 'Z') || character == '\'' ||
-        (language == 2 && character >= '0' && character <= '9') ||
-        (language == 1 && (character == 0xfc || character == 0xdc || character == ':')) ||
-        (language == 3 && character == '-')) {
-        gchar utf8[7] = {0};
-        /* Language converters normalize case themselves; retain the literal fallback here. */
-        gint length = g_unichar_to_utf8(character, utf8);
-        g_string_append_len(self->input, utf8, length);
-        suzaku_ibus_engine_sync_input(self);
+        /* An empty numbered slot must not silently insert a digit into the draft. */
         return TRUE;
     }
 
-    /* Modifier/function keys carry no text and must never commit a pending word. */
-    if (self->input->len > 0 && character != 0 && g_unichar_isprint(character)) {
-        suzaku_ibus_engine_commit(self, FALSE);
+    guint language = suzaku_host_ime_language_kind();
+    gunichar character = ibus_keyval_to_unicode(keyval);
+    if ((character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') || character == '\'' ||
+        (character >= '0' && character <= '9') ||
+        (language == 1 && (character == 0xfc || character == 0xdc || character == ':')) ||
+        (language == 3 && character == '-') ||
+        (self->input->len > 0 && character != 0 && g_unichar_isprint(character))) {
+        /* Language converters normalize case themselves; retain the literal fallback here. */
+        suzaku_ibus_engine_append_character(self, character);
+        return TRUE;
     }
+
+    /* Non-text keys and punctuation outside a draft belong to the application. */
     return FALSE;
 }
 
 static void suzaku_ibus_engine_focus_in(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+    GObject *previous = g_weak_ref_get(&suzaku_last_focused_engine);
+    if (previous != NULL && previous != G_OBJECT(engine)) {
+        suzaku_ibus_engine_clear_local((SuzakuIBusEngine *)previous);
+        suzaku_ibus_engine_hide(IBUS_ENGINE(previous));
+    }
+    g_clear_object(&previous);
+    /* FocusOut can be delayed or absent. Start a clean field session here too,
+     * including when IBus reuses the same engine for another input context. */
+    suzaku_ibus_engine_clear_local(self);
+    suzaku_host_ime_deactivate();
     g_weak_ref_set(&suzaku_last_focused_engine, G_OBJECT(engine));
     suzaku_companion_context++;
     suzaku_host_ime_set_private(self->private_input);
@@ -363,9 +386,7 @@ static void suzaku_ibus_engine_focus_out(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
     if (!suzaku_ibus_clear_focused_engine_if(engine)) {
         suzaku_ibus_engine_clear_local(self);
-        ibus_engine_hide_preedit_text(engine);
-        ibus_engine_hide_lookup_table(engine);
-        ibus_engine_hide_auxiliary_text(engine);
+        suzaku_ibus_engine_hide(engine);
         return;
     }
     suzaku_ibus_engine_clear(self);
@@ -399,8 +420,9 @@ static void suzaku_ibus_engine_set_content_type(IBusEngine *engine, guint purpos
 }
 
 static void suzaku_ibus_engine_enable(IBusEngine *engine) {
-    (void)engine;
-    suzaku_host_ime_activate();
+    if (suzaku_ibus_engine_is_focused(engine)) {
+        suzaku_host_ime_activate();
+    }
 }
 
 static void suzaku_ibus_engine_disable(IBusEngine *engine) {
@@ -432,9 +454,11 @@ static void suzaku_ibus_engine_page_down(IBusEngine *engine) {
 
 static void suzaku_ibus_engine_candidate_clicked(
     IBusEngine *engine, guint index, guint button, guint state) {
-    (void)button;
-    (void)state;
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+    if (!suzaku_ibus_engine_is_focused(engine) || self->sensitive || button != 1 ||
+        (state & (SUZAKU_SYSTEM_MODIFIERS | IBUS_MOD1_MASK | IBUS_RELEASE_MASK)) != 0) {
+        return;
+    }
     size_t candidate_count = suzaku_host_ime_candidate_count();
     size_t absolute_index = index;
     if (candidate_count > SUZAKU_LOOKUP_PAGE_SIZE &&
@@ -445,7 +469,7 @@ static void suzaku_ibus_engine_candidate_clicked(
         return;
     }
     suzaku_host_ime_select_candidate(absolute_index);
-    suzaku_ibus_engine_commit(self, FALSE);
+    suzaku_ibus_engine_commit(self);
 }
 
 static void suzaku_ibus_engine_finalize(GObject *object) {
@@ -505,13 +529,19 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
     if (bytes_read > 0 && bytes_read < 128 &&
         (request[0] == 'S' || request[0] == 'L' || request[0] == 'P' || request[0] == 'R' || request[0] == 'U') &&
         g_utf8_validate(request, (gssize)bytes_read, NULL)) {
+        unsigned int previous_language = suzaku_host_ime_language_kind();
         char *response = suzaku_host_ime_control_utf8(request);
         if (response != NULL) {
             if (strstr(response, "\"ok\":true") != NULL) {
                 GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
                 if (focused != NULL) {
                     SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
-                    if (request[0] == 'L' || request[0] == 'R') { suzaku_ibus_engine_clear(engine); }
+                    /* Reloading a provider keeps the current field's draft. A language
+                     * boundary still clears both the Rust and IBus compositions. */
+                    if (request[0] == 'L' || (request[0] == 'R' &&
+                        previous_language != suzaku_host_ime_language_kind())) {
+                        suzaku_ibus_engine_clear(engine);
+                    }
                     if (request[0] != 'S') { suzaku_ibus_engine_render(engine); }
                     g_object_unref(focused);
                 }
@@ -971,6 +1001,7 @@ int suzaku_linux_ibus_probe_roundtrip(
     suzaku_ibus_probe_pump_events();
 
     int result = 0;
+    gchar *completion_expected = NULL;
     gboolean engine_switched = FALSE;
     G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     gboolean use_global_engine = ibus_bus_get_use_global_engine(bus);
@@ -1029,7 +1060,8 @@ int suzaku_linux_ibus_probe_roundtrip(
         for (const gchar *cursor = seed; *cursor != '\0';
              cursor = g_utf8_next_char(cursor)) {
             gunichar character = g_utf8_get_char(cursor);
-            if (!ibus_input_context_process_key_event(context, character, 0, 0)) {
+            guint modifiers = character >= '0' && character <= '9' ? IBUS_MOD1_MASK : 0;
+            if (!ibus_input_context_process_key_event(context, character, 0, modifiers)) {
                 result = 7;
                 goto cleanup;
             }
@@ -1072,9 +1104,27 @@ int suzaku_linux_ibus_probe_roundtrip(
                 g_usleep(10000);
             }
             if (probe.selected_index != 1) { result = 20; goto cleanup; }
+            /* Keep an independent expectation: Space refreshes the lookup table. */
+            const gchar *annotation = strrchr(probe.primary_candidate, ' ');
+            gchar *plain = annotation == NULL ? g_strdup(probe.primary_candidate) :
+                g_strndup(probe.primary_candidate, (gsize)(annotation - probe.primary_candidate));
+            completion_expected = g_strconcat(plain, " ", NULL);
+            g_free(plain);
+            if (!ibus_input_context_process_key_event(context, IBUS_KEY_space, 0, 0)) {
+                result = 22; goto cleanup;
+            }
+            for (guint attempt = 0; attempt < 100 &&
+                 g_strcmp0(probe.preedit, completion_expected) != 0; attempt++) {
+                suzaku_ibus_probe_pump_events();
+                g_usleep(10000);
+            }
+            if (probe.commit_received || !probe.preedit_visible ||
+                g_strcmp0(probe.preedit, completion_expected) != 0) {
+                result = 22; goto cleanup;
+            }
         }
         /* Navigate by absolute candidate position, not page-local number keys.
-         * English treats digits as text and AI results can be on a later page. */
+         * AI results can be on a later page; number choices now keep composing. */
         if (wait_for_llm) {
             ptrdiff_t delta = (ptrdiff_t)probe.ai_candidate_index - (ptrdiff_t)probe.selected_index;
             guint select_key = delta < 0 ? IBUS_KEY_ISO_Left_Tab : IBUS_KEY_Tab;
@@ -1086,8 +1136,7 @@ int suzaku_linux_ibus_probe_roundtrip(
                 }
             }
         }
-        guint commit_key = wait_for_llm ? IBUS_KEY_Return : IBUS_KEY_space;
-        if (!ibus_input_context_process_key_event(context, commit_key, 0, 0)) {
+        if (!ibus_input_context_process_key_event(context, IBUS_KEY_Return, 0, 0)) {
             result = 8;
             goto cleanup;
         }
@@ -1106,14 +1155,7 @@ int suzaku_linux_ibus_probe_roundtrip(
         result = 16;
     }
     if (result == 0 && complete_word) {
-        /* Display annotations never belong to the committed replacement. */
-        const gchar *annotation = strrchr(probe.primary_candidate, ' ');
-        gchar *plain = annotation == NULL ? g_strdup(probe.primary_candidate) :
-            g_strndup(probe.primary_candidate, (gsize)(annotation - probe.primary_candidate));
-        gchar *expected = g_strconcat(plain, " ", NULL);
-        g_free(plain);
-        if (g_strcmp0(probe.committed, expected) != 0) { result = 21; }
-        g_free(expected);
+        if (g_strcmp0(probe.committed, completion_expected) != 0) { result = 21; }
     }
 
     *candidate_count = probe.candidate_count;
@@ -1121,6 +1163,7 @@ int suzaku_linux_ibus_probe_roundtrip(
     *selected_index = probe.selected_index;
 
 cleanup:
+    g_free(completion_expected);
     if (use_global_engine && engine_switched && previous_engine != NULL) {
         if (!ibus_bus_set_global_engine(bus, previous_engine) && result == 0) {
             result = 10;

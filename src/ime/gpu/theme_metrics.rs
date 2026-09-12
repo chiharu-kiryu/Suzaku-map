@@ -1,4 +1,22 @@
-use super::{CandidateDensity, PanelChromeState, PreviewStyle, ThemePreset};
+use super::{CandidateDensity, DisplayTextScale, PanelChromeState, PreviewStyle, ThemePreset};
+
+/// Theme swatches are authored in sRGB; wgpu's sRGB targets expect linear input.
+pub fn srgb_color(hex: u32) -> [f32; 4] {
+    let linear = |byte: u32| {
+        let v = byte as f32 / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    [
+        linear((hex >> 16) & 255),
+        linear((hex >> 8) & 255),
+        linear(hex & 255),
+        1.0,
+    ]
+}
 
 pub(super) struct PanelTheme {
     pub(super) page_bg: [f32; 4],
@@ -24,6 +42,86 @@ pub(super) struct PanelTheme {
 impl PanelTheme {
     pub(super) fn for_preset(preset: ThemePreset) -> Self {
         match preset {
+            ThemePreset::Suzaku => Self {
+                page_bg: srgb_color(0xF5EEE7),
+                shell: srgb_color(0xFCF8F3),
+                shell_border: srgb_color(0xDDC9B9),
+                surface: srgb_color(0xFFFCF8),
+                surface_alt: srgb_color(0xF8EFE7),
+                surface_muted: srgb_color(0xF0E4DA),
+                keyboard_surface: srgb_color(0xFFFCF8),
+                keyboard_special_surface: srgb_color(0xF2E6DC),
+                keyboard_text: srgb_color(0x382A2B),
+                keyboard_secondary_text: srgb_color(0x705958),
+                accent: srgb_color(0xB5393F),
+                accent_soft: srgb_color(0xF4DCD3),
+                accent_text: srgb_color(0x8B2933),
+                text_primary: srgb_color(0x34272A),
+                text_secondary: srgb_color(0x72585A),
+                text_muted: srgb_color(0x785F5D),
+                border_dark: srgb_color(0xDFCCC0),
+                soft_shadow: [0.12, 0.025, 0.03, 0.18],
+            },
+            ThemePreset::Baihu => Self {
+                page_bg: srgb_color(0xF1EEE5),
+                shell: srgb_color(0xF8F6EE),
+                shell_border: srgb_color(0xCDC6B6),
+                surface: srgb_color(0xFFFDF7),
+                surface_alt: srgb_color(0xF3F0E6),
+                surface_muted: srgb_color(0xE7E2D5),
+                keyboard_surface: srgb_color(0xFFFDF7),
+                keyboard_special_surface: srgb_color(0xEDE8DB),
+                keyboard_text: srgb_color(0x2D3434),
+                keyboard_secondary_text: srgb_color(0x5C625D),
+                accent: srgb_color(0x796441),
+                accent_soft: srgb_color(0xEAE1CE),
+                accent_text: srgb_color(0x665132),
+                text_primary: srgb_color(0x2D3434),
+                text_secondary: srgb_color(0x5C625D),
+                text_muted: srgb_color(0x5D625A),
+                border_dark: srgb_color(0xCFC7B7),
+                soft_shadow: [0.06, 0.05, 0.03, 0.16],
+            },
+            ThemePreset::Qinglong => Self {
+                page_bg: srgb_color(0xEAEDF5),
+                shell: srgb_color(0xF3F6FB),
+                shell_border: srgb_color(0xBCCDD7),
+                surface: srgb_color(0xFCFDFF),
+                surface_alt: srgb_color(0xEAF4F2),
+                surface_muted: srgb_color(0xE6E2F0),
+                keyboard_surface: srgb_color(0xF7FBFC),
+                keyboard_special_surface: srgb_color(0xE6E2F0),
+                keyboard_text: srgb_color(0x243344),
+                keyboard_secondary_text: srgb_color(0x496171),
+                accent: srgb_color(0x367A80),
+                accent_soft: srgb_color(0xE4DFF1),
+                accent_text: srgb_color(0x644C83),
+                text_primary: srgb_color(0x243344),
+                text_secondary: srgb_color(0x496171),
+                text_muted: srgb_color(0x566276),
+                border_dark: srgb_color(0xC4BDD6),
+                soft_shadow: [0.025, 0.055, 0.12, 0.17],
+            },
+            ThemePreset::Xuanwu => Self {
+                page_bg: srgb_color(0x111629),
+                shell: srgb_color(0x1A203A),
+                shell_border: srgb_color(0x465379),
+                surface: srgb_color(0x222A49),
+                surface_alt: srgb_color(0x293357),
+                surface_muted: srgb_color(0x303B5C),
+                keyboard_surface: srgb_color(0x202742),
+                keyboard_special_surface: srgb_color(0x303B5C),
+                keyboard_text: srgb_color(0xEEF0FB),
+                keyboard_secondary_text: srgb_color(0xB9C3E0),
+                accent: srgb_color(0x9CAEEB),
+                accent_soft: srgb_color(0x3C4874),
+                accent_text: srgb_color(0xE1E7FF),
+                text_primary: srgb_color(0xEEF0FB),
+                text_secondary: srgb_color(0xB9C3E0),
+                text_muted: srgb_color(0xABB9D6),
+                border_dark: srgb_color(0x506087),
+                soft_shadow: [0.004, 0.006, 0.018, 0.40],
+            },
             ThemePreset::Daylight => Self {
                 page_bg: [0.90, 0.93, 0.99, 1.0],
                 shell: [0.97, 0.99, 1.0, 1.0],
@@ -108,6 +206,64 @@ impl PanelTheme {
     }
 }
 
+impl ThemePreset {
+    /// Linear RGBA, shared with the native window clear and tooltip overlay.
+    pub fn page_background(self) -> [f32; 4] {
+        PanelTheme::for_preset(self).page_bg
+    }
+
+    pub fn tooltip_colors(self) -> ([f32; 4], [f32; 4], [f32; 4]) {
+        let theme = PanelTheme::for_preset(self);
+        (theme.surface, theme.text_primary, theme.accent)
+    }
+
+    pub(super) fn secondary_accent(self) -> [f32; 4] {
+        srgb_color(match self {
+            Self::Suzaku => 0xB68B52,
+            Self::Baihu => 0x8B8065,
+            Self::Qinglong => 0x80639F,
+            Self::Xuanwu => 0x89BCCA,
+            _ => return PanelTheme::for_preset(self).accent,
+        })
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+
+    #[test]
+    fn guardian_text_retains_readable_contrast_on_light_and_dark_surfaces() {
+        let luminance = |color: [f32; 4]| color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722;
+        let contrast = |a, b| {
+            let (a, b) = (luminance(a), luminance(b));
+            (a.max(b) + 0.05) / (a.min(b) + 0.05)
+        };
+        for preset in ThemePreset::ALL.into_iter().filter(|p| p.is_guardian()) {
+            let theme = PanelTheme::for_preset(preset);
+            for foreground in [theme.text_primary, theme.text_secondary, theme.text_muted] {
+                for surface in [theme.surface, theme.surface_alt, theme.surface_muted] {
+                    assert!(
+                        contrast(surface, foreground) >= 4.5,
+                        "{preset:?}: unreadable text"
+                    );
+                }
+            }
+            assert!(
+                contrast(theme.accent_soft, theme.accent_text) >= 4.5,
+                "{preset:?}: selection"
+            );
+            assert!(contrast(theme.keyboard_surface, theme.keyboard_text) >= 4.5);
+            assert!(
+                contrast(
+                    theme.keyboard_special_surface,
+                    theme.keyboard_secondary_text
+                ) >= 4.5
+            );
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PanelSceneMetrics {
     pub(super) panel_width: f32,
@@ -116,6 +272,7 @@ pub(super) struct PanelSceneMetrics {
     pub(super) panel_height: f32,
     pub(super) section_gap: f32,
     pub(super) input_box_h: f32,
+    pub(super) input_value_px: f32,
     pub(super) tools_header_h: f32,
     pub(super) tool_button_h: f32,
     pub(super) tool_gap: f32,
@@ -155,7 +312,21 @@ impl PanelSceneMetrics {
             1.0
         };
 
-        let input_box_h = 46.0 * responsive_scale * spacing_scale;
+        let input_value_px = match chrome.text_scale {
+            DisplayTextScale::Small => 2.4,
+            DisplayTextScale::Medium => 3.4,
+            DisplayTextScale::Large => 4.2,
+        } * responsive_scale
+            * if panel_width < 680.0 {
+                0.90
+            } else if panel_width < 760.0 {
+                0.96
+            } else {
+                1.0
+            };
+        // Header controls and editable text occupy separate rows, including at Large text size.
+        let input_box_h =
+            29.0 * responsive_scale + input_value_px * 7.0 + 9.0 * responsive_scale * spacing_scale;
         let tools_header_h = if collapsed_daily_mode {
             21.0 * responsive_scale
         } else {
@@ -344,6 +515,7 @@ impl PanelSceneMetrics {
             panel_height,
             section_gap,
             input_box_h,
+            input_value_px,
             tools_header_h,
             tool_button_h,
             tool_gap,

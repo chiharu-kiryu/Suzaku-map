@@ -164,7 +164,7 @@ pub(super) fn handle_panel_window_event(
                     }
 
                     if allow_exit && scale_modifier && state.is_quit_shortcut(&event.physical_key) {
-                        event_loop.exit();
+                        state.quit_requested = true;
                         return;
                     }
                     if state.kind == PanelWindowKind::Main
@@ -188,8 +188,7 @@ pub(super) fn handle_panel_window_event(
                         && !state.chrome.settings_open
                         && matches!(
                             event.physical_key,
-                            PhysicalKey::Code(KeyCode::Space)
-                                | PhysicalKey::Code(KeyCode::Enter)
+                            PhysicalKey::Code(KeyCode::Enter)
                                 | PhysicalKey::Code(KeyCode::NumpadEnter)
                                 | PhysicalKey::Code(KeyCode::Digit1)
                                 | PhysicalKey::Code(KeyCode::Digit2)
@@ -279,7 +278,7 @@ pub(super) fn handle_panel_window_event(
                                     && !state.chrome.sentence_candidate_source_indices.is_empty()
                                 {
                                     let index = state.chrome.sentence_candidate_source_indices[0];
-                                    let _ = state.commit_sentence_candidate(index);
+                                    state.continue_sentence_candidate(index);
                                 } else {
                                     state.chrome.active_input_mode = InputMode::VirtualKeyboard;
                                     state.chrome.input_modes_expanded = true;
@@ -291,7 +290,7 @@ pub(super) fn handle_panel_window_event(
                                     && state.chrome.sentence_candidate_source_indices.len() > 1
                                 {
                                     let index = state.chrome.sentence_candidate_source_indices[1];
-                                    let _ = state.commit_sentence_candidate(index);
+                                    state.continue_sentence_candidate(index);
                                 } else {
                                     state.chrome.input_modes_expanded = true;
                                     state.enter_voice_mode();
@@ -302,7 +301,7 @@ pub(super) fn handle_panel_window_event(
                                     && state.chrome.sentence_candidate_source_indices.len() > 2
                                 {
                                     let index = state.chrome.sentence_candidate_source_indices[2];
-                                    let _ = state.commit_sentence_candidate(index);
+                                    state.continue_sentence_candidate(index);
                                 } else {
                                     state.chrome.active_input_mode = InputMode::Handwriting;
                                     state.chrome.input_modes_expanded = true;
@@ -314,7 +313,7 @@ pub(super) fn handle_panel_window_event(
                                     && state.chrome.sentence_candidate_source_indices.len() > 3
                                 {
                                     let index = state.chrome.sentence_candidate_source_indices[3];
-                                    let _ = state.commit_sentence_candidate(index);
+                                    state.continue_sentence_candidate(index);
                                 }
                             }
                             PhysicalKey::Code(KeyCode::Tab) => {
@@ -368,9 +367,7 @@ pub(super) fn handle_panel_window_event(
                                 }
                             }
                             PhysicalKey::Code(KeyCode::Space) => {
-                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
-                                    force: true,
-                                });
+                                state.continue_composition_with_space();
                             }
                             PhysicalKey::Code(KeyCode::Enter)
                             | PhysicalKey::Code(KeyCode::NumpadEnter) => {

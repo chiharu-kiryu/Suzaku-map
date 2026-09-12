@@ -21,6 +21,16 @@ pub struct LlmCompletion {
     pub kind: Option<crate::ime::candidate_mix::CandidateKind>,
 }
 
+/// Trim response padding, never a prefix that already belongs to the user's composition.
+/// This preserves exact indentation/spacing without inventing text the provider omitted.
+pub(crate) fn normalize_completion_text<'a>(text: &'a str, prefix: Option<&str>) -> &'a str {
+    if let Some(prefix) = prefix.filter(|prefix| !prefix.is_empty() && text.starts_with(prefix)) {
+        &text[..text.trim_end().len().max(prefix.len())]
+    } else {
+        text.trim()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LlmProviderError {
     InvalidEndpoint,
@@ -144,5 +154,31 @@ impl LanguagePlugin for LlmLanguagePlugin {
         }
 
         build_sentence_candidates_for_variants(parts, seed_text, confidence, self.fallback_variants)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_completion_text;
+
+    #[test]
+    fn response_padding_never_removes_an_exact_typed_prefix() {
+        for (text, prefix, expected) in [
+            ("  hello  ", Some("  hel"), "  hello"),
+            ("hello   ", Some("hello  "), "hello  "),
+            (
+                "\u{3000}hello\u{3000}",
+                Some("\u{3000}hel"),
+                "\u{3000}hello",
+            ),
+            ("hello\u{3000} ", Some("hello\u{3000}"), "hello\u{3000}"),
+            ("   ", Some("  "), "  "),
+            (" hello ", Some("  hel"), "hello"),
+            ("  hello  ", Some(""), "hello"),
+            ("  你好  ", None, "你好"),
+            ("", Some("hel"), ""),
+        ] {
+            assert_eq!(normalize_completion_text(text, prefix), expected);
+        }
     }
 }

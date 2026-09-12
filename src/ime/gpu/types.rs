@@ -4,10 +4,28 @@ pub const PANEL_SCALE_STEP: f32 = 0.1;
 pub const PANEL_SCALE_MIN: f32 = 0.65;
 pub const PANEL_SCALE_MAX: f32 = 1.55;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CandidateQuad {
     pub rect: [f32; 4],
     pub color: [f32; 4],
+    pub shape: QuadShape,
+    /// Clip the geometry without changing its original curve or stroke.
+    pub clip_rect: Option<[f32; 4]>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum QuadShape {
+    #[default]
+    Rectangle,
+    Rounded {
+        radius: f32,
+        stroke: f32,
+    },
+    Segment {
+        start: [f32; 2],
+        end: [f32; 2],
+        radius: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -108,10 +126,64 @@ pub enum TextSmoothing {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemePreset {
+    Suzaku,
+    Baihu,
+    Qinglong,
+    Xuanwu,
     Daylight,
     DeviceDark,
     HighContrast,
     Solarized,
+}
+
+impl ThemePreset {
+    pub const ALL: [Self; 8] = [
+        Self::Suzaku,
+        Self::Baihu,
+        Self::Qinglong,
+        Self::Xuanwu,
+        Self::Daylight,
+        Self::DeviceDark,
+        Self::Solarized,
+        Self::HighContrast,
+    ];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Suzaku => "suzaku",
+            Self::Baihu => "baihu",
+            Self::Qinglong => "qinglong",
+            Self::Xuanwu => "xuanwu",
+            Self::Daylight => "daylight",
+            Self::DeviceDark => "device_dark",
+            Self::HighContrast => "high_contrast",
+            Self::Solarized => "solarized",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|preset| preset.id() == id)
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Suzaku => "Suzaku",
+            Self::Baihu => "白虎 · 米白",
+            Self::Qinglong => "青龙 · 青紫",
+            Self::Xuanwu => "玄武 · 靛蓝",
+            Self::Daylight => "Daylight",
+            Self::DeviceDark => "Device Dark",
+            Self::HighContrast => "High Contrast",
+            Self::Solarized => "Solarized",
+        }
+    }
+
+    pub const fn is_guardian(self) -> bool {
+        matches!(
+            self,
+            Self::Suzaku | Self::Baihu | Self::Qinglong | Self::Xuanwu
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,10 +303,10 @@ impl Default for PanelChromeState {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Compact,
-            font_face: FontFaceChoice::Monaco,
+            font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
-            text_smoothing: TextSmoothing::Sharp,
-            theme_preset: ThemePreset::Daylight,
+            text_smoothing: TextSmoothing::Smooth,
+            theme_preset: ThemePreset::Suzaku,
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Unknown Voice Host".to_string(),
@@ -503,7 +575,7 @@ impl RenderScene {
             rect[1] += offset[1];
         };
         for quad in self.quads.iter_mut().chain(&mut self.text_quads) {
-            shift(&mut quad.rect);
+            quad.translate(offset);
         }
         for glyph in &mut self.atlas_glyphs {
             shift(&mut glyph.rect);
@@ -515,7 +587,7 @@ impl RenderScene {
             for layout in &mut section.layouts {
                 shift(&mut layout.bounds);
                 for quad in &mut layout.quads {
-                    shift(&mut quad.rect);
+                    quad.translate(offset);
                 }
                 for glyph in &mut layout.atlas_glyphs {
                     shift(&mut glyph.rect);
@@ -577,6 +649,20 @@ impl TextBlock {
             .min(available_height / 7.0)
             .min(block.max_width / 4.65)
             .max(0.0);
+        let mut chars = block.text.chars();
+        if let Some(ch) = chars.next()
+            && chars.next().is_none()
+            && !ch.is_whitespace()
+            && super::text_char_advance(ch, block.pixel_size, block.letter_spacing)
+                > block.max_width
+        {
+            // A wide system-font symbol (notably '+' at Large text size) must shrink,
+            // not turn into an ellipsis. This bound covers both glyph advance branches.
+            let unit_width = super::text_char_width(ch, 1.0) + 0.25;
+            let fitting_size =
+                (block.max_width - block.letter_spacing.max(0.0)).max(0.0) / unit_width;
+            block.pixel_size = block.pixel_size.min(fitting_size * 0.9999);
+        }
         if block.max_width <= 0.0 || block.pixel_size <= 0.0 {
             block.text.clear();
         }

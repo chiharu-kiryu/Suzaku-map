@@ -15,7 +15,7 @@ pub(super) fn window_title(
     let selected = scene.selected_label.as_deref().unwrap_or("no candidate");
     let host = support_for(host_platform());
     format!(
-        "Suzaku XR Candidate Panel | host: {:?} ({:?}) | font: {}:{} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1/2/3 seed, arrows move, D degrade, R reset, Space commit",
+        "Suzaku XR Candidate Panel | host: {:?} ({:?}) | font: {}:{} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1–4 continue, arrows move, D degrade, R reset, Space continue, Enter send",
         host.platform,
         host.tier,
         if uses_runtime_font {

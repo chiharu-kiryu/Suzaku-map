@@ -59,6 +59,12 @@ impl HoverTooltipState {
 
 fn tooltip_colors(theme: ThemePreset) -> ([f32; 4], [f32; 4], [f32; 4]) {
     match theme {
+        ThemePreset::Baihu | ThemePreset::Qinglong | ThemePreset::Xuanwu => theme.tooltip_colors(),
+        ThemePreset::Suzaku => (
+            suzaku_map::ime::gpu::srgb_color(0xFFFAF4),
+            suzaku_map::ime::gpu::srgb_color(0x34272A),
+            suzaku_map::ime::gpu::srgb_color(0xC8A580),
+        ),
         ThemePreset::Daylight => (
             [0.97, 0.98, 1.0, 1.0],
             [0.18, 0.23, 0.32, 1.0],
@@ -128,19 +134,8 @@ fn hint_overlay(
     let stroke = scale.max(1.0).min(width * 0.5).min(height * 0.5);
     Some(PanelOverlay {
         quads: vec![
-            CandidateQuad {
-                rect,
-                color: border,
-            },
-            CandidateQuad {
-                rect: [
-                    x + stroke,
-                    y + stroke,
-                    width - stroke * 2.0,
-                    height - stroke * 2.0,
-                ],
-                color: surface,
-            },
+            CandidateQuad::rounded(rect, surface, 8.0 * scale),
+            CandidateQuad::outline(rect, border, 8.0 * scale, stroke),
         ],
         atlas_glyphs: layout.atlas_glyphs,
     })
@@ -392,12 +387,7 @@ pub(super) fn smoothing_label(value: suzaku_map::ime::gpu::TextSmoothing) -> &'s
 }
 
 pub(super) fn theme_preset_label(value: suzaku_map::ime::gpu::ThemePreset) -> &'static str {
-    match value {
-        suzaku_map::ime::gpu::ThemePreset::Daylight => "Daylight",
-        suzaku_map::ime::gpu::ThemePreset::DeviceDark => "Device Dark",
-        suzaku_map::ime::gpu::ThemePreset::HighContrast => "High Contrast",
-        suzaku_map::ime::gpu::ThemePreset::Solarized => "Solarized",
-    }
+    value.label()
 }
 
 pub(super) fn llm_temperature_label(

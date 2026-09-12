@@ -1,254 +1,267 @@
-use crate::ime::gpu;
+use crate::ime::gpu::CandidateQuad;
 
 pub(crate) fn append_rounded_rect_quads(
-    quads: &mut Vec<gpu::CandidateQuad>,
+    quads: &mut Vec<CandidateQuad>,
     rect: [f32; 4],
     color: [f32; 4],
+    radius: f32,
+) {
+    if rect[2] > 0.0 && rect[3] > 0.0 {
+        quads.push(CandidateQuad::rounded(rect, color, radius));
+    }
+}
+
+pub(crate) fn append_soft_card_quads(
+    quads: &mut Vec<CandidateQuad>,
+    rect: [f32; 4],
+    fill: [f32; 4],
+    outline: [f32; 4],
+    shadow: [f32; 4],
+    _cutout: [f32; 4],
     radius: f32,
 ) {
     let [x, y, w, h] = rect;
     if w <= 0.0 || h <= 0.0 {
         return;
     }
-
-    let radius = radius.min(w * 0.5).min(h * 0.5).max(0.0);
-    if radius <= 1.0 {
-        quads.push(gpu::CandidateQuad { rect, color });
-        return;
+    let radius = radius.max(0.0).min(w.min(h) * 0.5);
+    // Low-contrast elevation, without the old square bevel/highlight strips.
+    for (offset, alpha) in [(2.0, 0.12), (1.0, 0.16)] {
+        append_rounded_rect_quads(
+            quads,
+            [x, y + offset, w, h],
+            [shadow[0], shadow[1], shadow[2], shadow[3] * alpha],
+            radius,
+        );
     }
+    append_rounded_rect_quads(quads, rect, fill, radius);
+    quads.push(CandidateQuad::outline(rect, outline, radius, 0.8));
+}
 
-    quads.push(gpu::CandidateQuad {
-        rect: [x + radius, y, w - radius * 2.0, h],
-        color,
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: [x, y + radius, radius, h - radius * 2.0],
-        color,
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: [x + w - radius, y + radius, radius, h - radius * 2.0],
-        color,
-    });
+pub(crate) fn icon_point(rect: [f32; 4], point: [f32; 2]) -> [f32; 2] {
+    let unit = rect[2].min(rect[3]);
+    [
+        rect[0] + (rect[2] - unit) * 0.5 + point[0] * unit,
+        rect[1] + (rect[3] - unit) * 0.5 + point[1] * unit,
+    ]
+}
 
-    let steps = 6;
-    for step in 0..steps {
-        let y0 = step as f32 / steps as f32 * radius;
-        let y1 = (step + 1) as f32 / steps as f32 * radius;
-        let mid = (y0 + y1) * 0.5;
-        let inset = radius - (radius * radius - (radius - mid).powi(2)).sqrt();
-        let strip_h = (y1 - y0).max(1.0);
-        let strip_w = (radius - inset).max(1.0);
+pub(crate) fn icon_line(
+    quads: &mut Vec<CandidateQuad>,
+    rect: [f32; 4],
+    start: [f32; 2],
+    end: [f32; 2],
+    color: [f32; 4],
+    width: f32,
+) {
+    quads.push(CandidateQuad::line(
+        icon_point(rect, start),
+        icon_point(rect, end),
+        color,
+        rect[2].min(rect[3]) * width,
+    ));
+}
 
-        quads.push(gpu::CandidateQuad {
-            rect: [x + inset, y + y0, strip_w, strip_h],
-            color,
-        });
-        quads.push(gpu::CandidateQuad {
-            rect: [x + w - radius, y + y0, strip_w, strip_h],
-            color,
-        });
-        quads.push(gpu::CandidateQuad {
-            rect: [x + inset, y + h - y1, strip_w, strip_h],
-            color,
-        });
-        quads.push(gpu::CandidateQuad {
-            rect: [x + w - radius, y + h - y1, strip_w, strip_h],
-            color,
-        });
+pub(crate) fn icon_path(
+    quads: &mut Vec<CandidateQuad>,
+    rect: [f32; 4],
+    points: &[[f32; 2]],
+    color: [f32; 4],
+    width: f32,
+) {
+    for points in points.windows(2) {
+        icon_line(quads, rect, points[0], points[1], color, width);
     }
 }
 
-pub(crate) fn append_soft_card_quads(
-    quads: &mut Vec<gpu::CandidateQuad>,
+pub(crate) fn icon_curve(
+    quads: &mut Vec<CandidateQuad>,
     rect: [f32; 4],
-    fill: [f32; 4],
-    outline: [f32; 4],
-    shadow: [f32; 4],
-    cutout: [f32; 4],
-    radius: f32,
+    controls: [[f32; 2]; 4],
+    color: [f32; 4],
+    start_width: f32,
+    end_width: f32,
 ) {
-    let [x, y, w, h] = rect;
-    let radius = radius.min(w * 0.22).min(h * 0.35).max(5.0);
-    let border = 1.2_f32.min(w * 0.045).min(h * 0.13).max(1.0);
+    // Bounded geometry: smooth cubic centerlines with round caps, never a pixel grid.
+    let steps = (rect[2].min(rect[3]) * 0.65).ceil().clamp(12.0, 48.0) as usize;
+    let mut previous = controls[0];
+    for index in 1..=steps {
+        let t = index as f32 / steps as f32;
+        let u = 1.0 - t;
+        let next = std::array::from_fn(|axis| {
+            u.powi(3) * controls[0][axis]
+                + 3.0 * u * u * t * controls[1][axis]
+                + 3.0 * u * t * t * controls[2][axis]
+                + t.powi(3) * controls[3][axis]
+        });
+        let width = start_width + (end_width - start_width) * t;
+        icon_line(quads, rect, previous, next, color, width);
+        previous = next;
+    }
+}
 
-    let deep_shadow = [shadow[0], shadow[1], shadow[2], (shadow[3] * 0.58).min(1.0)];
-    let ambient_shadow = [shadow[0], shadow[1], shadow[2], (shadow[3] * 0.28).min(1.0)];
-    append_rounded_rect_quads(
-        quads,
-        [x + 0.8, y + 1.4, w, h],
-        ambient_shadow,
-        radius + 2.0,
-    );
-    append_rounded_rect_quads(quads, [x + 1.6, y + 3.0, w, h], deep_shadow, radius + 1.1);
-    append_rounded_rect_quads(quads, rect, outline, radius);
-    append_rounded_rect_quads(
-        quads,
-        [x + border, y + border, w - border * 2.0, h - border * 2.0],
-        fill,
-        (radius - border).max(1.0),
-    );
-    quads.push(gpu::CandidateQuad {
-        rect: [
-            x + border * 1.5,
-            y + h - (h * 0.16).max(5.0) - border,
-            w - border * 3.0,
-            (h * 0.16).max(5.0),
-        ],
-        color: [0.12, 0.18, 0.28, 0.026],
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: [
-            x + border * 2.0,
-            y + border * 2.0,
-            w - border * 4.0,
-            (h * 0.14).max(4.0),
-        ],
-        color: [1.0, 1.0, 1.0, 0.075],
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: [
-            x + border * 2.2,
-            y + border * 1.3,
-            w - border * 4.4,
-            border.max(1.0),
-        ],
-        color: [1.0, 1.0, 1.0, 0.09],
-    });
-    let cut = radius * 0.18;
-    append_rounded_rect_quads(quads, [x + border, y + border, cut, cut], fill, cut * 0.6);
-    append_rounded_rect_quads(
-        quads,
-        [x + w - border - cut, y + border, cut, cut],
-        fill,
-        cut * 0.6,
-    );
-    append_rounded_rect_quads(
-        quads,
-        [x + border, y + h - border - cut, cut, cut],
-        fill,
-        cut * 0.6,
-    );
-    append_rounded_rect_quads(
-        quads,
-        [x + w - border - cut, y + h - border - cut, cut, cut],
-        fill,
-        cut * 0.6,
-    );
-
-    let _ = cutout;
+pub(crate) fn icon_arc(
+    quads: &mut Vec<CandidateQuad>,
+    rect: [f32; 4],
+    center: [f32; 2],
+    radius: f32,
+    angles: [f32; 2],
+    color: [f32; 4],
+    width: f32,
+) {
+    let mut previous = [
+        center[0] + radius * angles[0].cos(),
+        center[1] + radius * angles[0].sin(),
+    ];
+    for index in 1..=24 {
+        let angle = angles[0] + (angles[1] - angles[0]) * index as f32 / 24.0;
+        let next = [
+            center[0] + radius * angle.cos(),
+            center[1] + radius * angle.sin(),
+        ];
+        icon_line(quads, rect, previous, next, color, width);
+        previous = next;
+    }
 }
 
 pub(crate) fn append_gear_icon_quads(
-    quads: &mut Vec<gpu::CandidateQuad>,
+    quads: &mut Vec<CandidateQuad>,
     rect: [f32; 4],
     color: [f32; 4],
-    cutout: [f32; 4],
+    _cutout: [f32; 4],
 ) {
-    let [x, y, w, h] = rect;
-    let cx = x + w / 2.0;
-    let cy = y + h / 2.0;
-
-    let teeth = [
-        [cx - 1.5, y + 2.0, 3.0, 4.0],
-        [cx - 1.5, y + h - 6.0, 3.0, 4.0],
-        [x + 2.0, cy - 1.5, 4.0, 3.0],
-        [x + w - 6.0, cy - 1.5, 4.0, 3.0],
-        [x + 4.0, y + 4.0, 3.0, 3.0],
-        [x + w - 7.0, y + 4.0, 3.0, 3.0],
-        [x + 4.0, y + h - 7.0, 3.0, 3.0],
-        [x + w - 7.0, y + h - 7.0, 3.0, 3.0],
-    ];
-
-    for tooth in teeth {
-        quads.push(gpu::CandidateQuad { rect: tooth, color });
+    let mut points = Vec::with_capacity(49);
+    for index in 0..=48 {
+        let angle = index as f32 / 48.0 * std::f32::consts::TAU;
+        let radius = if matches!(index % 6, 1..=3) {
+            0.33
+        } else {
+            0.27
+        };
+        points.push([0.5 + radius * angle.cos(), 0.5 + radius * angle.sin()]);
     }
-
-    quads.push(gpu::CandidateQuad {
-        rect: [cx - 4.0, cy - 4.0, 8.0, 8.0],
+    icon_path(quads, rect, &points, color, 0.065);
+    icon_arc(
+        quads,
+        rect,
+        [0.5, 0.5],
+        0.115,
+        [0.0, std::f32::consts::TAU],
         color,
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: [cx - 1.5, cy - 1.5, 3.0, 3.0],
-        color: cutout,
-    });
+        0.065,
+    );
 }
 
 pub(crate) fn append_suzaku_bird_icon_quads(
-    quads: &mut Vec<gpu::CandidateQuad>,
+    quads: &mut Vec<CandidateQuad>,
     rect: [f32; 4],
     primary: [f32; 4],
     secondary: [f32; 4],
     beak: [f32; 4],
     eye: [f32; 4],
 ) {
-    let [x, y, w, h] = rect;
-    let unit = w.min(h);
-    let body = [x + unit * 0.28, y + unit * 0.36, unit * 0.28, unit * 0.22];
-    let neck = [x + unit * 0.50, y + unit * 0.24, unit * 0.10, unit * 0.16];
-    let head = [x + unit * 0.57, y + unit * 0.20, unit * 0.14, unit * 0.14];
-    let crest = [x + unit * 0.49, y + unit * 0.18, unit * 0.10, unit * 0.08];
-    let wing_upper = [x + unit * 0.22, y + unit * 0.28, unit * 0.24, unit * 0.12];
-    let wing_main = [x + unit * 0.18, y + unit * 0.36, unit * 0.34, unit * 0.14];
-    let tail_base = [x + unit * 0.44, y + unit * 0.56, unit * 0.22, unit * 0.09];
-    let tail_flare = [x + unit * 0.54, y + unit * 0.64, unit * 0.22, unit * 0.08];
-    let tail_tip = [x + unit * 0.64, y + unit * 0.72, unit * 0.14, unit * 0.06];
-    let beak_rect = [x + unit * 0.70, y + unit * 0.28, unit * 0.12, unit * 0.06];
-    let eye_rect = [x + unit * 0.63, y + unit * 0.28, unit * 0.03, unit * 0.03];
-
-    for bird_rect in [
-        body, neck, head, crest, wing_upper, wing_main, tail_base, tail_flare, tail_tip,
+    // A rising phoenix in profile: swept flight feathers, arched neck, three flame tails.
+    for (curve, from, to) in [
+        (
+            [[0.47, 0.51], [0.24, 0.45], [0.16, 0.23], [0.18, 0.09]],
+            0.12,
+            0.015,
+        ),
+        (
+            [[0.44, 0.51], [0.24, 0.50], [0.11, 0.38], [0.08, 0.24]],
+            0.085,
+            0.012,
+        ),
+        (
+            [[0.46, 0.54], [0.22, 0.60], [0.13, 0.48], [0.10, 0.43]],
+            0.070,
+            0.012,
+        ),
+        (
+            [[0.46, 0.50], [0.73, 0.57], [0.64, 0.28], [0.68, 0.29]],
+            0.105,
+            0.065,
+        ),
+        (
+            [[0.45, 0.54], [0.60, 0.77], [0.31, 0.88], [0.14, 0.79]],
+            0.067,
+            0.008,
+        ),
+        (
+            [[0.50, 0.53], [0.79, 0.68], [0.59, 0.88], [0.41, 0.92]],
+            0.063,
+            0.008,
+        ),
+        (
+            [[0.65, 0.28], [0.60, 0.23], [0.64, 0.15], [0.60, 0.11]],
+            0.045,
+            0.006,
+        ),
     ] {
-        quads.push(gpu::CandidateQuad {
-            rect: bird_rect,
-            color: primary,
-        });
+        icon_curve(quads, rect, curve, primary, from, to);
     }
-    quads.push(gpu::CandidateQuad {
-        rect: [x + unit * 0.28, y + unit * 0.52, unit * 0.20, unit * 0.08],
-        color: secondary,
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: [x + unit * 0.36, y + unit * 0.60, unit * 0.22, unit * 0.06],
-        color: secondary,
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: beak_rect,
-        color: beak,
-    });
-    quads.push(gpu::CandidateQuad {
-        rect: eye_rect,
-        color: eye,
-    });
+    icon_curve(
+        quads,
+        rect,
+        [[0.40, 0.46], [0.32, 0.33], [0.28, 0.20], [0.30, 0.16]],
+        secondary,
+        0.045,
+        0.008,
+    );
+    icon_curve(
+        quads,
+        rect,
+        [[0.49, 0.57], [0.54, 0.75], [0.43, 0.81], [0.32, 0.83]],
+        secondary,
+        0.035,
+        0.006,
+    );
+    icon_curve(
+        quads,
+        rect,
+        [[0.69, 0.31], [0.75, 0.30], [0.79, 0.33], [0.83, 0.34]],
+        beak,
+        0.060,
+        0.008,
+    );
+    let head = icon_point(rect, [0.67, 0.30]);
+    let unit = rect[2].min(rect[3]);
+    quads.push(CandidateQuad::rounded(
+        [
+            head[0] - unit * 0.065,
+            head[1] - unit * 0.06,
+            unit * 0.13,
+            unit * 0.12,
+        ],
+        primary,
+        unit,
+    ));
+    let eye_at = icon_point(rect, [0.693, 0.285]);
+    quads.push(CandidateQuad::rounded(
+        [eye_at[0], eye_at[1], unit * 0.021, unit * 0.021],
+        eye,
+        unit,
+    ));
 }
 
 pub(crate) fn append_keyboard_icon_quads(
-    quads: &mut Vec<gpu::CandidateQuad>,
+    quads: &mut Vec<CandidateQuad>,
     rect: [f32; 4],
     color: [f32; 4],
 ) {
-    let [x, y, w, h] = rect;
-    let pad = w.min(h) * 0.22;
-    quads.push(gpu::CandidateQuad {
-        rect: [x + pad, y + pad * 1.1, w - pad * 2.0, h - pad * 2.0],
+    let unit = rect[2].min(rect[3]);
+    let origin = icon_point(rect, [0.16, 0.25]);
+    quads.push(CandidateQuad::outline(
+        [origin[0], origin[1], unit * 0.68, unit * 0.50],
         color,
-    });
-    let key_w = (w - pad * 3.2) / 3.0;
-    let key_h = (h - pad * 4.8) / 3.0;
+        unit * 0.09,
+        unit * 0.065,
+    ));
     for row in 0..2 {
-        for col in 0..3 {
-            quads.push(gpu::CandidateQuad {
-                rect: [
-                    x + pad * 1.6 + col as f32 * (key_w + pad * 0.4),
-                    y + pad * 1.6 + row as f32 * (key_h + pad * 0.5),
-                    key_w,
-                    key_h,
-                ],
-                color: [0.95, 0.98, 1.0, 0.95],
-            });
+        for column in 0..4 {
+            let point = [0.29 + column as f32 * 0.14, 0.38 + row as f32 * 0.12];
+            icon_line(quads, rect, point, point, color, 0.050);
         }
     }
-    quads.push(gpu::CandidateQuad {
-        rect: [x + pad * 1.6, y + h - pad * 2.0, w - pad * 3.2, key_h * 0.9],
-        color: [0.95, 0.98, 1.0, 0.95],
-    });
+    icon_line(quads, rect, [0.36, 0.63], [0.64, 0.63], color, 0.052);
 }

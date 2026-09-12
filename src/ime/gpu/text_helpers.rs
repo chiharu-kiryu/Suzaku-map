@@ -52,7 +52,6 @@ pub(super) fn sample_stroke_points(stroke: &[[f32; 2]]) -> Vec<[f32; 2]> {
 
 pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
     let glyph_advance = text_glyph_advance(block.pixel_size, block.letter_spacing);
-    let line_height = block.pixel_size * 7.0 + block.line_gap;
     let mut lines = wrap_text(
         &block.text,
         block.max_width,
@@ -79,6 +78,17 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
         truncated |= changed;
     }
 
+    layout_lines(block, lines, truncated, None)
+}
+
+fn layout_lines(
+    block: &TextBlock,
+    lines: Vec<String>,
+    truncated: bool,
+    viewport: Option<[f32; 4]>,
+) -> TextLayout {
+    let glyph_advance = text_glyph_advance(block.pixel_size, block.letter_spacing);
+    let line_height = block.pixel_size * 7.0 + block.line_gap;
     let mut quads = Vec::new();
     let mut atlas_glyphs = Vec::new();
     let mut max_line_width: f32 = 0.0;
@@ -109,14 +119,24 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
                 continue;
             }
 
+            let glyph_rect = [
+                cursor_x,
+                cursor_y,
+                text_char_width(ch, block.pixel_size),
+                block.pixel_size * 7.0,
+            ];
+            if viewport.is_some_and(|viewport| {
+                let visible = intersect_rect(glyph_rect, viewport);
+                visible[2] <= 0.0 || visible[3] <= 0.0
+            }) {
+                // A long editable draft must not allocate bitmap/atlas geometry for
+                // the entire off-screen prefix on every key press.
+                cursor_x += glyph_advance_width(ch, block.pixel_size, glyph_advance);
+                continue;
+            }
             atlas_glyphs.push(AtlasGlyph {
                 ch,
-                rect: [
-                    cursor_x,
-                    cursor_y,
-                    text_char_width(ch, block.pixel_size),
-                    block.pixel_size * 7.0,
-                ],
+                rect: glyph_rect,
                 color: block.color,
                 clip_rect: None,
             });
@@ -125,6 +145,8 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
                 for col in 0..5 {
                     if (pattern >> (4 - col)) & 1 == 1 {
                         quads.push(CandidateQuad {
+                            shape: Default::default(),
+                            clip_rect: None,
                             rect: [
                                 cursor_x + col as f32 * block.pixel_size * 0.88,
                                 cursor_y + row as f32 * block.pixel_size,
@@ -165,6 +187,62 @@ pub(super) fn layout_text_block(block: &TextBlock) -> TextLayout {
         ],
         role: block.role,
     }
+}
+
+/// Editors must not use label wrapping: it collapses spaces and loses the caret's character map.
+pub(super) fn layout_input_line(
+    block: &TextBlock,
+    viewport: [f32; 4],
+    caret_index: usize,
+    caret_width: f32,
+) -> (TextLayout, [f32; 4]) {
+    let mut block = block.clone();
+    block.align = TextAlign::Left;
+    block.pixel_size = block.pixel_size.min(viewport[3].max(0.0) / 7.0).max(0.0);
+    block.max_width = viewport[2].max(0.0);
+    block.origin = [
+        viewport[0],
+        viewport[1] + (viewport[3] - block.pixel_size * 7.0).max(0.0) * 0.5,
+    ];
+    // A single-line view of control characters, without changing the underlying draft or indices.
+    block.text = block
+        .text
+        .chars()
+        .map(|ch| if ch.is_control() { ' ' } else { ch })
+        .collect();
+    let caret_width = caret_width.max(0.0).min(block.max_width);
+    let caret_advance = super::measure_text_prefix_width(
+        &block.text,
+        caret_index,
+        block.pixel_size,
+        block.letter_spacing,
+    );
+    let scroll = (caret_advance - (block.max_width - caret_width)).max(0.0);
+    block.origin[0] -= scroll;
+    let caret = [
+        (block.origin[0] + caret_advance)
+            .clamp(viewport[0], viewport[0] + block.max_width - caret_width),
+        block.origin[1],
+        caret_width,
+        block.pixel_size * 7.0,
+    ];
+    let mut layout = layout_lines(&block, vec![block.text.clone()], false, Some(viewport));
+    // Bounds describe the visible row, not the off-screen prefix used to place the caret.
+    layout.bounds = [
+        viewport[0],
+        block.origin[1],
+        block.max_width,
+        block.pixel_size * 7.0,
+    ];
+    layout.clip_to_rect(viewport);
+    layout
+        .quads
+        .retain(|quad| quad.rect[2] > 0.0 && quad.rect[3] > 0.0);
+    layout.atlas_glyphs.retain(|glyph| {
+        let visible = intersect_rect(glyph.rect, viewport);
+        visible[2] > 0.0 && visible[3] > 0.0
+    });
+    (layout, caret)
 }
 
 fn fit_text_to_width(
@@ -294,6 +372,50 @@ mod tests {
     use crate::panel_support::{
         derive_next_token_candidates, derive_sentence_candidates_with_indices,
     };
+
+    #[test]
+    fn input_line_preserves_spaces_and_tracks_caret_at_both_ends() {
+        use crate::ime::gpu::{FontLayoutMetrics, with_font_metrics};
+        use crate::ime::measure_text_prefix_width;
+        use std::{collections::HashMap, sync::Arc};
+        let metrics: FontLayoutMetrics = Arc::new(HashMap::from([('W', 5.5), ('i', 1.5)]));
+        with_font_metrics(metrics, || {
+            let block = TextBlock {
+                text: "  Wi  你好   ".repeat(100),
+                origin: [0.0; 2],
+                max_width: 100.0,
+                pixel_size: 3.0,
+                letter_spacing: 0.0,
+                line_gap: 0.0,
+                max_lines: 1,
+                color: [1.0; 4],
+                align: TextAlign::Left,
+                role: TextRole::InputValue,
+            };
+            let viewport = [10.0, 20.0, 90.0, 21.0];
+            for index in [0, 2, 4, block.text.chars().count()] {
+                let (layout, caret) = super::layout_input_line(&block, viewport, index, 2.0);
+                assert_eq!(layout.lines, [block.text.clone()]);
+                assert!(!layout.truncated);
+                let advance = measure_text_prefix_width(&block.text, index, 3.0, 0.0);
+                assert!((caret[0] - (10.0 + advance.min(88.0))).abs() < 0.001);
+                assert_eq!(caret[1], 20.0);
+                assert!(
+                    layout.atlas_glyphs.len() < 12,
+                    "off-screen glyphs must not fill the atlas"
+                );
+                assert!(
+                    layout.atlas_glyphs.capacity() < 128 && layout.quads.capacity() <= 1024,
+                    "allocate only visible input geometry, not the full draft then discard it"
+                );
+                if index == 0 {
+                    let first = &layout.atlas_glyphs[0];
+                    assert_eq!(first.ch, 'W');
+                    assert!((first.rect[0] - 10.0 - text_space_advance(3.0) * 2.0).abs() < 0.001);
+                }
+            }
+        });
+    }
 
     #[test]
     fn wrapping_accounts_for_narrow_spaces() {

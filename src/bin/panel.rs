@@ -132,6 +132,7 @@ enum PanelUserEvent {
     OpenSettings,
     ResetPanelPosition,
     InputMethodSettingsChanged(suzaku_map::ime::settings::ImeSettings),
+    InputMethodError(String),
     PredictionSettingsApplied(Option<suzaku_map::ime::settings::ImeSettings>),
     NativeCompositionReady,
     NativeActionFinished {
@@ -142,30 +143,7 @@ enum PanelUserEvent {
     Quit,
 }
 
-const SHADER: &str = r#"
-struct VsIn {
-    @location(0) position: vec2<f32>,
-    @location(1) color: vec4<f32>,
-};
-
-struct VsOut {
-    @builtin(position) position: vec4<f32>,
-    @location(0) color: vec4<f32>,
-};
-
-@vertex
-fn vs_main(input: VsIn) -> VsOut {
-    var out: VsOut;
-    out.position = vec4<f32>(input.position, 0.0, 1.0);
-    out.color = input.color;
-    return out;
-}
-
-@fragment
-fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
-    return input.color;
-}
-"#;
+const SHADER: &str = include_str!("panel/shapes.wgsl");
 
 const TEXT_SHADER: &str = r#"
 struct VsIn {
@@ -224,6 +202,14 @@ fn build_event_loop() -> Result<EventLoop<PanelUserEvent>, winit::error::EventLo
     builder.build()
 }
 
+fn panel_window_icon() -> Option<winit::window::Icon> {
+    let mut rgba = suzaku_map::ime::gpu::suzaku_icon_argb(64);
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel.rotate_left(1);
+    }
+    winit::window::Icon::from_rgba(rgba, 64, 64).ok()
+}
+
 fn panel_window_attributes() -> WindowAttributes {
     let settings = load_display_settings();
     let scale = settings
@@ -244,6 +230,8 @@ fn panel_window_attributes() -> WindowAttributes {
     let panel_dispatch = current_panel_companion_dispatch();
     let attrs = WindowAttributes::default()
         .with_title(panel_dispatch.default_panel_title())
+        .with_window_icon(panel_window_icon())
+        .with_transparent(true)
         .with_inner_size(LogicalSize::new(
             width,
             height.clamp(MIN_PANEL_INNER_HEIGHT, MAX_PANEL_INNER_HEIGHT),
@@ -263,6 +251,7 @@ fn panel_window_attributes() -> WindowAttributes {
 fn settings_window_attributes() -> WindowAttributes {
     let attrs = WindowAttributes::default()
         .with_title("Suzaku Panel Settings")
+        .with_window_icon(panel_window_icon())
         .with_inner_size(LogicalSize::new(520.0, 340.0))
         .with_visible(false)
         .with_resizable(true);
@@ -306,6 +295,12 @@ struct PanelApp {
 }
 
 impl PanelApp {
+    fn request_quit(&self, event_loop: &ActiveEventLoop) {
+        if !self.tray.as_ref().is_some_and(SystemTray::request_quit) {
+            event_loop.exit();
+        }
+    }
+
     fn new(
         event_proxy: EventLoopProxy<PanelUserEvent>,
         instance: Option<SingleInstanceGuard>,
@@ -529,7 +524,13 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         self.panel = Some(state);
         self.panel_visible = true;
         if self.tray.is_none() {
-            self.tray = start_system_tray(self.event_proxy.clone(), true);
+            let theme = self
+                .panel
+                .as_ref()
+                .expect("initialized panel")
+                .chrome
+                .theme_preset;
+            self.tray = start_system_tray(self.event_proxy.clone(), true, theme);
         }
     }
 
@@ -576,9 +577,14 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         }
 
         handle_panel_window_event(panel, event_loop, event, true);
+        if panel.quit_requested {
+            panel.quit_requested = false;
+            self.request_quit(event_loop);
+            return;
+        }
         if panel.close_requested {
             panel.close_requested = false;
-            if self.tray.is_some() {
+            if self.tray.as_ref().is_some_and(SystemTray::has_icon) {
                 self.native_auto_shown = false;
                 if let Some(frame) = panel.native.frame.as_ref().filter(|f| f.visible()) {
                     self.native_hidden_context = Some((frame.host.clone(), frame.context));
@@ -594,7 +600,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     tray.set_panel_visible(false);
                 }
             } else {
-                event_loop.exit();
+                self.request_quit(event_loop);
             }
             return;
         }
@@ -633,6 +639,14 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             PanelUserEvent::ResetPanelPosition => self.reset_panel_position(event_loop),
             PanelUserEvent::InputMethodSettingsChanged(ime_settings) => {
                 self.apply_native_settings(ime_settings, false);
+            }
+            PanelUserEvent::InputMethodError(error) => {
+                if let Some(panel) = self.panel.as_mut() {
+                    panel.last_commit_feedback = Some(error);
+                    panel.commit_feedback_ticks = 180;
+                    panel.window.request_redraw();
+                }
+                self.set_panel_visible(true);
             }
             PanelUserEvent::PredictionSettingsApplied(settings) => {
                 self.finish_prediction_settings(settings)
@@ -702,6 +716,9 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
         self.push_prediction_settings();
+        if let (Some(tray), Some(panel)) = (self.tray.as_mut(), self.panel.as_ref()) {
+            tray.set_theme(panel.chrome.theme_preset);
+        }
         let mut tooltip_deadline = None;
         for state in self
             .panel
@@ -813,6 +830,7 @@ struct PanelState {
     last_scene: Option<suzaku_map::ime::gpu::RenderScene>,
     last_window_title: String,
     close_requested: bool,
+    quit_requested: bool,
 }
 
 impl PanelState {
@@ -890,7 +908,15 @@ impl PanelState {
             height: size.height.max(1),
             desired_maximum_frame_latency: 2,
             present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: caps.alpha_modes[0],
+            alpha_mode: if kind == PanelWindowKind::Main
+                && caps
+                    .alpha_modes
+                    .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+            {
+                wgpu::CompositeAlphaMode::PreMultiplied
+            } else {
+                caps.alpha_modes[0]
+            },
             view_formats: vec![],
         };
         surface.configure(&device, &config);
@@ -980,10 +1006,10 @@ impl PanelState {
             text_scale: DisplayTextScale::Medium,
             candidate_density: CandidateDensity::Cozy,
             preview_style: PreviewStyle::Compact,
-            font_face: FontFaceChoice::Monaco,
+            font_face: FontFaceChoice::Auto,
             text_spacing: TextSpacing::Normal,
-            text_smoothing: TextSmoothing::Sharp,
-            theme_preset: suzaku_map::ime::gpu::ThemePreset::Daylight,
+            text_smoothing: TextSmoothing::Smooth,
+            theme_preset: suzaku_map::ime::gpu::ThemePreset::Suzaku,
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
             voice_backend_label: "Unknown Voice Host".to_string(),
@@ -1148,6 +1174,7 @@ impl PanelState {
             last_scene: None,
             last_window_title: String::new(),
             close_requested: false,
+            quit_requested: false,
         };
         if kind == PanelWindowKind::Main {
             if (initial_window_scale - 1.0).abs() > f32::EPSILON {

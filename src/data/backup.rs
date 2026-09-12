@@ -44,7 +44,14 @@ fn panel_value_valid(key: &str, value: &str) -> bool {
         "text_smoothing" => matches!(value, "sharp" | "smooth"),
         "theme_preset" => matches!(
             value,
-            "daylight" | "device_dark" | "high_contrast" | "solarized"
+            "suzaku"
+                | "baihu"
+                | "qinglong"
+                | "xuanwu"
+                | "daylight"
+                | "device_dark"
+                | "high_contrast"
+                | "solarized"
         ),
         "voice_auto_insert" | "llm_enabled" => matches!(value, "true" | "false"),
         "llm_model" => matches!(value, "configured" | "llama32_3b"),

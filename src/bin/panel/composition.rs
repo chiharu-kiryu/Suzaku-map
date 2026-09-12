@@ -121,14 +121,14 @@ impl PanelState {
         self.sync_marked_text_with_host(text);
     }
 
-    pub(super) fn reset_after_commit(&mut self, committed_seed: &str) {
+    pub(super) fn reset_after_commit(&mut self) {
         self.completion_history.clear();
         self.next_token_completions.clear();
         self.chrome.composed_tokens.clear();
         self.chrome.next_token_candidates.clear();
         self.chrome.sentence_candidates.clear();
         self.chrome.sentence_candidate_source_indices.clear();
-        self.chrome.set_seed_text(committed_seed.to_string());
+        self.chrome.set_seed_text(String::new());
         self.chrome.move_caret_to_end();
         self.refresh_seed();
         self.chrome.focus_input();
@@ -229,6 +229,49 @@ impl PanelState {
         self.chrome.set_seed_text(full_seed.clone());
         self.chrome.move_caret_to_end();
         self.refresh_seed_with_text(&full_seed);
+    }
+
+    /// Number-key choices are editable replacements; only an explicit send commits.
+    pub(super) fn continue_sentence_candidate(&mut self, index: usize) {
+        let text = if self.native.showing {
+            self.native.frame.as_ref().and_then(|frame| {
+                frame
+                    .candidates
+                    .get(index)
+                    .map(|candidate| candidate.text.clone())
+            })
+        } else {
+            self.engine
+                .candidates()
+                .get(index)
+                .map(|candidate| candidate.text.clone())
+        };
+        if let Some(text) = text {
+            self.replace_continuing_draft(text);
+        }
+    }
+
+    pub(super) fn continue_composition_with_space(&mut self) {
+        if self.chrome.seed_text.is_empty() {
+            return;
+        }
+        let text = if self.native.showing {
+            self.chrome.seed_text.as_str()
+        } else {
+            self.engine
+                .selected_completion_text(true)
+                .unwrap_or(&self.chrome.seed_text)
+        };
+        self.replace_continuing_draft(format!("{text} "));
+    }
+
+    fn replace_continuing_draft(&mut self, text: String) {
+        if !self.native.showing {
+            self.sync_manual_seed_base();
+            self.chrome.set_seed_text(text.clone());
+            self.chrome.move_caret_to_end();
+        }
+        self.refresh_seed_with_text(&text);
     }
 
     pub(super) fn rewind_next_token(&mut self) {

@@ -3,8 +3,8 @@ use serde_json::Value;
 use std::{
     fs,
     path::PathBuf,
-    process::{Command, Output},
-    time::{SystemTime, UNIX_EPOCH},
+    process::{Command, Output, Stdio},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 struct Fixture(PathBuf);
@@ -22,14 +22,28 @@ impl Fixture {
         Self(path)
     }
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_suzaku_tool"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_suzaku_tool"))
             .args(args)
             .env("SUZAKU_IME_CONFIG", self.0.join("settings.json"))
             .env("XDG_CONFIG_HOME", &self.0)
             .env("XDG_DATA_HOME", self.0.join("data"))
             .env_remove("DBUS_SESSION_BUS_ADDRESS")
-            .output()
-            .unwrap()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // A regression in configuration loading must fail, not hang the test suite.
+        // These configuration-only commands produce less than one pipe's capacity.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                let output = child.wait_with_output().unwrap();
+                panic!("configuration command blocked: {args:?}; {output:?}");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        child.wait_with_output().unwrap()
     }
     fn saved(&self) -> Value {
         serde_json::from_str(&fs::read_to_string(self.0.join("settings.json")).unwrap()).unwrap()
@@ -107,4 +121,81 @@ fn invalid_or_literal_credentials_never_replace_existing_settings() {
         assert!(!fixture.run(&args).status.success());
         assert_eq!(fs::read(fixture.0.join("settings.json")).unwrap(), before);
     }
+}
+
+#[test]
+fn settings_read_limits_and_invalid_contents_never_overwrite_the_source() {
+    let fixture = Fixture::new();
+    let path = fixture.0.join("settings.json");
+    let mut exact = br#"{"language":"ja","llm_enabled":false}"#.to_vec();
+    exact.resize(65_536, b' ');
+    fs::write(&path, &exact).unwrap();
+    success(fixture.run(&["model", "configure", "--model", "synthetic-model"]));
+    assert_eq!(fixture.saved()["language"], "ja");
+    exact.push(b' ');
+    for raw in [exact, vec![0xff], b"{".to_vec(), b"[]".to_vec()] {
+        fs::write(&path, &raw).unwrap();
+        let result = fixture.run(&["model", "configure", "--model", "not-applied"]);
+        assert!(!result.status.success());
+        assert_eq!(fs::read(&path).unwrap(), raw);
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn special_configuration_files_are_rejected_without_blocking_or_replacement() {
+    use std::os::unix::{fs::symlink, net::UnixListener};
+    let fixture = Fixture::new();
+    let path = fixture.0.join("settings.json");
+    let rejected = || {
+        let result = fixture.run(&["model", "configure", "--model", "not-applied"]);
+        assert!(!result.status.success());
+        assert!(String::from_utf8_lossy(&result.stderr).contains("无法读取输入法设置"));
+    };
+
+    fs::create_dir(&path).unwrap();
+    rejected();
+    assert!(path.is_dir());
+    fs::remove_dir(&path).unwrap();
+
+    let socket = UnixListener::bind(&path).unwrap();
+    rejected();
+    drop(socket);
+    fs::remove_file(&path).unwrap();
+
+    let fifo = fixture.0.join("pipe");
+    let c_path = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+    for linked in [false, true] {
+        if linked {
+            symlink(&fifo, &path).unwrap();
+        } else {
+            fs::rename(&fifo, &path).unwrap();
+        }
+        let before = fs::symlink_metadata(&path).unwrap().file_type();
+        rejected();
+        assert_eq!(fs::symlink_metadata(&path).unwrap().file_type(), before);
+        if linked {
+            fs::remove_file(&path).unwrap();
+        } else {
+            fs::rename(&path, &fifo).unwrap();
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinks_to_regular_configuration_files_remain_readable() {
+    use std::os::unix::fs::symlink;
+    let fixture = Fixture::new();
+    let target = fixture.0.join("target.json");
+    let raw = br#"{"language":"ja","llm_scope":"cloud","llm_model":"synthetic-model","llm_endpoint":"https://unreachable.invalid/v1/chat/completions"}"#;
+    fs::write(&target, raw).unwrap();
+    let path = fixture.0.join("settings.json");
+    symlink(&target, &path).unwrap();
+    let output = success(fixture.run(&["model", "status"]));
+    assert!(output.contains("input-language: ja"));
+    assert!(output.contains("no remote request"));
+    assert!(path.is_symlink());
+    assert_eq!(fs::read(&target).unwrap(), raw);
 }

@@ -103,7 +103,6 @@ pub(crate) fn apply_display_settings(
     chrome.pointer_target_slop_tenths = settings.pointer_target_slop_tenths;
     chrome.window_scale = settings.window_scale;
     normalize_pointer_stability_settings(chrome);
-    normalize_display_readability(chrome);
 }
 
 pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std::io::Result<()> {
@@ -149,10 +148,10 @@ pub(crate) fn load_display_settings() -> Option<PersistedDisplaySettings> {
         text_scale: DisplayTextScale::Medium,
         candidate_density: CandidateDensity::Cozy,
         preview_style: PreviewStyle::Compact,
-        font_face: FontFaceChoice::Monaco,
+        font_face: FontFaceChoice::Auto,
         text_spacing: TextSpacing::Normal,
-        text_smoothing: TextSmoothing::Sharp,
-        theme_preset: ThemePreset::Daylight,
+        text_smoothing: TextSmoothing::Smooth,
+        theme_preset: ThemePreset::Suzaku,
         voice_auto_insert: true,
         llm_enabled: false,
         llm_model: LlmModelPreset::Configured,
@@ -281,15 +280,6 @@ fn decode_window_scale(value: &str) -> Option<f32> {
     Some(parsed.clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX))
 }
 
-fn normalize_display_readability(chrome: &mut PanelChromeState) {
-    if chrome.font_face == FontFaceChoice::Auto {
-        chrome.font_face = FontFaceChoice::Monaco;
-    }
-    if chrome.text_smoothing == TextSmoothing::Smooth {
-        chrome.text_smoothing = TextSmoothing::Sharp;
-    }
-}
-
 pub(crate) fn encode_text_scale(value: DisplayTextScale) -> &'static str {
     match value {
         DisplayTextScale::Small => "small",
@@ -387,22 +377,11 @@ pub(crate) fn encode_text_smoothing(value: TextSmoothing) -> &'static str {
 }
 
 pub(crate) fn encode_theme_preset(value: ThemePreset) -> &'static str {
-    match value {
-        ThemePreset::Daylight => "daylight",
-        ThemePreset::DeviceDark => "device_dark",
-        ThemePreset::HighContrast => "high_contrast",
-        ThemePreset::Solarized => "solarized",
-    }
+    value.id()
 }
 
 pub(crate) fn decode_theme_preset(value: &str) -> Option<ThemePreset> {
-    match value {
-        "daylight" => Some(ThemePreset::Daylight),
-        "device_dark" => Some(ThemePreset::DeviceDark),
-        "high_contrast" => Some(ThemePreset::HighContrast),
-        "solarized" => Some(ThemePreset::Solarized),
-        _ => None,
-    }
+    ThemePreset::from_id(value)
 }
 
 pub(crate) fn decode_text_smoothing(value: &str) -> Option<TextSmoothing> {
@@ -590,6 +569,10 @@ mod tests {
     #[test]
     fn display_settings_round_trip_decision_matrix() {
         let cases = [
+            DisplaySettingsCodecRoundTripCase {
+                name: "suzaku_default_font_and_smoothing_round_trip",
+                settings: PersistedDisplaySettings::from(&PanelChromeState::default()),
+            },
             DisplaySettingsCodecRoundTripCase {
                 name: "display_settings_round_trip_retains_full_payload",
                 settings: PersistedDisplaySettings {
@@ -1047,65 +1030,37 @@ mod tests {
         run_decode_window_scale_cases(&cases);
     }
 
-    struct NormalizeDisplayReadabilityCase {
-        name: &'static str,
-        font_face_input: FontFaceChoice,
-        text_smoothing_input: TextSmoothing,
-        expected_font_face: FontFaceChoice,
-        expected_text_smoothing: TextSmoothing,
-    }
-
-    fn run_normalize_display_readability_cases(cases: &[NormalizeDisplayReadabilityCase]) {
-        for case in cases {
-            let mut chrome = PanelChromeState {
-                font_face: case.font_face_input,
-                text_smoothing: case.text_smoothing_input,
-                ..PanelChromeState::default()
-            };
-            normalize_display_readability(&mut chrome);
-            assert_eq!(chrome.font_face, case.expected_font_face, "{}", case.name);
-            assert_eq!(
-                chrome.text_smoothing, case.expected_text_smoothing,
-                "{}",
-                case.name
-            );
-        }
-    }
-
     #[test]
-    fn normalize_display_readability_decision_matrix() {
-        let cases = [
-            NormalizeDisplayReadabilityCase {
-                name: "auto_font_face_switches_to_monaco_and_smooth_switches_to_sharp",
-                font_face_input: FontFaceChoice::Auto,
-                text_smoothing_input: TextSmoothing::Smooth,
-                expected_font_face: FontFaceChoice::Monaco,
-                expected_text_smoothing: TextSmoothing::Sharp,
-            },
-            NormalizeDisplayReadabilityCase {
-                name: "non_auto_font_face_keeps_monaco",
-                font_face_input: FontFaceChoice::Monaco,
-                text_smoothing_input: TextSmoothing::Sharp,
-                expected_font_face: FontFaceChoice::Monaco,
-                expected_text_smoothing: TextSmoothing::Sharp,
-            },
-            NormalizeDisplayReadabilityCase {
-                name: "monaco_font_is_kept_and_smooth_is_normalized_to_sharp",
-                font_face_input: FontFaceChoice::Monaco,
-                text_smoothing_input: TextSmoothing::Smooth,
-                expected_font_face: FontFaceChoice::Monaco,
-                expected_text_smoothing: TextSmoothing::Sharp,
-            },
-            NormalizeDisplayReadabilityCase {
-                name: "auto_font_with_sharp_stays_monaco",
-                font_face_input: FontFaceChoice::Auto,
-                text_smoothing_input: TextSmoothing::Sharp,
-                expected_font_face: FontFaceChoice::Monaco,
-                expected_text_smoothing: TextSmoothing::Sharp,
-            },
-        ];
-
-        run_normalize_display_readability_cases(&cases);
+    fn display_settings_preserve_the_selected_font_and_smoothing() {
+        for font in [
+            FontFaceChoice::Auto,
+            FontFaceChoice::Monaco,
+            FontFaceChoice::Geneva,
+        ] {
+            for smoothing in [TextSmoothing::Sharp, TextSmoothing::Smooth] {
+                let saved = PersistedDisplaySettings::from(&PanelChromeState {
+                    font_face: font,
+                    text_smoothing: smoothing,
+                    theme_preset: ThemePreset::Suzaku,
+                    ..Default::default()
+                });
+                let mut chrome = PanelChromeState::default();
+                apply_display_settings(&mut chrome, &saved);
+                assert_eq!(chrome.font_face, font);
+                assert_eq!(chrome.text_smoothing, smoothing);
+                assert_eq!(chrome.theme_preset, ThemePreset::Suzaku);
+            }
+        }
+        for theme in ThemePreset::ALL {
+            assert_eq!(decode_theme_preset(encode_theme_preset(theme)), Some(theme));
+            let saved = PersistedDisplaySettings::from(&PanelChromeState {
+                theme_preset: theme,
+                ..Default::default()
+            });
+            let mut chrome = PanelChromeState::default();
+            apply_display_settings(&mut chrome, &saved);
+            assert_eq!(chrome.theme_preset, theme);
+        }
     }
 
     enum DecodeCodecCaseValue {

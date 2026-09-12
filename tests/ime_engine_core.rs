@@ -167,6 +167,19 @@ fn supports_forced_commit_and_one_step_undo() {
 }
 
 #[test]
+fn checking_commit_readiness_never_consumes_the_draft_or_bypasses_confirmation() {
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    assert!(!engine.can_commit(&CommitOptions { force: true }));
+    engine.seed("a replacement that requires confirmation");
+    let before = engine.snapshot();
+    assert!(!engine.can_commit(&CommitOptions::default()));
+    assert!(engine.can_commit(&CommitOptions { force: true }));
+    assert_eq!(engine.snapshot(), before);
+    assert!(engine.commit(CommitOptions { force: true }).ok);
+    assert!(!engine.can_commit(&CommitOptions { force: true }));
+}
+
+#[test]
 fn keeps_source_and_selection_flow_visible_for_xr_hosts() {
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     engine.set_source(InputSource::HandTracking);

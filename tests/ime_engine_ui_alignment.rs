@@ -52,6 +52,43 @@ fn control_labels_center_in_the_visible_rect_at_every_size() {
 }
 
 #[test]
+fn single_symbol_buttons_fit_measured_glyph_widths_without_an_ellipsis() {
+    use std::{collections::HashMap, sync::Arc};
+    use suzaku_map::ime::gpu::with_font_metrics;
+    with_font_metrics(
+        Arc::new(HashMap::from([('+', 6.2), ('W', 7.0), ('あ', 7.0)])),
+        || {
+            for text in ["+", "W", "あ"] {
+                for spacing in [-0.4, 0.0, 0.4] {
+                    let rect = [10.0, 20.0, 14.04, 18.0];
+                    let layout = TextBlock {
+                        text: text.into(),
+                        origin: [0.0; 2],
+                        max_width: 100.0,
+                        pixel_size: 3.0,
+                        letter_spacing: spacing,
+                        line_gap: 0.0,
+                        max_lines: 1,
+                        color: [1.0; 4],
+                        align: TextAlign::Center,
+                        role: TextRole::ToolButton,
+                    }
+                    .layout_in_rect(rect, [1.8, 1.8]);
+                    assert_eq!(
+                        layout.lines,
+                        [text],
+                        "a button symbol must not become an ellipsis"
+                    );
+                    assert!(!layout.truncated);
+                    assert_eq!(layout.atlas_glyphs.len(), 1);
+                    assert_inside(layout.atlas_glyphs[0].rect, rect);
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn zero_sized_control_has_no_text_geometry() {
     let block = TextBlock {
         text: "label".into(),
@@ -193,12 +230,8 @@ fn settings_search_expands_matching_options_and_keeps_labels_aligned() {
             };
             let scene =
                 WgpuCandidateRenderer::new(width, 340.0).build_settings_scene(&chrome, None);
-            for (label, preset) in [
-                ("Daylight", ThemePreset::Daylight),
-                ("Device Dark", ThemePreset::DeviceDark),
-                ("Solarized", ThemePreset::Solarized),
-                ("High Contrast", ThemePreset::HighContrast),
-            ] {
+            for preset in ThemePreset::ALL {
+                let label = preset.label();
                 let target = scene
                     .interactive_targets
                     .iter()

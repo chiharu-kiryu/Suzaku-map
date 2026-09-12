@@ -28,6 +28,46 @@ pub fn detached_candidate_companion_style_for_preset(
     preset: ThemePreset,
 ) -> CandidateCompanionStyle {
     match preset {
+        ThemePreset::Suzaku => CandidateCompanionStyle {
+            panel_background: 0xFCF8F3FF,
+            title_text: 0x34272AFF,
+            row_normal_text: 0x72585AFF,
+            row_hover_text: 0x8B2933FF,
+            row_selected_text: 0x8B2933FF,
+            accent: 0xB5393FFF,
+            border: 0xDDC9B9FF,
+            ..detached_candidate_companion_style_for_preset(ThemePreset::Daylight)
+        },
+        ThemePreset::Baihu => CandidateCompanionStyle {
+            panel_background: 0xF8F6EEFF,
+            title_text: 0x2D3434FF,
+            row_normal_text: 0x5C625DFF,
+            row_hover_text: 0x665132FF,
+            row_selected_text: 0x665132FF,
+            accent: 0x796441FF,
+            border: 0xCDC6B6FF,
+            ..detached_candidate_companion_style_for_preset(ThemePreset::Daylight)
+        },
+        ThemePreset::Qinglong => CandidateCompanionStyle {
+            panel_background: 0xF3F6FBFF,
+            title_text: 0x243344FF,
+            row_normal_text: 0x496171FF,
+            row_hover_text: 0x644C83FF,
+            row_selected_text: 0x644C83FF,
+            accent: 0x367A80FF,
+            border: 0xBCCDD7FF,
+            ..detached_candidate_companion_style_for_preset(ThemePreset::Daylight)
+        },
+        ThemePreset::Xuanwu => CandidateCompanionStyle {
+            panel_background: 0x1A203AFF,
+            title_text: 0xEEF0FBFF,
+            row_normal_text: 0xB9C3E0FF,
+            row_hover_text: 0xE1E7FFFF,
+            row_selected_text: 0xE1E7FFFF,
+            accent: 0x9CAEEBFF,
+            border: 0x465379FF,
+            ..detached_candidate_companion_style_for_preset(ThemePreset::DeviceDark)
+        },
         ThemePreset::Daylight => CandidateCompanionStyle {
             window_title: "Suzaku Candidates",
             header_title: "Suzaku Candidates",
@@ -105,7 +145,7 @@ pub fn detached_candidate_companion_style_for_preset(
 
 pub fn current_companion_theme_preset() -> ThemePreset {
     let Ok(contents) = fs::read_to_string(display_settings_path()) else {
-        return ThemePreset::Daylight;
+        return ThemePreset::Suzaku;
     };
 
     for line in contents.lines() {
@@ -115,15 +155,10 @@ pub fn current_companion_theme_preset() -> ThemePreset {
         if key.trim() != "theme_preset" {
             continue;
         }
-        return match value.trim() {
-            "solarized" => ThemePreset::Solarized,
-            "device_dark" => ThemePreset::DeviceDark,
-            "high_contrast" => ThemePreset::HighContrast,
-            _ => ThemePreset::Daylight,
-        };
+        return ThemePreset::from_id(value.trim()).unwrap_or(ThemePreset::Suzaku);
     }
 
-    ThemePreset::Daylight
+    ThemePreset::Suzaku
 }
 
 pub fn detached_candidate_companion_style() -> CandidateCompanionStyle {
@@ -239,7 +274,6 @@ mod tests {
         suzaku_host_companion_window_title_utf8,
     };
     use crate::ime::gpu::ThemePreset;
-    #[cfg(target_os = "linux")]
     use crate::platform::test_env;
     #[cfg(target_os = "linux")]
     use crate::platform::test_env::ScopedEnv;
@@ -262,80 +296,106 @@ mod tests {
 
     #[test]
     fn detached_candidate_companion_style_exports_are_consistent() {
-        let style = detached_candidate_companion_style();
+        // Every FFI accessor reads the display-settings path. Hold the same lock
+        // as the theme-file fixtures so a parallel test cannot change that path.
+        test_env::with_test_env(|_| {
+            let style = detached_candidate_companion_style();
 
-        let title = suzaku_host_companion_window_title_utf8();
-        let header = suzaku_host_companion_header_title_utf8();
+            let title = suzaku_host_companion_window_title_utf8();
+            let header = suzaku_host_companion_header_title_utf8();
 
-        let title = c_string_to_owned(title);
-        let header = c_string_to_owned(header);
+            let title = c_string_to_owned(title);
+            let header = c_string_to_owned(header);
 
-        assert_eq!(title.as_deref(), Some(style.window_title));
-        assert_eq!(header.as_deref(), Some(style.header_title));
-        assert_eq!(
-            suzaku_host_companion_panel_background_rgba8(),
-            style.panel_background
-        );
-        assert_eq!(
-            suzaku_host_companion_horizontal_padding(),
-            style.horizontal_padding
-        );
+            assert_eq!(title.as_deref(), Some(style.window_title));
+            assert_eq!(header.as_deref(), Some(style.header_title));
+            assert_eq!(
+                suzaku_host_companion_panel_background_rgba8(),
+                style.panel_background
+            );
+            assert_eq!(
+                suzaku_host_companion_horizontal_padding(),
+                style.horizontal_padding
+            );
+        });
     }
 
     #[test]
     fn detached_candidate_companion_style_matches_preset_selector() {
-        let theme = current_companion_theme_preset();
-        let preset_style = detached_candidate_companion_style_for_preset(theme);
-        let current_style = detached_candidate_companion_style();
+        test_env::with_test_env(|_| {
+            let theme = current_companion_theme_preset();
+            let preset_style = detached_candidate_companion_style_for_preset(theme);
+            let current_style = detached_candidate_companion_style();
 
-        assert_eq!(preset_style.window_title, current_style.window_title);
-        assert_eq!(preset_style.header_title, current_style.header_title);
-        assert_eq!(preset_style.show_header, current_style.show_header);
-        assert_eq!(preset_style.min_width, current_style.min_width);
-        assert_eq!(preset_style.max_width, current_style.max_width);
-        assert_eq!(preset_style.row_height, current_style.row_height);
-        assert_eq!(preset_style.max_text_lines, current_style.max_text_lines);
+            assert_eq!(preset_style.window_title, current_style.window_title);
+            assert_eq!(preset_style.header_title, current_style.header_title);
+            assert_eq!(preset_style.show_header, current_style.show_header);
+            assert_eq!(preset_style.min_width, current_style.min_width);
+            assert_eq!(preset_style.max_width, current_style.max_width);
+            assert_eq!(preset_style.row_height, current_style.row_height);
+            assert_eq!(preset_style.max_text_lines, current_style.max_text_lines);
+        });
     }
 
     #[test]
     fn detached_candidate_companion_style_exports_are_numeric() {
-        let style = detached_candidate_companion_style();
+        test_env::with_test_env(|_| {
+            let style = detached_candidate_companion_style();
 
-        assert_eq!(suzaku_host_companion_min_width(), style.min_width);
-        assert_eq!(suzaku_host_companion_max_width(), style.max_width);
-        assert_eq!(suzaku_host_companion_row_height(), style.row_height);
-        assert_eq!(suzaku_host_companion_max_text_lines(), style.max_text_lines);
-        assert_eq!(
-            suzaku_host_companion_vertical_padding(),
-            style.vertical_padding
-        );
-        assert_eq!(suzaku_host_companion_title_text_rgba8(), style.title_text);
-        assert_eq!(
-            suzaku_host_companion_row_normal_text_rgba8(),
-            style.row_normal_text
-        );
-        assert_eq!(
-            suzaku_host_companion_row_hover_text_rgba8(),
-            style.row_hover_text
-        );
-        assert_eq!(
-            suzaku_host_companion_row_selected_text_rgba8(),
-            style.row_selected_text
-        );
-        assert_eq!(suzaku_host_companion_accent_rgba8(), style.accent);
-        assert_eq!(suzaku_host_companion_border_rgba8(), style.border);
-        assert_eq!(suzaku_host_companion_show_header(), style.show_header);
+            assert_eq!(suzaku_host_companion_min_width(), style.min_width);
+            assert_eq!(suzaku_host_companion_max_width(), style.max_width);
+            assert_eq!(suzaku_host_companion_row_height(), style.row_height);
+            assert_eq!(suzaku_host_companion_max_text_lines(), style.max_text_lines);
+            assert_eq!(
+                suzaku_host_companion_vertical_padding(),
+                style.vertical_padding
+            );
+            assert_eq!(suzaku_host_companion_title_text_rgba8(), style.title_text);
+            assert_eq!(
+                suzaku_host_companion_row_normal_text_rgba8(),
+                style.row_normal_text
+            );
+            assert_eq!(
+                suzaku_host_companion_row_hover_text_rgba8(),
+                style.row_hover_text
+            );
+            assert_eq!(
+                suzaku_host_companion_row_selected_text_rgba8(),
+                style.row_selected_text
+            );
+            assert_eq!(suzaku_host_companion_accent_rgba8(), style.accent);
+            assert_eq!(suzaku_host_companion_border_rgba8(), style.border);
+            assert_eq!(suzaku_host_companion_show_header(), style.show_header);
+        });
     }
 
     #[test]
     fn current_companion_theme_preset_defaults_to_known_theme() {
-        assert!(matches!(
-            current_companion_theme_preset(),
-            ThemePreset::Daylight
-                | ThemePreset::DeviceDark
-                | ThemePreset::HighContrast
-                | ThemePreset::Solarized
-        ));
+        test_env::with_test_env(|_| {
+            assert!(ThemePreset::ALL.contains(&current_companion_theme_preset()));
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn all_guardian_themes_load_into_native_companion_colors() {
+        test_env::with_test_env(|env: &mut ScopedEnv| {
+            for preset in ThemePreset::ALL.into_iter().filter(|p| p.is_guardian()) {
+                write_theme_setting_file(&format!("theme_preset={}\n", preset.id()), env);
+                assert_eq!(current_companion_theme_preset(), preset);
+                let style = detached_candidate_companion_style();
+                assert_eq!(style, detached_candidate_companion_style_for_preset(preset));
+                assert_eq!(
+                    suzaku_host_companion_panel_background_rgba8(),
+                    style.panel_background
+                );
+                assert_eq!(
+                    suzaku_host_companion_row_selected_text_rgba8(),
+                    style.row_selected_text
+                );
+                assert_ne!(style.panel_background, style.row_selected_text);
+            }
+        });
     }
 
     #[cfg(target_os = "linux")]
@@ -352,7 +412,7 @@ mod tests {
     fn current_companion_theme_preset_falls_back_for_unknown_lines() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
             write_theme_setting_file("something else\nnot_a_key=42\ntheme_preset=starlight", env);
-            assert_eq!(current_companion_theme_preset(), ThemePreset::Daylight);
+            assert_eq!(current_companion_theme_preset(), ThemePreset::Suzaku);
         });
     }
 
@@ -370,7 +430,7 @@ mod tests {
     fn current_companion_theme_preset_defaults_on_empty_or_missing_value() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
             write_theme_setting_file("theme_preset=\n", env);
-            assert_eq!(current_companion_theme_preset(), ThemePreset::Daylight);
+            assert_eq!(current_companion_theme_preset(), ThemePreset::Suzaku);
         });
     }
 

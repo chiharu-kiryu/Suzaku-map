@@ -240,6 +240,24 @@ impl ApplicationHandler for KeyboardProbe {
                 );
                 assert_eq!(state.chrome.seed_text, "v123 n i ");
                 assert!(state.text_input.composing());
+                let scene = state.current_scene();
+                let input = scene
+                    .text_sections
+                    .iter()
+                    .flat_map(|section| &section.layouts)
+                    .find(|layout| layout.role == suzaku_map::ime::gpu::TextRole::InputValue)
+                    .unwrap();
+                assert_eq!(
+                    input.lines,
+                    ["v123 n i 日本"],
+                    "preedit is shown without losing draft spaces"
+                );
+                assert!(
+                    input
+                        .atlas_glyphs
+                        .iter()
+                        .all(|glyph| glyph.clip_rect.is_some())
+                );
                 handle_panel_window_event(
                     state,
                     event_loop,

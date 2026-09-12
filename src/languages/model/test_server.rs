@@ -58,10 +58,42 @@ pub(super) fn read_request(stream: &mut impl Read) -> io::Result<String> {
 }
 
 pub(super) fn respond(stream: &mut impl Write, status: &str, body: &str) -> io::Result<()> {
-    write!(
-        stream,
+    // A client may close immediately after reading a non-200 status. Formatting
+    // directly into the socket leaves subsequent header/body writes racing it.
+    let response = format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
-    )?;
+    );
+    stream.write_all(response.as_bytes())?;
     stream.flush()
+}
+
+#[test]
+fn small_error_responses_are_written_before_the_peer_can_close_on_the_status_line() {
+    struct StatusClosingPeer {
+        wire: Vec<u8>,
+        closed: bool,
+    }
+    impl Write for StatusClosingPeer {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            if self.closed {
+                return Err(io::ErrorKind::ConnectionReset.into());
+            }
+            self.wire.extend_from_slice(buffer);
+            self.closed = self.wire.windows(2).any(|part| part == b"\r\n");
+            Ok(buffer.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut peer = StatusClosingPeer {
+        wire: Vec::new(),
+        closed: false,
+    };
+    respond(&mut peer, "404 Not Found", "synthetic error").unwrap();
+    assert!(peer.closed);
+    let wire = String::from_utf8(peer.wire).unwrap();
+    assert!(wire.starts_with("HTTP/1.1 404 Not Found\r\n"));
+    assert!(wire.ends_with("\r\n\r\nsynthetic error"));
 }

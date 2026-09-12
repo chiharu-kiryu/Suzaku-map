@@ -208,6 +208,36 @@ fn failure_and_unsafe_model_text_keep_lossless_local_candidates() {
 }
 
 #[test]
+fn model_candidates_preserve_typed_indentation_through_merge_and_commit() {
+    for mixed in [false, true] {
+        let (mut engine, requests, replies) = controlled();
+        if mixed {
+            engine.enable_ibus_candidate_mix();
+        }
+        engine.seed("  hel");
+        assert_eq!(
+            requests
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .normalized_phrase,
+            "  hel"
+        );
+        replies.send(answer("  hello from the model")).unwrap();
+        settle(&mut engine);
+        let index = engine
+            .candidates()
+            .iter()
+            .position(|candidate| candidate.text == "  hello from the model")
+            .expect("candidate merging must not remove typed spaces");
+        engine.select_candidate(index);
+        assert_eq!(
+            engine.commit(CommitOptions { force: true }).text.as_deref(),
+            Some("  hello from the model")
+        );
+    }
+}
+
+#[test]
 fn language_profiles_convert_input_and_use_script_appropriate_commit_spacing() {
     for (language, first, second, expected) in [
         ("zh-CN", "nihao", "shijie", "你好世界"),

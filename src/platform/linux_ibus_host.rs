@@ -57,7 +57,7 @@ pub fn probe_llm_roundtrip_report(seed: &str) -> Result<LinuxImeProbeReport, Str
     probe_roundtrip_mode(seed, false, true, false, 0)
 }
 
-/// Exercise Tab selection and Space commit of the best English word completion.
+/// Exercise Tab selection, Space continuation and Enter commit of an English completion.
 pub fn probe_completion_roundtrip_report(seed: &str) -> Result<LinuxImeProbeReport, String> {
     probe_roundtrip_mode(seed, false, false, true, 0)
 }
@@ -119,7 +119,7 @@ fn probe_roundtrip_mode(
             11 => "the panel IPC channel rejected the commit",
             12 => "the client did not receive visible preedit text",
             13 => "the client did not receive a visible candidate lookup table",
-            14 => "the candidate window is not using the compact three-row layout",
+            14 => "the candidate window is not using the six-row layout",
             15 => "the candidate window appeared before an input event",
             16 => "preedit or candidates remained visible after committing",
             17 => "no asynchronous AI candidate arrived before the probe deadline",
@@ -127,6 +127,7 @@ fn probe_roundtrip_mode(
             19 => "an AI candidate appeared in a private input context",
             20 => "Tab did not select the first word completion",
             21 => "word completion did not commit the selected word with exactly one space",
+            22 => "Space did not keep the selected completion editable without committing",
             _ => "unknown native probe failure",
         };
         return Err(format!(

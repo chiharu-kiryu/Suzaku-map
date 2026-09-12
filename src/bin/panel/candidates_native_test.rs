@@ -1,6 +1,7 @@
 //! Candidate gesture regressions on an isolated Xvfb, never the desktop session.
 use super::*;
 use std::sync::{Mutex, mpsc};
+use suzaku_map::ime::CommitOptions;
 use suzaku_map::languages::llm::{LlmCompletion, LlmCompletionProvider, LlmCompletionRequest};
 use winit::platform::x11::EventLoopBuilderExtX11;
 
@@ -38,6 +39,7 @@ impl ApplicationHandler for CandidateProbe {
         state.runs_without_window_focus = true;
         state.chrome.llm_enabled = false;
         state.chrome.input_modes_expanded = false;
+        check_editable_keyboard_choices(&mut state);
         for touch in [false, true] {
             reset_composition(&mut state);
             press(&mut state, InteractionKind::SelectNextToken(0), touch);
@@ -67,6 +69,7 @@ impl ApplicationHandler for CandidateProbe {
                 check_async_refresh(&mut state, target, touch);
             }
         }
+        check_standalone_commit_delivery(&mut state);
         println!(
             "PASS: mouse/touch completion and rewind; asynchronous candidate replacement cancels stale presses"
         );
@@ -86,6 +89,51 @@ fn reset_composition(state: &mut PanelState) {
     state.engine.seed("hel");
     state.refresh_composition_candidates();
     state.last_scene = None;
+}
+
+fn check_editable_keyboard_choices(state: &mut PanelState) {
+    reset_composition(state);
+    let committed = state.engine.snapshot().committed_text;
+    let word = state
+        .engine
+        .candidates()
+        .iter()
+        .position(|candidate| candidate.text == "hello")
+        .unwrap();
+    state.continue_sentence_candidate(word);
+    assert_eq!(state.chrome.seed_text, "hello");
+    assert_eq!(state.engine.snapshot().seed_text, "hello");
+    assert_eq!(state.engine.snapshot().committed_text, committed);
+    for expected in ["hello ", "hello  "] {
+        state.continue_composition_with_space();
+        assert_eq!(state.chrome.seed_text, expected);
+        assert_eq!(state.engine.snapshot().seed_text, expected);
+        assert_eq!(state.engine.snapshot().committed_text, committed);
+    }
+    let before = state.engine.snapshot();
+    state.continue_sentence_candidate(usize::MAX);
+    assert_eq!(
+        state.engine.snapshot(),
+        before,
+        "an absent candidate slot modified the draft"
+    );
+    reset_composition(state);
+    state.engine.select_candidate(word);
+    state.continue_composition_with_space();
+    assert_eq!(
+        state.chrome.seed_text, "hello ",
+        "Space lost an explicit selection"
+    );
+    assert_eq!(state.engine.snapshot().committed_text, committed);
+    reset_composition(state);
+    state.continue_composition_with_space();
+    assert_eq!(
+        state.chrome.seed_text, "hel ",
+        "Space changed an unselected literal spelling"
+    );
+    println!(
+        "PASS: panel number choices and repeated spaces retain editable text without committing"
+    );
 }
 
 fn press(state: &mut PanelState, target: InteractionKind, touch: bool) {
@@ -167,4 +215,146 @@ fn check_async_refresh(state: &mut PanelState, target: InteractionKind, touch: b
     );
     assert_eq!(state.chrome.seed_text, "hel");
     state.engine.configure_prediction(None);
+}
+
+fn check_standalone_commit_delivery(state: &mut PanelState) {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixListener;
+    use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+    use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
+    let until = Instant::now() + Duration::from_secs(2);
+    loop {
+        let host = current_ime_host_dispatch();
+        if host.marked_text_roundtrip && host.commit_roundtrip {
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "fixture must also exercise a ready local bridge"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let path = std::path::PathBuf::from(std::env::var_os("SUZAKU_LINUX_IME_SOCKET").unwrap());
+    let runtime = std::path::PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").unwrap());
+    assert!(runtime.starts_with(std::env::temp_dir()) && path.starts_with(&runtime));
+    assert!(
+        !path.exists(),
+        "fixture must never replace another host's socket"
+    );
+    let listener = UnixListener::bind(&path).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let response = Arc::new(AtomicU8::new(b'1'));
+    let requests = Arc::new(Mutex::new(Vec::<String>::new()));
+    let stop = Arc::new(AtomicBool::new(false));
+    let (server_response, server_requests, server_stop) =
+        (response.clone(), requests.clone(), stop.clone());
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !server_stop.load(Ordering::Acquire) && Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    stream
+                        .set_read_timeout(Some(Duration::from_millis(200)))
+                        .unwrap();
+                    stream
+                        .set_write_timeout(Some(Duration::from_millis(200)))
+                        .unwrap();
+                    let mut text = String::new();
+                    if stream.read_to_string(&mut text).is_err() {
+                        continue;
+                    }
+                    if let Some(text) = text.strip_prefix('C') {
+                        server_requests.lock().unwrap().push(text.into());
+                        let ack = server_response.load(Ordering::Acquire);
+                        if ack != 0 {
+                            let _ = stream.write_all(&[ack]);
+                        }
+                    } else {
+                        let _ = stream.write_all(b"0");
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                Err(error) => panic!("fixture accept: {error}"),
+            }
+        }
+    });
+    for sentence in [false, true] {
+        state.engine.clear_session_context();
+        state.native = Default::default();
+        state.is_focused = false;
+        state.chrome.settings_open = false;
+        state.last_commit_attempt = None;
+        state
+            .chrome
+            .set_seed_text("a replacement requiring confirmation".into());
+        state.refresh_seed();
+        let before = requests.lock().unwrap().len();
+        let snapshot = state.engine.snapshot();
+        assert!(!state.commit_selected_candidate_to_host(CommitOptions::default()));
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            before,
+            "unconfirmed text reached the socket"
+        );
+        assert_eq!(state.engine.snapshot(), snapshot);
+        let commit = |state: &mut PanelState| {
+            if sentence {
+                state.commit_sentence_candidate(0)
+            } else {
+                state.commit_selected_candidate_to_host(CommitOptions { force: true })
+            }
+        };
+        for text in ["  first123  ", "second456"] {
+            response.store(b'1', Ordering::Release);
+            state.chrome.set_seed_text(text.into());
+            state.refresh_seed();
+            // A separate local bridge can have different provider results or a
+            // stale seed. Only the candidate the panel displayed belongs on wire.
+            suzaku_map::ime_host::host_bridge_replace_marked_text(
+                "wrong-source-candidate",
+                suzaku_map::ime::InputSource::OnScreenPanel,
+            );
+            let before = requests.lock().unwrap().len();
+            assert!(commit(state));
+            assert_eq!(requests.lock().unwrap()[before..], [text]);
+            assert!(
+                state.chrome.seed_text.is_empty(),
+                "delivered text was copied back into the editable draft"
+            );
+            assert!(state.engine.snapshot().seed_text.is_empty());
+            assert!(!commit(state), "a second click recommitted completed text");
+            assert_eq!(requests.lock().unwrap().len(), before + 1);
+        }
+        for ack in [b'0', 0] {
+            response.store(ack, Ordering::Release);
+            state.last_commit_attempt = None;
+            state.chrome.set_seed_text("  retained789  ".into());
+            state.refresh_seed();
+            let before = requests.lock().unwrap().len();
+            let snapshot = state.engine.snapshot();
+            assert!(commit(state));
+            assert_eq!(requests.lock().unwrap()[before..], ["  retained789  "]);
+            assert_eq!(
+                state.engine.snapshot(),
+                snapshot,
+                "unconfirmed output changed composition or committed context"
+            );
+            assert_eq!(state.chrome.seed_text, "  retained789  ");
+            assert!(
+                state
+                    .last_commit_feedback
+                    .as_ref()
+                    .unwrap()
+                    .contains("retained")
+            );
+        }
+    }
+    stop.store(true, Ordering::Release);
+    server.join().unwrap();
+    std::fs::remove_file(path).unwrap();
+    println!(
+        "PASS: standalone word/sentence commits clear only acknowledged drafts and retain rejected/uncertain output without replay"
+    );
 }

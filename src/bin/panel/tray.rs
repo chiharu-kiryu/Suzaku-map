@@ -10,6 +10,7 @@ mod platform {
     use ksni::{Icon, MenuItem, ToolTip, Tray};
     use std::sync::mpsc::{self, Sender};
     use std::thread::{self, JoinHandle};
+    use suzaku_map::ime::gpu::ThemePreset;
     use suzaku_map::ime::settings::PredictionSettingsPatch;
     use suzaku_map::languages::BuiltinLanguage;
     use suzaku_map::languages::model::{ModelProviderConfig, ModelScope, runtime as model_runtime};
@@ -20,10 +21,13 @@ mod platform {
     pub(crate) struct SystemTray {
         control_tx: Sender<TrayControl>,
         worker: Option<JoinHandle<()>>,
+        theme: ThemePreset,
+        has_icon: bool,
     }
 
     enum TrayControl {
         SetPanelVisible(bool),
+        SetTheme(ThemePreset),
         RefreshInputMethod,
         ActivateInputMethod,
         ReleaseInputMethod,
@@ -74,13 +78,14 @@ mod platform {
         status_error: Option<String>,
         operation_error: Option<String>,
         native: Option<NativeImeStatus>,
+        native_error: Option<String>,
         model_busy: bool,
         model_status: Option<(ModelProviderConfig, String)>,
     }
 
     impl InputMethodMenuState {
         fn can_activate(&self) -> bool {
-            !self.busy && !self.system.active()
+            !self.busy && (!self.system.active() || self.native_error.is_some())
         }
 
         fn can_release(&self) -> bool {
@@ -89,9 +94,14 @@ mod platform {
 
         fn description(&self) -> String {
             if self.busy {
-                return "正在切换输入法…".into();
+                return "正在处理输入法服务 / 切换输入法…".into();
             }
-            if let Some(error) = self.operation_error.as_ref().or(self.status_error.as_ref()) {
+            if let Some(error) = self
+                .operation_error
+                .as_ref()
+                .or(self.status_error.as_ref())
+                .or(self.native_error.as_ref())
+            {
                 return error.clone();
             }
             if self.system.active() {
@@ -116,6 +126,12 @@ mod platform {
                 None => "释放并恢复原输入法".into(),
             }
         }
+
+        fn native_unavailable_hint(&self) -> &str {
+            self.native_error
+                .as_deref()
+                .unwrap_or("输入法服务尚未就绪；激活时会自动启动")
+        }
     }
 
     fn menu_label(text: &str) -> String {
@@ -129,6 +145,14 @@ mod platform {
     }
 
     impl SystemTray {
+        pub(crate) fn has_icon(&self) -> bool {
+            self.has_icon
+        }
+
+        pub(crate) fn request_quit(&self) -> bool {
+            self.control_tx.send(TrayControl::Quit).is_ok()
+        }
+
         pub(crate) fn set_prediction_settings(&self, patch: PredictionSettingsPatch) -> bool {
             self.control_tx
                 .send(TrayControl::SetPredictionSettings(patch))
@@ -136,6 +160,13 @@ mod platform {
         }
         pub(crate) fn set_panel_visible(&self, visible: bool) {
             let _ = self.control_tx.send(TrayControl::SetPanelVisible(visible));
+        }
+
+        pub(crate) fn set_theme(&mut self, theme: ThemePreset) {
+            // The app can sync this at idle; only actual changes enqueue raster work.
+            if self.theme != theme && self.control_tx.send(TrayControl::SetTheme(theme)).is_ok() {
+                self.theme = theme;
+            }
         }
 
         pub(crate) fn shutdown(mut self) {
@@ -154,6 +185,30 @@ mod platform {
         input_method: InputMethodMenuState,
         data_busy: bool,
         data_report: Option<String>,
+    }
+
+    // Service lifetime must not depend on a desktop tray extension being installed.
+    // The fallback still processes lifecycle commands and sends UI acknowledgements.
+    struct TrayHandle {
+        live: Option<Handle<SuzakuTray>>,
+        fallback: std::sync::Mutex<SuzakuTray>,
+    }
+
+    impl TrayHandle {
+        fn update(&self, update: impl FnOnce(&mut SuzakuTray)) -> Option<()> {
+            if let Some(live) = &self.live {
+                live.update(update)
+            } else {
+                update(&mut self.fallback.lock().unwrap());
+                Some(())
+            }
+        }
+
+        fn shutdown(&self) {
+            if let Some(live) = &self.live {
+                live.shutdown().wait();
+            }
+        }
     }
 
     impl SuzakuTray {
@@ -283,7 +338,7 @@ mod platform {
                         .native
                         .as_ref()
                         .map(|state| format!("输入语言：{}", state.settings.language.label()))
-                        .unwrap_or_else(|| "输入语言（需更新输入法宿主）".into()),
+                        .unwrap_or_else(|| "输入语言（宿主未连接）".into()),
                     enabled: !self.input_method.busy && self.input_method.native.is_some(),
                     submenu: BuiltinLanguage::ALL
                         .into_iter()
@@ -359,7 +414,7 @@ mod platform {
                             }
                             _ => "使用本地基础候选，未请求模型".into(),
                         })
-                        .unwrap_or_else(|| "请安装新版 Suzaku 输入法宿主".into()),
+                        .unwrap_or_else(|| menu_label(self.input_method.native_unavailable_hint())),
                     enabled: false,
                     ..Default::default()
                 }
@@ -544,43 +599,71 @@ mod platform {
     pub(crate) fn start_system_tray(
         proxy: EventLoopProxy<PanelUserEvent>,
         panel_visible: bool,
+        theme: ThemePreset,
     ) -> Option<SystemTray> {
-        let icons = TRAY_ICON_SIZES.into_iter().map(suzaku_icon).collect();
+        let icons: Vec<Icon> = TRAY_ICON_SIZES
+            .into_iter()
+            .map(|size| themed_icon(theme, size))
+            .collect();
         let (control_tx, control_rx) = mpsc::channel();
-        match (SuzakuTray {
-            proxy,
+        let make_tray = || SuzakuTray {
+            proxy: proxy.clone(),
             control_tx: control_tx.clone(),
-            icons,
+            icons: icons.clone(),
             panel_visible,
-            input_method: InputMethodMenuState::default(),
+            input_method: InputMethodMenuState {
+                busy: true,
+                ..Default::default()
+            },
             data_busy: false,
             data_report: None,
-        })
-        .spawn()
-        {
-            Ok(handle) => start_tray_control_worker(handle, control_tx, control_rx),
+        };
+        let live = match make_tray().spawn() {
+            Ok(handle) => Some(handle),
             Err(error) => {
                 eprintln!("Suzaku system tray unavailable: {error}");
                 None
             }
-        }
+        };
+        let handle = TrayHandle {
+            live,
+            fallback: std::sync::Mutex::new(make_tray()),
+        };
+        start_tray_control_worker(handle, control_tx, control_rx, theme)
     }
 
     fn start_tray_control_worker(
-        handle: Handle<SuzakuTray>,
+        handle: TrayHandle,
         control_tx: Sender<TrayControl>,
         control_rx: mpsc::Receiver<TrayControl>,
+        theme: ThemePreset,
     ) -> Option<SystemTray> {
         let model_report_tx = control_tx.clone();
+        let has_icon = handle.live.is_some();
         let worker = match thread::Builder::new()
             .name("suzaku-tray-control".into())
             .spawn(move || {
-                let mut input_method = InputMethodController::new(IBusBackend);
+                let mut input_method = InputMethodController::new(IBusBackend::default());
+                let startup = input_method.start();
                 refresh_input_method(&handle, &mut input_method);
+                let _ = handle.update(|tray| {
+                    tray.input_method.busy = false;
+                    tray.input_method.operation_error = startup.err();
+                    if let Some(error) = &tray.input_method.operation_error {
+                        tray.send(PanelUserEvent::InputMethodError(error.clone()));
+                    }
+                });
                 while let Ok(command) = control_rx.recv() {
                     match command {
                         TrayControl::SetPanelVisible(visible) => {
                             let _ = handle.update(|tray| tray.panel_visible = visible);
+                        }
+                        TrayControl::SetTheme(theme) => {
+                            let icons = TRAY_ICON_SIZES
+                                .into_iter()
+                                .map(|size| themed_icon(theme, size))
+                                .collect();
+                            let _ = handle.update(|tray| tray.icons = icons);
                         }
                         TrayControl::RefreshInputMethod => {
                             refresh_input_method(&handle, &mut input_method);
@@ -669,17 +752,26 @@ mod platform {
                         | TrayControl::Quit => {
                             let activating = matches!(command, TrayControl::ActivateInputMethod);
                             let quitting = matches!(command, TrayControl::Quit);
+                            let _ = handle.update(|tray| tray.input_method.busy = true);
                             let result = if activating {
                                 input_method.activate()
+                            } else if quitting {
+                                input_method.shutdown()
                             } else {
                                 input_method.release()
                             };
                             let succeeded = result.is_ok();
+                            if !quitting || !succeeded {
+                                refresh_input_method(&handle, &mut input_method);
+                            }
                             let _ = handle.update(|tray| {
                                 tray.input_method.system = input_method.state().clone();
                                 tray.input_method.busy = false;
                                 tray.input_method.status_error = None;
                                 tray.input_method.operation_error = result.err();
+                                if let Some(error) = &tray.input_method.operation_error {
+                                    tray.send(PanelUserEvent::InputMethodError(error.clone()));
+                                }
                                 if succeeded && activating {
                                     // Native IBus candidates appear on input without taking focus.
                                     tray.panel_visible = false;
@@ -692,12 +784,12 @@ mod platform {
                             });
                         }
                         TrayControl::Shutdown => {
-                            if let Err(error) = input_method.release() {
+                            if let Err(error) = input_method.shutdown() {
                                 eprintln!(
-                                    "Suzaku could not restore the previous input method: {error}"
+                                    "Suzaku could not safely finish input-service shutdown: {error}"
                                 );
                             }
-                            handle.shutdown().wait();
+                            handle.shutdown();
                             break;
                         }
                     }
@@ -712,11 +804,13 @@ mod platform {
         Some(SystemTray {
             control_tx,
             worker: Some(worker),
+            theme,
+            has_icon,
         })
     }
 
     fn refresh_input_method(
-        handle: &Handle<SuzakuTray>,
+        handle: &TrayHandle,
         input_method: &mut InputMethodController<IBusBackend>,
     ) {
         let result = input_method.refresh();
@@ -727,7 +821,16 @@ mod platform {
         // This query runs only at startup/menu-open; it never polls input events.
         let native = linux_ime_control::status();
         let _ = handle.update(|tray| {
-            tray.input_method.native = native.ok();
+            match native {
+                Ok(state) => {
+                    tray.input_method.native = Some(state);
+                    tray.input_method.native_error = None;
+                }
+                Err(error) => {
+                    tray.input_method.native = None;
+                    tray.input_method.native_error = Some(error);
+                }
+            }
             if let Some(state) = &tray.input_method.native {
                 tray.send(PanelUserEvent::InputMethodSettingsChanged(
                     state.settings.clone(),
@@ -736,15 +839,12 @@ mod platform {
         });
     }
 
-    fn publish_native_settings(
-        handle: &Handle<SuzakuTray>,
-        result: Result<NativeImeStatus, String>,
-    ) {
+    fn publish_native_settings(handle: &TrayHandle, result: Result<NativeImeStatus, String>) {
         publish_settings_result(handle, result, false);
     }
 
     fn publish_settings_result(
-        handle: &Handle<SuzakuTray>,
+        handle: &TrayHandle,
         result: Result<NativeImeStatus, String>,
         panel_write_finished: bool,
     ) {
@@ -757,6 +857,10 @@ mod platform {
             tray.input_method.busy = false;
             if let Some(state) = confirmed {
                 tray.input_method.native = Some(state);
+                tray.input_method.native_error = None;
+            } else {
+                tray.input_method.native = None;
+                tray.input_method.native_error = error.clone();
             }
             if panel_write_finished {
                 tray.send(PanelUserEvent::PredictionSettingsApplied(
@@ -774,63 +878,17 @@ mod platform {
         });
     }
 
+    #[cfg(test)]
     fn suzaku_icon(size: i32) -> Icon {
-        let size = size.max(1);
-        let mut data = vec![0; size as usize * size as usize * 4];
-        let center = size as f32 / 2.0;
-        let radius = size as f32 * 0.46;
+        themed_icon(ThemePreset::Suzaku, size)
+    }
 
-        for y in 0..size {
-            for x in 0..size {
-                let nx = (x as f32 + 0.5 - center) / radius;
-                let ny = (y as f32 + 0.5 - center) / radius;
-                let distance = (nx * nx + ny * ny).sqrt();
-                if distance > 1.04 {
-                    continue;
-                }
-
-                let alpha = ((1.04 - distance) / 0.08).clamp(0.0, 1.0);
-                let mut color = if distance > 0.87 {
-                    [116, 18, 36]
-                } else if ny < -0.2 {
-                    [235, 54, 62]
-                } else {
-                    [205, 28, 52]
-                };
-
-                // A compact gold phoenix: raised wings, head, body, and split tail.
-                let wing_y = 0.12 - nx.abs() * 0.54;
-                let wing =
-                    nx.abs() < 0.72 && ny > -0.34 && ny < 0.28 && (ny - wing_y).abs() < 0.105;
-                let head = nx * nx + (ny + 0.31) * (ny + 0.31) < 0.15 * 0.15;
-                let body = nx.abs() < 0.105 && (-0.24..=0.46).contains(&ny);
-                let left_tail = nx < 0.0
-                    && (-0.34..=-0.04).contains(&nx)
-                    && (ny - (0.42 - nx * 0.75)).abs() < 0.085;
-                let right_tail = nx >= 0.0
-                    && (0.04..=0.34).contains(&nx)
-                    && (ny - (0.42 + nx * 0.75)).abs() < 0.085;
-                if wing || head || body || left_tail || right_tail {
-                    color = [255, 205, 72];
-                }
-
-                let eye = (nx - 0.075) * (nx - 0.075) + (ny + 0.345) * (ny + 0.345) < 0.035 * 0.035;
-                if eye {
-                    color = [72, 17, 29];
-                }
-
-                let offset = ((y * size + x) * 4) as usize;
-                data[offset] = (alpha * 255.0).round() as u8;
-                data[offset + 1] = color[0];
-                data[offset + 2] = color[1];
-                data[offset + 3] = color[2];
-            }
-        }
-
+    fn themed_icon(theme: ThemePreset, size: i32) -> Icon {
+        let size = size.clamp(1, 256);
         Icon {
             width: size,
             height: size,
-            data,
+            data: suzaku_map::ime::gpu::theme_icon_argb(theme, size as u32),
         }
     }
 
@@ -840,6 +898,35 @@ mod platform {
             InputMethodMenuState, InputMethodState, TRAY_ICON_SIZES, menu_label, suzaku_icon,
         };
         use crate::input_method::SUZAKU_ENGINE;
+
+        #[test]
+        fn unchanged_theme_does_not_enqueue_tray_raster_work() {
+            use super::{SystemTray, ThemePreset, TrayControl};
+            let (control_tx, control_rx) = std::sync::mpsc::channel();
+            let mut tray = SystemTray {
+                control_tx,
+                worker: None,
+                theme: ThemePreset::Suzaku,
+                has_icon: true,
+            };
+            tray.set_theme(ThemePreset::Suzaku);
+            assert!(control_rx.try_recv().is_err());
+            for theme in [
+                ThemePreset::Baihu,
+                ThemePreset::Qinglong,
+                ThemePreset::Xuanwu,
+                ThemePreset::Suzaku,
+            ] {
+                tray.set_theme(theme);
+                assert!(
+                    matches!(control_rx.try_recv(), Ok(TrayControl::SetTheme(actual)) if actual == theme)
+                );
+                for _ in 0..20 {
+                    tray.set_theme(theme);
+                }
+                assert!(control_rx.try_recv().is_err());
+            }
+        }
 
         #[test]
         fn input_method_menu_tracks_owned_activation_and_manual_switches() {
@@ -872,7 +959,7 @@ mod platform {
             };
             assert!(!state.can_activate());
             assert!(!state.can_release());
-            assert!(state.description().contains("正在切换"));
+            assert!(state.description().contains("切换输入法"));
         }
 
         #[test]
@@ -887,6 +974,28 @@ mod platform {
             };
             assert!(state.can_release());
             assert_eq!(state.description(), "恢复失败，请重试");
+        }
+
+        #[test]
+        fn disconnected_host_reports_connection_failure_not_a_required_upgrade() {
+            let mut state = InputMethodMenuState {
+                native_error: Some("Suzaku 输入法服务未运行或连接已断开".into()),
+                ..Default::default()
+            };
+            assert_eq!(state.description(), state.native_unavailable_hint());
+            assert!(!state.native_unavailable_hint().contains("新版"));
+            state.system.current_engine = Some(SUZAKU_ENGINE.into());
+            assert!(
+                state.can_activate(),
+                "a disconnected active engine must be restartable"
+            );
+            state.busy = true;
+            assert!(!state.can_activate());
+            assert!(
+                InputMethodMenuState::default()
+                    .native_unavailable_hint()
+                    .contains("自动启动")
+            );
         }
 
         #[test]
@@ -948,7 +1057,14 @@ mod platform {
     pub(crate) struct SystemTray;
 
     impl SystemTray {
+        pub(crate) fn has_icon(&self) -> bool {
+            false
+        }
+        pub(crate) fn request_quit(&self) -> bool {
+            false
+        }
         pub(crate) fn set_panel_visible(&self, _visible: bool) {}
+        pub(crate) fn set_theme(&mut self, _theme: suzaku_map::ime::gpu::ThemePreset) {}
         pub(crate) fn set_prediction_settings(
             &self,
             _patch: suzaku_map::ime::settings::PredictionSettingsPatch,
@@ -962,6 +1078,7 @@ mod platform {
     pub(crate) fn start_system_tray(
         _proxy: EventLoopProxy<PanelUserEvent>,
         _panel_visible: bool,
+        _theme: suzaku_map::ime::gpu::ThemePreset,
     ) -> Option<SystemTray> {
         None
     }

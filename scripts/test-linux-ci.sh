@@ -32,6 +32,9 @@ trap cleanup EXIT
 
 if [[ "$suzaku_ci_mode" == ibus ]]; then
   cargo build --locked --all-features --bin linux_ime_host --bin linux_ime_probe
+  suzaku_ci_panel_test=$(cargo test --locked --all-features --bin panel --no-run --message-format=json |
+    jq -r 'select(.reason == "compiler-artifact" and .target.name == "panel" and .profile.test == true) | .executable // empty')
+  [[ -x "$suzaku_ci_panel_test" ]] || { printf 'Missing panel test executable.\n' >&2; exit 1; }
   suzaku_ci_tmp="$(mktemp -d /tmp/suzaku-sync-qa.XXXXXX)"
   timeout --kill-after=3s 120s env -u DISPLAY -u WAYLAND_DISPLAY dbus-run-session -- env \
     XDG_RUNTIME_DIR="$suzaku_ci_tmp" \
@@ -42,6 +45,7 @@ if [[ "$suzaku_ci_mode" == ibus ]]; then
     SUZAKU_LINUX_IME_SOCKET="$suzaku_ci_tmp/suzaku-ime/host.sock" \
     IBUS_ADDRESS="unix:path=$suzaku_ci_tmp/ibus.sock" \
     SUZAKU_NATIVE_SYNC_QA=1 \
+    SUZAKU_NATIVE_ACTIVATION_TEST="$suzaku_ci_panel_test" \
     /usr/bin/python3 scripts/test-native-sync.py
 else
   suzaku_ci_tmp="$(mktemp -d /tmp/suzaku-ui-qa.XXXXXX)"
@@ -62,6 +66,16 @@ else
       exit 1
     fi
     suzaku_ci_probe_env=()
+    if [[ "$suzaku_ci_test" == candidates_native_test::* ]]; then
+      # Exercise the independent panel even when the in-process bridge reports
+      # ready. Its synthetic Unix socket, not the desktop IBus, acknowledges sends.
+      suzaku_ci_probe_env=(
+        SUZAKU_LINUX_IME_FRAMEWORK=ibus SUZAKU_LINUX_IME_DAEMON_READY=1
+        SUZAKU_LINUX_IME_REGISTERED=1 SUZAKU_LINUX_IME_RUNTIME_VISIBLE=1
+        SUZAKU_LINUX_IME_HOST_READY=1 SUZAKU_LINUX_IME_ACTIVE=0
+        SUZAKU_LINUX_IME_MARKED_TEXT=1 SUZAKU_LINUX_IME_COMMIT=1
+      )
+    fi
     if [[ "$suzaku_ci_test" == status_native_test::* ]]; then
       mkdir -m 700 "$suzaku_ci_tmp/bin"
       install -m 700 scripts/fixtures/slow-ibus.sh "$suzaku_ci_tmp/bin/ibus"

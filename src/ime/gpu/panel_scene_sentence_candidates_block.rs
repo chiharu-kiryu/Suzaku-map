@@ -170,7 +170,7 @@
                 shell,
                 section_radius,
             );
-                quads.push(CandidateQuad {
+                quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
                     rect: [
                         panel_x + 8.0 * responsive_scale,
                         sentence_section_top + 4.0 * responsive_scale,
@@ -184,7 +184,7 @@
                     ),
                 });
                 if !collapsed_daily_mode && hero_cards_enabled {
-                    quads.push(CandidateQuad {
+                    quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
                         rect: [
                             panel_x + 14.0 * responsive_scale,
                             sentence_section_top + hero_card_height + 2.4 * responsive_scale,
@@ -257,7 +257,7 @@
         let selected = *source_index == snapshot.selected_index;
         let kind = InteractionKind::Candidate(*source_index);
         let (hovered, pressed) = interaction_state(kind);
-        let quad = CandidateQuad {
+        let quad = CandidateQuad { shape: Default::default(), clip_rect: None,
         rect: [x, y, card_width, card_height],
         color: [0.0, 0.0, 0.0, 0.0],
     };
@@ -294,7 +294,7 @@
         surface,
             (10.2 * responsive_scale).max(6.0),
     );
-    if collapsed_primary {
+    if collapsed_primary && !chrome.theme_preset.is_guardian() {
         append_rounded_rect_quads(
             &mut quads,
             [
@@ -307,7 +307,7 @@
             9.0 * responsive_scale,
         );
     } else if collapsed_daily_mode && display_index > 0 {
-        quads.push(CandidateQuad {
+        quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
             rect: [
                 visual_rect[0] - candidate_gap_x * 0.5,
                 visual_rect[1] + 7.0 * responsive_scale,
@@ -316,6 +316,12 @@
             ],
             color: compact_divider,
         });
+    }
+    if chrome.theme_preset.is_guardian() && (selected || collapsed_primary) {
+        append_rounded_rect_quads(&mut quads,
+            [visual_rect[0] + 3.0 * responsive_scale, visual_rect[1] + 8.0 * responsive_scale,
+             2.0 * responsive_scale, (visual_rect[3] - 16.0 * responsive_scale).max(0.0)],
+            accent, responsive_scale);
     }
     if is_hero {
             append_rounded_rect_quads(
@@ -520,7 +526,7 @@
                         badge_width,
                         17.0 * responsive_scale,
                     ];
-                    quads.push(CandidateQuad {
+                    quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
                         rect: badge_rect,
                         color: badge_fill,
                     });

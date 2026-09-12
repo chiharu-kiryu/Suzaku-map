@@ -8,7 +8,9 @@ use crate::languages::{
 
 use super::{PredictionStatus, prediction::PredictionWorker};
 use super::{build_combinations, clamp01, tokenize_seed};
-use crate::languages::llm::{LlmCompletionProvider, LlmCompletionRequest, LlmProviderError};
+use crate::languages::llm::{
+    LlmCompletionProvider, LlmCompletionRequest, LlmProviderError, normalize_completion_text,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
@@ -406,6 +408,15 @@ impl XRTabletImeEngine {
             .map(|candidate| candidate.text.as_str())
     }
 
+    /// Check confirmation without consuming the draft. A host can deliver first,
+    /// then commit after acknowledgement, provided it keeps this selection unchanged.
+    pub fn can_commit(&self, options: &CommitOptions) -> bool {
+        self.state
+            .candidates
+            .get(self.state.selected_index)
+            .is_some_and(|candidate| self.passes_control_gate(candidate, options))
+    }
+
     pub fn commit(&mut self, options: CommitOptions) -> CommitResult {
         let snapshot = self.snapshot();
         let Some(candidate) = self
@@ -422,7 +433,7 @@ impl XRTabletImeEngine {
             };
         };
 
-        if !self.passes_control_gate(&candidate, &options) {
+        if !self.can_commit(&options) {
             return CommitResult {
                 ok: false,
                 reason: CommitReason::ConfirmationRequired,
@@ -586,7 +597,11 @@ impl XRTabletImeEngine {
             .find(|candidate| candidate.text == self.state.seed_text)
             .cloned();
         for completion in completions.into_iter().take(3) {
-            let text = completion.text.trim().to_string();
+            let text = normalize_completion_text(
+                &completion.text,
+                (self.state.active_language == "en").then_some(self.state.seed_text.as_str()),
+            )
+            .to_string();
             if text.is_empty()
                 || text.chars().count() > 160
                 || text.chars().any(char::is_control)
@@ -634,10 +649,15 @@ impl XRTabletImeEngine {
 
     /// Focus boundaries discard context to prevent suggestions leaking between apps/fields.
     pub fn clear_session_context(&mut self) {
+        self.clear_prediction_context();
+        self.seed("");
+    }
+
+    /// Provider changes forget the old context without discarding this field's editable draft.
+    pub(crate) fn clear_prediction_context(&mut self) {
         self.cancel_prediction();
         self.state.committed_text.clear();
         self.state.history.clear();
-        self.seed("");
     }
 
     fn lock_prediction_selection(&mut self) {

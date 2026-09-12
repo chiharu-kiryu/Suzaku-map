@@ -2,10 +2,11 @@
 
 use std::process::{Command, Output};
 use std::time::Duration;
-use suzaku_map::platform::linux_ipc::Deadline;
+
+#[path = "input_method_service.rs"]
+mod service;
 
 pub(super) const SUZAKU_ENGINE: &str = "dev.suzaku.linux.ime";
-const HOST_TIMEOUT: Duration = Duration::from_millis(350);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -24,11 +25,14 @@ pub(super) trait InputMethodBackend {
     fn current_engine(&mut self) -> Result<String, String>;
     fn ensure_suzaku_available(&mut self) -> Result<(), String>;
     fn switch_engine(&mut self, engine: &str) -> Result<(), String>;
+    fn host_needs_stop(&mut self) -> Result<bool, String>;
+    fn stop_host(&mut self) -> Result<(), String>;
 }
 
 pub(super) struct InputMethodController<B> {
     backend: B,
     state: InputMethodState,
+    last_non_suzaku: Option<String>,
 }
 
 impl<B: InputMethodBackend> InputMethodController<B> {
@@ -36,6 +40,7 @@ impl<B: InputMethodBackend> InputMethodController<B> {
         Self {
             backend,
             state: InputMethodState::default(),
+            last_non_suzaku: None,
         }
     }
 
@@ -46,6 +51,9 @@ impl<B: InputMethodBackend> InputMethodController<B> {
     pub fn refresh(&mut self) -> Result<(), String> {
         match self.backend.current_engine().and_then(validate_engine) {
             Ok(engine) => {
+                if engine != SUZAKU_ENGINE {
+                    self.last_non_suzaku = Some(engine.clone());
+                }
                 self.state.current_engine = Some(engine);
                 Ok(())
             }
@@ -56,9 +64,24 @@ impl<B: InputMethodBackend> InputMethodController<B> {
         }
     }
 
-    pub fn activate(&mut self) -> Result<(), String> {
-        self.refresh()?;
+    /// Prepare the service without activating Suzaku or stealing the current engine.
+    pub fn start(&mut self) -> Result<(), String> {
+        let _ = self.refresh();
+        let previous = self.state.current_engine.clone();
         self.backend.ensure_suzaku_available()?;
+        match self.refresh() {
+            Ok(()) => Ok(()),
+            Err(_) if previous.is_some() => self.switch_and_verify(previous.as_deref().unwrap()),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn activate(&mut self) -> Result<(), String> {
+        // A disconnected active engine can temporarily leave IBus without a
+        // global engine. Start its host before requiring a valid switch target.
+        let _ = self.refresh();
+        self.backend.ensure_suzaku_available()?;
+        self.refresh()?;
         if self.state.active() {
             // Repeated activation must not replace the restore target with Suzaku.
             // A system-selected Suzaku session is not owned by this tray.
@@ -79,6 +102,36 @@ impl<B: InputMethodBackend> InputMethodController<B> {
         }
         // A manual switch away from Suzaku takes precedence over our old target.
         self.state.restore_engine = None;
+        Ok(())
+    }
+
+    pub fn shutdown(&mut self) -> Result<(), String> {
+        self.release()?;
+        if !self.backend.host_needs_stop()? {
+            return Ok(());
+        }
+        self.refresh()?;
+        if self.state.active() {
+            // A system menu can activate Suzaku after panel startup. Use only an
+            // actually observed previous engine; never guess another user's default.
+            let previous = self
+                .last_non_suzaku
+                .clone()
+                .ok_or("无法确认可恢复的原输入法；请先从系统菜单切换其他输入法，再退出 Suzaku")?;
+            self.state.restore_engine = Some(previous);
+            self.release()?;
+        }
+        let previous = self
+            .state
+            .current_engine
+            .clone()
+            .ok_or("无法确认安全回退，已保留输入法服务")?;
+        self.backend.stop_host()?;
+        // Removing an IBus component can leave no global engine. Repair only that
+        // missing state; a valid engine selected manually must always win.
+        if self.refresh().is_err() {
+            self.switch_and_verify(&previous)?;
+        }
         Ok(())
     }
 
@@ -109,7 +162,10 @@ fn validate_engine(engine: String) -> Result<String, String> {
     }
 }
 
-pub(super) struct IBusBackend;
+#[derive(Default)]
+pub(super) struct IBusBackend {
+    host: service::HostService,
+}
 
 impl InputMethodBackend for IBusBackend {
     fn current_engine(&mut self) -> Result<String, String> {
@@ -117,36 +173,21 @@ impl InputMethodBackend for IBusBackend {
     }
 
     fn ensure_suzaku_available(&mut self) -> Result<(), String> {
-        let socket = std::env::var_os("SUZAKU_LINUX_IME_SOCKET")
-            .map(std::path::PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("XDG_RUNTIME_DIR")
-                    .map(std::path::PathBuf::from)
-                    .map(|directory| directory.join("suzaku-ime/host.sock"))
-            })
-            .ok_or("无法定位本机输入法服务（缺少 XDG_RUNTIME_DIR）")?;
-        let deadline = Deadline::new(HOST_TIMEOUT);
-        let mut stream = deadline.connect(&socket).map_err(host_error)?;
-        deadline.send(&mut stream, b"Q").map_err(host_error)?;
-        let mut response = [0];
-        deadline
-            .read_exact(&mut stream, &mut response)
-            .map_err(host_error)?;
-        if response == [b'1'] {
-            Ok(())
-        } else {
-            Err("Suzaku 输入法服务尚未就绪，请重启输入法服务后重试".into())
-        }
+        self.host.ensure_ready()
     }
 
     fn switch_engine(&mut self, engine: &str) -> Result<(), String> {
         validate_engine(engine.to_string())?;
         run_ibus(&[engine]).map(|_| ())
     }
-}
 
-fn host_error(error: std::io::Error) -> String {
-    format!("Suzaku 输入法服务未响应：{error}")
+    fn host_needs_stop(&mut self) -> Result<bool, String> {
+        self.host.needs_stop()
+    }
+
+    fn stop_host(&mut self) -> Result<(), String> {
+        self.host.stop()
+    }
 }
 
 fn run_ibus(args: &[&str]) -> Result<String, String> {
@@ -183,6 +224,10 @@ mod tests {
         switch_fails: bool,
         change_on_failure: bool,
         ignore_switch: bool,
+        managed: bool,
+        stop_fails: bool,
+        engine_after_stop: Option<String>,
+        lifecycle: Vec<String>,
     }
 
     impl Default for FakeBackend {
@@ -195,6 +240,10 @@ mod tests {
                 switch_fails: false,
                 change_on_failure: false,
                 ignore_switch: false,
+                managed: false,
+                stop_fails: false,
+                engine_after_stop: None,
+                lifecycle: Vec::new(),
             }
         }
     }
@@ -209,6 +258,7 @@ mod tests {
         }
 
         fn ensure_suzaku_available(&mut self) -> Result<(), String> {
+            self.lifecycle.push("ready".into());
             if self.available {
                 Ok(())
             } else {
@@ -217,6 +267,7 @@ mod tests {
         }
 
         fn switch_engine(&mut self, engine: &str) -> Result<(), String> {
+            self.lifecycle.push(format!("switch:{engine}"));
             self.switches.push(engine.into());
             if !self.ignore_switch && (!self.switch_fails || self.change_on_failure) {
                 self.current = engine.into();
@@ -226,6 +277,111 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+
+        fn host_needs_stop(&mut self) -> Result<bool, String> {
+            Ok(self.managed)
+        }
+
+        fn stop_host(&mut self) -> Result<(), String> {
+            self.lifecycle.push("stop".into());
+            if self.stop_fails {
+                return Err("stop failed".into());
+            }
+            self.managed = false;
+            if let Some(current) = self.engine_after_stop.take() {
+                self.current = current;
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn startup_keeps_current_engine_and_quit_restores_before_stopping() {
+        let mut control = InputMethodController::new(FakeBackend {
+            managed: true,
+            ..Default::default()
+        });
+        control.start().unwrap();
+        assert_eq!(control.backend.current, "rime");
+        assert_eq!(control.state.restore_engine, None);
+        control.activate().unwrap();
+        control.shutdown().unwrap();
+        control.shutdown().unwrap();
+        assert_eq!(
+            control.backend.lifecycle,
+            [
+                "ready",
+                "ready",
+                "switch:dev.suzaku.linux.ime",
+                "switch:rime",
+                "stop"
+            ]
+        );
+    }
+
+    #[test]
+    fn failed_restore_keeps_service_and_failed_stop_is_retryable() {
+        let mut control = InputMethodController::new(FakeBackend {
+            managed: true,
+            ..Default::default()
+        });
+        control.activate().unwrap();
+        control.backend.switch_fails = true;
+        assert!(control.shutdown().is_err());
+        assert!(control.backend.managed);
+        assert!(!control.backend.lifecycle.contains(&"stop".into()));
+        control.backend.switch_fails = false;
+        control.backend.stop_fails = true;
+        assert!(control.shutdown().is_err());
+        assert_eq!(control.backend.current, "rime");
+        assert!(control.backend.managed);
+        control.backend.stop_fails = false;
+        control.shutdown().unwrap();
+        assert!(!control.backend.managed);
+    }
+
+    #[test]
+    fn system_activated_session_uses_observed_fallback_or_refuses_unsafe_stop() {
+        let mut control = InputMethodController::new(FakeBackend {
+            managed: true,
+            ..Default::default()
+        });
+        control.start().unwrap();
+        control.backend.current = SUZAKU_ENGINE.into();
+        control.shutdown().unwrap();
+        assert_eq!(control.backend.current, "rime");
+        let mut unknown = InputMethodController::new(FakeBackend {
+            current: SUZAKU_ENGINE.into(),
+            managed: true,
+            ..Default::default()
+        });
+        unknown.start().unwrap();
+        assert!(unknown.shutdown().unwrap_err().contains("系统菜单"));
+        assert!(unknown.backend.managed);
+        assert!(unknown.backend.switches.is_empty());
+    }
+
+    #[test]
+    fn shutdown_preserves_manual_switches_and_repairs_missing_global_engine() {
+        for after in [None, Some(""), Some("mozc-jp")] {
+            let mut control = InputMethodController::new(FakeBackend {
+                managed: true,
+                engine_after_stop: after.map(str::to_string),
+                ..Default::default()
+            });
+            control.activate().unwrap();
+            control.backend.current = "xkb:us::eng".into();
+            control.shutdown().unwrap();
+            assert_eq!(
+                control.backend.current,
+                if after == Some("mozc-jp") {
+                    "mozc-jp"
+                } else {
+                    "xkb:us::eng"
+                }
+            );
+            assert!(!control.backend.switches.contains(&"rime".into()));
         }
     }
 
@@ -408,8 +564,50 @@ mod tests {
 
     #[cfg(feature = "linux-ibus")]
     #[test]
-    #[ignore = "temporarily switches the live desktop input method; requires the native Suzaku host"]
+    #[ignore = "requires the private D-Bus/IBus fixture in scripts/test-linux-ci.sh ibus"]
     fn native_activation_input_and_release_roundtrip() {
+        // Check all isolation markers before invoking any backend operation.
+        assert_eq!(
+            std::env::var("SUZAKU_NATIVE_SYNC_QA").as_deref(),
+            Ok("1"),
+            "private IBus fixture required"
+        );
+        let runtime = std::path::PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").unwrap());
+        assert_eq!(runtime.parent(), Some(std::path::Path::new("/tmp")));
+        assert!(
+            runtime
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("suzaku-sync-qa.")
+        );
+        assert!(!runtime.is_symlink());
+        assert!(std::env::var_os("DISPLAY").is_none());
+        assert!(std::env::var_os("WAYLAND_DISPLAY").is_none());
+        assert_eq!(
+            std::env::var("IBUS_ADDRESS").unwrap(),
+            format!("unix:path={}/ibus.sock", runtime.display())
+        );
+        for (name, path) in [
+            ("SUZAKU_IME_CONFIG", runtime.join("ime.json")),
+            (
+                "SUZAKU_LINUX_IME_SOCKET",
+                runtime.join("suzaku-ime/host.sock"),
+            ),
+            ("XDG_CONFIG_HOME", runtime.join("config")),
+            ("XDG_DATA_HOME", runtime.join("data")),
+        ] {
+            assert_eq!(
+                std::env::var_os(name).map(std::path::PathBuf::from),
+                Some(path)
+            );
+        }
+        use suzaku_map::{languages::BuiltinLanguage, platform::linux_ime_control};
+        let original = linux_ime_control::status().unwrap().settings;
+        assert!(
+            !original.llm_enabled,
+            "activation QA must not request a model"
+        );
         struct RestoreOnDrop(InputMethodController<IBusBackend>);
         impl Drop for RestoreOnDrop {
             fn drop(&mut self) {
@@ -418,28 +616,55 @@ mod tests {
                 }
             }
         }
-        let previous = IBusBackend
+        let previous = IBusBackend::default()
             .current_engine()
-            .expect("a live, restorable IBus engine");
+            .expect("the fixture's restorable IBus engine");
         assert_ne!(
             previous, SUZAKU_ENGINE,
-            "select another input method before running this probe"
+            "the fixture must select its initial engine before running this probe"
         );
-        let mut guard = RestoreOnDrop(InputMethodController::new(IBusBackend));
-        let control = &mut guard.0;
-        control.activate().unwrap();
-        control.activate().unwrap();
-        assert_eq!(
-            control.state.restore_engine.as_deref(),
-            Some(previous.as_str())
+        {
+            let mut guard = RestoreOnDrop(InputMethodController::new(IBusBackend::default()));
+            let control = &mut guard.0;
+            control.start().unwrap();
+            assert_eq!(
+                control.state.current_engine.as_deref(),
+                Some(previous.as_str())
+            );
+            for (language, seed, expected) in [
+                (BuiltinLanguage::English, "hel", "hel"),
+                (BuiltinLanguage::ChineseSimplified, "nihao", "你好"),
+                (BuiltinLanguage::Japanese, "nihongo", "日本語"),
+            ] {
+                linux_ime_control::set_language(language).unwrap();
+                control.activate().unwrap();
+                control.activate().unwrap();
+                assert_eq!(
+                    control.state.restore_engine.as_deref(),
+                    Some(previous.as_str())
+                );
+                let report =
+                    suzaku_map::platform::linux_ibus_host::probe_roundtrip_report(seed).unwrap();
+                assert_eq!(report.preedit, seed);
+                assert_eq!(report.page_size, 6);
+                assert!(report.candidate_count > 0);
+                assert_eq!(report.committed, expected);
+                control.release().unwrap();
+                control.release().unwrap();
+                assert_eq!(IBusBackend::default().current_engine().unwrap(), previous);
+                assert!(control.state.restore_engine.is_none());
+            }
+            // This fixture's custom/private endpoint must not be stopped through
+            // the real desktop's service manager during full panel shutdown.
+            control.shutdown().unwrap();
+            IBusBackend::default().ensure_suzaku_available().unwrap();
+            // Exercise the same release-on-cleanup path used after a failed assertion.
+            control.activate().unwrap();
+        }
+        assert_eq!(IBusBackend::default().current_engine().unwrap(), previous);
+        linux_ime_control::set_language(original.language).unwrap();
+        println!(
+            "PASS: private IBus activation, six-row English/Chinese/Japanese input, repeated release and cleanup restore"
         );
-        let report = suzaku_map::platform::linux_ibus_host::probe_roundtrip_report("ni").unwrap();
-        assert_eq!(report.preedit, "ni");
-        assert_eq!(report.page_size, 3);
-        assert!(report.candidate_count > 0);
-        assert!(!report.committed.is_empty());
-        control.release().unwrap();
-        assert_eq!(IBusBackend.current_engine().unwrap(), previous);
-        assert!(control.state.restore_engine.is_none());
     }
 }

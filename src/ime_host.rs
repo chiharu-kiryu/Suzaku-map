@@ -107,15 +107,18 @@ impl HostImeSession {
     }
 
     pub fn apply_settings(&mut self, settings: ImeSettings) {
-        if self.settings.language != settings.language
-            || self.settings.provider.scope != settings.provider.scope
+        let language_changed = self.settings.language != settings.language;
+        if language_changed {
+            self.engine.clear_session_context();
+            self.engine.set_language(settings.language.id());
+        } else if self.settings.provider.scope != settings.provider.scope
             || self.settings.provider.endpoint != settings.provider.endpoint
             || self.settings.provider.model != settings.provider.model
             || self.settings.provider.protocol != settings.provider.protocol
+            || self.settings.provider.api_key_env != settings.provider.api_key_env
         {
-            self.engine.clear_session_context();
+            self.engine.clear_prediction_context();
         }
-        self.engine.set_language(settings.language.id());
         let provider = (settings.llm_enabled && !self.private).then(|| {
             Arc::new(HttpModelProvider::new(settings.provider.clone()))
                 as Arc<dyn crate::languages::llm::LlmCompletionProvider>
@@ -243,18 +246,17 @@ pub fn host_bridge_select_candidate(index: usize) {
 
 pub fn host_bridge_commit_selected(force: bool) -> bool {
     with_shared_host_ime_session(|session| {
-        let previous = session.snapshot().committed_text;
+        // The engine's commit result is cumulative session context, not an output
+        // payload. Preserve this candidate verbatim instead of trimming a delta.
+        let committed_chunk = session
+            .engine
+            .selected_completion_text(false)
+            .map(str::to_owned);
         let (result, _update) = session.commit_selected(CommitOptions { force });
-        if result.ok {
-            let committed_chunk = result
-                .text
-                .as_deref()
-                .map(|text| extract_new_commit_chunk(&previous, text))
-                .unwrap_or_default();
-            *shared_last_commit()
-                .lock()
-                .expect("shared host ime last commit lock poisoned") = Some(committed_chunk);
-        }
+        *shared_last_commit()
+            .lock()
+            .expect("shared host ime last commit lock poisoned") =
+            if result.ok { committed_chunk } else { None };
         result.ok
     })
 }
@@ -282,18 +284,6 @@ fn bridge_display_text(session: &HostImeSession) -> String {
     } else {
         update.marked_text
     }
-}
-
-fn extract_new_commit_chunk(previous: &str, committed: &str) -> String {
-    if previous.is_empty() {
-        return committed.to_string();
-    }
-
-    if let Some(rest) = committed.strip_prefix(previous) {
-        return rest.trim_start().to_string();
-    }
-
-    committed.to_string()
 }
 
 fn into_raw_c_string(value: String) -> *mut std::os::raw::c_char {
@@ -681,6 +671,38 @@ mod tests {
     }
 
     #[test]
+    fn model_reload_preserves_the_current_draft_but_discards_previous_provider_context() {
+        let mut session = HostImeSession::new(EngineConfig::default());
+        session.activate();
+        session.replace_marked_text("previous context", InputSource::HardwareKeyboard);
+        session.commit_selected(CommitOptions { force: true });
+        session.replace_marked_text("  current draft", InputSource::HardwareKeyboard);
+        let mut settings = session.settings.clone();
+        settings.provider.model = "new-model".into();
+        // Prediction stays disabled: a settings reload must not perform network work here.
+        session.apply_settings(settings.clone());
+        let update = session.current_update();
+        assert_eq!(
+            update.marked_text, "  current draft",
+            "reloading a model lost the active draft"
+        );
+        assert_eq!(update.draft_text, "  current draft");
+        assert!(update.committed_text.is_empty());
+        assert!(
+            session.engine.undo().is_none(),
+            "old-provider context must not survive in undo history"
+        );
+        session.apply_settings(settings.clone());
+        assert_eq!(session.current_update().marked_text, "  current draft");
+        settings.language = crate::languages::BuiltinLanguage::Japanese;
+        session.apply_settings(settings);
+        assert!(
+            session.current_update().marked_text.is_empty(),
+            "language boundaries still reset composition"
+        );
+    }
+
+    #[test]
     fn deactivation_clears_context_and_pending_composition() {
         let mut session = HostImeSession::new(EngineConfig::default());
         session.activate();
@@ -724,20 +746,17 @@ mod tests {
     }
 
     #[test]
-    fn extract_new_commit_chunk_prefers_incremental_delta() {
+    fn failed_commit_does_not_return_a_previous_output_chunk() {
         let _guard = host_bridge_test_lock();
-        assert_eq!(
-            super::extract_new_commit_chunk("hello", "hello world"),
-            "world"
-        );
-        assert_eq!(
-            super::extract_new_commit_chunk("", "hello world"),
-            "hello world"
-        );
-        assert_eq!(
-            super::extract_new_commit_chunk("previous", "unrelated text"),
-            "unrelated text"
-        );
+        reset_host_bridge_session();
+        assert!(suzaku_host_ime_activate());
+        assert!(host_bridge_replace_marked_text(
+            "previous",
+            InputSource::OnScreenPanel
+        ));
+        assert!(host_bridge_commit_selected(true));
+        assert!(!host_bridge_commit_selected(true));
+        assert!(host_bridge_take_last_committed_text().is_none());
     }
 
     #[test]
@@ -898,6 +917,25 @@ mod tests {
 
         let second = suzaku_host_ime_take_last_committed_text_utf8();
         assert!(second.is_null());
+    }
+
+    #[test]
+    fn host_bridge_incremental_commits_preserve_the_exact_candidate() {
+        let _guard = host_bridge_test_lock();
+        reset_host_bridge_session();
+        assert!(suzaku_host_ime_activate());
+        for text in ["first", "  second  ", "\u{3000}third", "first repeated"] {
+            assert!(host_bridge_replace_marked_text(
+                text,
+                InputSource::OnScreenPanel
+            ));
+            assert!(host_bridge_commit_selected(true));
+            assert_eq!(
+                host_bridge_take_last_committed_text().as_deref(),
+                Some(text)
+            );
+            assert!(host_bridge_take_last_committed_text().is_none());
+        }
     }
 
     #[test]

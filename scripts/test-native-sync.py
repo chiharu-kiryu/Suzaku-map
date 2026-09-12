@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Real IBus + companion protocol QA, only on a fresh private D-Bus/IBus session.
 
-Run with SUZAKU_NATIVE_SYNC_QA=1 and XDG_RUNTIME_DIR=/tmp/suzaku-sync-qa.*.
+Use scripts/test-linux-ci.sh ibus to build and supply the native test executable.
+The fixture requires SUZAKU_NATIVE_SYNC_QA=1 and XDG_RUNTIME_DIR=/tmp/suzaku-sync-qa.*.
 No desktop capture, global input events or desktop engine changes.
 """
 import json
@@ -17,7 +18,7 @@ import gi
 gi.require_version("IBus", "1.0")
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
-from gi.repository import IBus, GLib, Pango, PangoCairo
+from gi.repository import IBus, GLib, Gio, Pango, PangoCairo
 
 runtime = Path(os.environ["XDG_RUNTIME_DIR"])
 assert os.environ.get("SUZAKU_NATIVE_SYNC_QA") == "1"
@@ -128,8 +129,10 @@ def action(frame, op):
 
 
 def type_seed(context, seed):
+    # Type literal fixture text; unmodified candidate-number keys are tested separately.
     for char in seed:
-        assert context.process_key_event(ord(char), 0, 0)
+        mask = IBus.ModifierType.MOD1_MASK if char in "0123456789" else 0
+        assert context.process_key_event(IBus.unicode_to_keyval(char), 0, mask)
     pump()
 
 
@@ -137,6 +140,262 @@ def create_context(bus, name):
     context = bus.create_input_context(name)
     context.set_capabilities(IBus.Capabilite.FOCUS | IBus.Capabilite.PREEDIT_TEXT | IBus.Capabilite.LOOKUP_TABLE | IBus.Capabilite.AUXILIARY_TEXT)
     return context
+
+
+def check_tray_activation(bus):
+    executable = os.environ["SUZAKU_NATIVE_ACTIVATION_TEST"]
+    test = "input_method::tests::native_activation_input_and_release_roundtrip"
+    listing = subprocess.run([executable, "--list"], capture_output=True, text=True, timeout=5)
+    assert listing.returncode == 0 and f"{test}: test" in listing.stdout.splitlines(), \
+        "the native activation test must not silently become a zero-test run"
+    arguments = [executable, test, "--exact", "--ignored", "--nocapture", "--test-threads=1"]
+    unmarked = dict(os.environ)
+    unmarked.pop("SUZAKU_NATIVE_SYNC_QA")
+    guarded = subprocess.run(arguments, env=unmarked, capture_output=True, text=True, timeout=5)
+    assert guarded.returncode != 0 and "private IBus fixture required" in guarded.stderr, \
+        "activation QA must refuse to operate without the private-fixture marker"
+    previous = "xkb:us::eng"
+    assert previous in [engine.get_name() for engine in bus.list_engines()]
+    assert bus.set_global_engine(previous)
+    wait(lambda: bus.get_global_engine() is not None and bus.get_global_engine().get_name() == previous,
+         "prepare the private activation restore target")
+    result = subprocess.run(arguments, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert bus.get_global_engine().get_name() == previous, "activation test did not restore its private engine"
+    print(result.stdout.strip())
+
+
+def check_settings_file_boundaries(context, watch, commits):
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    assert config == runtime / "ime.json" and config.is_file() and not config.is_symlink()
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"]
+    type_seed(context, "hel")
+    wait(lambda: watch.latest["seed"] == "hel", "prepare failed-reload preedit")
+    original = runtime / "qa-original-settings.json"
+    fifo_target = runtime / "qa-settings.pipe"
+    assert not original.exists() and not fifo_target.exists()
+    config.rename(original)
+    os.mkfifo(fifo_target, mode=0o600)
+    latencies = []
+    try:
+        for kind in ["malformed", "oversized", "invalid-utf8", "directory", "socket", "fifo", "linked-fifo"]:
+            listener = None
+            try:
+                if kind == "malformed":
+                    config.write_text("{")
+                elif kind == "oversized":
+                    config.write_bytes(b" " * 65537)
+                elif kind == "invalid-utf8":
+                    config.write_bytes(b"\xff")
+                elif kind == "directory":
+                    config.mkdir(mode=0o700)
+                elif kind == "socket":
+                    listener = socket.socket(socket.AF_UNIX)
+                    listener.bind(str(config))
+                elif kind == "fifo":
+                    os.mkfifo(config, mode=0o600)
+                else:
+                    config.symlink_to(fifo_target)
+                metadata = config.lstat()
+                baseline, before = watch.latest, len(commits)
+                started = time.monotonic()
+                result = json.loads(command("R"))
+                latencies.append((kind, round((time.monotonic() - started) * 1000, 2)))
+                assert not result["ok"] and result["settings"] == saved, kind
+                assert command("Q") == b"1", f"{kind} blocked the native host"
+                pump()
+                assert watch.latest == baseline and len(commits) == before, f"{kind} changed the draft"
+                assert config.lstat().st_ino == metadata.st_ino, f"{kind} was overwritten"
+                assert context.process_key_event(IBus.KEY_x, 0, 0)
+                wait(lambda: watch.latest["seed"] == "helx", f"{kind} blocked native keyboard input")
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == "hel", "restore failed-reload seed")
+            finally:
+                if listener is not None:
+                    listener.close()
+                if config.is_dir():
+                    config.rmdir()
+                else:
+                    config.unlink(missing_ok=True)
+    finally:
+        original.rename(config)
+        fifo_target.unlink()
+    assert json.loads(command("R"))["ok"]
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == ["hel"] and not watch.latest["seed"], "commit after settings recovery")
+    # Keep the surrounding protocol tests' initial commit list empty.
+    commits.clear()
+    print(f"PASS: bad configuration reloads preserve settings/preedit and native keys; recoverable reads in ms: {latencies}")
+
+
+class EnginePeer:
+    """Own two real engine objects so late events can be ordered deterministically.
+
+    These use only the fresh private IBus bus, never an engine on the desktop bus.
+    """
+    destination = "org.freedesktop.IBus.Suzaku"
+    interface = "org.freedesktop.IBus.Engine"
+
+    def __init__(self, bus):
+        self.connection = bus.get_connection()
+        self.path = self.connection.call_sync(
+            self.destination, "/org/freedesktop/IBus/Factory", "org.freedesktop.IBus.Factory",
+            "CreateEngine", GLib.Variant("(s)", ("dev.suzaku.linux.ime",)),
+            None, Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+        self.commits = []
+        def committed(_connection, _sender, _path, _interface, _signal, params, *_data):
+            text = IBus.Serializable.deserialize_object(params.get_child_value(0).get_variant())
+            self.commits.append(text.get_text())
+        self.subscription = self.connection.signal_subscribe(
+            self.destination, self.interface, "CommitText", self.path, None,
+            Gio.DBusSignalFlags.NONE, committed)
+        self.event("SetCapabilities", GLib.Variant("(u)", (int(
+            IBus.Capabilite.FOCUS | IBus.Capabilite.PREEDIT_TEXT | IBus.Capabilite.LOOKUP_TABLE),)))
+
+    def event(self, method, params=None):
+        return self.connection.call_sync(self.destination, self.path, self.interface, method,
+                                         params, None, Gio.DBusCallFlags.NONE, 2000, None).unpack()
+
+    def process_key_event(self, keyval, keycode=0, state=0):
+        return self.event("ProcessKeyEvent", GLib.Variant("(uuu)", (keyval, keycode, int(state))))[0]
+
+    def click(self, index, button=1, state=0):
+        self.event("CandidateClicked", GLib.Variant("(uuu)", (index, button, int(state))))
+
+    def close(self):
+        self.event("FocusOut")
+        self.connection.signal_unsubscribe(self.subscription)
+        self.connection.call_sync(self.destination, self.path, "org.freedesktop.IBus.Service",
+                                  "Destroy", None, None, Gio.DBusCallFlags.NONE, 2000, None)
+
+
+def check_engine_event_boundaries(bus):
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"], "lifecycle QA starts with prediction disabled"
+    a, b = EnginePeer(bus), EnginePeer(bus)
+    watch = Watch()
+    failures = []
+    try:
+        def start(peer, seed):
+            peer.event("FocusOut")
+            peer.event("FocusIn")
+            type_seed(peer, seed)
+            wait(lambda: watch.latest is not None and watch.latest["seed"] == seed, "prepare engine peer")
+
+        # New focus can arrive before the old peer's final queued events.
+        for label, operation in [
+            ("letter", lambda: a.process_key_event(IBus.KEY_x)),
+            ("commit", lambda: a.process_key_event(IBus.KEY_Return)),
+            ("completion", lambda: a.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)),
+            ("number choice", lambda: a.process_key_event(IBus.KEY_2)),
+            ("separator", lambda: a.process_key_event(IBus.KEY_space)),
+            ("literal number", lambda: a.process_key_event(IBus.KEY_2, 0, IBus.ModifierType.MOD1_MASK)),
+            ("navigation", lambda: a.event("CursorDown")),
+            ("page navigation", lambda: a.event("PageDown")),
+            ("candidate click", lambda: a.click(0)),
+            ("reset", lambda: a.event("Reset")),
+            ("enable", lambda: a.event("Enable")),
+            ("disable", lambda: a.event("Disable")),
+            ("focus-out", lambda: a.event("FocusOut")),
+        ]:
+            start(a, "old")
+            previous = watch.latest["context"]
+            b.event("FocusIn")
+            type_seed(b, "hel")
+            wait(lambda: watch.latest["context"] != previous and watch.latest["seed"] == "hel",
+                 "focus moved to the second peer")
+            baseline = watch.latest
+            before = (len(a.commits), len(b.commits))
+            result = operation()
+            pump()
+            if result is True or watch.latest != baseline or before != (len(a.commits), len(b.commits)):
+                failures.append(f"late {label} changed the focused peer: result={result}, seed={watch.latest['seed']!r}")
+            b.event("FocusOut")
+            a.event("FocusOut")
+
+        # Even an engine reused without FocusOut starts from an empty field.
+        for target in [a, b]:
+            start(a, "old")
+            previous = watch.latest["context"]
+            target.event("FocusIn")
+            wait(lambda: watch.latest["context"] != previous and watch.latest["focused"],
+                 "fresh focus session")
+            if watch.latest["seed"] or watch.latest["candidates"]:
+                failures.append("focus-in carried an earlier field's preedit/candidates")
+            target.event("FocusOut")
+            wait(lambda: not watch.latest["focused"], "unfocused engine peer")
+            baseline, before = watch.latest, len(target.commits)
+            target.event("Enable")  # Enable alone does not grant input focus.
+            handled = target.process_key_event(IBus.KEY_x)
+            target.click(0)
+            pump()
+            if handled or watch.latest != baseline or len(target.commits) != before:
+                failures.append("an unfocused engine accepted input")
+
+        # Non-primary and application-modified clicks must never select/commit.
+        for page in [0, 1]:
+            for button, mask in [(0, 0), (2, 0), (3, 0), (4, 0), (5, 0),
+                                 (1, IBus.ModifierType.CONTROL_MASK),
+                                 (1, IBus.ModifierType.MOD1_MASK),
+                                 (1, IBus.ModifierType.MOD4_MASK),
+                                 (1, IBus.ModifierType.SUPER_MASK),
+                                 (1, IBus.ModifierType.META_MASK),
+                                 (1, IBus.ModifierType.HYPER_MASK),
+                                 (1, IBus.ModifierType.RELEASE_MASK)]:
+                start(b, "hel")
+                if page:
+                    b.event("PageDown")
+                    pump()
+                    assert watch.latest["selected"] >= 6
+                baseline, before = watch.latest, len(b.commits)
+                b.click(0, button, mask)
+                pump()
+                if watch.latest != baseline or len(b.commits) != before:
+                    failures.append(f"button={button}, mask={int(mask)}, page={page} unexpectedly committed")
+            for mask in [0, IBus.ModifierType.BUTTON1_MASK,
+                         IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.LOCK_MASK | IBus.ModifierType.MOD2_MASK]:
+                start(b, "hel")
+                if page:
+                    b.event("PageDown")
+                    pump()
+                index = (watch.latest["selected"] // 6) * 6
+                expected, before = watch.latest["candidates"][index]["text"], len(b.commits)
+                b.click(0, 1, mask)
+                wait(lambda: len(b.commits) > before and not watch.latest["seed"], "primary candidate click")
+                assert b.commits[before:] == [expected]
+                b.event("FocusOut")
+
+        settings = dict(saved, llm_enabled=True, llm_model="synthetic-focus-model",
+                        llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+        Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(settings))
+        assert json.loads(command("R"))["ok"]
+        start(a, "thank")
+        assert a.process_key_event(IBus.KEY_Return)
+        wait(lambda: not watch.latest["seed"], "commit focused context")
+        before = len(model_requests)
+        type_seed(a, "hel")
+        wait(lambda: len(model_requests) > before, "same-field model request")
+        payload = json.loads(model_requests[before]["messages"][1]["content"])
+        assert payload["committed_context"] == "thank", "same-field context was lost"
+        wait(lambda: any(" · AI" in c["label"] for c in watch.latest["candidates"]), "same-field result")
+        before = len(model_requests)
+        b.event("FocusIn")  # Deliberately no focus-out from a yet.
+        type_seed(b, "hel")
+        wait(lambda: len(model_requests) > before, "new-field model request")
+        payload = json.loads(model_requests[before]["messages"][1]["content"])
+        if payload["committed_context"]:
+            failures.append("a previous field's committed context reached the new field's model request")
+        wait(lambda: any(" · AI" in c["label"] for c in watch.latest["candidates"]), "new-field result")
+        assert not failures, "engine event boundaries:\n" + "\n".join(failures)
+        print("PASS: late key/click/navigation events, reordered focus/context isolation, primary-button-only clicks on both pages")
+    finally:
+        Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(saved))
+        assert json.loads(command("R"))["ok"]
+        b.close()
+        a.close()
+        watchers.remove(watch)
+        watch.sock.close()
 
 
 def observe_lookup(context):
@@ -160,7 +419,9 @@ def check_candidate_presentation(watch, lookup):
          lookup.get("text") == [c["ibus_label"] for c in frame["candidates"]], "IBus candidate metadata/labels")
     assert lookup["page_size"] == 6
     assert lookup["keys"] == ["¹", "²", "³", "⁴", "⁵", "⁶"]
-    assert "Shift+Space" in lookup["aux"]
+    assert "1–6 选词续写" in lookup["aux"]
+    assert "Alt+数字" in lookup["aux"] and "空格连写" in lookup["aux"]
+    assert "Enter/点击提交" in lookup["aux"]
     assert {"word", "sentence"} <= {c["kind"] for c in frame["candidates"][:6]}
     assert any(c["text"] == frame["seed"] for c in frame["candidates"])
     for candidate in frame["candidates"]:
@@ -188,23 +449,50 @@ def check_mixed_keyboard(context, watch, commits, lookup):
         wait(lambda: not watch.latest["seed"], "reset continuous composition")
         before = len(commits)
         type_seed(context, prefix)
-        assert context.process_key_event(IBus.KEY_space, 0, IBus.ModifierType.SHIFT_MASK)
-        wait(lambda: watch.latest["seed"] == prefix + " ", "Shift+Space preserved in preedit")
+        assert context.process_key_event(IBus.KEY_space, 0, 0)
+        wait(lambda: watch.latest["seed"] == prefix + " ", "plain Space preserved in preedit")
         type_seed(context, rest)
         wait(lambda: watch.latest["seed"] == prefix + " " + rest, "continue across spelling separator")
-        assert len(commits) == before, "Shift+Space committed prematurely"
+        assert len(commits) == before, "Space committed prematurely"
         assert any(c["text"] == converted for c in watch.latest["candidates"])
+    for language, seed in [("en", "hel"), ("zh-Hans", "nihao"), ("ja", "nihongo")]:
+        assert json.loads(command("L" + language))["ok"]
+        for slot in range(6):
+            context.reset()
+            wait(lambda: not watch.latest["seed"], "reset number candidate choice")
+            type_seed(context, seed)
+            check_candidate_presentation(watch, lookup)
+            before = len(commits)
+            if slot >= len(watch.latest["candidates"]):
+                expected = seed
+            else:
+                expected = watch.latest["candidates"][slot]["text"]
+            mask = [0, IBus.ModifierType.LOCK_MASK, IBus.ModifierType.MOD2_MASK][slot % 3]
+            assert context.process_key_event(IBus.KEY_1 + slot, 0, mask)
+            assert not context.process_key_event(IBus.KEY_1 + slot, 0, mask | IBus.ModifierType.RELEASE_MASK)
+            wait(lambda: watch.latest["seed"] == expected, "number choice must remain editable")
+            assert len(commits) == before, "number choice committed prematurely"
+            if expected != seed:
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == seed, "number choice must support spelling undo")
+            # All three languages support numbers without committing or replacing a candidate.
+            type_seed(context, "0123456789")
+            wait(lambda: watch.latest["seed"] == seed + "0123456789", "Alt digits are literal in every language")
+            assert len(commits) == before
+            selected = watch.latest["candidates"][watch.latest["selected"]]["text"]
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [selected] and not watch.latest["seed"], "Enter must commit exactly once")
+            wait(lambda: not lookup["visible"] and not lookup["aux_visible"], "candidate and hint dismissal")
     assert json.loads(command("Len"))["ok"]
-    for slot in [0, 1, 5]:
-        context.reset()
-        wait(lambda: not watch.latest["seed"], "reset Alt candidate choice")
-        type_seed(context, "hel")
-        check_candidate_presentation(watch, lookup)
-        before = len(commits)
-        expected = watch.latest["candidates"][slot]["text"]
-        assert context.process_key_event(IBus.KEY_1 + slot, 0, IBus.ModifierType.MOD1_MASK)
-        wait(lambda: commits[before:] == [expected] and not watch.latest["seed"], "Alt digit selected wrong candidate")
-        wait(lambda: not lookup["visible"] and not lookup["aux_visible"], "candidate and hint dismissal")
+    type_seed(context, "zzzxq")
+    baseline, before = watch.latest, len(commits)
+    assert len(baseline["candidates"]) == 1
+    for digit in "023456789":
+        assert context.process_key_event(ord(digit), 0, 0)
+        pump()
+        assert watch.latest == baseline and len(commits) == before, "missing slot inserted a number"
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "reset missing candidate slots")
     # AltGr and application shortcuts must never turn into candidate commits.
     type_seed(context, "hel")
     before = len(commits)
@@ -216,7 +504,7 @@ def check_mixed_keyboard(context, watch, commits, lookup):
     assert len(commits) == before and watch.latest["seed"] == "hel"
     context.reset()
     wait(lambda: not watch.latest["seed"], "clear mixed keyboard test")
-    print("PASS: multilingual word/sentence metadata, six-row superscript labels, Shift+Space continuation, Alt candidate keys and hint dismissal")
+    print("PASS: multilingual Space continuation, six-row number choices with undo, Alt literal digits, empty slots, metadata and Enter-only keyboard commits")
 
 
 def check_editable_completions(context, watch, commits, lookup):
@@ -245,14 +533,17 @@ def check_editable_completions(context, watch, commits, lookup):
         assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
         wait(lambda: watch.latest["seed"] == seed, "CJK completion undo preserved exact spelling")
     assert json.loads(command("Len"))["ok"]
-    for key, expected in [(IBus.KEY_space, "hello "), (IBus.KEY_Return, "hello"), (IBus.KEY_KP_Enter, "hello")]:
+    for key, mask, expected in [(IBus.KEY_space, 0, "hello "),
+                               (IBus.KEY_space, IBus.ModifierType.SHIFT_MASK, "hello "),
+                               (IBus.KEY_Return, IBus.ModifierType.SHIFT_MASK, "hello"),
+                               (IBus.KEY_KP_Enter, IBus.ModifierType.SHIFT_MASK, "hello")]:
         context.reset()
         wait(lambda: not watch.latest["seed"], "reset editable completion")
         type_seed(context, "hel")
         choose("hello")
         before = len(commits)
-        assert context.process_key_event(key, 0, IBus.ModifierType.SHIFT_MASK)
-        assert not context.process_key_event(key, 0, IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.RELEASE_MASK)
+        assert context.process_key_event(key, 0, mask)
+        assert not context.process_key_event(key, 0, mask | IBus.ModifierType.RELEASE_MASK)
         wait(lambda: watch.latest["seed"] == expected, "selected English word was discarded on continuation")
         assert len(commits) == before
         assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
@@ -323,6 +614,69 @@ def check_editable_completions(context, watch, commits, lookup):
         wait(lambda: not watch.latest["seed"], "old completion resurrected after boundary")
         assert len(commits) == before
     print("PASS: CJK unfinished-tail completion, Shift+Enter/Shift+Space editable choices, one-step spelling undo, exact phrase commits and reset/privacy/focus isolation")
+
+
+def check_lossless_commit_chunks(context, watch, commits):
+    assert json.loads(command("Len"))["ok"]
+    pump()
+    for text, key in [("first", None), ("  second  ", None),
+                      ("\u3000third", IBus.KEY_Return), ("  fourth", IBus.KEY_space)]:
+        assert action(watch.latest, "T" + text)
+        wait(lambda: watch.latest["seed"] == text, "prepare exact commit text")
+        before = len(commits)
+        if key is None:
+            assert action(watch.latest, "K0")
+        else:
+            assert context.process_key_event(key, 0, 0)
+        expected = text + (" " if key == IBus.KEY_space else "")
+        if key == IBus.KEY_space:
+            wait(lambda: watch.latest["seed"] == expected, "Space lost exact draft whitespace")
+            assert len(commits) == before, "Space committed a draft"
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: len(commits) > before and not watch.latest["seed"], "exact text was not committed")
+        assert commits[before:] == [expected], f"commit altered text: {commits[before:]!r}, expected {expected!r}"
+    print("PASS: consecutive panel/keyboard commits preserve exact leading, trailing and Unicode spaces")
+
+
+def check_writing_stream_prediction(context, watch, commits):
+    def fresh_field():
+        previous = watch.latest["context"]
+        context.focus_out()
+        # Global-engine IBus can immediately focus its fallback context on FocusOut.
+        wait(lambda: watch.latest["context"] != previous and not watch.latest["seed"],
+             "leave continuous writing field")
+        previous = watch.latest["context"]
+        context.focus_in()
+        wait(lambda: watch.latest["focused"] and watch.latest["context"] != previous and not watch.latest["seed"],
+             "new continuous writing field")
+
+    fresh_field()
+    before, request_start = len(commits), len(model_requests)
+    type_seed(context, "hel")
+    assert context.process_key_event(IBus.KEY_2, 0, 0)
+    wait(lambda: watch.latest["seed"] == "hello", "accept word by number before model continuation")
+    for _ in range(2):
+        assert context.process_key_event(IBus.KEY_space, 0, 0)
+    type_seed(context, "world!")
+    draft = "hello  world!"
+    wait(lambda: watch.latest["seed"] == draft, "preserve repeated spaces and punctuation")
+
+    def requests_for(seed):
+        return [payload for request in model_requests[request_start:]
+                if (payload := json.loads(request["messages"][1]["content"]))["raw_composition"] == seed]
+
+    wait(lambda: requests_for(draft), "LLM did not receive the full ongoing writing stream")
+    assert all(payload["committed_context"] == "" for payload in requests_for(draft))
+    assert len(commits) == before, "continuation created an application commit"
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == [draft] and not watch.latest["seed"], "commit the stream once")
+    type_seed(context, "ne")
+    wait(lambda: requests_for("ne"), "next stream did not request predictions")
+    assert all(payload["committed_context"] == draft for payload in requests_for("ne"))
+    fresh_field()
+    type_seed(context, "hel")
+    wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "restore AI fixture draft")
+    print("PASS: LLM sees the full uncommitted stream; context advances only after explicit Enter")
 
 
 def check_nonblocking_ipc(context, watch):
@@ -473,14 +827,27 @@ def check_ipc_boundaries(bus, context, watch, commits):
 
 def check_english_key_regressions(context, watch, commits):
     cases = [
-        (prefix, [(ord(c), 0, True) for c in suffix], prefix + suffix)
+        (prefix, [(ord(c), IBus.ModifierType.MOD1_MASK, True) for c in suffix], prefix + suffix)
         for prefix, suffix in [("hel", "2"), ("v", "123"), ("", "2026"), ("a", "0456789")]
     ]
     for key in [IBus.KEY_Shift_L, IBus.KEY_Shift_R, IBus.KEY_Caps_Lock,
                 IBus.KEY_Control_L, IBus.KEY_ISO_Level3_Shift, IBus.KEY_F1]:
         cases.append(("hel", [(key, 0, False), (ord("L"), IBus.ModifierType.SHIFT_MASK, True)], "helL"))
     cases.append(("v", [(IBus.KEY_KP_1, 0, True)], "v1"))
+    cases.append(("hel", [(IBus.KEY_2, IBus.ModifierType.MOD2_MASK | IBus.ModifierType.MOD1_MASK, True)], "hel2"))
+    cases.append(("hel", [(IBus.KEY_2, IBus.ModifierType.SHIFT_MASK, True)], "hel2"))
+    cases.append(("hel", [(IBus.KEY_2, IBus.ModifierType.MOD5_MASK, True)], "hel2"))
+    cases.append(("", [(IBus.KEY_2, 0, True)], "2"))
+    cases.append(("hel", [(ord(c), IBus.ModifierType.SHIFT_MASK, True) for c in "!@#$%^&*()"], "hel!@#$%^&*()"))
+    cases.append(("hel", [(IBus.unicode_to_keyval(c), 0, True) for c in ".com/path?x=y, ok;_日本。"], "hel.com/path?x=y, ok;_日本。"))
+    cases.append(("hel", [(IBus.KEY_L, IBus.ModifierType.LOCK_MASK, True)], "helL"))
+    cases.append(("hel", [(IBus.KEY_x, IBus.ModifierType.MOD5_MASK, True)], "helx"))
     cases.append(("hel", [(IBus.KEY_c, IBus.ModifierType.CONTROL_MASK, False)], "hel"))
+    for mask in [IBus.ModifierType.MOD4_MASK, IBus.ModifierType.SUPER_MASK,
+                 IBus.ModifierType.META_MASK, IBus.ModifierType.HYPER_MASK]:
+        for key in [IBus.KEY_x, IBus.KEY_Tab, IBus.KEY_Return, IBus.KEY_space]:
+            cases.append(("hel", [(key, mask, False)], "hel"))
+        cases.append(("hel", [(IBus.KEY_1, mask | IBus.ModifierType.MOD1_MASK, False)], "hel"))
     cases.append(("hel", [(IBus.KEY_x, IBus.ModifierType.RELEASE_MASK, False)], "hel"))
     failures = []
     for prefix, keys, expected in cases:
@@ -495,6 +862,9 @@ def check_english_key_regressions(context, watch, commits):
             assert len(commits) == before, f"unexpected commits: {commits[before:]!r}"
             assert watch.latest["candidates"][0]["text"] == expected
             assert context.process_key_event(IBus.KEY_space, 0, 0)
+            wait(lambda: watch.latest["seed"] == expected + " ", "Space must stay in the same draft")
+            assert len(commits) == before, "Space committed literal input"
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
             wait(lambda: commits[before:] == [expected + " "] and not watch.latest["seed"],
                  f"literal commit changed {expected!r}")
         except AssertionError as error:
@@ -508,9 +878,15 @@ def check_english_key_regressions(context, watch, commits):
     wait(lambda: watch.latest["selected"] == 1, "Tab selects an English completion")
     before = len(commits)
     assert not context.process_key_event(IBus.KEY_Shift_L, 0, 0)
-    assert not context.process_key_event(ord("!"), 0, IBus.ModifierType.SHIFT_MASK)
-    wait(lambda: commits[before:] == ["hello"] and not watch.latest["seed"],
-         "punctuation commits the selected word and is forwarded to the app")
+    assert context.process_key_event(IBus.KEY_space, 0, 0)
+    wait(lambda: watch.latest["seed"] == "hello ", "selected word must remain in the writing stream")
+    type_seed(context, "world")
+    assert context.process_key_event(ord("!"), 0, IBus.ModifierType.SHIFT_MASK)
+    wait(lambda: watch.latest["seed"] == "hello world!", "punctuation must remain in the writing stream")
+    assert len(commits) == before
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == ["hello world!"] and not watch.latest["seed"],
+         "only Enter commits the complete writing stream")
 
 
 try:
@@ -521,6 +897,8 @@ try:
     IBus.init()
     bus = IBus.Bus.new()
     assert bus.is_connected()
+    check_tray_activation(bus)
+    check_engine_event_boundaries(bus)
     context = create_context(bus, "suzaku-sync-qa-a")
     commits = []
     lookup = observe_lookup(context)
@@ -532,6 +910,7 @@ try:
     wait(lambda: watch.latest is not None and watch.latest["focused"], "initial subscription")
     assert not watch.latest["seed"] and not watch.latest["candidates"]
     assert json.loads(command("Len"))["ok"]
+    check_settings_file_boundaries(context, watch, commits)
     check_nonblocking_ipc(context, watch)
     check_ipc_boundaries(bus, context, watch, commits)
     type_seed(context, "hel")
@@ -575,16 +954,51 @@ try:
         wait(lambda: watch.latest["seed"] == seed, "CJK number-key preedit")
         before = len(other_commits)
         assert other.process_key_event(IBus.KEY_1, 0, 0)
+        wait(lambda: watch.latest["seed"] == expected, "CJK number choice must remain editable")
+        assert len(other_commits) == before
+        assert other.process_key_event(IBus.KEY_Return, 0, 0)
         wait(lambda: other_commits[before:] == [expected] and not watch.latest["seed"],
              "CJK numeric candidate selection changed")
     assert json.loads(command("Len"))["ok"]
     check_english_key_regressions(other, watch, other_commits)
+    check_lossless_commit_chunks(other, watch, other_commits)
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
     type_seed(other, "hel")
     # A deterministic local model fixture tests asynchronous publication, not model quality.
     settings = json.loads(command("S"))["settings"]
     settings.update(llm_enabled=True, llm_model="synthetic-model", llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+    Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(settings))
+    assert json.loads(command("R"))["ok"]
+    wait(lambda: watch.latest["seed"] == "hel" and any(" · AI" in c["label"] for c in watch.latest["candidates"]),
+         "enabling a new provider lost the native composition")
+    # Both unchanged and provider-changing reloads preserve Rust and native preedit.
+    for model_name in ["synthetic-model", "synthetic-replacement"]:
+        settings["llm_model"] = model_name
+        Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(settings))
+        requested_before, committed_before = len(model_requests), len(other_commits)
+        assert json.loads(command("R"))["ok"]
+        wait(lambda: any(request["model"] == model_name for request in model_requests[requested_before:]),
+             "reloaded provider did not receive the preserved draft")
+        for request in model_requests[requested_before:]:
+            if request["model"] == model_name:
+                payload = json.loads(request["messages"][1]["content"])
+                assert payload["raw_composition"] == "hel"
+                assert payload["committed_context"] == "", "old provider context leaked on reload"
+        wait(lambda: watch.latest["seed"] == "hel" and any(" · AI" in c["label"] for c in watch.latest["candidates"]),
+             "reload lost the draft or failed to publish new candidates")
+        assert len(other_commits) == committed_before, "reload committed text unexpectedly"
+        type_seed(other, "p")
+        wait(lambda: watch.latest["seed"] == "help", "native input buffer diverged after reload")
+        assert other.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == "hel", "native editing broke after reload")
+    check_writing_stream_prediction(other, watch, other_commits)
+    # Loading a different language still clears the incompatible composition.
+    settings["language"] = "ja"
+    Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(settings))
+    assert json.loads(command("R"))["ok"]
+    wait(lambda: not watch.latest["seed"], "language reload retained an incompatible draft")
+    settings["language"] = "en"
     Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(settings))
     assert json.loads(command("R"))["ok"]
     # Tone must reach the actual native provider without clearing the composition.
@@ -650,8 +1064,11 @@ try:
     wait(lambda: watch.latest["selected"] == 6, "restore second lookup page")
     expected = watch.latest["candidates"][6]["text"]
     before = len(other_commits)
-    assert other.process_key_event(IBus.KEY_1, 0, IBus.ModifierType.MOD1_MASK)
-    wait(lambda: other_commits[before:] == [expected] and not watch.latest["seed"], "page-local Alt+1 commit")
+    assert other.process_key_event(IBus.KEY_1, 0, 0)
+    wait(lambda: watch.latest["seed"] == expected, "second-page number choice must use full text")
+    assert len(other_commits) == before
+    assert other.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: other_commits[before:] == [expected] and not watch.latest["seed"], "commit page-local choice with Enter")
     type_seed(other, "hel")
     wait(lambda: any(" · AI" in c["label"] for c in watch.latest["candidates"]), "AI candidates after commit")
     model_count = len(model_requests)
@@ -702,7 +1119,7 @@ try:
     assert not action(forged, "K0"), "an earlier host's token was accepted"
     assert action(fresh.latest, "K0")
     wait(lambda: not fresh.latest["seed"], "reconnected commit")
-    # Exercise the shipped probe too; its English AI path must not use digit shortcuts.
+    # Exercise the shipped probe too, including Space-without-commit and later-page navigation.
     for mode, enabled, expected in [("--complete", "P0", "hello "), ("--llm", "P1", "helium")]:
         assert json.loads(command(enabled))["ok"]
         probe = subprocess.run([str(host_path.with_name("linux_ime_probe")), mode, "hel"],
@@ -710,7 +1127,7 @@ try:
         assert probe.returncode == 0, probe.stderr
         assert f"committed={json.dumps(expected)}" in probe.stdout, probe.stdout
         print(probe.stdout.strip())
-    print("PASS: push, late subscriber, exact candidates, selection, replacement, commit, stale revisions, context switches, English digits/modifiers/punctuation, CJK number keys, later-page AI selection, Tone requests/persistence/write failure, private/password, Escape/focus-out and host restart")
+    print("PASS: push, late subscriber, exact candidates, selection, replacement, commit, stale revisions, context switches, English digits/modifiers/punctuation, CJK number keys, later-page AI selection, model reload draft/context boundaries, Tone requests/persistence/write failure, private/password, Escape/focus-out and host restart")
 finally:
     model.shutdown()
     model.server_close()

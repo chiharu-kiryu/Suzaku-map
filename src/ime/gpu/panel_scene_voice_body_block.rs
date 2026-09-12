@@ -27,7 +27,7 @@
                     append_soft_card_quads(
                         &mut quads,
                         voice_rect,
-                        [0.97, 0.98, 1.0, 1.0],
+                        surface,
                         border_dark,
                         soft_shadow,
                         surface,
@@ -85,8 +85,8 @@
                             } else {
                                 voice_hint_border
                             },
-                            [0.30, 0.40, 0.55, 0.10],
-                            [0.97, 0.98, 1.0, 1.0],
+                            soft_shadow,
+                            surface,
                             7.0 * responsive_scale * voice_scale,
                         );
                     }
@@ -99,7 +99,7 @@
                             let pulse = ((phase + index as f32 * 3.0) % 12.0) / 12.0;
                             let mirrored = if pulse > 0.5 { 1.0 - pulse } else { pulse };
                             let bar_h = (8.0 + mirrored * 18.0) * voice_scale;
-                            quads.push(CandidateQuad {
+                            quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
                                 rect: [
                                     base_x + index as f32 * 12.0 * responsive_scale * voice_scale,
                                     base_y + (22.0 * responsive_scale * voice_scale - bar_h),
@@ -305,7 +305,7 @@
                         voice_footer_rect,
                         surface,
                         border_dark,
-                        [0.25, 0.34, 0.48, 0.06],
+                        soft_shadow,
                         shell,
                         8.0 * responsive_scale * voice_scale,
                     );
@@ -342,22 +342,22 @@
                             &mut quads,
                             visual_rect,
                             if pressed {
-                                [0.67, 0.82, 0.97, 1.0]
+                                press_surface
                             } else if emphasized {
                                 accent_soft
                             } else if hovered {
-                                [0.93, 0.96, 1.0, 1.0]
+                                hover_surface
                             } else if !enabled {
-                                [0.97, 0.98, 1.0, 1.0]
+                                surface
                             } else {
-                                [0.92, 0.95, 0.99, 1.0]
+                                surface_alt
                             },
                             if pressed {
-                                [0.08, 0.35, 0.68, 1.0]
+                                accent
                             } else if emphasized {
                                 accent
                             } else if hovered {
-                                [0.46, 0.62, 0.82, 1.0]
+                                hover_border
                             } else {
                                 border_dark
                             },

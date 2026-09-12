@@ -9,7 +9,8 @@ use crate::languages::english::{
     english_sentence_variants, english_word_prefix, is_known_english_word,
 };
 use crate::languages::llm::{
-    LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmLanguagePlugin, LlmProviderError,
+    LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmLanguagePlugin,
+    LlmProviderError, normalize_completion_text,
 };
 
 pub mod runtime;
@@ -250,12 +251,17 @@ impl LlmCompletionProvider for HttpModelProvider {
             "POST",
             Some(&resolved.request_body(request)),
             timeout,
-        )?;
+        );
+        if let Err(error) = &body {
+            runtime::invalidate_failed_resolution(&self.resolved, &resolved.config, error);
+        }
+        let body = body?;
+        let prefix = completion_prefix(request);
         let mut candidates = if resolved.uses_ollama_api() {
-            parse_ollama_candidates(&body)?
+            parse_ollama_candidates(&body, prefix)?
         } else {
             serde_json::from_str::<Value>(&body).map_err(|_| LlmProviderError::InvalidResponse)?;
-            parse_chat_completion_candidates(&body)
+            parse_chat_completion_candidates(&body, prefix)
         };
         candidates.retain(|text| useful_candidate(text, request));
         if candidates.is_empty() {
@@ -265,7 +271,7 @@ impl LlmCompletionProvider for HttpModelProvider {
             .into_iter()
             .enumerate()
             .map(|(index, text)| LlmCompletion {
-                kind: response_candidate_kind(&body, resolved.uses_ollama_api(), &text),
+                kind: response_candidate_kind(&body, resolved.uses_ollama_api(), &text, prefix),
                 text,
                 score_bias: 0.55 - index as f32 * 0.05,
             })
@@ -311,7 +317,7 @@ fn completion_prefix(request: &LlmCompletionRequest) -> Option<&str> {
 }
 
 fn useful_candidate(text: &str, request: &LlmCompletionRequest) -> bool {
-    if text == request.seed_text.trim() || text == request.normalized_phrase.trim() {
+    if text.trim() == request.seed_text.trim() || text.trim() == request.normalized_phrase.trim() {
         return false;
     }
     if completion_prefix(request).is_some_and(|prefix| !text.starts_with(prefix)) {
@@ -417,7 +423,10 @@ fn http_request(
     }
 }
 
-fn parse_ollama_candidates(body: &str) -> Result<Vec<String>, LlmProviderError> {
+fn parse_ollama_candidates(
+    body: &str,
+    prefix: Option<&str>,
+) -> Result<Vec<String>, LlmProviderError> {
     let response: Value =
         serde_json::from_str(body).map_err(|_| LlmProviderError::InvalidResponse)?;
     // Truncated generations and partial streaming frames are not safe replacements.
@@ -433,10 +442,10 @@ fn parse_ollama_candidates(body: &str) -> Result<Vec<String>, LlmProviderError> 
     let values = structured["candidates"]
         .as_array()
         .ok_or(LlmProviderError::InvalidResponse)?;
-    Ok(structured_candidate_texts(values))
+    Ok(structured_candidate_texts(values, prefix))
 }
 
-fn structured_candidate_texts(values: &[Value]) -> Vec<String> {
+fn structured_candidate_texts(values: &[Value], prefix: Option<&str>) -> Vec<String> {
     let mut candidates = Vec::new();
     let limit = if values.iter().any(Value::is_object) {
         6
@@ -450,7 +459,7 @@ fn structured_candidate_texts(values: &[Value]) -> Vec<String> {
         let Some(text) = value.as_str().or_else(|| value["text"].as_str()) else {
             continue;
         };
-        let text = text.trim();
+        let text = normalize_completion_text(text, prefix);
         if !text.is_empty()
             && text.chars().count() <= 160
             && !text.chars().any(char::is_control)
@@ -479,6 +488,7 @@ fn response_candidate_kind(
     body: &str,
     ollama: bool,
     text: &str,
+    prefix: Option<&str>,
 ) -> Option<crate::ime::candidate_mix::CandidateKind> {
     let document: Value = serde_json::from_str(body).ok()?;
     let containers: Vec<_> = if ollama {
@@ -505,7 +515,7 @@ fn response_candidate_kind(
                 matches!(row["kind"].as_str(), Some("word" | "sentence"))
                     && row["text"]
                         .as_str()
-                        .is_some_and(|value| value.trim() == text)
+                        .is_some_and(|value| normalize_completion_text(value, prefix) == text)
             })
             .and_then(|row| row["kind"].as_str())
             .and_then(crate::ime::candidate_mix::CandidateKind::parse)
@@ -633,7 +643,7 @@ fn decode_http_response(response: &[u8], eof: bool) -> Option<Vec<u8>> {
     }
     eof.then(|| body.to_vec())
 }
-fn parse_chat_completion_candidates(body: &str) -> Vec<String> {
+fn parse_chat_completion_candidates(body: &str, prefix: Option<&str>) -> Vec<String> {
     let Ok(document) = serde_json::from_str::<Value>(body) else {
         return Vec::new();
     };
@@ -652,11 +662,11 @@ fn parse_chat_completion_candidates(body: &str) -> Vec<String> {
                     if let Ok(structured) = serde_json::from_str::<Value>(raw)
                         && let Some(values) = structured["candidates"].as_array()
                     {
-                        return structured_candidate_texts(values);
+                        return structured_candidate_texts(values, prefix);
                     }
                     continue;
                 }
-                for line in normalize_model_lines(content) {
+                for line in normalize_model_lines(content, prefix) {
                     if !candidates.contains(&line) {
                         candidates.push(line);
                     }
@@ -669,11 +679,19 @@ fn parse_chat_completion_candidates(body: &str) -> Vec<String> {
     }
     candidates
 }
-fn normalize_model_lines(content: &str) -> Vec<String> {
+fn normalize_model_lines(content: &str, prefix: Option<&str>) -> Vec<String> {
     content
         .lines()
         .filter_map(|line| {
-            let mut line = line.trim();
+            let mut line = normalize_completion_text(line, prefix);
+            // A typed bullet, list number or indentation is composition data, not
+            // response formatting. Only strip markers outside a matching prefix.
+            if prefix.is_some_and(|prefix| !prefix.is_empty() && line.starts_with(prefix)) {
+                return (!line.is_empty()
+                    && line.chars().count() <= 160
+                    && !line.chars().any(char::is_control))
+                .then(|| line.to_string());
+            }
             if line.starts_with("```") {
                 return None;
             }
@@ -722,7 +740,7 @@ mod tests {
     fn parses_multilingual_json_whitespace_and_unicode_escapes() {
         let body = r#"{ "choices": [{ "message": { "content": "1. \u4f60\u597d\n2) こんにちは\n3、 hello 👋" } }] }"#;
         assert_eq!(
-            parse_chat_completion_candidates(body),
+            parse_chat_completion_candidates(body, None),
             ["你好", "こんにちは", "hello 👋"]
         );
     }
@@ -734,7 +752,7 @@ mod tests {
         );
         let body = json!({"choices":[{"message":{"content":content}}]}).to_string();
         assert_eq!(
-            parse_chat_completion_candidates(&body),
+            parse_chat_completion_candidates(&body, None),
             ["2026年你好", "你好", "こんにちは"]
         );
     }
@@ -743,25 +761,156 @@ mod tests {
     fn compatible_candidates_preserve_decimal_and_version_prefixes() {
         for text in ["3.14 is pi", "10.5 kilograms", "1.2.3 release", "3、4、5"] {
             let body = json!({"choices":[{"message":{"content":text}}]}).to_string();
-            assert_eq!(parse_chat_completion_candidates(&body), [text], "{text}");
+            assert_eq!(
+                parse_chat_completion_candidates(&body, None),
+                [text],
+                "{text}"
+            );
         }
         assert_eq!(
-            normalize_model_lines("1. hello\n2) world\n3、 你好"),
+            normalize_model_lines("1. hello\n2) world\n3、 你好", None),
             ["hello", "world", "你好"]
         );
     }
+
+    #[test]
+    fn plain_text_candidates_preserve_typed_indentation_and_list_prefixes() {
+        for (seed, text) in [
+            ("  hel", "  hello world"),
+            ("- hel", "- hello world"),
+            ("1. hel", "1. hello world"),
+            ("3、 hel", "3、 hello world"),
+            ("\u{3000}hel", "\u{3000}hello world"),
+        ] {
+            let body = json!({"choices":[{"message":{"content":format!("{text}  ")}}]}).to_string();
+            assert_eq!(parse_chat_completion_candidates(&body, Some(seed)), [text]);
+        }
+        assert!(normalize_model_lines("  hel\u{0}lo", Some("  hel")).is_empty());
+        assert!(
+            normalize_model_lines(&format!("  hel{}", "a".repeat(161)), Some("  hel")).is_empty()
+        );
+    }
+
+    #[test]
+    fn typed_candidates_preserve_exact_spaces_and_kind_in_both_protocols() {
+        use crate::ime::candidate_mix::CandidateKind;
+        let content = json!({"candidates":[
+            {"text":"  hello  ","kind":"word"},
+            {"text":"  hello world  ","kind":"sentence"},
+            {"text":"  hello world","kind":"sentence"}
+        ]})
+        .to_string();
+        let ollama = json!({"message":{"content":content},"done":true}).to_string();
+        let compatible = json!({"choices":[{"message":{"content":content}}]}).to_string();
+        let prefix = Some("  hel");
+        assert_eq!(
+            parse_ollama_candidates(&ollama, prefix).unwrap(),
+            ["  hello", "  hello world"]
+        );
+        assert_eq!(
+            parse_chat_completion_candidates(&compatible, prefix),
+            ["  hello", "  hello world"]
+        );
+        for (body, protocol) in [(ollama, true), (compatible, false)] {
+            assert_eq!(
+                response_candidate_kind(&body, protocol, "  hello", prefix),
+                Some(CandidateKind::Word)
+            );
+            assert_eq!(
+                response_candidate_kind(&body, protocol, "  hello world", prefix),
+                Some(CandidateKind::Sentence)
+            );
+        }
+    }
+
+    #[test]
+    fn indented_model_completions_survive_http_parsing_and_usefulness_checks() {
+        use crate::ime::candidate_mix::CandidateKind;
+        for ollama in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                if ollama {
+                    let (mut stream, _) = test_server::accept(&listener);
+                    assert!(
+                        test_server::read_request(&mut stream)
+                            .unwrap()
+                            .starts_with("GET /api/tags ")
+                    );
+                    test_server::respond(
+                        &mut stream,
+                        "200 OK",
+                        r#"{"models":[{"name":"synthetic-model"}]}"#,
+                    )
+                    .unwrap();
+                }
+                let (mut stream, _) = test_server::accept(&listener);
+                let wire = test_server::read_request(&mut stream).unwrap();
+                assert!(wire.starts_with("POST "));
+                let body: Value =
+                    serde_json::from_str(wire.split_once("\r\n\r\n").unwrap().1).unwrap();
+                let input: Value =
+                    serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
+                assert_eq!(input["raw_composition"], "  hello  ");
+                assert_eq!(input["local_conversion"], "  hello  ");
+                let content = json!({"candidates":[
+                    {"text":"  hello  ","kind":"word"},
+                    {"text":"hello  world","kind":"sentence"},
+                    {"text":"  hello  world  ","kind":"sentence"}
+                ]})
+                .to_string();
+                let response = if ollama {
+                    json!({"message":{"content":content},"done":true})
+                } else {
+                    json!({"choices":[{"message":{"content":content}}]})
+                };
+                test_server::respond(&mut stream, "200 OK", &response.to_string()).unwrap();
+            });
+            let provider = HttpModelProvider::new(ModelProviderConfig {
+                endpoint: format!(
+                    "http://{address}/{}",
+                    if ollama {
+                        "api/chat"
+                    } else {
+                        "v1/chat/completions"
+                    }
+                ),
+                model: "synthetic-model".into(),
+                ..Default::default()
+            });
+            let result = provider
+                .generate_checked(&LlmCompletionRequest {
+                    seed_text: "  hello  ".into(),
+                    normalized_phrase: "  hello  ".into(),
+                    ..request("en")
+                })
+                .unwrap();
+            assert_eq!(
+                result.len(),
+                1,
+                "unchanged or prefix-losing candidates must be rejected"
+            );
+            assert_eq!(result[0].text, "  hello  world");
+            assert_eq!(result[0].kind, Some(CandidateKind::Sentence));
+            server.join().unwrap();
+        }
+    }
+
     #[test]
     fn rejects_invalid_json_and_unrelated_content_fields() {
         assert!(
-            parse_chat_completion_candidates(r#"{"choices":[{"message":{"content":"ok"}},broken"#)
+            parse_chat_completion_candidates(
+                r#"{"choices":[{"message":{"content":"ok"}},broken"#,
+                None
+            )
+            .is_empty()
+        );
+        assert!(
+            parse_chat_completion_candidates(r#"{"error":{"content":"not a candidate"}}"#, None)
                 .is_empty()
         );
         assert!(
-            parse_chat_completion_candidates(r#"{"error":{"content":"not a candidate"}}"#)
-                .is_empty()
-        );
-        assert!(
-            parse_chat_completion_candidates(r#"{"choices":[{"message":{"content":null}}]}"#)
+            parse_chat_completion_candidates(r#"{"choices":[{"message":{"content":null}}]}"#, None)
                 .is_empty()
         );
     }
@@ -1042,7 +1191,7 @@ mod tests {
         let content = json!({"candidates":["你好", "日本語", "hello", "extra"]}).to_string();
         let response = json!({"message":{"content":content},"done":true,"done_reason":"stop"});
         assert_eq!(
-            parse_ollama_candidates(&response.to_string()).unwrap(),
+            parse_ollama_candidates(&response.to_string(), None).unwrap(),
             ["你好", "日本語", "hello"]
         );
         for response in [
@@ -1052,7 +1201,7 @@ mod tests {
             json!({"message":{"content":"{\"candidates\":[\"cut off"},"done":true}),
         ] {
             assert_eq!(
-                parse_ollama_candidates(&response.to_string()),
+                parse_ollama_candidates(&response.to_string(), None),
                 Err(LlmProviderError::InvalidResponse)
             );
         }
@@ -1063,7 +1212,7 @@ mod tests {
         let content = json!({"candidates":["你好", "你好", "bad\u{0}text", "字".repeat(161), "2026年", "日本語"]}).to_string();
         let response = json!({"message":{"content":content},"done":true}).to_string();
         assert_eq!(
-            parse_ollama_candidates(&response).unwrap(),
+            parse_ollama_candidates(&response, None).unwrap(),
             ["你好", "2026年", "日本語"]
         );
     }
@@ -1095,15 +1244,18 @@ mod tests {
             "hello everyone",
             "hello there",
         ];
-        assert_eq!(parse_ollama_candidates(&ollama).unwrap(), expected);
-        assert_eq!(parse_chat_completion_candidates(&compatible), expected);
+        assert_eq!(parse_ollama_candidates(&ollama, None).unwrap(), expected);
+        assert_eq!(
+            parse_chat_completion_candidates(&compatible, None),
+            expected
+        );
         for (body, protocol) in [(ollama, true), (compatible, false)] {
             assert_eq!(
-                response_candidate_kind(&body, protocol, "hello"),
+                response_candidate_kind(&body, protocol, "hello", None),
                 Some(CandidateKind::Word)
             );
             assert_eq!(
-                response_candidate_kind(&body, protocol, "hello world"),
+                response_candidate_kind(&body, protocol, "hello world", None),
                 Some(CandidateKind::Sentence)
             );
         }
@@ -1121,12 +1273,12 @@ mod tests {
             {"text":"你好世界","kind":"sentence"}
         ]);
         assert_eq!(
-            structured_candidate_texts(values.as_array().unwrap()),
+            structured_candidate_texts(values.as_array().unwrap(), None),
             ["hello", "你好世界"]
         );
         for content in [r#"{"candidates":[{"text":"hel"#, r#"{"candidates":null}"#] {
             let body = json!({"choices":[{"message":{"content":content}}]}).to_string();
-            assert!(parse_chat_completion_candidates(&body).is_empty());
+            assert!(parse_chat_completion_candidates(&body, None).is_empty());
         }
     }
 
@@ -1215,6 +1367,76 @@ mod tests {
         );
         assert_eq!(result, Err(LlmProviderError::HttpStatus(404)));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn a_missing_discovered_model_refreshes_inventory_on_the_next_request_without_retrying_generation()
+     {
+        for ollama in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                for (method, name, status) in [
+                    ("GET", "llama-old", "200 OK"),
+                    ("POST", "llama-old", "404 Not Found"),
+                    ("GET", "llama-new", "200 OK"),
+                    ("POST", "llama-new", "200 OK"),
+                ] {
+                    let (mut stream, _) = test_server::accept(&listener);
+                    let wire = test_server::read_request(&mut stream).unwrap();
+                    assert!(
+                        wire.starts_with(method),
+                        "expected {method}, got {}",
+                        wire.lines().next().unwrap()
+                    );
+                    let body = if method == "GET" {
+                        if ollama {
+                            json!({"models":[{"name":name}]})
+                        } else {
+                            json!({"data":[{"id":name}]})
+                        }
+                    } else {
+                        let request: Value =
+                            serde_json::from_str(wire.split_once("\r\n\r\n").unwrap().1).unwrap();
+                        assert_eq!(request["model"], name);
+                        let content =
+                            json!({"candidates":[{"text":"hello there","kind":"sentence"}]})
+                                .to_string();
+                        if ollama {
+                            json!({"message":{"content":content},"done":true})
+                        } else {
+                            json!({"choices":[{"message":{"content":content},"finish_reason":"stop"}]})
+                        }
+                    };
+                    test_server::respond(&mut stream, status, &body.to_string()).unwrap();
+                }
+            });
+            let provider = HttpModelProvider::new(ModelProviderConfig {
+                endpoint: format!(
+                    "http://{address}/{}",
+                    if ollama {
+                        "api/chat"
+                    } else {
+                        "v1/chat/completions"
+                    }
+                ),
+                ..Default::default()
+            });
+            let request = LlmCompletionRequest {
+                seed_text: "hel".into(),
+                normalized_phrase: "hel".into(),
+                ..request("en")
+            };
+            assert_eq!(
+                provider.generate_checked(&request),
+                Err(LlmProviderError::HttpStatus(404))
+            );
+            assert_eq!(
+                provider.generate_checked(&request).unwrap()[0].text,
+                "hello there"
+            );
+            server.join().unwrap();
+        }
     }
 
     #[test]

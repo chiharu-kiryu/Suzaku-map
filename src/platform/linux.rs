@@ -59,10 +59,6 @@ pub fn ubuntu_preferred_font_paths(font_face: FontFaceChoice) -> Vec<(&'static s
     match font_face {
         FontFaceChoice::Auto => vec![
             (
-                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                "DejaVu Sans Mono",
-            ),
-            (
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "DejaVu Sans",
             ),
@@ -200,10 +196,14 @@ mod tests {
     }
 
     #[test]
-    fn ubuntu_fonts_prefer_dejavu_mono_first() {
+    fn ubuntu_auto_font_prefers_sans_and_explicit_monospace_stays_available() {
         let fonts = ubuntu_preferred_font_paths(FontFaceChoice::Auto);
 
-        assert_eq!(fonts[0].1, "DejaVu Sans Mono");
+        assert_eq!(fonts[0].1, "DejaVu Sans");
+        assert_eq!(
+            ubuntu_preferred_font_paths(FontFaceChoice::Monaco)[0].1,
+            "DejaVu Sans Mono"
+        );
     }
 
     #[test]

@@ -155,13 +155,29 @@ impl ImeSettings {
 
     pub fn load() -> Result<Self, String> {
         let path = settings_path().ok_or("无法定位输入法设置目录")?;
-        let file = match fs::File::open(&path) {
+        let mut options = fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // Opening a FIFO must not wait for a writer on the native event loop.
+            // Keep existing symlink support, but validate the opened target below.
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let file = match options.open(&path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Self::default());
             }
             Err(error) => return Err(format!("无法读取输入法设置：{error}")),
         };
+        if !file
+            .metadata()
+            .map_err(|error| format!("无法读取输入法设置：{error}"))?
+            .is_file()
+        {
+            return Err("无法读取输入法设置：需要普通文件".into());
+        }
         let mut raw = String::new();
         file.take(65_537)
             .read_to_string(&mut raw)

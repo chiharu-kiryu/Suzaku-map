@@ -17,9 +17,9 @@ use suzaku_map::ime::{CommitOptions, Snapshot};
 use suzaku_map::platform::gpu_host::is_quit_shortcut;
 use suzaku_map::platform::ime_host_adapter::{ImeHostSessionBridge, shared_session_bridge};
 use suzaku_map::platform::ime_host_dispatch::current_ime_host_dispatch;
+use suzaku_map::platform::text_output_host::commit_text_to_active_target;
 #[cfg(not(target_os = "linux"))]
-use suzaku_map::platform::text_output_host::HostTextOutputStatus;
-use suzaku_map::platform::text_output_host::{HostTextOutputResult, commit_text_to_active_target};
+use suzaku_map::platform::text_output_host::{HostTextOutputResult, HostTextOutputStatus};
 use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -48,6 +48,7 @@ fn upload_vertex_data(
     queue.write_buffer(buffer, 0, bytes);
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 fn host_commit_fallback_text(fallback_text: &str, committed: Option<String>) -> String {
     committed
         .filter(|text| !text.trim().is_empty())
@@ -64,7 +65,7 @@ fn commit_feedback_text(candidate_text: &str, delivered: bool, message: &str) ->
     if delivered {
         format!("Sent to active app: {candidate_text}")
     } else {
-        format!("Committed locally · {message}")
+        format!("Delivery not confirmed · draft retained; check target before retrying · {message}")
     }
 }
 
@@ -140,21 +141,14 @@ impl PanelState {
         current_ime_host_dispatch().marked_text_roundtrip
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn is_host_commit_roundtrip_ready(&self) -> bool {
         current_ime_host_dispatch().commit_roundtrip
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn is_host_roundtrip_ready(&self) -> bool {
         self.is_host_marked_text_roundtrip_ready() && self.is_host_commit_roundtrip_ready()
-    }
-
-    fn sync_host_candidate_selection(&self, selected_index: usize) {
-        if !self.is_host_marked_text_roundtrip_ready() {
-            return;
-        }
-        let bridge = shared_session_bridge();
-        let _ = bridge.activate_session();
-        bridge.select_candidate(selected_index);
     }
 
     pub(super) fn move_candidate_selection(&mut self, delta: isize) {
@@ -176,6 +170,7 @@ impl PanelState {
         bridge.move_selection(delta);
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn host_commit_selected_candidate(
         &self,
         selected_index: usize,
@@ -198,10 +193,6 @@ impl PanelState {
             .filter(|text: &String| !text.trim().is_empty());
         let committed = host_commit_fallback_text(fallback_text, committed);
 
-        #[cfg(target_os = "linux")]
-        let output = commit_text_to_active_target(&committed);
-
-        #[cfg(not(target_os = "linux"))]
         let output = HostTextOutputResult {
             status: HostTextOutputStatus::Delivered,
             message: format!("Sent to active app via IME host: {committed}"),
@@ -292,43 +283,7 @@ impl PanelState {
         if self.prevent_commit_into_panel() {
             return false;
         }
-        let Some(candidate) = self
-            .engine
-            .candidates()
-            .get(self.engine.snapshot().selected_index)
-            .cloned()
-        else {
-            return false;
-        };
-
-        if self.is_duplicate_commit(self.engine.snapshot().selected_index, &candidate.text) {
-            return false;
-        }
-
-        self.chrome.blur_input();
-        let selected_index = self.engine.snapshot().selected_index;
-        self.sync_host_candidate_selection(selected_index);
-        let force = options.force;
-        let result = self.engine.commit(CommitOptions { force });
-        if !result.ok {
-            return false;
-        }
-
-        let committed_text = result.text.unwrap_or_else(|| candidate.text.clone());
-        let output = self
-            .host_commit_selected_candidate(selected_index, force, &committed_text)
-            .unwrap_or_else(|| commit_text_to_active_target(&candidate.text));
-        self.note_commit_attempt(selected_index, &candidate.text);
-        let delivered = output.delivered_successfully();
-        self.last_commit_feedback = Some(commit_feedback_text(
-            &candidate.text,
-            delivered,
-            &output.message,
-        ));
-        self.commit_feedback_ticks = commit_feedback_ticks_for_delivery(delivered);
-        self.clear_sentence_candidate_scroll();
-        self.reset_after_commit(&committed_text);
-        true
+        self.commit_standalone_candidate(selected, options)
     }
 
     pub(super) fn commit_primary_sentence_candidate(&mut self) -> bool {
@@ -354,6 +309,10 @@ impl PanelState {
         let Some(index) = self.resolve_sentence_candidate_index(index) else {
             return false;
         };
+        self.commit_standalone_candidate(index, CommitOptions { force: true })
+    }
+
+    fn commit_standalone_candidate(&mut self, index: usize, options: CommitOptions) -> bool {
         let Some(candidate) = self.engine.candidates().get(index).cloned() else {
             return false;
         };
@@ -362,16 +321,18 @@ impl PanelState {
             return false;
         }
 
-        self.chrome.blur_input();
-        self.sync_host_candidate_selection(index);
         self.engine.select_candidate(index);
-        let result = self.engine.commit(CommitOptions { force: true });
-        if !result.ok {
+        if !self.engine.can_commit(&options) {
             return false;
         }
-        let committed_text = result.text.unwrap_or_else(|| candidate.text.clone());
+        self.chrome.blur_input();
+        // The standalone Linux panel owns this candidate. Its in-process host
+        // bridge is not the remote IBus engine and must not substitute or consume it.
+        #[cfg(target_os = "linux")]
+        let output = commit_text_to_active_target(&candidate.text);
+        #[cfg(not(target_os = "linux"))]
         let output = self
-            .host_commit_selected_candidate(index, true, &committed_text)
+            .host_commit_selected_candidate(index, options.force, &candidate.text)
             .unwrap_or_else(|| commit_text_to_active_target(&candidate.text));
         self.note_commit_attempt(index, &candidate.text);
         let delivered = output.delivered_successfully();
@@ -381,8 +342,13 @@ impl PanelState {
             &output.message,
         ));
         self.commit_feedback_ticks = commit_feedback_ticks_for_delivery(delivered);
-        self.clear_sentence_candidate_scroll();
-        self.reset_after_commit(&committed_text);
+        if delivered {
+            // Delivery is synchronous here: no other UI event can change this
+            // checked selection before its acknowledgement. Failures retain it.
+            self.engine.commit(options);
+            self.clear_sentence_candidate_scroll();
+            self.reset_after_commit();
+        }
         true
     }
 
@@ -506,6 +472,50 @@ impl PanelState {
     }
 
     fn current_scene_with_snapshot(&mut self, snapshot: &Snapshot) -> RenderScene {
+        self.prepare_layout(snapshot, false).0
+    }
+
+    fn prepare_layout(
+        &mut self,
+        snapshot: &Snapshot,
+        include_overlays: bool,
+    ) -> (RenderScene, Vec<crate::render::PanelOverlay>) {
+        use suzaku_map::ime::gpu::with_font_metrics;
+        // The scene and floating hints must use one font revision. Learning a glyph
+        // from an overlay (or switching languages/evicting the atlas) can change both.
+        // Bound relayout work; always upload the final frame's glyphs, even at the limit.
+        for attempt in 0..=3 {
+            let (scene, overlays): (_, Vec<crate::render::PanelOverlay>) =
+                with_font_metrics(self.font_atlas.layout_metrics.clone(), || {
+                    let scene = self.build_scene_with_snapshot(snapshot);
+                    let overlays = if include_overlays {
+                        self.build_hover_tooltip(&scene)
+                            .into_iter()
+                            .chain(self.build_commit_feedback())
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    (scene, overlays)
+                });
+            let before = self.font_atlas.layout_revision;
+            self.font_atlas.ensure_glyphs(
+                &self.queue,
+                &snapshot.active_language,
+                scene
+                    .atlas_glyphs
+                    .iter()
+                    .chain(overlays.iter().flat_map(|overlay| &overlay.atlas_glyphs))
+                    .map(|glyph| glyph.ch),
+            );
+            if before == self.font_atlas.layout_revision || attempt == 3 {
+                return (scene, overlays);
+            }
+        }
+        unreachable!("the bounded layout loop returns its final frame")
+    }
+
+    fn build_scene_with_snapshot(&mut self, snapshot: &Snapshot) -> RenderScene {
         let scene = match self.kind {
             PanelWindowKind::Main => {
                 let mut chrome = self.chrome.clone();
@@ -682,23 +692,16 @@ impl PanelState {
         self.constrain_expanded_window_position();
     }
 
+    pub(super) fn current_frame_with_snapshot(
+        &mut self,
+        snapshot: &Snapshot,
+    ) -> (RenderScene, Vec<crate::render::PanelOverlay>) {
+        self.prepare_layout(snapshot, true)
+    }
+
     pub(super) fn render(&mut self) -> Result<(), SurfaceError> {
         let snapshot = self.view_snapshot();
-        let scene = self.current_scene_with_snapshot(&snapshot);
-        let overlays: Vec<_> = self
-            .build_hover_tooltip(&scene)
-            .into_iter()
-            .chain(self.build_commit_feedback())
-            .collect();
-        self.font_atlas.ensure_glyphs(
-            &self.queue,
-            &snapshot.active_language,
-            scene
-                .atlas_glyphs
-                .iter()
-                .chain(overlays.iter().flat_map(|overlay| &overlay.atlas_glyphs))
-                .map(|glyph| glyph.ch),
-        );
+        let (scene, overlays) = self.current_frame_with_snapshot(&snapshot);
         let next_window_title = match self.kind {
             PanelWindowKind::Main => window_title(
                 &scene,
@@ -742,6 +745,21 @@ impl PanelState {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let background = match (self.chrome.theme_preset, snapshot.degraded) {
+            (
+                preset @ (suzaku_map::ime::gpu::ThemePreset::Suzaku
+                | suzaku_map::ime::gpu::ThemePreset::Baihu
+                | suzaku_map::ime::gpu::ThemePreset::Qinglong
+                | suzaku_map::ime::gpu::ThemePreset::Xuanwu),
+                _,
+            ) => {
+                let [r, g, b, a] = preset.page_background();
+                wgpu::Color {
+                    r: r as f64,
+                    g: g as f64,
+                    b: b as f64,
+                    a: a as f64,
+                }
+            }
             (suzaku_map::ime::gpu::ThemePreset::Daylight, true) => wgpu::Color {
                 r: 0.68,
                 g: 0.75,
@@ -790,6 +808,15 @@ impl PanelState {
                 b: 0.08,
                 a: 1.0,
             },
+        };
+
+        let background = if self.kind == PanelWindowKind::Main
+            && self.chrome.compact_mode
+            && self.config.alpha_mode == wgpu::CompositeAlphaMode::PreMultiplied
+        {
+            wgpu::Color::TRANSPARENT
+        } else {
+            background
         };
 
         let mut encoder = self
@@ -1909,17 +1936,23 @@ mod tests {
     }
 
     #[test]
-    fn commit_feedback_text_marks_local_path_with_message() {
+    fn commit_feedback_text_marks_unconfirmed_delivery_with_message() {
         let feedback = commit_feedback_text("hello", false, "Candidate commit");
 
-        assert_eq!(feedback, "Committed locally · Candidate commit");
+        assert_eq!(
+            feedback,
+            "Delivery not confirmed · draft retained; check target before retrying · Candidate commit"
+        );
     }
 
     #[test]
     fn commit_feedback_text_keeps_emoji_message_for_local_path() {
         let feedback = commit_feedback_text("ignored", false, "fallback: ✅ done");
 
-        assert_eq!(feedback, "Committed locally · fallback: ✅ done");
+        assert_eq!(
+            feedback,
+            "Delivery not confirmed · draft retained; check target before retrying · fallback: ✅ done"
+        );
     }
 
     #[test]
@@ -1939,7 +1972,10 @@ mod tests {
     fn commit_feedback_text_local_with_empty_message_keeps_separator() {
         let feedback = commit_feedback_text("hello", false, "");
 
-        assert_eq!(feedback, "Committed locally · ");
+        assert_eq!(
+            feedback,
+            "Delivery not confirmed · draft retained; check target before retrying · "
+        );
     }
 
     #[test]

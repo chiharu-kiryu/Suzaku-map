@@ -258,7 +258,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            super::super::parse_chat_completion_candidates(&response),
+            super::super::parse_chat_completion_candidates(&response, None),
             ["你好世界", "你好朋友"]
         );
         server.join().unwrap();

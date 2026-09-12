@@ -90,6 +90,10 @@ pub(crate) fn measure_text_prefix_width(
 }
 
 pub(crate) fn text_char_width(ch: char, pixel_size: f32) -> f32 {
+    #[cfg(feature = "gpu")]
+    if let Some(width) = super::gpu::measured_char_width(ch, pixel_size) {
+        return width;
+    }
     if unicode_width::UnicodeWidthChar::width(ch) == Some(2) {
         pixel_size * 7.0
     } else {

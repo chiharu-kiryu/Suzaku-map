@@ -43,6 +43,24 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn guardian_themes_and_smooth_system_font_survive_backup_round_trip() {
+    let fixture = Fixture::new();
+    for theme in ["suzaku", "baihu", "qinglong", "xuanwu"] {
+        files::atomic_write(
+            &fixture.paths.panel,
+            format!("theme_preset={theme}\nfont_face=auto\ntext_smoothing=smooth\n").as_bytes(),
+        )
+        .unwrap();
+        let backup = Backup::collect(&fixture.paths).unwrap();
+        let restored = Backup::parse(&backup.to_json().to_string()).unwrap();
+        let panel = restored.panel.unwrap();
+        assert_eq!(panel["theme_preset"], theme);
+        assert_eq!(panel["font_face"], "auto");
+        assert_eq!(panel["text_smoothing"], "smooth");
+    }
+}
+
+#[test]
 fn snapshot_contains_configuration_only_and_round_trips_custom_values() {
     let fixture = Fixture::new();
     fixture.write_settings();

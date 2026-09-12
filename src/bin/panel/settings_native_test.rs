@@ -29,7 +29,8 @@ struct SettingsProbe {
 impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = Arc::new(event_loop.create_window(panel_window_attributes()).unwrap());
-        let panel = pollster::block_on(PanelState::new(window)).unwrap();
+        let mut panel = pollster::block_on(PanelState::new(window)).unwrap();
+        assert_first_overlay_uses_current_font_metrics(&mut panel);
         let mut app = PanelApp::new(self.proxy.clone(), None);
         app.panel = Some(panel);
         let mut native = ImeSettings::default();
@@ -40,6 +41,49 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
         );
         app.open_settings(event_loop);
         assert_controls(&app, LlmTemperaturePreset::Expressive);
+
+        // Real Chinese labels, pointer hit testing, persistence and window-to-window sync.
+        for theme in [
+            suzaku_map::ime::gpu::ThemePreset::Baihu,
+            suzaku_map::ime::gpu::ThemePreset::Qinglong,
+            suzaku_map::ime::gpu::ThemePreset::Xuanwu,
+            suzaku_map::ime::gpu::ThemePreset::Suzaku,
+        ] {
+            let settings = app.settings.as_mut().unwrap();
+            settings.chrome.settings_search_query = theme.label().into();
+            settings.chrome.settings_scroll_offset = 0.0;
+            settings.last_interaction_action = None;
+            let target = InteractionKind::SetThemePreset(theme);
+            let scene = settings.current_scene();
+            assert!(!scene.settings_option_truncated.contains(&target));
+            let rect = scene
+                .interactive_targets
+                .iter()
+                .find(|item| item.kind == target)
+                .unwrap()
+                .rect;
+            let point = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
+            assert_eq!(scene.hit_interaction(point.0, point.1), Some(target));
+            settings.cursor_position = Some(point);
+            settings.last_scene = Some(scene);
+            settings.begin_primary_press(false);
+            settings.complete_primary_release(false);
+            assert_eq!(settings.chrome.theme_preset, theme);
+            let settings_id = settings.window.id();
+            app.window_event(event_loop, settings_id, WindowEvent::RedrawRequested);
+            assert_eq!(app.panel.as_ref().unwrap().chrome.theme_preset, theme);
+            assert_eq!(app.settings.as_ref().unwrap().chrome.theme_preset, theme);
+            assert_eq!(load_display_settings().unwrap().theme_preset, theme);
+            // A style choice must not enqueue model configuration or alter the draft.
+            assert!(
+                app.prediction_settings_sync
+                    .next_patch(&app.panel.as_ref().unwrap().chrome)
+                    .is_none()
+            );
+        }
+        println!(
+            "PASS: guardian theme clicks synchronize panel/settings and survive settings reload"
+        );
 
         for (selected, succeeds) in [
             (LlmTemperaturePreset::Focused, true),
@@ -118,4 +162,42 @@ fn assert_controls(app: &PanelApp, expected: LlmTemperaturePreset) {
         expected
     );
     assert_eq!(load_display_settings().unwrap().llm_temperature, expected);
+}
+
+fn assert_first_overlay_uses_current_font_metrics(panel: &mut PanelState) {
+    for face in [
+        suzaku_map::ime::gpu::FontFaceChoice::Auto,
+        suzaku_map::ime::gpu::FontFaceChoice::Monaco,
+    ] {
+        panel.chrome.font_face = face;
+        panel.rebuild_font_atlas();
+        panel.last_commit_feedback = Some("ΩλΨЖ  ççç  WWW iii — saved".into());
+        panel.commit_feedback_ticks = 180;
+        let snapshot = panel.engine.snapshot();
+        let (_, first) = panel.current_frame_with_snapshot(&snapshot);
+        assert_eq!(first.len(), 1);
+        assert!(!first[0].atlas_glyphs.is_empty());
+        for glyph in &first[0].atlas_glyphs {
+            let measured = panel
+                .font_atlas
+                .layout_metrics
+                .get(&glyph.ch)
+                .expect("system glyph metrics");
+            assert!(
+                (glyph.rect[2] - measured * glyph.rect[3] / 7.0).abs() < 0.001,
+                "first-frame overlay stretched {:?} after switching to {face:?}",
+                glyph.ch
+            );
+        }
+        let (_, second) = panel.current_frame_with_snapshot(&snapshot);
+        assert_eq!(
+            first[0].quads, second[0].quads,
+            "tooltip surface jumped on its second frame"
+        );
+        assert_eq!(first[0].atlas_glyphs, second[0].atlas_glyphs);
+    }
+    panel.last_commit_feedback = None;
+    panel.commit_feedback_ticks = 0;
+    panel.chrome.font_face = suzaku_map::ime::gpu::FontFaceChoice::Auto;
+    panel.rebuild_font_atlas();
 }

@@ -2,7 +2,62 @@
 
 Suzaku Map is a multimodal IME project.
 
-Current release: **0.5.3**.
+Current release: **0.5.4**.
+
+### 0.5.4 Guardian themes, continuous input and service lifecycle
+
+- Linux panel startup now starts the registered `suzaku-ibus.service` and waits for its IPC
+  readiness without activating Suzaku. Activation retries a stopped host automatically. A full
+  quit restores the observed previous input method before stopping the host; hide-to-tray keeps
+  it running. Startup/shutdown run on the background controller, including desktops without a tray
+  extension. Restore/stop failures remain visible and retryable; a disconnected host is no longer
+  mislabeled as an outdated version. Custom/private endpoints remain owned by their own launcher.
+- Native IBus now uses one continuous writing stream: plain **1–6** adopts the current page's
+  candidate without committing, **Alt+digits** enters numbers, and Space/punctuation stay in the
+  draft. Enter or a primary candidate click submits it. Shift+number symbols retain the active
+  keyboard layout. English, Pinyin and Romaji share the same rules; both local and model
+  predictions see the complete uncommitted draft. Panel candidate shortcuts also keep text editable.
+- New default **Suzaku** theme: warm ivory surfaces, vermilion accents, soft gold details and
+  quieter candidate highlights. Choose **Settings → Theme → Suzaku** for an existing profile;
+  explicitly saved themes are retained. The native companion and backup format recognize `suzaku`.
+- Three additional styles under **Settings → Theme**: **白虎 · 米白** (warm ivory / graphite),
+  **青龙 · 青紫** (misty jade / violet), and **玄武 · 靛蓝** (deep indigo / silver blue).
+  They cover the panel, candidate highlights, keyboard, handwriting, dictation, settings and
+  tooltips. Saved IDs are `baihu`, `qinglong`, and `xuanwu`; settings reloads and backups retain them.
+  The orb and Linux tray use matching curved tiger, dragon, and tortoise/serpent emblems. Tray
+  icons update only when the theme changes, on the background worker, not on input/render frames.
+- Rounded cards and the redesigned toolbar icons use resolution-independent, antialiased curves
+  and strokes. The default floating orb and Linux tray share a swept-feather phoenix emblem; tray sizes
+  are supersampled individually. The orb has transparent surroundings when the compositor and
+  graphics surface support premultiplied alpha, with a themed background fallback otherwise.
+- New profiles use the system Auto font and Smooth text. Loading settings no longer silently
+  replaces Auto/Smooth with Monaco/Sharp. Text layout, centering and the caret use cached system
+  glyph widths, so narrow letters are no longer stretched across a fixed character cell.
+- Existing candidate actions, non-functional drag regions, close-to-tray behavior and content-fit
+  resizing are retained. Desktop panel styling does not override GNOME's system IBus popup theme.
+- Bug fixes: the input row preserves repeated spaces and scrolls long drafts with the caret,
+  instead of wrapping over controls or eliding editable text. Its height follows text size.
+  Fractional zoom keeps glyph geometry intact, Smooth/Sharp changes the active sampling filter,
+  and new tooltip/feedback glyphs are measured before the first frame is displayed. Single-symbol
+  controls fit their real glyph width so the zoom `+` cannot turn into an ellipsis at Large text size.
+- Model reloads preserve the current IBus draft while a provider change forgets previous committed
+  context. English model candidates retain typed indentation, spacing and literal list prefixes
+  through parsing, ranking and commit. A missing/disconnected local model invalidates discovery
+  for the next request instead of keeping a stale success entry for 60 seconds; no failed generation
+  is automatically retried.
+- Output fixes: consecutive native commits preserve each candidate's exact leading/trailing
+  spaces. Standalone Linux panel sends use the displayed candidate, not another bridge's candidate or
+  cumulative history. Only acknowledged delivery clears the editable draft and records a local
+  commit; rejected/uncertain sends retain it with an explicit warning and are never retried automatically.
+- IBus focus boundaries now reject late key, navigation and candidate-click events from unfocused
+  engine objects. Focus-in clears the previous field's preedit, undo and prediction context even
+  when focus-out is delayed. Native candidates commit only on primary clicks without application
+  modifiers; physical Mod4 and virtual Super/Meta/Hyper shortcuts pass through without changing input.
+- Linux configuration loading opens nonblocking and validates the opened file type before reading.
+  FIFOs (including symlink targets), sockets and directories fail without freezing native input;
+  failed reloads preserve the current settings and draft. Symlinks to regular JSON files still load.
+  The real activation/input/release regression now checks six-row English/Chinese/Japanese
+  candidates and runs in CI only under a guarded private IBus session.
 
 ### 0.5.3 Model services and IBus candidate experience
 
@@ -24,7 +79,7 @@ Continuous CJK input now completes an unfinished final word without losing the c
 (`woxihuanbei` → `我喜欢北京`, `watashihanihong` → `私は日本語`). Pinyin spaces preserve
 syllable boundaries (`xi an` / `xi'an` → `西安`, distinct from `xian`).
 
-Shift+Enter adopts a full candidate into editable preedit; Shift+Space continues from an explicitly
+Shift+Enter adopts a full candidate into editable preedit; Space continues from an explicitly
 selected candidate. Immediate Backspace restores the previous spelling. This one-step undo stays
 in memory and is cleared at editing, reset, language, privacy and focus boundaries. No candidate
 annotation or truncated preview enters the committed text.
@@ -120,7 +175,7 @@ profiles can be extended independently of the LLM provider and platform host.
 After building/installing the native host, right-click the Suzaku tray icon and select **输入语言**:
 
 - **中文（简体拼音）**: e.g. `nihao` → `你好`, `shurufa` → `输入法`.
-- **English**: literal input first, then word/phrase completions; Space commits with a separating space.
+- **English**: literal input first, then word/phrase completions; Space keeps the writing stream editable.
 - **日本語（ローマ字）**: e.g. `nihongo` → `日本語` / `にほんご` / `ニホンゴ`.
 
 English is the default for new settings; saved Chinese/Japanese choices are retained. The panel
@@ -142,20 +197,22 @@ visible for immediate commit; no arbitrary `is/can/will` words fill an empty liv
 Mouse and touch completion/rewind use one repeat guard. If a model response replaces the
 candidate list during a press, releasing that old press cannot select or commit its replacement;
 refreshing an unchanged list still permits the click.
-On native IBus, use **Tab** to select the best completion, then **Space** to commit it with one
-space; **Shift+Tab** moves back. Plain Space keeps the literal unless another candidate is selected.
-English digits (including keypad digits) are literal input, so `hel2`, `v123` and `2026` are not
-candidate shortcuts. **Alt+1–6** selects the current page's candidate in any language;
-Chinese/Japanese also accept plain **1–6**. **PageUp/PageDown** changes pages.
-Use **Shift+Space** to keep composing across a word/spelling separator without committing;
-e.g. `please` → Shift+Space → `sen`, or `nihongo` → Shift+Space → `wobenkyoushitai`.
-After explicitly selecting a candidate, Shift+Space adopts that candidate before adding the space.
+On native IBus, **1–6** adopts the current page's full candidate into editable preedit in all three
+languages. **Tab / Shift+Tab** navigates, and **PageUp/PageDown** changes pages. **Space** keeps
+composing: it adopts an explicitly selected candidate and appends a space, or simply preserves the
+literal spelling and adds a separator. **Shift+Space** remains an alias. For example,
+`hel` → `2` → Space → `world!` stays one editable `hello world!` draft; only **Enter** or a candidate
+left-click commits it. Punctuation does not implicitly end the writing stream.
+Use **Alt+0–9** or keypad digits for literal numbers such as `v123` and `2026`; this preserves
+Shift+number punctuation (`! @ #`, etc.) and the active keyboard layout. Plain number keys select
+while candidates exist; empty slots (including unassigned `0/7/8/9`) do nothing. Without a draft,
+digits can start literal input. Neither this mapping nor continuation modifies system lock state.
 **Shift+Enter** adopts the current full candidate into preedit without adding a space or committing.
 An immediate **Backspace** undoes the replacement and restores the exact previous spelling;
 ordinary editing, another selection, reset, language/privacy changes and focus loss clear this
 one-step, memory-only undo. AI sentence previews also expand to their full editable text.
-Shift, Caps Lock and other non-text keys do not submit pending input; printable punctuation still
-commits the selected word before being forwarded to the application.
+Shift, Caps Lock and other non-text keys do not submit pending input. AltGr and system shortcuts
+remain separate from candidate selection; password/PIN input still bypasses Suzaku entirely.
 
 Enable **LLM 联想** to enrich the current composition. Offline candidates remain usable
 immediately; the local first candidate never changes under Space. The model gets a structured
@@ -166,6 +223,9 @@ endpoint, model and separate consent. Private input fields never request model c
 The former synchronous `IME_NEXT_TOKEN_MODEL_*` environment-variable path has been removed;
 use the shared settings and LLM switch below. Panel refreshes never make their own model requests,
 and Chinese/Japanese previews do not insert English next-word fillers.
+Outside the native mirrored view, sending a standalone Linux panel candidate clears its draft only after
+the target acknowledges delivery. Rejected or uncertain output leaves the draft and prior committed
+context intact; check the target before an explicit retry, since a lost reply cannot prove non-delivery.
 
 On Linux the model configuration is `$XDG_CONFIG_HOME/suzaku-ime/settings.json`, defaulting to
 `~/.config/suzaku-ime/settings.json`. Tray changes create it automatically. Example:
@@ -195,6 +255,8 @@ English completions and already-converted CJK phrases keep their local prefix; u
 unchanged input and pronunciation-only replacements are filtered out. Unknown Pinyin/Romaji can
 still be converted by the model without being forced to keep the raw Latin prefix. These guards
 do not judge semantic correctness; small-model language quality still needs broader evaluation.
+English candidates preserve the exact typed prefix, including indentation, repeated spaces and
+literal list markers; response cleanup only removes padding outside that prefix.
 English model requests distinguish incomplete-word completion from next-word continuation, and
 reject outputs that merely append words to an unfinished fragment. The literal and best offline
 English completion keep their positions when AI results arrive; selecting a candidate freezes
@@ -204,6 +266,9 @@ Start its service separately. Existing saved model names are preserved, not sile
 Suzaku never downloads a model during typing or starts a model server implicitly.
 Choose **重新加载模型配置** after editing. `SUZAKU_IME_CONFIG` can select an isolated settings file
 for development. An absent, slow or invalid model response leaves offline candidates available.
+Reloading preserves the current IBus composition unless the language changes. Changing the model,
+endpoint, protocol, scope or credential reference clears earlier committed context and pending
+prediction results, so the new provider starts with only the current draft.
 The settings window's **Tone** updates the native Linux host and its saved configuration:
 Focused = 0.2, Balanced = 0.4, Expressive = 0.7. Both windows follow acknowledged values;
 failed writes roll back, and late replies do not overwrite a newer selection. Reloaded custom
@@ -237,6 +302,9 @@ Discovery checks only `127.0.0.1:11434` (Ollama), `127.0.0.1:8080` (llama.cpp) a
 `127.0.0.1:1234` (compatible desktop servers), using `/api/tags` or `/v1/models`. A custom
 endpoint is checked alone. It uses an 800 ms total metadata budget, caches success for 60 seconds
 and failure for 5 seconds, and runs on the prediction worker when first needed, never the UI thread.
+Local generation failures reporting a missing model/interface (404) or unavailable service discard
+the matching success entry; the next request discovers again, without retrying the failed request.
+Timeouts, rate limits and cloud failures do not trigger discovery.
 It does not scan files/ports, load/download weights, or fall back to cloud. Ollama entries marked
 remote are excluded even when an explicit local model alias is configured. Keep Ollama in local-only
 mode as an additional runtime safeguard. The inventory describes the service at check time.
@@ -325,9 +393,11 @@ New commits cancel superseded runs on the same branch or pull request.
 
 The native checks use temporary settings and a deterministic local model fixture. They do not
 download Llama, contact a real model, capture the desktop, or change the desktop's input method.
-They check actual model-request temperatures, rejected/failed configuration writes, and persistence
-across host restart. Single-instance tests cover concurrent launches, crash recovery and legacy
-running panels without opening desktop windows.
+They check actual model-request temperatures, rejected/failed configuration writes, draft/context
+boundaries on model reload, and persistence across host restart. Single-instance tests cover
+concurrent launches, crash recovery and legacy running panels without opening desktop windows.
+Candidate tests also cover exact consecutive commits, standalone delivery acknowledgements,
+confirmation gates, and retained drafts after rejection or a lost acknowledgement.
 Reproduce them on Linux after installing the packages listed in `.github/workflows/ci.yml`:
 
 ```bash
@@ -389,7 +459,7 @@ cargo test --all-features --offline --bin panel \
 # Optional: set SUZAKU_GLYPH_QA_DIR to an output directory to retain synthetic BMP images.
 cargo test --all-features --offline -- --test-threads=1
 # In an isolated test IBus session with English selected:
-target/release/linux_ime_probe --complete hel   # Tab + Space, validates exact selected text + space
+target/release/linux_ime_probe --complete hel   # Tab + Space (editable), then Enter; verifies exact text
 ```
 
 Some existing FFI tests share global theme state and can interfere under parallel test execution;
@@ -848,8 +918,8 @@ Wayland.
 - Linux voice backend and probe path
 - native IBus `Factory`/`Engine` host backed by the shared Rust candidate engine
 - IBus preedit and a cursor-anchored candidate window with six visible rows, mixed word/sentence
-  ranking, and bounded annotated previews; arrow/Tab navigation, paging, Alt+1–6 selection
-  (plain 1–6 also in Chinese/Japanese), candidate clicks, Shift+Space continuation, and commit
+  ranking, and bounded annotated previews; arrow/Tab navigation, paging, 1–6 editable selection
+  in all three languages, Alt+digits literal input, candidate clicks, Space continuation, and commit
 - tray-controlled IBus activation/restoration with verified switches, bounded off-thread host I/O,
   on-menu-open status refresh, and no global keyboard hook or input polling
 - native roundtrip probe coverage for input-triggered preedit/candidates, final commit, and dismissal
@@ -888,20 +958,24 @@ The installer copies the host to `~/.local/libexec/suzaku/linux_ime_host`, enabl
 `dev.suzaku.linux.ime` with the running IBus daemon, and safely appends Suzaku to GNOME's input
 source switcher when that setting is available. During a host upgrade it records and restores
 the active IBus engine, so restarting the service does not leave the desktop on an empty engine.
-After installation, launch `panel` and right-click its tray icon:
+After installation, launching `panel` ensures the registered user service is ready without
+changing the selected input method. Right-click its tray icon:
 
-- **激活 Suzaku 输入法** selects the native engine and hides the large panel. Focus a text field
+- **激活 Suzaku 输入法** first starts a stopped host, then selects the native engine and hides the large panel. Focus a text field
   and type to summon the cursor-anchored candidate window; on the non-focusing Linux backend the
   companion also reappears as a collapsed candidate view. No held shortcut is required.
 - **释放并恢复：…** restores the input method used just before activation. The menu shows that
   actual engine, not a guessed English/default layout. Repeated activation preserves it.
-- **退出 Suzaku** releases a tray-owned activation before exiting. Hiding the panel alone leaves
-  the input method enabled. A manually selected different engine is never overwritten on release.
+- **退出 Suzaku** (or the full quit shortcut) restores the observed previous input method, stops
+  the managed host service, then exits. Restore/stop failures leave the UI available for retry.
+  Hiding the panel or closing it to the tray leaves input working. A manually selected different
+  engine is never overwritten on release. The release action alone keeps the host ready for reuse.
 
 This control currently targets Linux / IBus. It does not install global shortcuts, change the
 configured input-source list, or automatically take over at startup. If Suzaku was already selected
 outside this tray session, switch back through the system input-source menu; there is no known
-previous engine to restore. Forced process termination is not a normal tray quit and cannot run
+previous engine to restore. Private/custom host endpoints remain owned by their original launcher,
+not by the desktop service controller. Forced process termination is not a normal tray quit and cannot run
 the session's restore step.
 
 Native companion synchronization uses a persistent `W` subscription on the existing user-only
@@ -928,24 +1002,23 @@ The real native sync test runs its own D-Bus and IBus daemon, creates synthetic 
 and uses a deterministic loopback model fixture (not the user's model/settings or desktop):
 
 ```bash
-cargo build --all-features --offline --bin linux_ime_host
-suzaku_sync_qa=$(mktemp -d /tmp/suzaku-sync-qa.XXXXXX)
-env -u DISPLAY -u WAYLAND_DISPLAY dbus-run-session -- env \
-  XDG_RUNTIME_DIR="$suzaku_sync_qa" XDG_CONFIG_HOME="$suzaku_sync_qa/config" \
-  XDG_DATA_HOME="$suzaku_sync_qa/data" GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
-  SUZAKU_IME_CONFIG="$suzaku_sync_qa/ime.json" \
-  IBUS_ADDRESS="unix:path=$suzaku_sync_qa/ibus.sock" SUZAKU_NATIVE_SYNC_QA=1 \
-  /usr/bin/python3 scripts/test-native-sync.py
+bash scripts/test-linux-ci.sh ibus
 ```
 
 This checks full candidate/selection equality, late subscriptions, panel commits and preedit edits,
 stale actions across input contexts and host restarts, asynchronous AI updates, English/Chinese/
-Japanese, privacy, Escape and focus-out. The Xvfb keyboard regression additionally exercises the
-panel's native-view routing, independent draft preservation, and cancellation of outdated presses.
+Japanese, privacy, Escape and focus-out. Direct engine peers also check reordered focus notifications,
+late key/navigation/click events, field-context isolation and primary-click selection on both pages.
+The runner builds and locates the activation test executable, verifies the test exists, and exercises
+the tray controller's real activation/input/release path in all three languages, including cleanup
+restoration. Special/invalid configuration reloads must leave both native keys and the host responsive.
+The Xvfb keyboard regression additionally exercises the panel's native-view routing, independent draft
+preservation, and cancellation of outdated presses.
 
 You can also use `Super+Space` to select **Suzaku**, type a Latin seed, use arrows or Tab to
-move through candidates, `Page Up` / `Page Down` to change pages, `1`–`3` or a mouse click to choose,
-and Space or Enter to commit. Escape cancels the current preedit. `linux-register uninstall`
+move through candidates, `Page Up` / `Page Down` to change pages, and `1`–`6` to adopt a candidate
+without committing. Space and punctuation continue the draft; Enter or a left click submits it.
+Alt+digits enters literal numbers. Escape cancels the current preedit. `linux-register uninstall`
 removes Suzaku from the GNOME switcher, disables the user service, and removes the installed host
 and component metadata.
 
@@ -962,7 +1035,7 @@ Useful commands:
   (requires an enabled, running local model; waits for an AI candidate and selects it)
 - `cargo run --features linux-ibus --bin linux_ime_probe -- --private nihao`
 - `cargo run --features linux-ibus --bin linux_ime_probe -- --password nihao`
-- `cargo test --features linux-ibus --bin panel native_activation_input_and_release_roundtrip -- --ignored --test-threads=1`
+- `bash scripts/test-linux-ci.sh ibus` (private activation/input/release and native regression suite)
   (opt-in live-desktop check: activates, types in an isolated input context, then restores)
 
 Framework selection is shared with bootstrap:

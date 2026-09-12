@@ -57,6 +57,29 @@ pub(super) fn resolve_cached(
     result
 }
 
+pub(super) fn invalidate_failed_resolution(
+    cache: &Mutex<Option<CachedResolution>>,
+    resolved: &ModelProviderConfig,
+    error: &LlmProviderError,
+) {
+    if resolved.scope != ModelScope::Local
+        || !matches!(
+            error,
+            LlmProviderError::HttpStatus(404) | LlmProviderError::Unavailable
+        )
+    {
+        return;
+    }
+    let mut cache = cache.lock().unwrap_or_else(|error| error.into_inner());
+    // A late failure from a clone must not erase a newer discovery result.
+    if cache
+        .as_ref()
+        .is_some_and(|cached| cached.result.as_ref() == Ok(resolved))
+    {
+        *cache = None;
+    }
+}
+
 fn is_llama(model: &LocalModel) -> bool {
     model.family.to_ascii_lowercase().starts_with("llama")
         || model.name.to_ascii_lowercase().contains("llama")
@@ -350,6 +373,58 @@ mod tests {
             resolve_cached(&config, &cache, Instant::now() + Duration::from_secs(1)).unwrap(),
             first
         );
+    }
+
+    #[test]
+    fn only_missing_or_unavailable_local_models_invalidate_discovery() {
+        let resolved = ModelProviderConfig {
+            model: "synthetic-model".into(),
+            ..Default::default()
+        };
+        for (error, invalidates) in [
+            (LlmProviderError::HttpStatus(404), true),
+            (LlmProviderError::Unavailable, true),
+            (LlmProviderError::Timeout, false),
+            (LlmProviderError::HttpStatus(429), false),
+            (LlmProviderError::HttpStatus(401), false),
+            (LlmProviderError::InvalidResponse, false),
+        ] {
+            let cache = Mutex::new(Some(CachedResolution {
+                expires: Instant::now() + Duration::from_secs(60),
+                result: Ok(resolved.clone()),
+            }));
+            invalidate_failed_resolution(&cache, &resolved, &error);
+            assert_eq!(cache.lock().unwrap().is_none(), invalidates, "{error:?}");
+        }
+    }
+
+    #[test]
+    fn late_local_failures_and_cloud_failures_do_not_erase_other_resolutions() {
+        let resolved = ModelProviderConfig {
+            model: "synthetic-model".into(),
+            ..Default::default()
+        };
+        let newer = ModelProviderConfig {
+            model: "replacement-model".into(),
+            ..resolved.clone()
+        };
+        let cache = Mutex::new(Some(CachedResolution {
+            expires: Instant::now() + Duration::from_secs(60),
+            result: Ok(newer.clone()),
+        }));
+        invalidate_failed_resolution(&cache, &resolved, &LlmProviderError::Unavailable);
+        assert_eq!(cache.lock().unwrap().as_ref().unwrap().result, Ok(newer));
+
+        let cloud = ModelProviderConfig {
+            scope: ModelScope::Cloud,
+            ..resolved
+        };
+        let cache = Mutex::new(Some(CachedResolution {
+            expires: Instant::now() + Duration::from_secs(60),
+            result: Ok(cloud.clone()),
+        }));
+        invalidate_failed_resolution(&cache, &cloud, &LlmProviderError::HttpStatus(404));
+        assert_eq!(cache.lock().unwrap().as_ref().unwrap().result, Ok(cloud));
     }
 
     #[test]

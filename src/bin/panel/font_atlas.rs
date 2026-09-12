@@ -415,6 +415,8 @@ pub(crate) struct FontAtlas {
     grid: AtlasGrid,
     resolver: FontResolver,
     uv_map: HashMap<char, [f32; 4]>,
+    pub(super) layout_metrics: suzaku_map::ime::gpu::FontLayoutMetrics,
+    pub(super) layout_revision: u64,
     missing: BTreeSet<char>,
     visible_missing: usize,
     face: FontFaceChoice,
@@ -485,6 +487,8 @@ impl FontAtlas {
 
     fn clear(&mut self, queue: &wgpu::Queue) {
         self.uv_map.clear();
+        Arc::make_mut(&mut self.layout_metrics).clear();
+        self.layout_revision = self.layout_revision.wrapping_add(1);
         self.missing.clear();
         self.next_slot = 0;
         self.insert(queue, MISSING);
@@ -518,6 +522,16 @@ impl FontAtlas {
             },
         );
         let [left, top, right, bottom] = cell.sample;
+        if cell.font_label.is_some() {
+            // Glyph sampling and layout use the exact same aspect ratio. CJK remains square.
+            let width = if unicode_width::UnicodeWidthChar::width(ch) == Some(2) {
+                7.0
+            } else {
+                7.0 * (right - left) as f32 / (bottom - top).max(1) as f32
+            };
+            Arc::make_mut(&mut self.layout_metrics).insert(ch, width);
+        }
+        self.layout_revision = self.layout_revision.wrapping_add(1);
         let dimension = self.grid.dimension as f32;
         self.uv_map.insert(
             ch,
@@ -570,17 +584,7 @@ pub(crate) fn create_font_atlas(
         view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-        label: Some("suzaku-unicode-font-sampler"),
-        mag_filter: wgpu::FilterMode::Linear,
-        min_filter: wgpu::FilterMode::Linear,
-        mipmap_filter: if smoothing == TextSmoothing::Smooth {
-            wgpu::FilterMode::Linear
-        } else {
-            wgpu::FilterMode::Nearest
-        },
-        ..Default::default()
-    });
+    let sampler = device.create_sampler(&font_sampler_descriptor(smoothing));
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("suzaku-unicode-font-atlas"),
         layout,
@@ -603,6 +607,8 @@ pub(crate) fn create_font_atlas(
         grid,
         resolver: FontResolver::new(face, false),
         uv_map: HashMap::new(),
+        layout_metrics: Arc::new(HashMap::new()),
+        layout_revision: 0,
         missing: BTreeSet::new(),
         visible_missing: 0,
         face,
@@ -613,9 +619,35 @@ pub(crate) fn create_font_atlas(
     atlas
 }
 
+fn font_sampler_descriptor(smoothing: TextSmoothing) -> wgpu::SamplerDescriptor<'static> {
+    let filter = match smoothing {
+        TextSmoothing::Smooth => wgpu::FilterMode::Linear,
+        TextSmoothing::Sharp => wgpu::FilterMode::Nearest,
+    };
+    wgpu::SamplerDescriptor {
+        label: Some("suzaku-unicode-font-sampler"),
+        // The atlas has one mip level. Changing only mipmap_filter did nothing.
+        mag_filter: filter,
+        min_filter: filter,
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_smoothing_changes_filters_used_by_the_single_level_atlas() {
+        for (smoothing, expected) in [
+            (TextSmoothing::Smooth, wgpu::FilterMode::Linear),
+            (TextSmoothing::Sharp, wgpu::FilterMode::Nearest),
+        ] {
+            let sampler = font_sampler_descriptor(smoothing);
+            assert_eq!(sampler.mag_filter, expected);
+            assert_eq!(sampler.min_filter, expected);
+        }
+    }
 
     #[test]
     fn atlas_is_bounded_at_low_texture_limits_and_high_dpi() {
@@ -653,6 +685,24 @@ mod tests {
                 index: 0
             })
             .is_none()
+        );
+    }
+
+    #[test]
+    fn narrow_system_glyphs_expose_their_native_aspect_ratio() {
+        let mut resolver = FontResolver::new(FontFaceChoice::Auto, false);
+        if resolver.rasterize('i', 48.0).is_none() {
+            return;
+        }
+        let grid = AtlasGrid::new(1.0, 2048);
+        let narrow = rasterize_cell(&mut resolver, 'i', grid);
+        let normal = rasterize_cell(&mut resolver, 'n', grid);
+        let narrow_width = narrow.sample[2] - narrow.sample[0];
+        let normal_width = normal.sample[2] - normal.sample[0];
+        assert!(narrow_width <= normal_width);
+        assert_eq!(
+            narrow.sample[3] - narrow.sample[1],
+            normal.sample[3] - normal.sample[1]
         );
     }
 

@@ -102,29 +102,16 @@ impl WgpuCandidateRenderer {
             ),
             (
                 "Theme",
-                [
-                    (
-                        InteractionKind::SetThemePreset(ThemePreset::Daylight),
-                        "Daylight",
-                        chrome.theme_preset == ThemePreset::Daylight,
-                    ),
-                    (
-                        InteractionKind::SetThemePreset(ThemePreset::DeviceDark),
-                        "Device Dark",
-                        chrome.theme_preset == ThemePreset::DeviceDark,
-                    ),
-                    (
-                        InteractionKind::SetThemePreset(ThemePreset::Solarized),
-                        "Solarized",
-                        chrome.theme_preset == ThemePreset::Solarized,
-                    ),
-                    (
-                        InteractionKind::SetThemePreset(ThemePreset::HighContrast),
-                        "High Contrast",
-                        chrome.theme_preset == ThemePreset::HighContrast,
-                    ),
-                ]
-                .to_vec(),
+                ThemePreset::ALL
+                    .into_iter()
+                    .map(|preset| {
+                        (
+                            InteractionKind::SetThemePreset(preset),
+                            preset.label(),
+                            chrome.theme_preset == preset,
+                        )
+                    })
+                    .collect(),
             ),
             (
                 "Font",
@@ -530,6 +517,8 @@ impl WgpuCandidateRenderer {
         };
 
         quads.push(CandidateQuad {
+            shape: Default::default(),
+            clip_rect: None,
             rect: [0.0, 0.0, self.scene_width, self.scene_height],
             color: page_bg,
         });
@@ -579,6 +568,8 @@ impl WgpuCandidateRenderer {
             0.34,
         ];
         quads.push(CandidateQuad {
+            shape: Default::default(),
+            clip_rect: None,
             rect: [panel_x + 10.0, panel_y + 7.0, panel_width - 20.0, 1.6],
             color: settings_divider,
         });
@@ -618,7 +609,7 @@ impl WgpuCandidateRenderer {
             rect: interaction_hit_rect(close_rect),
         });
         let close_layout = TextBlock {
-            text: "×".to_string(),
+            text: String::new(),
             origin: [0.0; 2],
             max_width: 0.0,
             pixel_size: section_px,
@@ -630,6 +621,7 @@ impl WgpuCandidateRenderer {
             role: TextRole::ToolButton,
         }
         .layout_in_rect(close_visual_rect, [3.0 * ui_scale, 3.0 * ui_scale]);
+        append_close_icon_quads(&mut quads, close_visual_rect, text_secondary);
         text_quads.extend(close_layout.quads.iter().copied());
         atlas_glyphs.extend(close_layout.atlas_glyphs.iter().cloned());
         text_sections.push(TextSection {
@@ -888,6 +880,8 @@ impl WgpuCandidateRenderer {
             };
             let handle_rect = settings_scroll_handle_rect;
             quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: handle_rect,
                 color: handle_color,
             });
@@ -950,6 +944,8 @@ impl WgpuCandidateRenderer {
                     settings_section_radius,
                 );
                 quads.push(CandidateQuad {
+                    shape: Default::default(),
+                    clip_rect: None,
                     rect: [
                         panel_x + 20.0,
                         section_top + section_height - 1.0,
@@ -1118,7 +1114,7 @@ impl WgpuCandidateRenderer {
         }
 
         for quad in &mut quads[content_quad_start..] {
-            quad.rect = intersect_rect(quad.rect, content_viewport);
+            quad.clip_rect = Some(content_viewport);
         }
         for target in &mut interactive_targets[content_target_start..] {
             target.rect = intersect_rect(target.rect, content_viewport);

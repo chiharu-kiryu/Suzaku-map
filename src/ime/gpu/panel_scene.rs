@@ -55,42 +55,68 @@ impl WgpuCandidateRenderer {
         ];
         let selected_meta_text = text_secondary;
         let voice_success_text = match chrome.theme_preset {
+            ThemePreset::Suzaku | ThemePreset::Baihu | ThemePreset::Qinglong => {
+                srgb_color(0x386747)
+            }
+            ThemePreset::Xuanwu => srgb_color(0xB0DEC9),
             ThemePreset::Daylight => [0.20, 0.44, 0.24, 1.0],
             ThemePreset::Solarized => [0.24, 0.44, 0.24, 1.0],
             ThemePreset::DeviceDark => [0.84, 0.96, 0.86, 1.0],
             ThemePreset::HighContrast => [0.62, 1.0, 0.60, 1.0],
         };
         let voice_error_text = match chrome.theme_preset {
+            ThemePreset::Suzaku | ThemePreset::Baihu | ThemePreset::Qinglong => {
+                srgb_color(0xA12F38)
+            }
+            ThemePreset::Xuanwu => srgb_color(0xFFB7C7),
             ThemePreset::Daylight => [0.86, 0.38, 0.38, 1.0],
             ThemePreset::Solarized => [0.77, 0.31, 0.31, 1.0],
             ThemePreset::DeviceDark => [1.0, 0.74, 0.74, 1.0],
             ThemePreset::HighContrast => [1.0, 0.52, 0.52, 1.0],
         };
         let voice_hint_fill = match chrome.theme_preset {
+            ThemePreset::Suzaku => srgb_color(0xF6EDDF),
+            ThemePreset::Baihu | ThemePreset::Qinglong | ThemePreset::Xuanwu => accent_soft,
             ThemePreset::Daylight => [0.92, 0.96, 1.0, 1.0],
             ThemePreset::Solarized => [0.95, 0.89, 0.73, 1.0],
             ThemePreset::DeviceDark => [0.27, 0.35, 0.48, 1.0],
             ThemePreset::HighContrast => [0.12, 0.17, 0.26, 1.0],
         };
         let voice_hint_border = match chrome.theme_preset {
+            ThemePreset::Suzaku => srgb_color(0xC7A57A),
+            ThemePreset::Baihu | ThemePreset::Qinglong | ThemePreset::Xuanwu => {
+                chrome.theme_preset.secondary_accent()
+            }
             ThemePreset::Daylight => [0.53, 0.68, 0.86, 1.0],
             ThemePreset::Solarized => [0.66, 0.52, 0.30, 1.0],
             ThemePreset::DeviceDark => [0.54, 0.72, 0.96, 1.0],
             ThemePreset::HighContrast => [0.52, 0.84, 1.0, 1.0],
         };
         let voice_listening_fill = match chrome.theme_preset {
+            ThemePreset::Suzaku | ThemePreset::Baihu | ThemePreset::Qinglong => {
+                srgb_color(0xE5EEE2)
+            }
+            ThemePreset::Xuanwu => srgb_color(0x253E45),
             ThemePreset::Daylight => [0.84, 0.95, 0.87, 1.0],
             ThemePreset::Solarized => [0.81, 0.93, 0.74, 1.0],
             ThemePreset::DeviceDark => [0.23, 0.39, 0.28, 1.0],
             ThemePreset::HighContrast => [0.18, 0.48, 0.22, 1.0],
         };
         let voice_listening_border = match chrome.theme_preset {
+            ThemePreset::Suzaku | ThemePreset::Baihu | ThemePreset::Qinglong => {
+                srgb_color(0x719273)
+            }
+            ThemePreset::Xuanwu => srgb_color(0x76B8B1),
             ThemePreset::Daylight => [0.32, 0.62, 0.38, 1.0],
             ThemePreset::Solarized => [0.51, 0.73, 0.47, 1.0],
             ThemePreset::DeviceDark => [0.47, 0.80, 0.54, 1.0],
             ThemePreset::HighContrast => [0.38, 0.98, 0.55, 1.0],
         };
         let voice_visual_bar = match chrome.theme_preset {
+            ThemePreset::Suzaku | ThemePreset::Baihu | ThemePreset::Qinglong => {
+                srgb_color(0x628462)
+            }
+            ThemePreset::Xuanwu => srgb_color(0x9AD3CC),
             ThemePreset::Daylight => [0.36, 0.72, 0.43, 0.95],
             ThemePreset::Solarized => [0.36, 0.72, 0.43, 0.95],
             ThemePreset::DeviceDark => [0.58, 0.90, 0.64, 0.95],
@@ -115,6 +141,8 @@ impl WgpuCandidateRenderer {
             1.0,
         ];
         let badge_fill = match chrome.theme_preset {
+            ThemePreset::Suzaku => srgb_color(0xB5393F),
+            ThemePreset::Baihu | ThemePreset::Qinglong | ThemePreset::Xuanwu => accent,
             ThemePreset::Daylight => [0.24, 0.56, 0.86, 1.0],
             ThemePreset::Solarized => [0.57, 0.46, 0.34, 1.0],
             ThemePreset::DeviceDark => [0.32, 0.60, 0.98, 1.0],
@@ -123,11 +151,6 @@ impl WgpuCandidateRenderer {
         // The window dimensions already include `window_scale`. Applying it again here made
         // controls and text grow quadratically, which squeezed the candidate stack out of view.
         let responsive_scale = (self.responsive_scale() * 1.12).clamp(0.9, 2.4);
-        let input_value_px = match chrome.text_scale {
-            DisplayTextScale::Small => 2.4,
-            DisplayTextScale::Medium => 3.4,
-            DisplayTextScale::Large => 4.2,
-        } * responsive_scale;
         let label_px = match chrome.text_scale {
             DisplayTextScale::Small => 2.2,
             DisplayTextScale::Medium => 2.45,
@@ -169,6 +192,9 @@ impl WgpuCandidateRenderer {
         ];
         let panel_glass_layer_alpha =
             |is_hovered: bool, is_focused: bool, is_pressed: bool| -> f32 {
+                if chrome.theme_preset.is_guardian() {
+                    return 0.0;
+                }
                 let mut alpha = panel_glass_divider[3];
                 if is_pressed {
                     alpha += 0.10;
@@ -188,19 +214,26 @@ impl WgpuCandidateRenderer {
                     panel_glass_layer_alpha(is_hovered, is_focused, is_pressed),
                 ]
             };
-        let focus_ring_inner = if chrome.theme_preset == ThemePreset::HighContrast {
+        let focus_ring_inner = if chrome.theme_preset.is_guardian() {
+            [accent_soft[0], accent_soft[1], accent_soft[2], 0.12]
+        } else if chrome.theme_preset == ThemePreset::HighContrast {
             [0.78, 0.98, 1.0, 0.30]
         } else {
             [0.72, 0.93, 1.0, 0.18]
         };
-        let focus_ring_outer = if chrome.theme_preset == ThemePreset::HighContrast {
+        let focus_ring_outer = if chrome.theme_preset.is_guardian() {
+            [accent[0], accent[1], accent[2], 0.035]
+        } else if chrome.theme_preset == ThemePreset::HighContrast {
             [0.20, 0.62, 1.0, 0.24]
         } else if chrome.theme_preset == ThemePreset::DeviceDark {
             [0.23, 0.74, 1.0, 0.12]
         } else {
             [0.37, 0.70, 1.0, 0.12]
         };
-        let focus_strip = if chrome.theme_preset == ThemePreset::HighContrast {
+        let focus_strip = if chrome.theme_preset.is_guardian() {
+            let secondary = chrome.theme_preset.secondary_accent();
+            [secondary[0], secondary[1], secondary[2], 0.32]
+        } else if chrome.theme_preset == ThemePreset::HighContrast {
             [0.72, 1.0, 1.0, 0.23]
         } else if chrome.theme_preset == ThemePreset::DeviceDark {
             [0.24, 0.34, 0.54, 0.18]
@@ -250,9 +283,8 @@ impl WgpuCandidateRenderer {
         } else {
             1.0
         };
-        let input_value_px = input_value_px * narrow_layout_scale;
+        let input_value_px = metrics.input_value_px;
         let label_px = label_px * narrow_layout_scale;
-        let tracking = tracking * if narrow_layout_scale < 1.0 { 0.75 } else { 1.0 };
         let base_line_gap = (base_line_gap
             * if narrow_layout_scale < 1.0 {
                 0.88_f32
@@ -353,6 +385,8 @@ impl WgpuCandidateRenderer {
             let bg_left = (panel_x - 1.6 * responsive_scale).max(0.0);
             let bg_width = panel_width + 3.2 * responsive_scale;
             quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: [
                     bg_left,
                     panel_y - 2.0 * responsive_scale,
@@ -395,6 +429,8 @@ impl WgpuCandidateRenderer {
         );
         if panel_height > 2.0 * responsive_scale {
             quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: [
                     panel_x + 3.2 * responsive_scale,
                     panel_shell_y + 3.2 * responsive_scale,
@@ -451,6 +487,8 @@ impl WgpuCandidateRenderer {
                 panel_focus_edge_radius,
             );
             quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: [
                     panel_x + 10.0 * responsive_scale,
                     input_box_y + metrics.input_box_h - 5.0 * responsive_scale,
@@ -466,15 +504,57 @@ impl WgpuCandidateRenderer {
             // unused header space above it act as a broad window drag area.
             rect: [
                 panel_x,
-                input_box_y + 24.0 * responsive_scale,
+                input_box_y + 28.0 * responsive_scale,
                 panel_width,
-                (metrics.input_box_h - 24.0 * responsive_scale).max(1.0),
+                (metrics.input_box_h - 28.0 * responsive_scale).max(1.0),
             ],
         });
 
+        let input_viewport = [
+            panel_x + 16.0 * responsive_scale,
+            input_box_y + 29.0 * responsive_scale,
+            (panel_width - 32.0 * responsive_scale).max(0.0),
+            input_value_px * 7.0,
+        ];
+        let (input_layout, input_caret) = layout_input_line(
+            &TextBlock {
+                text: if chrome.seed_text.is_empty() {
+                    "Type a seed word or phrase".to_string()
+                } else {
+                    chrome.display_text()
+                },
+                origin: [input_viewport[0], input_viewport[1]],
+                max_width: input_viewport[2],
+                pixel_size: input_value_px,
+                letter_spacing: heading_tracking,
+                line_gap: 0.0,
+                max_lines: 1,
+                color: if chrome.seed_text.is_empty() {
+                    text_muted
+                } else {
+                    text_primary
+                },
+                align: TextAlign::Left,
+                role: TextRole::InputValue,
+            },
+            input_viewport,
+            if chrome.seed_text.is_empty() {
+                0
+            } else {
+                chrome.caret_index
+            },
+            2.0 * responsive_scale,
+        );
         let header_layouts = vec![
             TextBlock {
-                text: "Seed input".to_string(),
+                text: match chrome.theme_preset {
+                    ThemePreset::Suzaku => "Suzaku · Input",
+                    ThemePreset::Baihu => "Baihu · Input",
+                    ThemePreset::Qinglong => "Qinglong · Input",
+                    ThemePreset::Xuanwu => "Xuanwu · Input",
+                    _ => "Seed input",
+                }
+                .to_string(),
                 origin: [
                     panel_x + 16.0 * responsive_scale,
                     input_box_y + 9.0 * responsive_scale,
@@ -488,31 +568,16 @@ impl WgpuCandidateRenderer {
                 align: TextAlign::Left,
                 role: TextRole::InputLabel,
             }
-            .layout(),
-            TextBlock {
-                text: if chrome.seed_text.is_empty() {
-                    "Type a seed word or phrase".to_string()
-                } else {
-                    chrome.display_text()
-                },
-                origin: [
+            .layout_in_rect(
+                [
                     panel_x + 16.0 * responsive_scale,
-                    input_box_y + 25.6 * responsive_scale,
+                    input_box_y + 6.0 * responsive_scale,
+                    (panel_width - 206.0 * responsive_scale).max(0.0),
+                    20.0 * responsive_scale,
                 ],
-                max_width: (panel_width - 190.0 * responsive_scale).max(0.0),
-                pixel_size: input_value_px,
-                letter_spacing: heading_tracking,
-                line_gap: base_line_gap,
-                max_lines: 3,
-                color: if chrome.seed_text.is_empty() {
-                    text_muted
-                } else {
-                    text_primary
-                },
-                align: TextAlign::Left,
-                role: TextRole::InputValue,
-            }
-            .layout(),
+                [0.0, responsive_scale],
+            ),
+            input_layout,
         ];
         for layout in &header_layouts {
             text_quads.extend(layout.quads.iter().copied());
@@ -523,21 +588,10 @@ impl WgpuCandidateRenderer {
             layouts: header_layouts,
         });
         if chrome.input_focused {
-            let caret_x = panel_x
-                + 16.0 * responsive_scale
-                + measure_text_prefix_width(
-                    &chrome.seed_text,
-                    chrome.caret_index,
-                    input_value_px,
-                    tracking,
-                );
             quads.push(CandidateQuad {
-                rect: [
-                    caret_x,
-                    input_box_y + 25.5 * responsive_scale,
-                    2.0 * responsive_scale,
-                    17.0 * responsive_scale,
-                ],
+                shape: Default::default(),
+                clip_rect: Some(input_viewport),
+                rect: input_caret,
                 color: accent,
             });
         }
@@ -763,8 +817,17 @@ impl WgpuCandidateRenderer {
             kind: InteractionKind::ClosePanel,
             rect: interaction_hit_rect(close_button_rect),
         });
+        append_close_icon_quads(
+            &mut quads,
+            close_visual_rect,
+            if close_hovered || close_pressed {
+                accent
+            } else {
+                text_secondary
+            },
+        );
         let close_icon = TextBlock {
-            text: "X".to_string(),
+            text: String::new(),
             origin: [
                 close_visual_rect[0] + 4.0 * responsive_scale,
                 close_visual_rect[1] + 3.8 * responsive_scale,
@@ -1146,6 +1209,8 @@ impl WgpuCandidateRenderer {
             );
             if tools_panel_rect[3] > 3.0 * responsive_scale {
                 quads.push(CandidateQuad {
+                    shape: Default::default(),
+                    clip_rect: None,
                     rect: [
                         tools_panel_rect[0] + 7.0 * responsive_scale,
                         tools_panel_rect[1] + 4.0 * responsive_scale,
@@ -1160,6 +1225,8 @@ impl WgpuCandidateRenderer {
                 });
             }
             quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: [
                     tools_panel_rect[0] + 10.0 * responsive_scale,
                     tools_panel_rect[1] + 5.2 * responsive_scale,
@@ -1189,6 +1256,8 @@ impl WgpuCandidateRenderer {
             );
             if drawer_rect[3] > 6.0 * responsive_scale {
                 quads.push(CandidateQuad {
+                    shape: Default::default(),
+                    clip_rect: None,
                     rect: [
                         drawer_rect[0] + 4.0 * responsive_scale,
                         drawer_rect[1] + 4.0 * responsive_scale,
@@ -1204,6 +1273,8 @@ impl WgpuCandidateRenderer {
             }
             let handle_w = 44.0 * responsive_scale;
             quads.push(CandidateQuad {
+                shape: Default::default(),
+                clip_rect: None,
                 rect: [
                     drawer_rect[0] + (drawer_rect[2] - handle_w) * 0.5,
                     drawer_rect[1] + 6.0 * responsive_scale,
@@ -1233,7 +1304,7 @@ impl WgpuCandidateRenderer {
         let settings_option_text_scroll = settings_option_text_scroll.as_ref();
         include!("panel_scene_settings_block.rs");
 
-        let mut scene = {
+        let scene = {
             let next_token_candidate_scroll = next_token_candidate_scroll.as_ref();
             let _handwriting_candidate_scroll = handwriting_candidate_scroll.as_ref();
             let sentence_candidate_truncated = &mut sentence_candidate_truncated;
@@ -1243,15 +1314,6 @@ impl WgpuCandidateRenderer {
             let sentence_candidate_scroll = sentence_candidate_scroll.as_ref();
             include!("panel_scene_candidates_block.rs")
         };
-
-        if scene.quads.len() > 2 && scene.quads[1].color == scene.quads[2].color {
-            scene.quads[2].color = [
-                scene.quads[2].color[0],
-                scene.quads[2].color[1],
-                scene.quads[2].color[2],
-                (scene.quads[2].color[3] + 0.04).min(1.0),
-            ];
-        }
 
         scene.with_window_drag_background(self.scene_width, self.scene_height)
     }

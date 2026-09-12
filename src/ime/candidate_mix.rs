@@ -1,7 +1,10 @@
 //! IBus ranking and presentation. Scores are bounded ranking weights, not probabilities.
 //! Decoration is display-only: a commit always uses Candidate::text.
 use super::Candidate;
-use crate::languages::{BuiltinLanguage, chinese, english, japanese, llm::LlmCompletion};
+use crate::languages::{
+    BuiltinLanguage, chinese, english, japanese,
+    llm::{LlmCompletion, normalize_completion_text},
+};
 use std::collections::HashSet;
 
 pub const PAGE_SIZE: usize = 6;
@@ -188,7 +191,8 @@ pub fn merge_model(
     let pinned = pinned_count(language, &local);
     let mut accepted = false;
     for completion in completions.into_iter().take(6) {
-        let text = completion.text.trim().to_owned();
+        let text = normalize_completion_text(&completion.text, (language == "en").then_some(seed))
+            .to_owned();
         if text.is_empty()
             || text == seed
             || text.chars().count() > 160
