@@ -754,15 +754,80 @@ impl WgpuCandidateRenderer {
             layouts: vec![close_layout],
         });
 
+        let retry_space = if chrome.settings_save_failed {
+            let label = ui.tr("Retry");
+            let width =
+                (measure_text_prefix_width(label, label.chars().count(), chip_px, ui_tracking)
+                    + 20.0 * ui_scale)
+                    .max(close_size)
+                    .min(panel_width * 0.32);
+            let rect = [
+                close_rect[0] - width - 8.0 * ui_scale,
+                close_rect[1],
+                width,
+                close_size,
+            ];
+            let (hovered, pressed) = interaction_state(InteractionKind::RetrySaveSettings);
+            let visual = animated_rect(rect, hovered, pressed);
+            append_soft_card_quads(
+                &mut quads,
+                visual,
+                accent_soft,
+                accent,
+                animated_shadow(soft_shadow, hovered, pressed),
+                shell,
+                settings_chip_radius,
+            );
+            interactive_targets.push(InteractiveTarget {
+                kind: InteractionKind::RetrySaveSettings,
+                rect: interaction_hit_rect(rect),
+            });
+            let layout = TextBlock {
+                text: label.into(),
+                origin: [0.0; 2],
+                max_width: width,
+                pixel_size: chip_px,
+                letter_spacing: ui_tracking,
+                line_gap: 0.0,
+                max_lines: 1,
+                color: accent_text,
+                align: TextAlign::Center,
+                role: TextRole::ToolButton,
+            }
+            .layout_in_rect(visual, [6.0 * ui_scale, 3.0 * ui_scale]);
+            text_quads.extend(layout.quads.iter().copied());
+            atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
+            text_sections.push(TextSection {
+                role: TextRole::ToolButton,
+                layouts: vec![layout],
+            });
+            width + 8.0 * ui_scale
+        } else {
+            0.0
+        };
         let title_layout = TextBlock {
-            text: ui.tr("Panel Settings").to_string(),
+            text: ui
+                .tr(if chrome.settings_save_failed {
+                    "Not saved"
+                } else {
+                    "Panel Settings"
+                })
+                .to_string(),
             origin: [panel_x + 15.0, panel_y + 9.0],
             max_width: (panel_width - 60.0).max(0.0),
-            pixel_size: title_px,
+            pixel_size: if chrome.settings_save_failed {
+                label_px
+            } else {
+                title_px
+            },
             letter_spacing: heading_tracking,
             line_gap: base_line_gap,
             max_lines: 1,
-            color: text_primary,
+            color: if chrome.settings_save_failed {
+                accent_text
+            } else {
+                text_primary
+            },
             align: TextAlign::Left,
             role: TextRole::HeaderTitle,
         }
@@ -770,7 +835,7 @@ impl WgpuCandidateRenderer {
             [
                 panel_x + 15.0 * ui_scale,
                 panel_y,
-                panel_width - close_size - 40.0 * ui_scale,
+                panel_width - close_size - 40.0 * ui_scale - retry_space,
                 title_section_h,
             ],
             [0.0, 4.0 * ui_scale],

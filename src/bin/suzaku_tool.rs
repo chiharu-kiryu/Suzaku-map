@@ -4,7 +4,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, exit};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[path = "suzaku_tool/model.rs"]
 mod model;
@@ -15,6 +15,9 @@ mod data;
 const CONNECTION_NAME: &str = "dev.suzaku.linux.ime";
 const IBUS_COMPONENT_NAME: &str = "org.freedesktop.IBus.Suzaku";
 const IBUS_USER_SERVICE_NAME: &str = "suzaku-ibus.service";
+const IBUS_AUTOSTART_PENDING: &str =
+    "# Suzaku: initial autostart pending; retry linux-register install";
+const LINUX_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 const GNOME_INPUT_SOURCES_SCHEMA: &str = "org.gnome.desktop.input-sources";
 const GNOME_INPUT_SOURCES_KEY: &str = "sources";
 const FCITX_CONFIG_NAME: &str = "dev_suzaku_linux_ime.conf";
@@ -76,6 +79,7 @@ fn print_help() {
     );
     println!("  suzaku_tool linux-register [install|status|verify|uninstall|diag]");
     println!("  suzaku_tool linux-register-ime [install|status|verify|uninstall|diag]");
+    println!("  # status/verify/diag are read-only; install/uninstall change user registration");
     println!(
         "  # Build native IBus host first: cargo build --features linux-ibus --bin linux_ime_host"
     );
@@ -215,9 +219,12 @@ fn linux_register(args: &[String]) -> i32 {
     if matches!(action, "--help" | "-h" | "help") {
         println!("Usage: suzaku-tool linux-register [install|status|verify|uninstall|diag]");
         println!("Install/uninstall only in your desktop user session, never with sudo.");
+        println!(
+            "Status/verify/diag are read-only; diag is an alias for verify and never installs or restarts services."
+        );
         return 0;
     }
-    if matches!(action, "install" | "uninstall" | "diag") {
+    if matches!(action, "install" | "uninstall") {
         #[cfg(not(target_os = "linux"))]
         {
             eprintln!("Linux input-method registration is only available on Linux");
@@ -234,16 +241,8 @@ fn linux_register(args: &[String]) -> i32 {
     match action {
         "install" => linux_install(framework),
         "status" => linux_status(framework),
-        "verify" => linux_verify(framework),
+        "verify" | "diag" => linux_verify(framework),
         "uninstall" => linux_uninstall(framework),
-        "diag" => {
-            if linux_install(framework) != 0 {
-                1
-            } else {
-                println!();
-                linux_verify(framework)
-            }
-        }
         _ => {
             eprintln!("unknown linux-register action: {action}");
             print_help();
@@ -277,7 +276,12 @@ fn linux_registration_output(
         let _ = timeout;
         command.output()
     };
-    result.map_err(|error| format!("Linux registration command failed: {error}"))
+    result.map_err(|error| {
+        format!(
+            "Linux registration command {} failed: {error}",
+            command.get_program().to_string_lossy()
+        )
+    })
 }
 
 fn linux_registration_status(mut command: Command) -> Result<(), String> {
@@ -285,7 +289,7 @@ fn linux_registration_status(mut command: Command) -> Result<(), String> {
     check_exit_status(&result.status, "Linux registration command")
 }
 
-fn preflight_ibus_registration(home: &Path, installing: bool) -> Result<(), String> {
+fn preflight_ibus_registration(home: &Path, installing: bool) -> Result<String, String> {
     if installing {
         if !is_executable_file(Path::new("/usr/bin/env")) {
             return Err("/usr/bin/env is required to launch the IBus user service".into());
@@ -308,22 +312,34 @@ fn preflight_ibus_registration(home: &Path, installing: bool) -> Result<(), Stri
         command("systemctl").ok_or("systemctl is required for user-level IBus registration")?;
     let result = linux_registration_output(
         systemctl.args(["--user", "show", "--property=Version", "--value"]),
-        Duration::from_secs(2),
+        LINUX_QUERY_TIMEOUT,
     )?;
     if !result.status.success() {
         return Err("No systemd user manager is available; run this in your desktop user session. No registration files were changed.".into());
     }
     let mut ibus = command("ibus").ok_or("ibus is required for input-method registration")?;
-    let result = linux_registration_output(ibus.arg("engine"), Duration::from_secs(2))?;
+    let result = linux_registration_output(ibus.arg("engine"), LINUX_QUERY_TIMEOUT)?;
     if !result.status.success() {
         return Err(
             "Could not query the current IBus engine. No registration files were changed.".into(),
         );
     }
-    if String::from_utf8_lossy(&result.stdout).trim() == CONNECTION_NAME {
+    let engine = String::from_utf8(result.stdout)
+        .map_err(|_| "Current IBus engine is not valid UTF-8. No registration files were changed.")?
+        .trim()
+        .to_string();
+    if engine == CONNECTION_NAME {
         return Err("Release Suzaku and finish the current composition before reinstalling or uninstalling it. No registration files were changed.".into());
     }
-    Ok(())
+    if !should_restore_ibus_engine(&engine) {
+        return Err(
+            "Could not identify a safe current IBus engine. No registration files were changed."
+                .into(),
+        );
+    }
+    // Reuse the checked engine instead of making a second fallible query before
+    // installation and silently losing the restoration target on failure.
+    Ok(engine)
 }
 
 fn ibus_component_path(home: &Path) -> PathBuf {
@@ -360,12 +376,13 @@ fn linux_install(framework: LinuxFramework) -> i32 {
     };
     match framework {
         LinuxFramework::IBus => {
-            if let Err(error) = preflight_ibus_registration(&home, true) {
-                eprintln!("{error}");
-                return 1;
-            }
-            let previous_engine =
-                ibus_current_engine().filter(|engine| should_restore_ibus_engine(engine));
+            let previous_engine = match preflight_ibus_registration(&home, true) {
+                Ok(engine) => engine,
+                Err(error) => {
+                    eprintln!("{error}");
+                    return 1;
+                }
+            };
             let source_binary = match resolve_linux_ime_host_binary() {
                 Ok(path) => path,
                 Err(error) => {
@@ -388,10 +405,7 @@ fn linux_install(framework: LinuxFramework) -> i32 {
                     );
                     println!("  host: {}", host_binary.display());
                     let service_result = install_ibus_user_service(&home, &host_binary);
-                    let restore_result = previous_engine
-                        .as_deref()
-                        .map(restore_ibus_engine)
-                        .unwrap_or(Ok(()));
+                    let restore_result = restore_ibus_engine(&previous_engine);
                     if let Err(error) = service_result {
                         eprintln!("{error}");
                         if let Err(restore_error) = restore_result {
@@ -429,9 +443,7 @@ fn linux_install(framework: LinuxFramework) -> i32 {
                     println!(
                         "Installed user service: {IBUS_USER_SERVICE_NAME} (existing autostart preference preserved)"
                     );
-                    if let Some(engine) = previous_engine {
-                        println!("Preserved active IBus engine: {engine}");
-                    }
+                    println!("Preserved active IBus engine: {previous_engine}");
                     0
                 }
                 Err(err) => {
@@ -465,13 +477,17 @@ fn linux_install(framework: LinuxFramework) -> i32 {
 }
 
 fn linux_status(framework: LinuxFramework) -> i32 {
-    let home = match linux_home_path() {
-        Ok(home) => home,
-        Err(err) => {
-            eprintln!("{err}");
-            return 1;
+    match linux_status_checked(framework) {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("Linux registration status unavailable: {error}");
+            1
         }
-    };
+    }
+}
+
+fn linux_status_checked(framework: LinuxFramework) -> Result<(), String> {
+    let home = linux_home_path()?;
     match framework {
         LinuxFramework::IBus => {
             let marker = ibus_component_path(&home);
@@ -494,25 +510,25 @@ fn linux_status(framework: LinuxFramework) -> i32 {
                 println!("IBus: component not found at {}", marker.display());
             }
 
-            if ibus_runtime_has_engine() {
+            if ibus_runtime_has_engine()? {
                 println!("IBus runtime exposes {CONNECTION_NAME}.");
             } else {
                 println!("IBus runtime does not expose {CONNECTION_NAME}.");
             }
-            match ibus_current_engine() {
+            match ibus_current_engine(LINUX_QUERY_TIMEOUT)? {
                 Some(engine) if engine == CONNECTION_NAME => {
                     println!("Suzaku is the active IBus engine.");
                 }
                 Some(engine) => println!("Active IBus engine: {engine}"),
                 None => println!("Active IBus engine could not be queried."),
             }
-            if process_running("linux_ime_host") {
+            if process_running("linux_ime_host")? {
                 println!("Suzaku native host process is running.");
             } else {
                 println!("Suzaku native host process is stopped.");
             }
             let unit = ibus_user_service_path(&home);
-            if ibus_user_service_active() {
+            if ibus_user_service_active()? {
                 println!("User service is active: {IBUS_USER_SERVICE_NAME}");
             } else if unit.exists() {
                 println!("User service is installed but inactive: {}", unit.display());
@@ -537,24 +553,28 @@ fn linux_status(framework: LinuxFramework) -> i32 {
             }
         }
     }
-    0
+    Ok(())
 }
 
 fn linux_verify(framework: LinuxFramework) -> i32 {
+    match linux_verify_checked(framework) {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("Verdict: INCOMPLETE (diagnostic query failed: {error}).");
+            1
+        }
+    }
+}
+
+fn linux_verify_checked(framework: LinuxFramework) -> Result<i32, String> {
     match framework {
         LinuxFramework::IBus => {
-            let home = match linux_home_path() {
-                Ok(home) => home,
-                Err(err) => {
-                    eprintln!("{err}");
-                    return 1;
-                }
-            };
-            println!("Verifying IBus host registration (non-root).");
+            let home = linux_home_path()?;
+            println!("Verifying IBus host registration (read-only).");
 
-            let daemon_ok = process_running("ibus-daemon")
-                || process_running("ibus-x11")
-                || process_running("ibus-portal");
+            let daemon_ok = process_running("ibus-daemon")?
+                || process_running("ibus-x11")?
+                || process_running("ibus-portal")?;
             if daemon_ok {
                 println!("✓ IBus daemon process found.");
             } else {
@@ -582,20 +602,21 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
                 println!("⚠ Component host executable is missing or invalid.");
             }
 
-            let runtime_ok = ibus_runtime_has_engine();
+            let runtime_ok = ibus_runtime_has_engine()?;
             if runtime_ok {
                 println!("✓ IBus runtime exposes {CONNECTION_NAME}.");
             } else {
                 println!("⚠ IBus runtime does not expose {CONNECTION_NAME} yet.");
             }
 
-            let active = ibus_current_engine().is_some_and(|engine| engine == CONNECTION_NAME);
+            let active = ibus_current_engine(LINUX_QUERY_TIMEOUT)?
+                .is_some_and(|engine| engine == CONNECTION_NAME);
             println!(
                 "{} Suzaku engine is {}active.",
                 if active { "✓" } else { "·" },
                 if active { "" } else { "not " }
             );
-            let host_running = process_running("linux_ime_host");
+            let host_running = process_running("linux_ime_host")?;
             println!(
                 "{} Native host process is {}running.",
                 if host_running { "✓" } else { "·" },
@@ -604,7 +625,7 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
 
             let service_path = ibus_user_service_path(&home);
             let service_installed = service_path.is_file();
-            let service_active = ibus_user_service_active();
+            let service_active = ibus_user_service_active()?;
             println!(
                 "{} User service is {}installed and {}active.",
                 if service_installed && service_active {
@@ -625,28 +646,22 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
                 && service_active
             {
                 println!("Verdict: PASS (native IBus registration is ready).");
-                0
+                Ok(0)
             } else if marker_ok || runtime_ok {
                 println!("Verdict: PENDING (component detected, but runtime setup is incomplete).");
-                2
+                Ok(2)
             } else {
                 println!("Verdict: FAIL (no detectable executable component/runtime).");
-                1
+                Ok(1)
             }
         }
         LinuxFramework::Fcitx => {
-            let home = match linux_home_path() {
-                Ok(home) => home,
-                Err(err) => {
-                    eprintln!("{err}");
-                    return 1;
-                }
-            };
-            println!("Verifying Fcitx host registration (non-root).");
+            let home = linux_home_path()?;
+            println!("Verifying Fcitx host registration (read-only).");
 
-            let daemon_ok = process_running("fcitx")
-                || process_running("fcitx5")
-                || process_running("fcitx5-qt");
+            let daemon_ok = process_running("fcitx")?
+                || process_running("fcitx5")?
+                || process_running("fcitx5-qt")?;
             if daemon_ok {
                 println!("✓ Fcitx daemon process found.");
             } else {
@@ -675,13 +690,13 @@ fn linux_verify(framework: LinuxFramework) -> i32 {
 
             if marker_ok && daemon_ok {
                 println!("Verdict: PASS (host registration ready).");
-                0
+                Ok(0)
             } else if marker_ok {
                 println!("Verdict: PENDING (registration marker exists, but daemon not running).");
-                2
+                Ok(2)
             } else {
                 println!("Verdict: FAIL (no detectable registration marker).");
-                1
+                Ok(1)
             }
         }
     }
@@ -839,12 +854,11 @@ fn read_gnome_input_sources() -> Result<Option<String>, String> {
     let Some(mut gsettings) = command("gsettings") else {
         return Ok(None);
     };
-    let output = gsettings
-        .arg("get")
-        .arg(GNOME_INPUT_SOURCES_SCHEMA)
-        .arg(GNOME_INPUT_SOURCES_KEY)
-        .output()
-        .map_err(|error| format!("run `gsettings get`: {error}"))?;
+    let output = linux_registration_output(
+        gsettings.args(["get", GNOME_INPUT_SOURCES_SCHEMA, GNOME_INPUT_SOURCES_KEY]),
+        LINUX_QUERY_TIMEOUT,
+    )
+    .map_err(|error| format!("run `gsettings get`: {error}"))?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -864,13 +878,16 @@ fn reconcile_gnome_ibus_input_source(
     };
     let mut gsettings = command("gsettings")
         .ok_or_else(|| "gsettings disappeared while updating input sources".to_string())?;
-    let output = gsettings
-        .arg("set")
-        .arg(GNOME_INPUT_SOURCES_SCHEMA)
-        .arg(GNOME_INPUT_SOURCES_KEY)
-        .arg(&updated)
-        .output()
-        .map_err(|error| format!("run `gsettings set`: {error}"))?;
+    let output = linux_registration_output(
+        gsettings.args([
+            "set",
+            GNOME_INPUT_SOURCES_SCHEMA,
+            GNOME_INPUT_SOURCES_KEY,
+            &updated,
+        ]),
+        LINUX_QUERY_TIMEOUT,
+    )
+    .map_err(|error| format!("run `gsettings set`: {error}"))?;
     if !output.status.success() {
         return Err(format!(
             "`gsettings set` failed with {}: {}",
@@ -904,61 +921,74 @@ fn uninstall_ibus_user_service(home: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn ibus_runtime_has_engine() -> bool {
-    let statically_registered = command("ibus")
-        .and_then(|mut command| command.arg("list-engine").output().ok())
-        .filter(|output| output.status.success())
-        .is_some_and(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .any(|line| line.split_whitespace().next() == Some(CONNECTION_NAME))
-        });
-    statically_registered || ibus_dynamic_registry_has_engine()
+fn ibus_runtime_has_engine() -> Result<bool, String> {
+    let Some(mut ibus) = command("ibus") else {
+        return Ok(false);
+    };
+    let output = linux_registration_output(ibus.arg("list-engine"), LINUX_QUERY_TIMEOUT)?;
+    let statically_registered = output.status.success()
+        && String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.split_whitespace().next() == Some(CONNECTION_NAME));
+    if statically_registered {
+        Ok(true)
+    } else {
+        ibus_dynamic_registry_has_engine()
+    }
 }
 
-fn ibus_dynamic_registry_has_engine() -> bool {
-    let Some(address_output) =
-        command("ibus").and_then(|mut command| command.arg("address").output().ok())
-    else {
-        return false;
+fn ibus_dynamic_registry_has_engine() -> Result<bool, String> {
+    let Some(mut ibus) = command("ibus") else {
+        return Ok(false);
     };
+    let address_output = linux_registration_output(ibus.arg("address"), LINUX_QUERY_TIMEOUT)?;
     if !address_output.status.success() {
-        return false;
+        return Ok(false);
     }
     let address = String::from_utf8_lossy(&address_output.stdout);
     let address = address.trim();
     if address.is_empty() {
-        return false;
+        return Ok(false);
     }
 
-    command("gdbus")
-        .and_then(|mut command| {
-            command
-                .arg("call")
-                .arg("--address")
-                .arg(address)
-                .arg("--dest")
-                .arg("org.freedesktop.IBus")
-                .arg("--object-path")
-                .arg("/org/freedesktop/IBus")
-                .arg("--method")
-                .arg("org.freedesktop.DBus.Properties.Get")
-                .arg("org.freedesktop.IBus")
-                .arg("ActiveEngines")
-                .output()
-                .ok()
-        })
-        .filter(|output| output.status.success())
-        .is_some_and(|output| String::from_utf8_lossy(&output.stdout).contains(CONNECTION_NAME))
+    let Some(mut gdbus) = command("gdbus") else {
+        return Ok(false);
+    };
+    let output = linux_registration_output(
+        gdbus.args([
+            "call",
+            "--address",
+            address,
+            "--dest",
+            "org.freedesktop.IBus",
+            "--object-path",
+            "/org/freedesktop/IBus",
+            "--method",
+            "org.freedesktop.DBus.Properties.Get",
+            "org.freedesktop.IBus",
+            "ActiveEngines",
+        ]),
+        LINUX_QUERY_TIMEOUT,
+    )?;
+    Ok(
+        output.status.success()
+            && String::from_utf8_lossy(&output.stdout).contains(CONNECTION_NAME),
+    )
 }
 
-fn ibus_current_engine() -> Option<String> {
-    let output = command("ibus")?.arg("engine").output().ok()?;
+fn ibus_current_engine(timeout: Duration) -> Result<Option<String>, String> {
+    let Some(mut ibus) = command("ibus") else {
+        return Ok(None);
+    };
+    let output = linux_registration_output(ibus.arg("engine"), timeout)?;
     if !output.status.success() {
-        return None;
+        return Err(format!("IBus engine query failed with {}", output.status));
     }
-    let engine = String::from_utf8(output.stdout).ok()?.trim().to_string();
-    (!engine.is_empty()).then_some(engine)
+    let engine = String::from_utf8(output.stdout)
+        .map_err(|error| format!("IBus engine is not valid UTF-8: {error}"))?
+        .trim()
+        .to_string();
+    Ok((!engine.is_empty()).then_some(engine))
 }
 
 fn should_restore_ibus_engine(engine: &str) -> bool {
@@ -970,23 +1000,20 @@ fn restore_ibus_engine(engine: &str) -> Result<(), String> {
     const MAX_ATTEMPTS: usize = 40;
     const RETRY_DELAY: Duration = Duration::from_millis(50);
 
-    if ibus_current_engine().as_deref() == Some(engine) {
-        return Ok(());
-    }
+    // Query, switch, confirmation and retry delays share one overall budget.
+    let deadline = Instant::now() + LINUX_QUERY_TIMEOUT;
+    let remaining = || deadline.saturating_duration_since(Instant::now());
 
     let mut last_error = "IBus did not report the requested engine".to_string();
     for attempt in 0..MAX_ATTEMPTS {
-        if ibus_current_engine().as_deref() == Some(engine) {
+        if ibus_current_engine(remaining())?.as_deref() == Some(engine) {
             return Ok(());
         }
 
         let mut ibus = command("ibus").ok_or_else(|| "ibus command not found".to_string())?;
-        let output = ibus
-            .arg("engine")
-            .arg(engine)
-            .output()
+        let output = linux_registration_output(ibus.args(["engine", engine]), remaining())
             .map_err(|error| format!("failed to run `ibus engine`: {error}"))?;
-        if ibus_current_engine().as_deref() == Some(engine) {
+        if ibus_current_engine(remaining())?.as_deref() == Some(engine) {
             return Ok(());
         }
 
@@ -1002,12 +1029,8 @@ fn restore_ibus_engine(engine: &str) -> Result<(), String> {
         }
 
         if attempt + 1 < MAX_ATTEMPTS {
-            std::thread::sleep(RETRY_DELAY);
+            std::thread::sleep(RETRY_DELAY.min(remaining()));
         }
-    }
-
-    if ibus_current_engine().as_deref() == Some(engine) {
-        return Ok(());
     }
 
     Err(last_error)
@@ -1172,7 +1195,15 @@ fn systemd_quote(value: &str) -> String {
 
 fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), String> {
     let unit_path = ibus_user_service_path(home);
-    let newly_installed = !unit_path.exists();
+    let previous_unit =
+        suzaku_map::data::files::read_optional(&unit_path, suzaku_map::data::files::SETTINGS_LIMIT)
+            .map_err(|error| format!("read {}: {error}", unit_path.display()))?;
+    // A failed initial reload/enable is not a user's disabled-autostart choice.
+    // Persist that distinction in a comment until enable has actually succeeded.
+    // Legacy units and completed installations keep their existing preference.
+    let autostart_pending = previous_unit
+        .as_ref()
+        .is_none_or(|contents| contents.lines().any(|line| line == IBUS_AUTOSTART_PENDING));
     let Some(parent) = unit_path.parent() else {
         return Err("unable to resolve systemd user unit directory".to_string());
     };
@@ -1195,7 +1226,12 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
         "[Unit]\nDescription=Suzaku native IBus engine host\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/env -- {} --ibus\nRestart=always\nRestartSec=1\nTimeoutStopSec=5\n\n[Install]\nWantedBy=default.target\n",
         systemd_quote(executable)
     );
-    suzaku_map::data::files::atomic_write(&unit_path, unit.as_bytes())
+    let staged_unit = if autostart_pending {
+        format!("{IBUS_AUTOSTART_PENDING}\n{unit}")
+    } else {
+        unit.clone()
+    };
+    suzaku_map::data::files::atomic_write(&unit_path, staged_unit.as_bytes())
         .map_err(|error| format!("write {}: {error}", unit_path.display()))?;
 
     let mut reload = command("systemctl")
@@ -1203,7 +1239,7 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
     reload.arg("--user").arg("daemon-reload");
     linux_registration_status(reload)?;
 
-    if newly_installed {
+    if autostart_pending {
         let mut enable = command("systemctl")
             .ok_or_else(|| "systemctl is required for user-level IBus registration".to_string())?;
         enable
@@ -1211,6 +1247,17 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
             .arg("enable")
             .arg(IBUS_USER_SERVICE_NAME);
         linux_registration_status(enable)?;
+        suzaku_map::data::files::atomic_write(&unit_path, unit.as_bytes()).map_err(|error| {
+            format!(
+                "complete initial autostart in {}: {error}",
+                unit_path.display()
+            )
+        })?;
+        // Only the comment changed, but keep systemd's on-disk unit view current.
+        let mut reload = command("systemctl")
+            .ok_or_else(|| "systemctl disappeared while completing registration".to_string())?;
+        reload.args(["--user", "daemon-reload"]);
+        linux_registration_status(reload)?;
     }
 
     let mut restart = command("systemctl")
@@ -1222,18 +1269,15 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
     linux_registration_status(restart)
 }
 
-fn ibus_user_service_active() -> bool {
-    command("systemctl")
-        .and_then(|mut command| {
-            command
-                .arg("--user")
-                .arg("is-active")
-                .arg("--quiet")
-                .arg(IBUS_USER_SERVICE_NAME)
-                .output()
-                .ok()
-        })
-        .is_some_and(|output| output.status.success())
+fn ibus_user_service_active() -> Result<bool, String> {
+    let Some(mut systemctl) = command("systemctl") else {
+        return Ok(false);
+    };
+    let output = linux_registration_output(
+        systemctl.args(["--user", "is-active", "--quiet", IBUS_USER_SERVICE_NAME]),
+        LINUX_QUERY_TIMEOUT,
+    )?;
+    Ok(output.status.success())
 }
 
 fn xml_escape(value: &str) -> String {
@@ -1298,19 +1342,12 @@ fn write_ibus_marker_at(path: &Path, host_binary: &Path) -> Result<(), String> {
         .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-fn process_running(name: &str) -> bool {
-    if !command_exists("pgrep") {
-        return false;
-    }
-    if let Some(mut cmd) = command("pgrep") {
-        cmd.arg("-x")
-            .arg(name)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    } else {
-        false
-    }
+fn process_running(name: &str) -> Result<bool, String> {
+    let Some(mut pgrep) = command("pgrep") else {
+        return Ok(false);
+    };
+    let output = linux_registration_output(pgrep.args(["-x", name]), LINUX_QUERY_TIMEOUT)?;
+    Ok(output.status.success())
 }
 
 struct AndroidEnv {

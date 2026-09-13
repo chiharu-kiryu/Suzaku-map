@@ -40,6 +40,7 @@ impl ApplicationHandler for CandidateProbe {
         state.chrome.llm_enabled = false;
         state.chrome.input_modes_expanded = false;
         check_editable_keyboard_choices(&mut state);
+        check_rapid_completion_gestures(&mut state);
         for touch in [false, true] {
             reset_composition(&mut state);
             press(&mut state, InteractionKind::SelectNextToken(0), touch);
@@ -89,6 +90,61 @@ fn reset_composition(state: &mut PanelState) {
     state.engine.seed("hel");
     state.refresh_composition_candidates();
     state.last_scene = None;
+}
+
+fn check_rapid_completion_gestures(state: &mut PanelState) {
+    for touch in [false, true] {
+        reset_composition(state);
+        let committed = state.engine.snapshot().committed_text;
+        let mut seeds = vec![state.chrome.seed_text.clone()];
+        // Freshly displayed words can occupy the same slot. Each new press is
+        // an intentional edit, even inside the settings/commit debounce window.
+        for step in 0..2 {
+            let edit = state.next_token_completions[0].clone();
+            assert_ne!(edit.seed_before, edit.seed_after);
+            press(state, InteractionKind::SelectNextToken(0), touch);
+            if step > 0 {
+                // Deterministic fast-input fixture, independent of slow CI rendering.
+                state.last_interaction_action =
+                    Some((InteractionKind::SelectNextToken(0), Instant::now()));
+            }
+            state.complete_primary_release(touch);
+            assert_eq!(
+                state.chrome.seed_text, edit.seed_after,
+                "N17: new word in the same slot was mistaken for a duplicate; touch={touch}, step={step}"
+            );
+            assert_eq!(state.engine.snapshot().seed_text, edit.seed_after);
+            seeds.push(edit.seed_after);
+            // A duplicated release WITHOUT a new press must remain a no-op.
+            state.complete_primary_release(touch);
+            assert_eq!(state.chrome.seed_text, *seeds.last().unwrap());
+        }
+        assert_eq!(state.chrome.composed_tokens.len(), 2);
+        for (step, expected) in seeds[..2].iter().rev().enumerate() {
+            press(state, InteractionKind::RewindNextToken, touch);
+            if step > 0 {
+                state.last_interaction_action =
+                    Some((InteractionKind::RewindNextToken, Instant::now()));
+            }
+            state.complete_primary_release(touch);
+            assert_eq!(
+                state.chrome.seed_text, *expected,
+                "N17: a new undo gesture was discarded; touch={touch}, step={step}"
+            );
+            assert_eq!(state.engine.snapshot().seed_text, *expected);
+            state.complete_primary_release(touch);
+            assert_eq!(state.chrome.seed_text, *expected);
+        }
+        assert!(state.chrome.composed_tokens.is_empty());
+        assert_eq!(state.engine.snapshot().committed_text, committed);
+        // A new click can reapply the same completion after an intentional undo.
+        press(state, InteractionKind::SelectNextToken(0), touch);
+        state.complete_primary_release(touch);
+        assert_eq!(state.chrome.seed_text, seeds[1]);
+        println!(
+            "PASS: rapid completion/rewind gestures, duplicate-release suppression and reapply; touch={touch}"
+        );
+    }
 }
 
 fn check_editable_keyboard_choices(state: &mut PanelState) {
@@ -142,7 +198,14 @@ fn press(state: &mut PanelState, target: InteractionKind, touch: bool) {
         .interactive_targets
         .iter()
         .find(|item| item.kind == target)
-        .unwrap()
+        .unwrap_or_else(|| {
+            panic!(
+                "missing {target:?} for draft {:?}, words {:?}, history {:?}",
+                state.chrome.seed_text,
+                state.chrome.next_token_candidates,
+                state.chrome.composed_tokens
+            )
+        })
         .rect;
     let (x, y) = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
     assert_eq!(scene.hit_interaction(x, y), Some(target));

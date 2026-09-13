@@ -938,6 +938,9 @@ mod platform {
                 ));
             }
             tray.input_method.operation_error = error;
+            if panel_write_finished && let Some(error) = &tray.input_method.operation_error {
+                tray.send(PanelUserEvent::InputMethodError(error.clone()));
+            }
         });
     }
 

@@ -401,15 +401,27 @@ impl PanelState {
             return;
         }
         self.cancel_translation();
-        let settings = match suzaku_map::ime::settings::ImeSettings::load() {
-            Ok(settings) => settings,
+        let Some(config) = self.confirmed_model_config.clone() else {
+            self.translation_failed(LlmProviderError::InvalidEndpoint.into());
+            return;
+        };
+        // An explicit translation must also respect a consent revocation saved
+        // since the last host snapshot. Never adopt a different recipient here;
+        // refuse until reload instead of sending to either the old or new target.
+        let saved = match suzaku_map::ime::settings::ImeSettings::load() {
+            Ok(settings) => settings.provider,
             Err(_) => {
                 self.translation_failed(LlmProviderError::InvalidEndpoint.into());
                 return;
             }
         };
-        self.chrome.translation.cloud = settings.provider.scope == ModelScope::Cloud;
-        self.start_translation_with(Arc::new(HttpModelProvider::new(settings.provider)));
+        if !config.same_identity(&saved) || config.cloud_consent != saved.cloud_consent {
+            self.translation_failed(LlmProviderError::InvalidEndpoint.into());
+            self.chrome.translation.message = "Reload model settings".into();
+            return;
+        }
+        self.chrome.translation.cloud = config.scope == ModelScope::Cloud;
+        self.start_translation_with(Arc::new(HttpModelProvider::new(config)));
     }
 
     fn start_translation_with(&mut self, provider: Arc<dyn TranslationProvider>) {

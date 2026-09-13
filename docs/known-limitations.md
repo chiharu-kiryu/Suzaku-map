@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.5.6 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.5.7 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -27,7 +27,7 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.5.6 passes
+- **Build scope:** use `--all-features` for desktop checks. 0.5.7 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
   builds/tests are still not supported as a clean release gate.
 - **Draft durability:** input and recovery drafts are in memory. Crash, exit or a change of native

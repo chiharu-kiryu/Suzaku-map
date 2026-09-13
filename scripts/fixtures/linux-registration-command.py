@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 
 root = Path(os.environ["SUZAKU_REGISTRATION_QA"])
 assert root.parent == Path(tempfile.gettempdir())
@@ -14,15 +15,29 @@ state = json.loads(state_path.read_text())
 command = Path(sys.argv[0]).name
 args = sys.argv[1:]
 state["calls"].append([command, *args])
+if state.get("fail_once") == [command, *args]:
+    state.pop("fail_once")
+    state_path.write_text(json.dumps(state))
+    print("synthetic registration failure", file=sys.stderr)
+    sys.exit(1)
+if state.get("block_command") == [command, *args]:
+    if not state.get("block_after_restart", False) or state["active"]:
+        state["blocked_pid"] = os.getpid()
+        state_path.write_text(json.dumps(state))
+        # The CLI must time out and reap this private child before 30 seconds.
+        time.sleep(30)
 result = 0
 output = ""
 if command == "ibus":
     if args == ["engine"]:
+        if state.get("slow_restore", False) and state["active"]:
+            time.sleep(0.1)
         output = state["engine"]
     elif args[:1] == ["engine"] and len(args) == 2:
-        state["engine"] = args[1]
+        if not state.get("ignore_engine_switch", False):
+            state["engine"] = args[1]
     elif args == ["list-engine"]:
-        output = "dev.suzaku.linux.ime - Suzaku"
+        output = state.get("listed_engine", "dev.suzaku.linux.ime - Suzaku")
     elif args == ["address"]:
         output = "unix:path=/synthetic/no-desktop-access"
     else:
@@ -59,6 +74,9 @@ elif command == "pgrep":
 elif command == "gdbus":
     output = "dev.suzaku.linux.ime"
 else:
+    result = 1
+if state.get("fail_after_effect") == [command, *args]:
+    state.pop("fail_after_effect")
     result = 1
 state_path.write_text(json.dumps(state))
 if output:

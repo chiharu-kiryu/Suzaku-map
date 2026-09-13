@@ -456,13 +456,29 @@ impl PanelState {
             .join(" ")
     }
 
-    pub(super) fn persist_display_settings(&self) {
+    pub(super) fn persist_display_settings(&mut self) {
         if self.kind == PanelWindowKind::Settings {
             return;
         }
         let mut settings = PersistedDisplaySettings::from(&self.chrome);
         settings.window_scale = self.window_scale;
-        let _ = save_display_settings(&settings);
+        const MESSAGE: &str = "Settings not saved. Check folder permissions and retry in Settings.";
+        match save_display_settings(&settings) {
+            Ok(()) => {
+                self.chrome.settings_save_failed = false;
+                if self.last_commit_feedback.as_deref() == Some(MESSAGE) {
+                    self.last_commit_feedback = None;
+                    self.commit_feedback_ticks = 0;
+                }
+            }
+            Err(error) => {
+                eprintln!("Suzaku panel settings were not saved: {error}");
+                self.chrome.settings_save_failed = true;
+                self.last_commit_feedback = Some(MESSAGE.into());
+                self.commit_feedback_ticks = 180;
+            }
+        }
+        self.last_scene = None;
     }
 
     pub(super) fn current_scene(&mut self) -> RenderScene {
@@ -644,6 +660,7 @@ impl PanelState {
         let needs_llm_reconfigure = self.chrome.llm_enabled != other.llm_enabled
             || self.chrome.llm_model != other.llm_model
             || self.chrome.llm_temperature != other.llm_temperature;
+        self.chrome.prediction_edit_generation = other.prediction_edit_generation;
 
         if settings_changed {
             apply_display_settings(&mut self.chrome, &incoming_settings);
@@ -1019,6 +1036,13 @@ impl PanelState {
                 InteractionKind::TranslationPage(page) => {
                     self.chrome.translation.page = page.min(2000)
                 }
+                InteractionKind::RetrySaveSettings => {
+                    if self.kind == PanelWindowKind::Settings {
+                        self.settings_save_requested = true;
+                    } else {
+                        self.persist_display_settings();
+                    }
+                }
                 InteractionKind::SettingsToggle => {
                     self.chrome.settings_open = !self.chrome.settings_open;
                     if self.chrome.settings_open {
@@ -1313,6 +1337,8 @@ impl PanelState {
                     }
                     self.note_interaction_action(action);
                     self.chrome.llm_enabled = enabled;
+                    self.chrome.prediction_edit_generation[0] =
+                        self.chrome.prediction_edit_generation[0].wrapping_add(1);
                     self.reconfigure_model_provider();
                     self.persist_display_settings();
                 }
@@ -1468,6 +1494,8 @@ impl PanelState {
                     }
                     self.note_interaction_action(action);
                     self.chrome.llm_temperature = temp;
+                    self.chrome.prediction_edit_generation[1] =
+                        self.chrome.prediction_edit_generation[1].wrapping_add(1);
                     self.reconfigure_model_provider();
                     self.persist_display_settings();
                 }
@@ -1488,8 +1516,8 @@ impl PanelState {
                     }
 
                     self.clear_sentence_candidate_scroll();
-                    // The completion handler owns deduplication; recording this
-                    // press here would make it reject its own first invocation.
+                    // The release handler consumes this gesture once. Do not
+                    // debounce by slot: its next word can change after this edit.
                     self.select_next_token(index);
                 }
                 InteractionKind::RewindNextToken => self.rewind_next_token(),

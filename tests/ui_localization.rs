@@ -70,6 +70,64 @@ fn eight_interfaces_reflow_and_search_in_both_localized_and_original_labels() {
 }
 
 #[test]
+fn unsaved_settings_offer_a_readable_retry_in_all_eight_interfaces() {
+    for ui_language in UiLanguage::ALL {
+        for width in [420.0, 620.0, 960.0] {
+            for text_scale in [DisplayTextScale::Medium, DisplayTextScale::Large] {
+                let mut chrome = PanelChromeState {
+                    ui_language,
+                    text_scale,
+                    settings_save_failed: true,
+                    ..Default::default()
+                };
+                let scene = settings(width, &chrome);
+                assert_hit(&scene, InteractionKind::RetrySaveSettings);
+                assert_hit(&scene, InteractionKind::SettingsToggle);
+                let retry = scene
+                    .interactive_targets
+                    .iter()
+                    .find(|target| target.kind == InteractionKind::RetrySaveSettings)
+                    .unwrap()
+                    .rect;
+                for (role, label) in [
+                    (TextRole::HeaderTitle, "Not saved"),
+                    (TextRole::ToolButton, "Retry"),
+                ] {
+                    let layout = scene
+                        .text_sections
+                        .iter()
+                        .filter(|section| section.role == role)
+                        .flat_map(|section| &section.layouts)
+                        .find(|layout| layout.lines.iter().any(|line| !line.is_empty()))
+                        .unwrap();
+                    assert_eq!(
+                        layout.lines,
+                        [ui_language.tr(label)],
+                        "{ui_language:?} {width} {text_scale:?} {label}"
+                    );
+                    assert!(!layout.truncated);
+                    if role == TextRole::HeaderTitle {
+                        assert!(layout.bounds[0] + layout.bounds[2] <= retry[0]);
+                    }
+                }
+                chrome.settings_save_failed = false;
+                let saved_scene = settings(width, &chrome);
+                assert!(
+                    !saved_scene
+                        .interactive_targets
+                        .iter()
+                        .any(|target| { target.kind == InteractionKind::RetrySaveSettings })
+                );
+                assert_eq!(
+                    saved_scene.settings_scroll_metadata, scene.settings_scroll_metadata,
+                    "an error must not move the settings body"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn chrome_localization_never_translates_user_drafts_candidates_or_model_output() {
     for ui_language in UiLanguage::ALL {
         let mut chrome = PanelChromeState {

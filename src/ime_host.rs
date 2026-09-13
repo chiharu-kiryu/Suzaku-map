@@ -430,7 +430,14 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
         };
         let result = change.and_then(|changed| {
             if changed {
-                settings.save()?;
+                // Reload explicitly adopts the file we just read. Narrow controls
+                // must never replace a newer file with the host's stale snapshot.
+                let expected = if command == "R" {
+                    &settings
+                } else {
+                    &session.settings
+                };
+                settings.save_if_unchanged(expected)?;
                 session.apply_settings(settings);
             }
             Ok(())

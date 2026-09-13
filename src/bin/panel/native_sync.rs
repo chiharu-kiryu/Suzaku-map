@@ -24,6 +24,9 @@ use typing::NativeTyping;
 #[path = "native_sync_test.rs"]
 mod tests;
 #[cfg(all(test, target_os = "linux"))]
+#[path = "tool_chain_audit_test.rs"]
+mod tool_chain_audit_test;
+#[cfg(all(test, target_os = "linux"))]
 pub(super) use tests::assert_workers_cancel_on_shutdown;
 
 #[derive(Default)]
@@ -337,6 +340,7 @@ impl PanelState {
         }
         let visible = frame.as_ref().is_some_and(NativeComposition::visible);
         self.native.frame = frame;
+        self.pause_voice_capture_if_target_changed();
         // Our own text IME context is not an external app to mirror back into itself.
         if self.is_focused || self.chrome.settings_open {
             if self.native.showing && !visible {
@@ -355,6 +359,7 @@ impl PanelState {
                 self.chrome.input_modes_expanded,
             ));
             self.native.showing = true;
+            self.pause_voice_capture_if_target_changed();
             self.engine.configure_prediction(None);
             self.chrome.input_modes_expanded = false;
         }
@@ -421,6 +426,7 @@ impl PanelState {
             return;
         }
         self.native.showing = false;
+        self.pause_voice_capture_if_target_changed();
         self.native.typing = None;
         if let Some((seed, caret, expanded)) = self.native.draft.take() {
             self.chrome.set_seed_text(seed);
@@ -440,11 +446,9 @@ impl PanelState {
         if !self.native.showing {
             return false;
         }
-        let mut seed = self.view_snapshot().seed_text;
-        if !seed.is_empty() && !seed.ends_with(char::is_whitespace) {
-            seed.push(' ');
-        }
-        seed.push_str(text);
+        let seed = self.view_snapshot().seed_text;
+        let (seed, _) =
+            suzaku_map::ime::tool_text::insert_tool_text(&seed, seed.chars().count(), text);
         // Do not edit the acknowledged seed or discard the source optimistically.
         self.native_action_with_source(NativeOperation::Replace(seed), Some(source))
     }

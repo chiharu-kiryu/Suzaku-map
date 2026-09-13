@@ -40,12 +40,9 @@
         text
     };
 
-    let actual_chip_section_h = if chrome.next_token_candidates.is_empty() {
-        0.0
-    } else {
-        ((candidate_area_bottom - suggestions_y - 4.0 * responsive_scale).max(0.0))
-            .min(metrics.chip_section_h)
-    };
+    let actual_chip_section_h = (candidate_area_bottom - suggestions_y - 4.0 * responsive_scale)
+        .max(0.0)
+        .min(metrics.chip_section_h);
     let sentence_y = suggestions_y + actual_chip_section_h + metrics.sentence_section_gap;
     let available_sentence_area = (candidate_area_bottom - sentence_y).max(0.0);
     let panel_right = panel_x + panel_width;

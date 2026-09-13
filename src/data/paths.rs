@@ -54,8 +54,8 @@ impl DataPaths {
 
 pub fn lock_for_settings(path: &std::path::Path) -> Result<PathBuf, String> {
     let name = path.file_name().ok_or("设置路径必须指向文件")?;
-    if name == ".suzaku-data.lock" {
-        return Err("设置文件不能使用保留的维护锁名称".into());
+    if name == ".suzaku-data.lock" || name == ".suzaku-settings-write.lock" {
+        return Err("设置文件不能使用保留的锁名称".into());
     }
     let absolute = env::current_dir().map_err(|e| e.to_string())?.join(path);
     Ok(absolute

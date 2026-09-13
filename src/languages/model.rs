@@ -507,12 +507,7 @@ fn response_candidate_kind(
         document["choices"]
             .as_array()?
             .iter()
-            .filter(|choice| {
-                !matches!(
-                    choice["finish_reason"].as_str(),
-                    Some("length" | "content_filter")
-                )
-            })
+            .filter(|choice| complete_chat_choice(choice))
             .collect()
     };
     containers.into_iter().find_map(|container| {
@@ -653,6 +648,16 @@ fn decode_http_response(response: &[u8], eof: bool) -> Option<Vec<u8>> {
     }
     eof.then(|| body.to_vec())
 }
+// Compatible servers may omit the optional finish reason. If present, only a
+// normal completed answer is usable; tool handoffs/unknown states are not text results.
+fn complete_chat_choice(choice: &Value) -> bool {
+    match choice.get("finish_reason") {
+        None | Some(Value::Null) => true,
+        Some(Value::String(reason)) => reason == "stop",
+        _ => false,
+    }
+}
+
 fn parse_chat_completion_candidates(body: &str, prefix: Option<&str>) -> Vec<String> {
     let Ok(document) = serde_json::from_str::<Value>(body) else {
         return Vec::new();
@@ -660,10 +665,7 @@ fn parse_chat_completion_candidates(body: &str, prefix: Option<&str>) -> Vec<Str
     let mut candidates = Vec::new();
     if let Some(choices) = document.get("choices").and_then(Value::as_array) {
         for choice in choices {
-            if matches!(
-                choice["finish_reason"].as_str(),
-                Some("length" | "content_filter")
-            ) {
+            if !complete_chat_choice(choice) {
                 continue;
             }
             if let Some(content) = choice.pointer("/message/content").and_then(Value::as_str) {
@@ -1548,6 +1550,97 @@ mod tests {
                 Duration::from_millis(20)
             ),
             Err(LlmProviderError::Timeout)
+        );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn compatible_candidates_reject_tool_calls_and_unknown_finish_reasons() {
+        for reason in [
+            "tool_calls",
+            "function_call",
+            "length",
+            "content_filter",
+            "unknown",
+            "",
+        ] {
+            for content in [
+                "hello there".to_string(),
+                json!({"candidates":[{"text":"hello there","kind":"word"}]}).to_string(),
+            ] {
+                let body =
+                    json!({"choices":[{"message":{"content":content},"finish_reason":reason}]})
+                        .to_string();
+                assert!(
+                    parse_chat_completion_candidates(&body, Some("hel")).is_empty(),
+                    "{reason}"
+                );
+                assert_eq!(
+                    response_candidate_kind(&body, false, "hello there", Some("hel")),
+                    None,
+                    "{reason}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compatible_choice_completion_guard_preserves_legacy_servers_and_later_valid_choices() {
+        for reason in [Value::Null, json!("stop")] {
+            let mut choice = json!({"message":{"content":"hello there"},"finish_reason":reason});
+            for omitted in [false, true] {
+                if omitted {
+                    choice.as_object_mut().unwrap().remove("finish_reason");
+                }
+                assert!(complete_chat_choice(&choice));
+                let body = json!({"choices":[{"message":{"content":"hello unfinished"},"finish_reason":"tool_calls"}, choice]}).to_string();
+                assert_eq!(
+                    parse_chat_completion_candidates(&body, Some("hel")),
+                    ["hello there"]
+                );
+            }
+        }
+        for reason in [json!(false), json!(1), json!([]), json!({})] {
+            assert!(!complete_chat_choice(&json!({"finish_reason":reason})));
+        }
+    }
+
+    #[test]
+    fn compatible_provider_recovers_after_an_incomplete_tool_handoff() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!(
+            "http://{}/v1/chat/completions",
+            listener.local_addr().unwrap()
+        );
+        let server = thread::spawn(move || {
+            for reason in ["tool_calls", "stop"] {
+                let (mut stream, _) = test_server::accept(&listener);
+                assert!(
+                    test_server::read_request(&mut stream)
+                        .unwrap()
+                        .starts_with("POST /v1/chat/completions ")
+                );
+                let body = json!({"choices":[{"message":{"content":"hello there"},"finish_reason":reason}]}).to_string();
+                test_server::respond(&mut stream, "200 OK", &body).unwrap();
+            }
+        });
+        let provider = HttpModelProvider::new(ModelProviderConfig {
+            endpoint,
+            model: "synthetic-model".into(),
+            ..Default::default()
+        });
+        let request = LlmCompletionRequest {
+            seed_text: "hel".into(),
+            normalized_phrase: "hel".into(),
+            ..request("en")
+        };
+        assert_eq!(
+            provider.generate_checked(&request),
+            Err(LlmProviderError::NoCandidates)
+        );
+        assert_eq!(
+            provider.generate_checked(&request).unwrap()[0].text,
+            "hello there"
         );
         server.join().unwrap();
     }

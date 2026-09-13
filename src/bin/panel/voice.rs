@@ -4,11 +4,18 @@ use suzaku_map::ime::gpu::{InputMode, VoiceCaptureState, VoicePermissionState};
 
 const VOICE_AUTO_INSERT_QUIET_TIME: Duration = Duration::from_millis(900);
 
+#[derive(Debug, PartialEq, Eq)]
+enum VoiceCaptureTarget {
+    Local,
+    Native { host: String, context: u64 },
+}
+
 #[derive(Default)]
 pub(super) struct VoiceTranscriptProgress {
     transcript: String,
     changed_at: Option<Instant>,
     generation: u64,
+    target: Option<VoiceCaptureTarget>,
 }
 
 impl VoiceTranscriptProgress {
@@ -16,6 +23,7 @@ impl VoiceTranscriptProgress {
         self.transcript.clear();
         self.changed_at = None;
         self.generation = self.generation.wrapping_add(1);
+        self.target = None;
     }
 
     pub(super) fn generation(&self) -> u64 {
@@ -33,6 +41,52 @@ impl VoiceTranscriptProgress {
 }
 
 impl PanelState {
+    fn voice_capture_target(&self) -> Option<VoiceCaptureTarget> {
+        if self.chrome.settings_open {
+            return None;
+        }
+        if !self.native.showing {
+            return Some(VoiceCaptureTarget::Local);
+        }
+        self.native
+            .frame
+            .as_ref()
+            .filter(|frame| frame.focused && !frame.private && !self.is_focused)
+            .map(|frame| VoiceCaptureTarget::Native {
+                host: frame.host.clone(),
+                context: frame.context,
+            })
+    }
+
+    /// Invalidate at each target transition, not just when the quiet timer fires:
+    /// returning to the old field must not rearm a cancelled capture.
+    pub(super) fn pause_voice_capture_if_target_changed(&mut self) {
+        if self.chrome.voice_state != VoiceCaptureState::Listening
+            || (self.voice_progress.target.is_some()
+                && self.voice_progress.target == self.voice_capture_target())
+        {
+            return;
+        }
+        // Preserve a final, unpolled partial before stopping the backend. This is
+        // source text only; adopting it in a new target requires an explicit click.
+        if let Some(transcript) = self
+            .voice
+            .bridge
+            .as_ref()
+            .and_then(|bridge| bridge.poll_transcript())
+        {
+            self.chrome.voice_transcript = Self::normalize_voice_transcript(&transcript);
+        }
+        self.stop_voice_capture();
+        self.last_commit_feedback = Some(
+            "Input target changed; voice capture stopped and transcript retained. Insert explicitly when ready."
+                .into(),
+        );
+        self.commit_feedback_ticks = 180;
+        self.last_scene = None;
+        self.window.request_redraw();
+    }
+
     pub(super) fn normalize_voice_transcript(raw: &str) -> String {
         raw.split_whitespace().collect::<Vec<_>>().join(" ")
     }
@@ -90,6 +144,7 @@ impl PanelState {
 
     pub(super) fn poll_voice_bridge_at(&mut self, now: Instant) {
         self.refresh_voice_permission_state();
+        self.pause_voice_capture_if_target_changed();
         if self.chrome.voice_state != VoiceCaptureState::Listening {
             return;
         }
@@ -148,6 +203,7 @@ impl PanelState {
         if bridge.start() {
             bridge.seed_debug_transcript_from_env();
             self.chrome.voice_state = VoiceCaptureState::Listening;
+            self.voice_progress.target = self.voice_capture_target();
         } else {
             let permission = bridge.permission_state();
             self.chrome.voice_permission = permission;
@@ -196,14 +252,10 @@ impl PanelState {
             return;
         }
 
-        if !self.chrome.seed_text.is_empty() && !self.chrome.seed_text.ends_with(' ') {
-            self.chrome.insert_text(" ");
-        }
-        self.chrome.insert_text(&transcript);
+        self.chrome.insert_tool_text(&transcript);
         self.chrome.active_input_mode = InputMode::VirtualKeyboard;
         self.chrome.input_modes_expanded = false;
-        self.chrome.input_focused = true;
-        self.chrome.move_caret_to_end();
+        self.chrome.focus_input();
         self.clear_voice_transcript();
         self.sync_manual_seed_base();
         self.refresh_seed();

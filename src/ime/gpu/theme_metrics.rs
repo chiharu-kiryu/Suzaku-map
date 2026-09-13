@@ -378,10 +378,16 @@ impl PanelSceneMetrics {
             && max_panel_width < 560.0
             && !chrome.next_token_candidates.is_empty();
 
-        let chip_section_h = if chrome.next_token_candidates.is_empty() || translating {
+        let chip_section_h = if translating
+            || (chrome.next_token_candidates.is_empty() && chrome.composed_tokens.is_empty())
+        {
             0.0
         } else if collapsed_daily_mode {
             32.5 * responsive_scale
+        } else if chrome.next_token_candidates.is_empty() {
+            // Keep pending undo even when suggestions are exhausted. Fit the
+            // Large history heading and card insets, without empty chip rows.
+            40.0 * responsive_scale
         } else {
             (if stacked_token_header { 45.0 } else { 72.0 }) * responsive_scale
         };

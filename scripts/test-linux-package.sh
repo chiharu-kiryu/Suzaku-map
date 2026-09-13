@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+suzaku_package_test_scripts=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 suzaku_package_test_output=$(realpath -- "${1:?Usage: test-linux-package.sh OUTPUT_DIRECTORY}")
 suzaku_package_test_tmp=$(mktemp -d /tmp/suzaku-package-test.XXXXXX)
 trap 'rm -r -- "$suzaku_package_test_tmp"' EXIT
@@ -51,6 +52,10 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-network.md"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-network.mmd"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/bug-audit-2026-09-13.md"
+  python3 "$suzaku_package_test_scripts/check-package-audit-links.py" \
+    "$suzaku_package_test_tree/share/doc/suzaku" "$suzaku_package_test_tree/README.md" \
+    "$suzaku_package_test_tree/model-providers.md" "$suzaku_package_test_tree/ibus-candidates.md" \
+    "$suzaku_package_test_tree/translation.md" "$suzaku_package_test_tree/interface-languages.md"
   suzaku_package_test_version=$(jq -r '.version' "$suzaku_package_test_tree/manifest.json")
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_tree/bin/suzaku_tool" data --help
@@ -77,6 +82,8 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.mmd"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/bug-audit-2026-09-13.md"
+  python3 "$suzaku_package_test_scripts/check-package-audit-links.py" \
+    "$suzaku_package_test_extract/root/usr/share/doc/suzaku"
   suzaku_package_test_version=$(jq -r '.version' "$suzaku_package_test_extract/root/usr/share/doc/suzaku/manifest.json")
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" data --help

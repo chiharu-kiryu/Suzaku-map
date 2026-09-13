@@ -88,3 +88,80 @@ fn checksums_must_identify_the_exact_artifact_and_its_current_bytes() {
     f.write("expected.tar.gz", "modified artifact");
     f.rejects("Checksum does not identify the expected artifact");
 }
+
+#[test]
+fn packaged_audit_links_cover_references_inline_links_and_flattened_guides() {
+    let f = Fixture::new();
+    fs::create_dir(f.0.join("docs")).unwrap();
+    f.write("docs/functional-network.md", "[first]: bug-audit-first.md#details\n\n[one](bug-audit-first.md) and [two](bug-audit-second.md)\n");
+    f.write("docs/bug-audit-first.md", "first report");
+    let check = || {
+        Command::new("python3")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/scripts/check-package-audit-links.py"
+            ))
+            .arg(&f.0)
+            .output()
+            .unwrap()
+    };
+    let result = check();
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("bug-audit-second.md"));
+    f.write("docs/bug-audit-second.md", "");
+    assert!(
+        !check().status.success(),
+        "empty reports must not count as present"
+    );
+    f.write("docs/bug-audit-second.md", "second report");
+    assert!(check().status.success());
+    f.write("README.md", "[flattened guide](bug-audit-first.md)\n");
+    assert!(
+        !check().status.success(),
+        "a flat guide must not resolve from the docs directory"
+    );
+    f.write("README.md", "[flattened guide](docs/bug-audit-first.md)\n[remote](https://example.invalid/bug-audit-remote.md)\n```text\n[example](bug-audit-example.md)\n```\n");
+    assert!(check().status.success());
+    for guide in [
+        "linux-packaging-data.md",
+        "model-providers.md",
+        "ibus-candidates.md",
+        "translation.md",
+        "interface-languages.md",
+    ] {
+        f.write(guide, "[audit](bug-audit-second.md)\n");
+        let result = check();
+        assert!(
+            !result.status.success(),
+            "must check {guide}, not just README"
+        );
+        assert!(String::from_utf8_lossy(&result.stderr).contains(guide));
+        f.write(guide, "[audit](docs/bug-audit-second.md)\n");
+        assert!(check().status.success());
+    }
+    // Tarball-level guides live outside the main documentation root and must
+    // be passed to the checker explicitly, including guides other than README.
+    fs::create_dir(f.0.join("tar-root")).unwrap();
+    let extra = f.0.join("tar-root/model-providers.md");
+    let check_extra = || {
+        Command::new("python3")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/scripts/check-package-audit-links.py"
+            ))
+            .arg(&f.0)
+            .arg(&extra)
+            .output()
+            .unwrap()
+    };
+    f.write(
+        "tar-root/model-providers.md",
+        "[audit](bug-audit-second.md)\n",
+    );
+    assert!(!check_extra().status.success());
+    f.write(
+        "tar-root/model-providers.md",
+        "[audit](../docs/bug-audit-second.md)\n",
+    );
+    assert!(check_extra().status.success());
+}

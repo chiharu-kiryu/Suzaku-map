@@ -260,6 +260,9 @@ impl PanelState {
             }
             InteractionKind::DragWindow => None,
             InteractionKind::ClosePanel => Some("Hide panel to system tray".to_string()),
+            InteractionKind::RetrySaveSettings => {
+                Some("Check folder permissions, then retry saving settings.".into())
+            }
             InteractionKind::SettingsToggle => Some(if self.kind == PanelWindowKind::Settings {
                 "Close settings".to_string()
             } else {

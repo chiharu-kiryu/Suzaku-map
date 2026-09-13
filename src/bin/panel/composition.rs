@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use suzaku_map::ime::InputSource;
 use suzaku_map::ime::SignalState;
 use suzaku_map::ime::gpu::InteractionKind;
-use suzaku_map::ime::settings::ImeSettings;
+use suzaku_map::languages::llm::LlmProviderError;
 use suzaku_map::languages::model::{HttpModelProvider, ModelProviderConfig};
 use suzaku_map::panel_support::composition_candidate_previews;
 use suzaku_map::platform::ime_host_adapter::ImeHostSessionBridge;
@@ -54,12 +54,15 @@ impl PanelState {
         self.refresh_seed();
     }
 
-    fn current_model_config(&self) -> ModelProviderConfig {
-        ModelProviderConfig {
+    fn current_model_config(&self) -> Result<ModelProviderConfig, LlmProviderError> {
+        Ok(ModelProviderConfig {
             temperature_tenths: self.chrome.llm_temperature.tenths(),
             handwriting_hint: self.last_handwriting_summary.clone(),
-            ..ImeSettings::load().unwrap_or_default().provider
-        }
+            ..self
+                .confirmed_model_config
+                .clone()
+                .ok_or(LlmProviderError::InvalidEndpoint)?
+        })
     }
 
     pub(super) fn reconfigure_model_provider(&mut self) {
@@ -68,10 +71,25 @@ impl PanelState {
             return;
         }
         if self.chrome.llm_enabled {
-            self.engine
-                .configure_prediction(Some(std::sync::Arc::new(HttpModelProvider::new(
-                    self.current_model_config(),
-                ))));
+            match self.current_model_config() {
+                Ok(config) => {
+                    if self.last_commit_feedback.as_deref()
+                        == Some("Check the configured model and endpoint.")
+                    {
+                        self.last_commit_feedback = None;
+                        self.commit_feedback_ticks = 0;
+                    }
+                    self.engine.configure_prediction(Some(std::sync::Arc::new(
+                        HttpModelProvider::new(config),
+                    )));
+                }
+                Err(_) => {
+                    self.engine.configure_prediction(None);
+                    self.last_commit_feedback =
+                        Some("Check the configured model and endpoint.".into());
+                    self.commit_feedback_ticks = 180;
+                }
+            }
         } else {
             self.engine.configure_prediction(None);
         }
@@ -219,11 +237,8 @@ impl PanelState {
             }
             return;
         }
-        let action = InteractionKind::SelectNextToken(index);
-        if self.is_repeating_interaction(action) {
-            return;
-        }
-        self.note_interaction_action(action);
+        // A new gesture may choose a different word in the same slot immediately.
+        // Release consumes the press once; history validates the exact source draft.
         let Some(full_seed) = self.completion_history.apply(&self.chrome.seed_text, &edit) else {
             return;
         };
@@ -279,10 +294,7 @@ impl PanelState {
         if self.native.showing {
             return;
         }
-        if self.is_repeating_interaction(InteractionKind::RewindNextToken) {
-            return;
-        }
-        self.note_interaction_action(InteractionKind::RewindNextToken);
+        // Separate presses can undo separate edits without a fixed waiting window.
         let Some(full_seed) = self.completion_history.undo(&self.chrome.seed_text) else {
             return;
         };

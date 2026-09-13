@@ -124,6 +124,27 @@ fn invalid_or_literal_credentials_never_replace_existing_settings() {
 }
 
 #[test]
+fn concurrent_configuration_writers_fail_without_replacing_settings() {
+    let fixture = Fixture::new();
+    success(fixture.run(&["model", "configure", "--model", "before"]));
+    let path = fixture.0.join("settings.json");
+    let before = fs::read(&path).unwrap();
+    let _running = suzaku_map::data::files::DataLease::acquire(
+        &suzaku_map::data::paths::lock_for_settings(&path).unwrap(),
+        false,
+    )
+    .unwrap();
+    let writer = suzaku_map::data::files::DataLease::settings_writer(&path).unwrap();
+    let rejected = fixture.run(&["model", "configure", "--model", "not-written"]);
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("正在保存"));
+    assert_eq!(fs::read(&path).unwrap(), before);
+    drop(writer);
+    success(fixture.run(&["model", "configure", "--model", "after"]));
+    assert_eq!(fixture.saved()["llm_model"], "after");
+}
+
+#[test]
 fn settings_read_limits_and_invalid_contents_never_overwrite_the_source() {
     let fixture = Fixture::new();
     let path = fixture.0.join("settings.json");

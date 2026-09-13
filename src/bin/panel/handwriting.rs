@@ -462,14 +462,10 @@ impl PanelState {
             );
             return;
         }
-        if !self.chrome.seed_text.is_empty() && !self.chrome.seed_text.ends_with(' ') {
-            self.chrome.insert_text(" ");
-        }
-        self.chrome.insert_text(&candidate);
+        self.chrome.insert_tool_text(&candidate);
         self.chrome.active_input_mode = InputMode::VirtualKeyboard;
         self.chrome.input_modes_expanded = false;
         self.chrome.focus_input();
-        self.chrome.move_caret_to_end();
         self.sync_manual_seed_base();
         self.refresh_seed();
         self.clear_handwriting();

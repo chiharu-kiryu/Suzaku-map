@@ -43,6 +43,9 @@ mod prediction_settings;
 #[path = "panel/render.rs"]
 mod render;
 #[cfg(all(test, target_os = "linux"))]
+#[path = "panel/settings_chain_audit_test.rs"]
+mod settings_chain_audit_test;
+#[cfg(all(test, target_os = "linux"))]
 #[path = "panel/settings_native_test.rs"]
 mod settings_native_test;
 #[cfg(all(test, target_os = "linux"))]
@@ -379,6 +382,8 @@ impl PanelApp {
             });
         self.last_native_ime_settings = Some(ime_settings.clone());
         if let Some(panel) = self.panel.as_mut() {
+            // Use this acknowledged snapshot, never a separately reread disk configuration.
+            panel.confirmed_model_config = Some(ime_settings.provider.clone());
             let previous = (panel.chrome.llm_enabled, panel.chrome.llm_temperature);
             if configuration_changed {
                 panel.cancel_translation();
@@ -412,6 +417,9 @@ impl PanelApp {
             if let Some(settings) = self.settings.as_mut() {
                 settings.chrome.llm_enabled = panel.chrome.llm_enabled;
                 settings.chrome.llm_temperature = panel.chrome.llm_temperature;
+                settings.chrome.prediction_edit_generation =
+                    panel.chrome.prediction_edit_generation;
+                settings.chrome.settings_save_failed = panel.chrome.settings_save_failed;
                 settings.window.request_redraw();
             }
         }
@@ -590,6 +598,10 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     handle_panel_window_event(settings, event_loop, event, false);
                     panel.chrome.settings_open = settings.chrome.settings_open;
                     if panel.adopt_settings_from(&settings.chrome) {
+                        panel.window.request_redraw();
+                    }
+                    if std::mem::take(&mut settings.settings_save_requested) {
+                        panel.persist_display_settings();
                         panel.window.request_redraw();
                     }
                     if panel.chrome.settings_open {
@@ -842,6 +854,8 @@ struct PanelState {
     size: winit::dpi::PhysicalSize<u32>,
     renderer: WgpuCandidateRenderer,
     engine: XRTabletImeEngine,
+    /// Startup configuration, then snapshots acknowledged by the host/reload channel.
+    confirmed_model_config: Option<suzaku_map::languages::model::ModelProviderConfig>,
     chrome: PanelChromeState,
     voice: VoiceInputController,
     translation: translation::PanelTranslation,
@@ -852,6 +866,7 @@ struct PanelState {
     handwriting_generation: u64,
     last_handwriting_summary: Option<String>,
     last_commit_feedback: Option<String>,
+    settings_save_requested: bool,
     commit_feedback_ticks: u8,
     completion_history: suzaku_map::panel_support::CompletionHistory,
     next_token_completions: Vec<suzaku_map::panel_support::NextTokenCompletion>,
@@ -1105,6 +1120,8 @@ impl PanelState {
             llm_enabled: false,
             llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
+            prediction_edit_generation: [0; 2],
+            settings_save_failed: false,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
             pointer_target_slop_tenths: 50,
@@ -1123,6 +1140,22 @@ impl PanelState {
         });
         if let Some(saved) = persisted_settings.as_ref() {
             apply_display_settings(&mut chrome, saved);
+        }
+        let ime_settings = if kind == PanelWindowKind::Main {
+            suzaku_map::ime::settings::ImeSettings::load().ok()
+        } else {
+            None
+        };
+        if kind == PanelWindowKind::Main {
+            // The display cache is not authority to enable a model at startup.
+            // Invalid settings leave local input usable without choosing another endpoint.
+            chrome.llm_enabled = ime_settings.as_ref().is_some_and(|s| s.llm_enabled);
+            if let Some(settings) = &ime_settings {
+                chrome.llm_temperature =
+                    LlmTemperaturePreset::from_tenths(settings.provider.temperature_tenths);
+                chrome.translation.cloud =
+                    settings.provider.scope == suzaku_map::languages::model::ModelScope::Cloud;
+            }
         }
         apply_pointer_stability_env_overrides(&mut chrome);
 
@@ -1183,6 +1216,9 @@ impl PanelState {
         });
 
         let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+        if let Some(settings) = &ime_settings {
+            engine.set_language(settings.language.id());
+        }
         engine.set_source(InputSource::GazeDwell);
         engine.update_signal(SignalState {
             pointer_precision: 0.42,
@@ -1222,6 +1258,7 @@ impl PanelState {
             size,
             renderer: WgpuCandidateRenderer::new(config.width as f32, config.height as f32),
             engine,
+            confirmed_model_config: ime_settings.map(|settings| settings.provider),
             chrome,
             voice,
             translation: Default::default(),
@@ -1235,6 +1272,7 @@ impl PanelState {
             handwriting_generation: 0,
             last_handwriting_summary: None,
             last_commit_feedback: None,
+            settings_save_requested: false,
             commit_feedback_ticks: 0,
             completion_history: Default::default(),
             next_token_completions: Vec::new(),

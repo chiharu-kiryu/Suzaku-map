@@ -39,14 +39,11 @@
     };
 
     let chip_section_y = suggestions_y;
-    let chip_section_h = if chrome.next_token_candidates.is_empty()
-        || (chrome.input_modes_expanded && chrome.active_input_mode == InputMode::Translation) {
-        0.0
-    } else {
-        (candidate_area_bottom - chip_section_y - 4.0 * responsive_scale).max(0.0)
-    };
-    if chip_section_h > 0.0 {
-        let available_section_h = chip_section_h.min(metrics.chip_section_h);
+    // Use the same history-aware reservation as window sizing and sentence layout.
+    let available_section_h = (candidate_area_bottom - chip_section_y - 4.0 * responsive_scale)
+        .max(0.0)
+        .min(metrics.chip_section_h);
+    if available_section_h > 0.0 {
         let chip_section_rect = [
             panel_x,
             if collapsed_daily_mode {

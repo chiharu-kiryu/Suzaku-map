@@ -45,8 +45,9 @@ fn dispatch(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "configure" => {
-            settings = configured_settings(settings, &args[1..])?;
-            settings.save()?;
+            let previous = settings;
+            settings = configured_settings(previous.clone(), &args[1..])?;
+            settings.save_if_unchanged(&previous)?;
             println!("Saved model configuration: {} · {} · {}\nLLM enabled remains {}. Choose 重新加载模型配置 in the tray to apply.", settings.provider.scope.id(), settings.provider.model, settings.provider.endpoint, settings.llm_enabled);
             if settings.provider.scope == ModelScope::Cloud {
                 println!("Cloud consent: {}. When enabled AND authorized, composition and recent in-session commits are sent to this endpoint. Credentials are read by the IME host from its environment, never saved here.", settings.provider.cloud_consent);

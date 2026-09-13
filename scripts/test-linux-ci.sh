@@ -59,8 +59,11 @@ else
     candidates_native_test::native_candidate_clicks_and_async_refresh_are_safe \
     settings_native_test::native_tone_controls_follow_acknowledgements_and_reload \
     functional_network_audit_test::audit_provider_change_must_forget_standalone_commit_context \
+    functional_network_audit_test::model_configuration_stays_bound_until_confirmed_reload \
     translation::tests::native_translation_preserves_drafts_and_rejects_stale_contexts \
     native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
+    native_sync::tool_chain_audit_test::audit_voice_auto_insert_must_not_follow_an_unrelated_native_context \
+    native_sync::tool_chain_audit_test::audit_local_tool_insertion_must_use_the_caret_word_boundary \
     status_native_test::native_panel_input_does_not_wait_for_status_probes \
     font_atlas::visual_tests::multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
   do

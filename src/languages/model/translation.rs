@@ -1,5 +1,5 @@
 //! Reuse provider discovery, local-only routing, credentials and consent, not autocomplete prompts.
-use super::{HttpModelProvider, ModelScope, runtime, transport};
+use super::{HttpModelProvider, ModelScope, complete_chat_choice, runtime, transport};
 use crate::languages::{
     llm::LlmProviderError,
     translation::{
@@ -79,7 +79,7 @@ fn parse_translation(body: &str, ollama: bool) -> Result<String, LlmProviderErro
         &envelope["message"]["content"]
     } else {
         let choice = &envelope["choices"][0];
-        if !matches!(choice["finish_reason"].as_str(), None | Some("stop")) {
+        if !complete_chat_choice(choice) {
             return Err(LlmProviderError::InvalidResponse);
         }
         &choice["message"]["content"]
@@ -178,6 +178,9 @@ mod tests {
         }
         for reason in ["length", "content_filter", "tool_calls"] {
             assert!(parse_translation(&json!({"choices":[{"message":{"content":"{\"translation\":\"partial\"}"},"finish_reason":reason}]}).to_string(), false).is_err());
+        }
+        for reason in [json!(false), json!(1), json!([]), json!({})] {
+            assert!(parse_translation(&json!({"choices":[{"message":{"content":"complete-looking text"},"finish_reason":reason}]}).to_string(), false).is_err());
         }
         assert!(
             parse_translation(r#"{"done":false,"message":{"content":"partial"}}"#, true).is_err()

@@ -60,22 +60,31 @@ for suzaku_package_bin in panel linux_ime_host linux_ime_probe suzaku_tool; do
   readelf -h "$suzaku_package_bins/$suzaku_package_bin" >/dev/null
   install -m 755 -- "$suzaku_package_bins/$suzaku_package_bin" "$suzaku_package_tree/bin/$suzaku_package_bin"
 done
-install -m 644 -- README.md LICENSE Cargo.lock docs/linux-packaging-data.md docs/model-providers.md docs/ibus-candidates.md docs/translation.md docs/interface-languages.md "$suzaku_package_tree/share/doc/suzaku/"
+install -m 644 -- README.md LICENSE Cargo.lock "$suzaku_package_tree/share/doc/suzaku/"
 # Keep the public support/privacy docs in packages, with their repository-relative links.
 install -m 644 -- SECURITY.md CONTRIBUTING.md DEVELOPMENT.md "$suzaku_package_tree/share/doc/suzaku/"
 mkdir -p -- "$suzaku_package_tree/share/doc/suzaku/docs/releases"
 install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus-candidates.md \
   docs/translation.md docs/interface-languages.md docs/known-limitations.md docs/privacy.md \
   docs/functional-network.md docs/functional-network.mmd docs/bug-audit-2026-09-13.md \
+  docs/bug-audit-tools-2026-09-13.md docs/bug-audit-settings-2026-09-13.md \
+  docs/bug-audit-data-2026-09-13.md docs/bug-audit-packaging-2026-09-13.md \
+  docs/bug-audit-model-2026-09-13.md \
+  docs/bug-audit-completion-2026-09-13.md \
   "$suzaku_package_tree/share/doc/suzaku/docs/"
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"
 install -m 644 -- src/assets/icons/suzaku-bird.svg "$suzaku_package_tree/share/icons/hicolor/scalable/apps/dev.suzaku.Suzaku.svg"
-install -m 644 -- docs/linux-packaging-data.md "$suzaku_package_tree/README.md"
-install -m 644 -- docs/model-providers.md "$suzaku_package_tree/model-providers.md"
-install -m 644 -- docs/ibus-candidates.md "$suzaku_package_tree/ibus-candidates.md"
-install -m 644 -- docs/translation.md "$suzaku_package_tree/translation.md"
-install -m 644 -- docs/interface-languages.md "$suzaku_package_tree/interface-languages.md"
+# Every guide also appears outside docs/. Resolve sibling documentation from
+# the canonical docs directory in both flat layouts, including model audits.
+for suzaku_package_guide in linux-packaging-data.md model-providers.md ibus-candidates.md translation.md interface-languages.md; do
+  sed -E 's@\]\(([A-Za-z0-9_.-]+\.md)(#[^)]*)?\)@](docs/\1\2)@g' \
+    "docs/$suzaku_package_guide" > "$suzaku_package_tree/share/doc/suzaku/$suzaku_package_guide"
+  suzaku_package_root_guide=$suzaku_package_guide
+  [[ $suzaku_package_guide != linux-packaging-data.md ]] || suzaku_package_root_guide=README.md
+  sed -E 's@\]\(([A-Za-z0-9_.-]+\.md)(#[^)]*)?\)@](share/doc/suzaku/docs/\1\2)@g' \
+    "docs/$suzaku_package_guide" > "$suzaku_package_tree/$suzaku_package_root_guide"
+done
 
 # Include declared licenses and the license/notice files supplied by locked Cargo dependencies.
 # This inventory covers the resolved lockfile, including other-platform dependencies.

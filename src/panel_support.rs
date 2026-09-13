@@ -1363,6 +1363,30 @@ mod tests {
     }
 
     #[test]
+    fn completion_history_rejects_stale_payloads_but_allows_reapply_after_undo() {
+        let mut history = super::CompletionHistory::default();
+        let first = super::next_token_completion("hel", "hello").unwrap();
+        let second = super::next_token_completion("hello", "hello world").unwrap();
+        assert_eq!(history.apply("hel", &first).as_deref(), Some("hello"));
+        assert!(history.apply("hello", &first).is_none());
+        assert_eq!(history.labels(), ["hello"]);
+        assert_eq!(
+            history.apply("hello", &second).as_deref(),
+            Some("hello world")
+        );
+        assert!(history.apply("hello world", &first).is_none());
+        assert!(history.apply("hello world", &second).is_none());
+        assert_eq!(history.labels(), ["hello", "world"]);
+        assert_eq!(history.undo("hello world").as_deref(), Some("hello"));
+        assert_eq!(history.undo("hello").as_deref(), Some("hel"));
+        assert!(history.undo("hel").is_none());
+        assert_eq!(history.apply("hel", &first).as_deref(), Some("hello"));
+        assert_eq!(history.labels(), ["hello"]);
+        assert!(history.undo("a manually changed draft").is_none());
+        assert!(history.labels().is_empty());
+    }
+
+    #[test]
     fn word_chips_are_deduplicated_and_have_no_arbitrary_filler() {
         let texts = ["hel", "hello world", "hello there", "help me", "unrelated"];
         let candidates: Vec<_> = texts

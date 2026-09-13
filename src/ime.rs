@@ -8,6 +8,7 @@ mod core_icons_a;
 mod core_icons_b;
 mod prediction;
 pub mod settings;
+pub mod tool_text;
 
 pub use prediction::PredictionStatus;
 

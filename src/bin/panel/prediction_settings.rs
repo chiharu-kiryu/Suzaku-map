@@ -26,7 +26,7 @@ impl Controls {
 #[derive(Default)]
 pub(super) struct PredictionSettingsSync {
     confirmed: Option<Controls>,
-    in_flight: Option<Controls>,
+    in_flight: Option<(Controls, [u64; 2])>,
 }
 
 impl PredictionSettingsSync {
@@ -37,10 +37,14 @@ impl PredictionSettingsSync {
         // A menu refresh is not an acknowledgement of the outstanding write.
         if self.in_flight.is_none() {
             // A status event can arrive before about_to_wait dispatches a UI edit.
-            if previous.is_none_or(|old| chrome.llm_enabled == old.enabled) {
+            if previous.map_or(chrome.prediction_edit_generation[0] == 0, |old| {
+                chrome.llm_enabled == old.enabled
+            }) {
                 chrome.llm_enabled = controls.enabled;
             }
-            if previous.is_none_or(|old| chrome.llm_temperature == old.temperature) {
+            if previous.map_or(chrome.prediction_edit_generation[1] == 0, |old| {
+                chrome.llm_temperature == old.temperature
+            }) {
                 chrome.llm_temperature = controls.temperature;
             }
         }
@@ -55,7 +59,7 @@ impl PredictionSettingsSync {
         if desired == confirmed {
             return None;
         }
-        self.in_flight = Some(desired);
+        self.in_flight = Some((desired, chrome.prediction_edit_generation));
         Some(PredictionSettingsPatch {
             enabled: (desired.enabled != confirmed.enabled).then_some(desired.enabled),
             temperature_tenths: (desired.temperature != confirmed.temperature)
@@ -67,15 +71,19 @@ impl PredictionSettingsSync {
         if let Some(settings) = settings {
             self.confirmed = Some(Controls::from_settings(settings));
         }
-        let Some(sent) = self.in_flight.take() else {
+        let Some((sent, edits)) = self.in_flight.take() else {
             return;
         };
         if let Some(confirmed) = self.confirmed {
             // Keep edits made after dispatch; roll back only unchanged controls on failure.
-            if chrome.llm_enabled == sent.enabled {
+            if chrome.llm_enabled == sent.enabled
+                && chrome.prediction_edit_generation[0] == edits[0]
+            {
                 chrome.llm_enabled = confirmed.enabled;
             }
-            if chrome.llm_temperature == sent.temperature {
+            if chrome.llm_temperature == sent.temperature
+                && chrome.prediction_edit_generation[1] == edits[1]
+            {
                 chrome.llm_temperature = confirmed.temperature;
             }
         }
@@ -161,5 +169,72 @@ mod tests {
             sync.next_patch(&chrome).unwrap().temperature_tenths,
             Some(7)
         );
+    }
+
+    #[test]
+    fn first_status_keeps_explicit_choices_but_not_stale_persisted_controls() {
+        let mut native = ImeSettings {
+            llm_enabled: true,
+            ..Default::default()
+        };
+        native.provider.temperature_tenths = 7;
+        let mut chrome = PanelChromeState::default();
+        chrome.prediction_edit_generation[0] = 1; // Explicit Off, even though it matches the default.
+        let mut sync = PredictionSettingsSync::default();
+        sync.observe(&native, &mut chrome);
+        assert!(!chrome.llm_enabled);
+        assert_eq!(chrome.llm_temperature, LlmTemperaturePreset::Expressive);
+        assert_eq!(
+            sync.next_patch(&chrome).unwrap(),
+            PredictionSettingsPatch {
+                enabled: Some(false),
+                temperature_tenths: None,
+            }
+        );
+
+        let mut chrome = PanelChromeState::default();
+        chrome.prediction_edit_generation[1] = 1; // Explicit Balanced, same as the initial value.
+        let mut sync = PredictionSettingsSync::default();
+        sync.observe(&native, &mut chrome);
+        assert!(chrome.llm_enabled);
+        assert_eq!(chrome.llm_temperature, LlmTemperaturePreset::Balanced);
+        assert_eq!(
+            sync.next_patch(&chrome).unwrap().temperature_tenths,
+            Some(4)
+        );
+
+        let mut chrome = PanelChromeState {
+            llm_enabled: true,
+            llm_temperature: LlmTemperaturePreset::Expressive,
+            ..Default::default()
+        };
+        let mut sync = PredictionSettingsSync::default();
+        sync.observe(&ImeSettings::default(), &mut chrome);
+        assert!(
+            !chrome.llm_enabled,
+            "loading stale preferences is not an explicit opt-in"
+        );
+        assert_eq!(chrome.llm_temperature, LlmTemperaturePreset::Balanced);
+        assert!(sync.next_patch(&chrome).is_none());
+    }
+
+    #[test]
+    fn late_failure_does_not_swallow_a_reselected_value() {
+        let mut chrome = PanelChromeState::default();
+        let mut sync = PredictionSettingsSync::default();
+        sync.observe(&ImeSettings::default(), &mut chrome);
+        chrome.llm_temperature = LlmTemperaturePreset::Focused;
+        chrome.prediction_edit_generation[1] = 1;
+        sync.next_patch(&chrome).unwrap();
+        chrome.prediction_edit_generation[1] = 3; // Expressive then Focused again while waiting.
+        sync.finish(None, &mut chrome);
+        assert_eq!(chrome.llm_temperature, LlmTemperaturePreset::Focused);
+        assert_eq!(
+            sync.next_patch(&chrome).unwrap().temperature_tenths,
+            Some(2)
+        );
+        sync.finish(None, &mut chrome); // No further edit: failure must stop retrying.
+        assert_eq!(chrome.llm_temperature, LlmTemperaturePreset::Balanced);
+        assert!(sync.next_patch(&chrome).is_none());
     }
 }

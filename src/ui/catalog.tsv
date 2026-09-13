@@ -2,6 +2,10 @@
 System	跟随系统	システム	시스템	Sistema	Système	System	Sistema
 Interface	界面语言	表示言語	표시 언어	Idioma	Langue	Sprache	Idioma
 Panel Settings	面板设置	パネル設定	패널 설정	Ajustes del panel	Réglages du panneau	Panel-Einstellungen	Configurações do painel
+Not saved	未保存	未保存	저장 안 됨	Sin guardar	Non enregistré	Nicht gespeichert	Não salvo
+Retry	重试	再試行	재시도	Reintentar	Réessayer	Erneut	Repetir
+Check folder permissions, then retry saving settings.	检查配置目录权限后，重试保存设置。	フォルダーの権限を確認し、設定の保存を再試行してください。	폴더 권한을 확인한 후 설정 저장을 다시 시도하세요.	Comprueba los permisos de la carpeta e intenta guardar de nuevo.	Vérifiez les droits du dossier, puis réessayez d'enregistrer.	Prüfe die Ordnerrechte und versuche erneut zu speichern.	Verifique as permissões da pasta e tente salvar novamente.
+Settings not saved. Check folder permissions and retry in Settings.	设置未保存。请检查目录权限，并在设置中重试。	設定が保存されていません。フォルダーの権限を確認し、設定画面で再試行してください。	설정이 저장되지 않았습니다. 폴더 권한을 확인하고 설정에서 다시 시도하세요.	No se guardaron los ajustes. Comprueba los permisos y reintenta en Ajustes.	Réglages non enregistrés. Vérifiez les droits du dossier et réessayez dans les réglages.	Nicht gespeichert. Prüfe die Ordnerrechte und versuche es in den Einstellungen erneut.	Configurações não salvas. Verifique as permissões e tente novamente nas configurações.
 Panel settings	面板设置	パネル設定	패널 설정	Ajustes del panel	Réglages du panneau	Panel-Einstellungen	Configurações do painel
 Appearance	外观	外観	모양	Apariencia	Apparence	Darstellung	Aparência
 Input	输入	入力	입력	Entrada	Saisie	Eingabe	Entrada

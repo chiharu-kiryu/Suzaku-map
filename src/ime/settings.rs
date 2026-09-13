@@ -189,8 +189,26 @@ impl ImeSettings {
     }
 
     pub fn save(&self) -> Result<(), String> {
+        self.save_checked(None)
+    }
+
+    /// Reject a stale read-modify-write, including a revoked cloud authorization.
+    /// Both comparison and publication are protected against other Suzaku writers.
+    pub fn save_if_unchanged(&self, expected: &Self) -> Result<(), String> {
+        self.save_checked(Some(expected))
+    }
+
+    fn save_checked(&self, expected: Option<&Self>) -> Result<(), String> {
         let _lease = crate::data::files::DataLease::current_shared()?;
         let path = settings_path().ok_or("无法定位输入法设置目录")?;
+        let _writer = crate::data::files::DataLease::settings_writer(&path)?;
+        if let Some(expected) = expected
+            && Self::load()? != *expected
+        {
+            return Err(
+                "配置已在其他位置更改；请先重新加载模型配置再重试（未覆盖已保存设置）".into(),
+            );
+        }
         let validated = Self::from_json(&self.to_json().to_string())?;
         let contents =
             serde_json::to_vec_pretty(&validated.to_json()).map_err(|e| e.to_string())?;

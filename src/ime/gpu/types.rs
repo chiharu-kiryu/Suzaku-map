@@ -320,6 +320,9 @@ pub struct PanelChromeState {
     pub llm_enabled: bool,
     pub llm_model: LlmModelPreset,
     pub llm_temperature: LlmTemperaturePreset,
+    /// Runtime-only explicit control edits; loading/mirroring preferences is not an edit.
+    pub prediction_edit_generation: [u64; 2],
+    pub settings_save_failed: bool,
     pub pointer_tap_slop_tenths: u16,
     pub pointer_tap_max_ms: u16,
     pub pointer_target_slop_tenths: u16,
@@ -372,6 +375,8 @@ impl Default for PanelChromeState {
             llm_enabled: false,
             llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
+            prediction_edit_generation: [0; 2],
+            settings_save_failed: false,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
             pointer_target_slop_tenths: 50,
@@ -413,6 +418,12 @@ impl PanelChromeState {
         chars.splice(self.caret_index..self.caret_index, insert.iter().copied());
         self.seed_text = chars.into_iter().collect();
         self.caret_index += insert.len();
+    }
+
+    /// Adopt a recognized word/phrase at the caret, preserving the surrounding draft.
+    pub fn insert_tool_text(&mut self, text: &str) {
+        (self.seed_text, self.caret_index) =
+            crate::ime::tool_text::insert_tool_text(&self.seed_text, self.caret_index, text);
     }
 
     pub fn backspace(&mut self) {
@@ -489,6 +500,7 @@ pub enum InteractionKind {
     TranslationPage(usize),
     VirtualKeyboardKey(VirtualKeyboardKey),
     SettingsToggle,
+    RetrySaveSettings,
     SetSettingsCategory(SettingsCategory),
     SetTextScale(DisplayTextScale),
     SetCandidateDensity(CandidateDensity),

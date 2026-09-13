@@ -94,7 +94,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-linux-ci-v1-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
       - name: Lint the native test runner
-        run: shellcheck scripts/test-linux-ci.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
+        run: shellcheck scripts/test-linux-ci.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
       - name: Lint Rust code and test targets without warnings
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
       - name: Run the feature-enabled regression suite
@@ -104,6 +104,10 @@ jobs:
         run: bash scripts/test-linux-ci.sh ibus
       - name: Test isolated windows, keyboard input and multilingual GPU rendering
         run: bash scripts/test-linux-ci.sh ui
+      - name: Test isolated settings startup, conflicts and save recovery
+        run: bash scripts/test-settings-chain-audit.sh
+      - name: Test isolated restore gates, path aliases and data recovery
+        run: bash scripts/test-data-chain-audit.sh
       - name: Test data-folder actions against a private file-manager service
         run: >-
           timeout --kill-after=3s 25s dbus-run-session -- env SUZAKU_DATA_QA=1
