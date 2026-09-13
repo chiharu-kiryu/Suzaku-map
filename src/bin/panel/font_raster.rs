@@ -77,7 +77,7 @@ impl GlyphFont {
         }
         Self {
             font: None,
-            missing: !(ch.is_ascii() && !ch.is_control()),
+            missing: !ch.is_ascii() || ch.is_control(),
             width_ratio: if ch.is_ascii() { 5.0 / 7.0 } else { 1.0 },
             pixels_per_height: 1.0,
             baseline_ratio: 1.0,

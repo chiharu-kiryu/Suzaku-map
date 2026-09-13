@@ -271,7 +271,7 @@ mod tests {
             let dispatch = dispatch_for(TargetPlatform::SteamOs);
             assert_eq!(dispatch.platform, TargetPlatform::SteamOs);
             assert!(dispatch.notes.contains("host shell is planned"));
-            assert_eq!(dispatch.system_ime_host, false);
+            assert!(!dispatch.system_ime_host);
         });
     }
 }

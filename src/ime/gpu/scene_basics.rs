@@ -34,10 +34,10 @@ impl WgpuCandidateRenderer {
         scale: f32,
         pointer_target_slop_tenths: u16,
         pad_ratio: f32,
-        width_growth: f32,
-        height_growth: f32,
+        size_growth: [f32; 2],
         include_min_size: bool,
     ) -> [f32; 4] {
+        let [width_growth, height_growth] = size_growth;
         let interaction_hit_padding = (2.2 * scale) + (pointer_target_slop_tenths as f32 / 10.0);
         let mut hit_w = rect[2] + interaction_hit_padding * width_growth;
         let mut hit_h = rect[3] + interaction_hit_padding * height_growth;
@@ -161,8 +161,7 @@ impl WgpuCandidateRenderer {
             1.0,
             chrome.pointer_target_slop_tenths,
             1.0,
-            2.0,
-            2.0,
+            [2.0, 2.0],
             false,
         );
         let mut targets = vec![InteractiveTarget {

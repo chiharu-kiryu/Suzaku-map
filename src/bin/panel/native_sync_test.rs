@@ -367,6 +367,45 @@ fn assert_screen_keyboard_handoffs(state: &mut PanelState) {
         assert!(receiver.try_recv().is_err());
     }
 
+    // N04: the reader can coalesce away our applied frame when physical
+    // Backspace restores the old base before the panel observes either update.
+    for frame_first in [true, false] {
+        let receiver = prepare_keyboard(state);
+        state.last_commit_feedback = None;
+        state.native_keyboard_edit(Some("l"));
+        let first = receiver.try_recv().unwrap();
+        state.native_keyboard_edit(Some("o"));
+        if frame_first {
+            state.receive_native_frame(Some(keyboard_frame("hel", 12)));
+        }
+        state.native_action_finished(first.host, first.revision, Ok(true));
+        if !frame_first {
+            state.receive_native_frame(Some(keyboard_frame("hel", 12)));
+        }
+        assert!(state.native.pending.is_none());
+        assert!(state.native.typing.as_ref().unwrap().blocked);
+        assert_eq!(state.chrome.seed_text, "hello");
+        assert!(
+            state
+                .last_commit_feedback
+                .as_deref()
+                .unwrap()
+                .contains("recover")
+        );
+        assert!(
+            receiver.try_recv().is_err(),
+            "a coalesced frame must not replay an external edit"
+        );
+        state.begin_text_editing();
+        assert!(!state.native.showing);
+        assert_eq!(state.chrome.seed_text, "hello");
+        assert_eq!(state.engine.snapshot().seed_text, "hello");
+        assert!(
+            receiver.try_recv().is_err(),
+            "explicit recovery is local editing, not automatic replay"
+        );
+    }
+
     // Backspace/Unicode edits coalesce too, including an entirely empty draft.
     let receiver = prepare_keyboard(state);
     state.native_keyboard_edit(Some("日本😀"));

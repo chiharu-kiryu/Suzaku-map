@@ -19,6 +19,12 @@ struct Layout {
     selectors_height: f32,
     label_width: f32,
 }
+
+struct ButtonState {
+    selected: bool,
+    enabled: bool,
+}
+
 impl Layout {
     fn new(width: f32, scale: f32, text: DisplayTextScale, ui: crate::ui::UiLanguage) -> Self {
         let px = match text {
@@ -109,9 +115,9 @@ impl TranslationToolScene {
         label: &str,
         rect: [f32; 4],
         px: f32,
-        selected: bool,
-        enabled: bool,
+        state: ButtonState,
     ) {
+        let ButtonState { selected, enabled } = state;
         let theme = PanelTheme::for_preset(chrome.theme_preset);
         let label = self.ui_language.tr(label);
         let active = selected || chrome.pressed_interaction == Some(kind);
@@ -272,8 +278,10 @@ pub(super) fn build_translation_tool(
                 language.map(|l| l.short_label()).unwrap_or("Auto"),
                 button_rect,
                 layout.px,
-                selected,
-                true,
+                ButtonState {
+                    selected,
+                    enabled: true,
+                },
             );
         }
         y += choices.len().div_ceil(columns) as f32 * (layout.row + layout.gap);
@@ -362,8 +370,10 @@ pub(super) fn build_translation_tool(
         if pending { "Cancel" } else { "Translate" },
         [x, footer_y, action_width, layout.row],
         layout.px,
-        true,
-        pending || valid,
+        ButtonState {
+            selected: true,
+            enabled: pending || valid,
+        },
     );
     scene.button(
         chrome,
@@ -376,8 +386,11 @@ pub(super) fn build_translation_tool(
             layout.row,
         ],
         layout.px,
-        false,
-        chrome.translation.phase == TranslationPhase::Ready && !chrome.translation.text.is_empty(),
+        ButtonState {
+            selected: false,
+            enabled: chrome.translation.phase == TranslationPhase::Ready
+                && !chrome.translation.text.is_empty(),
+        },
     );
     let nav_x = x + width - 98.0 * scale;
     scene.button(
@@ -386,8 +399,10 @@ pub(super) fn build_translation_tool(
         "<",
         [nav_x, footer_y, 26.0 * scale, layout.row],
         layout.px,
-        false,
-        page > 0,
+        ButtonState {
+            selected: false,
+            enabled: page > 0,
+        },
     );
     scene.text(
         &format!("{}/{}", page + 1, pages),
@@ -403,8 +418,10 @@ pub(super) fn build_translation_tool(
         ">",
         [nav_x + 72.0 * scale, footer_y, 26.0 * scale, layout.row],
         layout.px,
-        false,
-        page + 1 < pages,
+        ButtonState {
+            selected: false,
+            enabled: page + 1 < pages,
+        },
     );
     // A compositor may constrain a small window; never draw or click outside the drawer.
     for quad in scene.quads.iter_mut().chain(scene.text_quads.iter_mut()) {

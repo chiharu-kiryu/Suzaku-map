@@ -9,7 +9,8 @@ use crate::languages::{
 use super::{PredictionStatus, prediction::PredictionWorker};
 use super::{build_combinations, clamp01, tokenize_seed};
 use crate::languages::llm::{
-    LlmCompletionProvider, LlmCompletionRequest, LlmProviderError, normalize_completion_text,
+    LlmCompletionProvider, LlmCompletionRequest, LlmProviderError, MAX_PREDICTION_SEED_CHARS,
+    completion_fits_budget, normalize_completion_text,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -94,15 +95,9 @@ pub enum CommitReason {
     ConfirmationRequired,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CommitOptions {
     pub force: bool,
-}
-
-impl Default for CommitOptions {
-    fn default() -> Self {
-        Self { force: false }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -609,6 +604,7 @@ impl XRTabletImeEngine {
             .iter()
             .find(|candidate| candidate.text == self.state.seed_text)
             .cloned();
+        let prefix = local.first().map(|candidate| candidate.text.as_str());
         for completion in completions.into_iter().take(3) {
             let text = normalize_completion_text(
                 &completion.text,
@@ -616,7 +612,7 @@ impl XRTabletImeEngine {
             )
             .to_string();
             if text.is_empty()
-                || text.chars().count() > 160
+                || !completion_fits_budget(&text, prefix)
                 || text.chars().any(char::is_control)
                 || !seen.insert(text.clone())
             {
@@ -667,7 +663,7 @@ impl XRTabletImeEngine {
     }
 
     /// Provider changes forget the old context without discarding this field's editable draft.
-    pub(crate) fn clear_prediction_context(&mut self) {
+    pub fn clear_prediction_context(&mut self) {
         self.cancel_prediction();
         self.state.committed_text.clear();
         self.state.history.clear();
@@ -682,8 +678,8 @@ impl XRTabletImeEngine {
 
     fn request_prediction(&mut self) {
         self.cancel_prediction();
-        if self.state.seed_text.is_empty()
-            || self.state.seed_text.chars().count() > 256
+        if self.state.seed_text.trim().is_empty()
+            || self.state.seed_text.chars().count() > MAX_PREDICTION_SEED_CHARS
             || self.state.degraded
         {
             return;
@@ -732,6 +728,28 @@ impl XRTabletImeEngine {
 
     fn compose_candidates_with_plugin(&self, plugin: &dyn LanguagePlugin) -> Vec<Candidate> {
         if self.state.expansions.is_empty() {
+            // Printable whitespace is a real accepted preedit even though it
+            // has no words. It must remain losslessly committable, not leak
+            // Enter to the application with an unfinished draft.
+            if !self.state.seed_text.is_empty()
+                && self
+                    .state
+                    .seed_text
+                    .chars()
+                    .all(|c| c.is_whitespace() && !c.is_control())
+            {
+                return vec![Candidate {
+                    text: self.state.seed_text.clone(),
+                    label: self.state.seed_text.clone(),
+                    score: if self.ibus_candidate_mix {
+                        100.0
+                    } else {
+                        self.state.confidence
+                    },
+                    kind: super::candidate_mix::CandidateKind::Literal,
+                    source: super::candidate_mix::CandidateSource::Local,
+                }];
+            }
             return Vec::new();
         }
 
@@ -815,10 +833,10 @@ impl XRTabletImeEngine {
             *unique.last_mut().unwrap() = literal;
         }
 
-        if self.state.degraded {
-            if let Some(first) = unique.first_mut() {
-                first.label = format!("{} [stable]", first.label);
-            }
+        if self.state.degraded
+            && let Some(first) = unique.first_mut()
+        {
+            first.label = format!("{} [stable]", first.label);
         }
 
         unique

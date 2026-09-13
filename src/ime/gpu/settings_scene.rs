@@ -1,6 +1,10 @@
 use super::*;
 use std::time::Instant;
 
+type SettingsOption<'a> = (InteractionKind, &'a str, bool);
+type SettingsSection<'a> = (SettingsCategory, &'a str, Vec<SettingsOption<'a>>);
+type VisibleSettingsSection<'a> = (usize, &'a str, Vec<SettingsOption<'a>>, bool);
+
 impl WgpuCandidateRenderer {
     pub fn build_settings_scene(
         &self,
@@ -96,8 +100,7 @@ impl WgpuCandidateRenderer {
                 ui_scale,
                 chrome.pointer_target_slop_tenths,
                 1.0,
-                2.0,
-                2.0,
+                [2.0, 2.0],
                 true,
             )
         };
@@ -110,7 +113,7 @@ impl WgpuCandidateRenderer {
                 chrome.llm_temperature.tenths() as f32 / 10.0
             ))
             .into_owned();
-        let mut sections: Vec<(SettingsCategory, &str, Vec<(InteractionKind, &str, bool)>)> = vec![
+        let mut sections: Vec<SettingsSection<'_>> = vec![
             (
                 SettingsCategory::Appearance,
                 "Text",
@@ -416,16 +419,15 @@ impl WgpuCandidateRenderer {
             ),
         ];
 
-        if matches!(chrome.llm_temperature, LlmTemperaturePreset::Custom(_)) {
-            if let Some((_, _, options)) =
+        if matches!(chrome.llm_temperature, LlmTemperaturePreset::Custom(_))
+            && let Some((_, _, options)) =
                 sections.iter_mut().find(|(_, title, _)| *title == "Tone")
-            {
-                options.push((
-                    InteractionKind::SetLlmTemperature(chrome.llm_temperature),
-                    &custom_tone_label,
-                    true,
-                ));
-            }
+        {
+            options.push((
+                InteractionKind::SetLlmTemperature(chrome.llm_temperature),
+                &custom_tone_label,
+                true,
+            ));
         }
 
         // Append instead of renumbering existing collapse identities.
@@ -469,7 +471,7 @@ impl WgpuCandidateRenderer {
                 .max(48.0 * ui_scale)
                 .min(chip_area_width)
         };
-        let estimate_chip_rows = |options: &[(InteractionKind, &str, bool)]| {
+        let estimate_chip_rows = |options: &[SettingsOption<'_>]| {
             let mut cursor_x = chip_start_x;
             let mut rows = 1usize;
             for (_, chip_label, _) in options {
@@ -484,8 +486,7 @@ impl WgpuCandidateRenderer {
         };
         let search_query = chrome.settings_search_query.trim().to_lowercase();
         let is_searching = !search_query.is_empty();
-        let mut visible_sections: Vec<(usize, &str, Vec<(InteractionKind, &str, bool)>, bool)> =
-            Vec::new();
+        let mut visible_sections: Vec<VisibleSettingsSection<'_>> = Vec::new();
 
         for (index, (category, label, options)) in sections.iter().enumerate() {
             if !is_searching && *category != chrome.settings_category {
@@ -1133,9 +1134,7 @@ impl WgpuCandidateRenderer {
             atlas_glyphs.extend(empty_layout.atlas_glyphs.iter().cloned());
             label_layouts.push(empty_layout);
         }
-        for (_visible_index, (section_index, label, options, is_collapsed)) in
-            visible_sections.iter().enumerate()
-        {
+        for (section_index, label, options, is_collapsed) in visible_sections.iter() {
             let section_effectively_collapsed = *is_collapsed;
             let section_height = section_height_for(options, section_effectively_collapsed);
             let section_top = content_y;
@@ -1247,16 +1246,16 @@ impl WgpuCandidateRenderer {
 
                         if let Some((scroll_kind, started_at)) =
                             settings_option_text_scroll.as_ref()
+                            && *scroll_kind == *kind
+                            && base_layout.truncated
                         {
-                            if *scroll_kind == *kind && base_layout.truncated {
-                                option_text = scroll_text_for_option(
-                                    &option_text,
-                                    *started_at,
-                                    chip_px,
-                                    ui_tracking,
-                                    (visual_rect[2] - 20.0 * ui_scale).max(14.0),
-                                );
-                            }
+                            option_text = scroll_text_for_option(
+                                &option_text,
+                                *started_at,
+                                chip_px,
+                                ui_tracking,
+                                (visual_rect[2] - 20.0 * ui_scale).max(14.0),
+                            );
                         }
 
                         append_soft_card_quads(
@@ -1271,9 +1270,7 @@ impl WgpuCandidateRenderer {
                             } else {
                                 surface
                             },
-                            if pressed {
-                                accent
-                            } else if *selected {
+                            if pressed || *selected {
                                 accent
                             } else if hovered {
                                 settings_hover_border

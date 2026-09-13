@@ -253,14 +253,13 @@
                     append_trash_icon_quads(&mut quads, centered_icon_rect(clear_visual_rect), text_primary);
 
                     let mut chip_x = candidate_area_start;
-                    let mut chip_index = 0usize;
                     for (index, candidate) in chrome
                         .handwriting_candidates
                         .iter()
                         .take(candidate_text_max)
                         .enumerate()
                     {
-                        if chip_index >= visible_candidate_count {
+                        if index >= visible_candidate_count {
                             break;
                         }
 
@@ -286,9 +285,7 @@
                             } else {
                                 surface
                             },
-                            if pressed {
-                                accent
-                            } else if index == 0 {
+                            if pressed || index == 0 {
                                 accent
                             } else if hovered {
                                 hover_border
@@ -326,17 +323,18 @@
                         let mut final_text = candidate.clone();
                         if layout.truncated || layout.lines.len() > 1 {
                             handwriting_candidate_truncated.push(index);
-                            if let Some(&(scroll_index, started_at)) = handwriting_candidate_scroll {
-                                if scroll_index == index && layout.truncated {
-                                    final_text = scroll_text_for_candidate(
-                                        &final_text,
-                                        started_at,
-                                        (helper_px * 0.9).max(2.2 * responsive_scale),
-                                        ui_tracking * handwriting_scale,
-                                        (visual_rect[2] - 16.0 * responsive_scale * handwriting_scale)
-                                            .max(6.0),
-                                    );
-                                }
+                            if let Some(&(scroll_index, started_at)) = handwriting_candidate_scroll
+                                && scroll_index == index
+                                && layout.truncated
+                            {
+                                final_text = scroll_text_for_candidate(
+                                    &final_text,
+                                    started_at,
+                                    (helper_px * 0.9).max(2.2 * responsive_scale),
+                                    ui_tracking * handwriting_scale,
+                                    (visual_rect[2] - 16.0 * responsive_scale * handwriting_scale)
+                                        .max(6.0),
+                                );
                             }
                         }
 
@@ -365,7 +363,6 @@
                         atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
                         handwriting_action_layouts.push(layout);
                         chip_x += chip_w + handwriting_footer_gap_x;
-                        chip_index += 1;
                     }
                     if !handwriting_action_layouts.is_empty() {
                         text_sections.push(TextSection {

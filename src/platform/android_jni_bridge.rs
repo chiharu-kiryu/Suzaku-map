@@ -303,12 +303,19 @@ pub extern "system" fn Java_dev_suzaku_android_ime_SuzakuNativeBridge_nativeTake
     )
 }
 
+/// Releases a string allocated by the Android bridge.
+///
+/// # Safety
+/// `ptr` must be null or an unfreed pointer returned by `CString::into_raw`
+/// using this library's allocator. The string's length must be unchanged, and
+/// the caller must transfer exclusive ownership of the allocation.
 #[unsafe(no_mangle)]
-pub extern "C" fn suzaku_android_string_free(ptr: *mut c_char) {
+pub unsafe extern "C" fn suzaku_android_string_free(ptr: *mut c_char) {
     if ptr.is_null() {
         return;
     }
 
+    // SAFETY: The caller transfers a live, unchanged CString allocation to us.
     unsafe {
         let _ = CString::from_raw(ptr);
     }
@@ -318,6 +325,16 @@ pub extern "C" fn suzaku_android_string_free(ptr: *mut c_char) {
 mod tests {
     use super::render_snapshot_payload;
     use crate::ime_host::HostImeBridgeSnapshot;
+
+    #[test]
+    fn string_free_accepts_null_and_owned_cstring() {
+        let raw = std::ffi::CString::new("android-bridge").unwrap().into_raw();
+        // SAFETY: Null is accepted, and this test owns the unchanged allocation.
+        unsafe {
+            super::suzaku_android_string_free(std::ptr::null_mut());
+            super::suzaku_android_string_free(raw);
+        }
+    }
 
     fn snapshot(
         draft_text: &str,

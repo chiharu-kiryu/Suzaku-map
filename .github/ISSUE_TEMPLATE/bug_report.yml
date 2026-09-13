@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Suzaku version and installation method
-      placeholder: 0.5.5, deb / tar / source
+      placeholder: 0.5.6, deb / tar / source
     validations:
       required: true
   - type: textarea

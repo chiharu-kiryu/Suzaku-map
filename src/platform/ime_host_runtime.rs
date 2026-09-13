@@ -21,13 +21,11 @@ pub struct ImeHostRuntimeProfile {
 impl ImeHostRuntimeProfile {
     pub fn describe(&self) -> String {
         format!(
-            "{}\nbootstrap: {}\nregistration: {}\nime-dispatch: {}\npanel-dispatch: {}\nregistration-hint: {}\npreferred-command: {}",
+            "{}\nbootstrap: {}\nregistration: target=\"{}\" ready={}\nime-dispatch: {}\npanel-dispatch: {}\nregistration-hint: {}\npreferred-command: {}",
             self.title,
             self.bootstrap_summary,
-            format!(
-                "target=\"{}\" ready={}",
-                self.registration_target, self.registration_ready
-            ),
+            self.registration_target,
+            self.registration_ready,
             self.dispatch.describe(),
             self.panel_dispatch.describe(),
             self.registration_hint,

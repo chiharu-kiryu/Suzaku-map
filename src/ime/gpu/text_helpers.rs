@@ -395,7 +395,7 @@ mod tests {
             let viewport = [10.0, 20.0, 90.0, 21.0];
             for index in [0, 2, 4, block.text.chars().count()] {
                 let (layout, caret) = super::layout_input_line(&block, viewport, index, 2.0);
-                assert_eq!(layout.lines, [block.text.clone()]);
+                assert_eq!(layout.lines, std::slice::from_ref(&block.text));
                 assert!(!layout.truncated);
                 let advance = measure_text_prefix_width(&block.text, index, 3.0, 0.0);
                 assert!((caret[0] - (10.0 + advance.min(88.0))).abs() < 0.001);

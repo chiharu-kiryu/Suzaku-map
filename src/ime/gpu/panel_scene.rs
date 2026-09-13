@@ -382,8 +382,7 @@ impl WgpuCandidateRenderer {
                 responsive_scale,
                 chrome.pointer_target_slop_tenths,
                 0.9,
-                1.0,
-                1.0,
+                [1.0, 1.0],
                 true,
             )
         };

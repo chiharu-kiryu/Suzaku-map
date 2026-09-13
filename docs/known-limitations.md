@@ -1,14 +1,19 @@
 # Alpha limitations and support
 
-0.5.5 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.5.6 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
   Alpha input method as the only way to enter essential credentials.
-- **Dead keys and Compose:** accented-letter sequences such as `dead_acute` + `e` and Multi_key
-  can lose the accent or produce literal parts. Switch to the usual system keyboard for these.
-  ASCII English, Pinyin and Romaji are the primary paths; eight interface/translation languages
-  do not imply eight fully supported keyboard-layout composition systems.
+- **Dead keys and Compose:** 0.5.5 can lose accents or produce literal sequence parts.
+  0.5.6 adds locale/XCompose-based composition into editable drafts, with
+  isolated tests for accents, symbols, cancellation and field isolation. It needs an available
+  Compose table; arbitrary layouts and custom tables are not fully validated. Only printable
+  composition results of at most 255 UTF-8 bytes are supported (the system library may impose a
+  smaller limit); results are never truncated or
+  interpreted as application shortcuts. A sequence absent from the compiled table keeps its final
+  printable key literally.
+  Eight interface/translation languages do not imply eight complete native input systems.
 - **Small dictionaries:** English collocations and Chinese/Japanese conversion are bounded. There
   is no complete Japanese morphological analyzer, personal learning dictionary or arbitrary
   long-sentence offline conversion. Unknown text remains available literally.
@@ -22,8 +27,9 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop tests. Default no-GPU tests and strict Clippy
-  warnings are not clean release gates yet.
+- **Build scope:** use `--all-features` for desktop checks. 0.5.6 passes
+  strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
+  builds/tests are still not supported as a clean release gate.
 - **Draft durability:** input and recovery drafts are in memory. Crash, exit or a change of native
   field/context can discard unfinished text; Suzaku is not an autosaving editor.
 - **Unconfirmed sends:** no automatic replay. Check the target before retrying. Click the panel's

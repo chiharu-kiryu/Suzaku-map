@@ -1,6 +1,6 @@
 [package]
 name = "suzaku-map"
-version = "0.5.5"
+version = "0.5.6"
 edition = "2024"
 license = "MIT"
 description = "TDD-driven XR and tablet IME engine prototype in Rust"

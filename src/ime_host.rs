@@ -111,12 +111,7 @@ impl HostImeSession {
         if language_changed {
             self.engine.clear_session_context();
             self.engine.set_language(settings.language.id());
-        } else if self.settings.provider.scope != settings.provider.scope
-            || self.settings.provider.endpoint != settings.provider.endpoint
-            || self.settings.provider.model != settings.provider.model
-            || self.settings.provider.protocol != settings.provider.protocol
-            || self.settings.provider.api_key_env != settings.provider.api_key_env
-        {
+        } else if !self.settings.provider.same_identity(&settings.provider) {
             self.engine.clear_prediction_context();
         }
         let provider = (settings.llm_enabled && !self.private).then(|| {
@@ -558,11 +553,18 @@ pub extern "C" fn suzaku_host_ime_take_last_committed_text_utf8() -> *mut std::o
     }
 }
 
+/// Releases a string allocated by the host IME bridge.
+///
+/// # Safety
+/// `raw` must be null or an unfreed pointer returned by `CString::into_raw`
+/// using this library's allocator. The string's length must be unchanged, and
+/// the caller must transfer exclusive ownership of the allocation.
 #[unsafe(no_mangle)]
-pub extern "C" fn suzaku_host_ime_free_utf8(raw: *mut std::os::raw::c_char) {
+pub unsafe extern "C" fn suzaku_host_ime_free_utf8(raw: *mut std::os::raw::c_char) {
     if raw.is_null() {
         return;
     }
+    // SAFETY: The caller transfers a live, unchanged CString allocation to us.
     unsafe {
         let _ = CString::from_raw(raw);
     }
@@ -951,19 +953,25 @@ mod tests {
         assert!(suzaku_host_ime_replace_marked_text_utf8(raw_ptr));
         let selected_before = suzaku_host_ime_selected_index();
         assert_eq!(selected_before, 0);
-        // free manually taken from Raw to prove host helper accepts normal C pointers
-        suzaku_host_ime_free_utf8(raw_ptr);
+        // SAFETY: This test owns the unchanged allocation created above.
+        unsafe { suzaku_host_ime_free_utf8(raw_ptr) };
     }
 
     #[test]
     fn host_bridge_c_api_free_utf8_accepts_null() {
-        suzaku_host_ime_free_utf8(std::ptr::null_mut());
+        // SAFETY: Null is explicitly accepted by the release API.
+        unsafe { suzaku_host_ime_free_utf8(std::ptr::null_mut()) };
     }
 
     #[test]
     fn read_optional_utf8_treats_embedded_nul_and_empty_inputs_as_expected() {
-        let with_prefix = b"ni hao\0ignored\0".as_ptr() as *const c_char;
-        let blank = b"\0".as_ptr() as *const c_char;
+        let bytes = [
+            c"ni hao".to_bytes_with_nul(),
+            c"ignored".to_bytes_with_nul(),
+        ]
+        .concat();
+        let with_prefix = bytes.as_ptr().cast();
+        let blank = c"".as_ptr();
 
         assert_eq!(
             super::read_optional_utf8(with_prefix),

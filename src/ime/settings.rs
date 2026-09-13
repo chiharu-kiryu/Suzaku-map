@@ -258,8 +258,10 @@ mod tests {
     }
     #[test]
     fn prediction_patch_is_validated_atomically_and_preserves_other_settings() {
-        let mut settings = ImeSettings::default();
-        settings.language = BuiltinLanguage::Japanese;
+        let mut settings = ImeSettings {
+            language: BuiltinLanguage::Japanese,
+            ..Default::default()
+        };
         settings.provider.model = "llama3.2:1b".into();
         let before = settings.clone();
         PredictionSettingsPatch::from_json(r#"{"llm_temperature_tenths":7}"#)

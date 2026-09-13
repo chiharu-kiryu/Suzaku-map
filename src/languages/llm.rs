@@ -2,6 +2,22 @@ use std::sync::Arc;
 
 use crate::ime::{Candidate, LanguagePlugin, build_sentence_candidates_for_variants};
 
+pub(crate) const MAX_PREDICTION_SEED_CHARS: usize = 256;
+pub(crate) const MAX_GENERATED_CHARS: usize = 160;
+
+/// A complete replacement may repeat the bounded input prefix plus a bounded
+/// addition. Without that exact prefix, retain the small conversion-text cap.
+/// This only checks size; callers still validate prefix semantics and controls.
+pub(crate) fn completion_fits_budget(text: &str, prefix: Option<&str>) -> bool {
+    if text.chars().count() <= MAX_GENERATED_CHARS {
+        return true;
+    }
+    prefix
+        .filter(|prefix| prefix.chars().count() <= MAX_PREDICTION_SEED_CHARS)
+        .and_then(|prefix| text.strip_prefix(prefix))
+        .is_some_and(|suffix| suffix.chars().count() <= MAX_GENERATED_CHARS)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmCompletionRequest {
     pub language_id: String,
@@ -159,7 +175,33 @@ impl LanguagePlugin for LlmLanguagePlugin {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_completion_text;
+    use super::*;
+
+    #[test]
+    fn completion_budget_bounds_generated_text_without_charging_for_the_typed_prefix() {
+        for character in ['a', '字', '😀'] {
+            let prefix = character.to_string().repeat(MAX_PREDICTION_SEED_CHARS);
+            let suffix = "新".repeat(MAX_GENERATED_CHARS);
+            let full = format!("{prefix}{suffix}");
+            assert!(completion_fits_budget(&full, Some(&prefix)));
+            assert!(!completion_fits_budget(&format!("{full}x"), Some(&prefix)));
+            assert!(!completion_fits_budget(&full, None));
+            assert!(!completion_fits_budget(&full, Some("mismatched")));
+            let oversized_prefix = format!("{prefix}{character}");
+            assert!(!completion_fits_budget(
+                &format!("{oversized_prefix}{suffix}"),
+                Some(&oversized_prefix)
+            ));
+        }
+        assert!(completion_fits_budget(
+            &"字".repeat(MAX_GENERATED_CHARS),
+            None
+        ));
+        assert!(!completion_fits_budget(
+            &"字".repeat(MAX_GENERATED_CHARS + 1),
+            None
+        ));
+    }
 
     #[test]
     fn response_padding_never_removes_an_exact_typed_prefix() {

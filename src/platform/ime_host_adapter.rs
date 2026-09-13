@@ -120,7 +120,7 @@ impl ImePlatformAdapter for MacOsPlatformAdapter {
         let registration_target = bridge
             .bundle_connection_name
             .clone()
-            .unwrap_or_else(|| macos_ime::recommended_connection_name());
+            .unwrap_or_else(macos_ime::recommended_connection_name);
         ImeHostAdapterProfile {
             platform: TargetPlatform::MacOs,
             backend_id: "inputmethodkit",
@@ -282,11 +282,18 @@ pub extern "C" fn suzaku_host_platform_on_demand_companion() -> bool {
     current_adapter_profile().lifecycle.on_demand_companion
 }
 
+/// Releases a string allocated by the platform adapter.
+///
+/// # Safety
+/// `raw` must be null or an unfreed pointer returned by `CString::into_raw`
+/// using this library's allocator. The string's length must be unchanged, and
+/// the caller must transfer exclusive ownership of the allocation.
 #[unsafe(no_mangle)]
-pub extern "C" fn suzaku_host_platform_free_utf8(raw: *mut std::os::raw::c_char) {
+pub unsafe extern "C" fn suzaku_host_platform_free_utf8(raw: *mut std::os::raw::c_char) {
     if raw.is_null() {
         return;
     }
+    // SAFETY: The caller transfers a live, unchanged CString allocation to us.
     unsafe {
         let _ = CString::from_raw(raw);
     }
@@ -482,7 +489,8 @@ mod tests {
 
     #[test]
     fn free_utf8_pointer_is_noop_for_null() {
-        suzaku_host_platform_free_utf8(std::ptr::null_mut());
+        // SAFETY: Null is explicitly accepted by the release API.
+        unsafe { suzaku_host_platform_free_utf8(std::ptr::null_mut()) };
     }
 
     #[test]
@@ -491,7 +499,8 @@ mod tests {
             .expect("string allocation")
             .into_raw();
 
-        suzaku_host_platform_free_utf8(raw);
+        // SAFETY: This test owns the unchanged allocation created above.
+        unsafe { suzaku_host_platform_free_utf8(raw) };
     }
 
     fn c_string_to_owned(raw: *mut c_char) -> Option<String> {

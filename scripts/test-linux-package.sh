@@ -48,6 +48,11 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   test -s "$suzaku_package_test_tree/share/doc/suzaku/SECURITY.md"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/known-limitations.md"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/privacy.md"
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-network.md"
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-network.mmd"
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/bug-audit-2026-09-13.md"
+  suzaku_package_test_version=$(jq -r '.version' "$suzaku_package_test_tree/manifest.json")
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_tree/bin/suzaku_tool" data --help
   desktop-file-validate "$suzaku_package_test_tree/share/applications/dev.suzaku.Suzaku.desktop"
 done
@@ -69,6 +74,11 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/SECURITY.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/known-limitations.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/privacy.md"
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.md"
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.mmd"
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/bug-audit-2026-09-13.md"
+  suzaku_package_test_version=$(jq -r '.version' "$suzaku_package_test_extract/root/usr/share/doc/suzaku/manifest.json")
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" data --help
   desktop-file-validate "$suzaku_package_test_extract/root/usr/share/applications/dev.suzaku.Suzaku.desktop"
   test -x "$suzaku_package_test_extract/root/usr/bin/suzaku-panel"

@@ -330,13 +330,13 @@ mod tests {
         let modifiers_off = ModifiersState::default();
 
         if cfg!(target_os = "macos") {
-            assert_eq!(is_quit_shortcut(super_mod), true);
-            assert_eq!(is_quit_shortcut(control_mod), false);
+            assert!(is_quit_shortcut(super_mod));
+            assert!(!is_quit_shortcut(control_mod));
         } else {
-            assert_eq!(is_quit_shortcut(control_mod), true);
-            assert_eq!(is_quit_shortcut(super_mod), false);
+            assert!(is_quit_shortcut(control_mod));
+            assert!(!is_quit_shortcut(super_mod));
         }
-        assert_eq!(is_quit_shortcut(modifiers_off), false);
+        assert!(!is_quit_shortcut(modifiers_off));
     }
 
     #[test]

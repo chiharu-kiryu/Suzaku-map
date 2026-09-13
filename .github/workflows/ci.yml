@@ -61,7 +61,7 @@ jobs:
       - run: cargo fmt --all --check
 
   linux:
-    name: Linux tests, native input and release build
+    name: Linux lint, tests, native input and release build
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -81,7 +81,7 @@ jobs:
             xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck \
             dpkg-dev jq desktop-file-utils
       - name: Install Rust
-        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component clippy
       - name: Cache Cargo downloads and build outputs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -95,6 +95,8 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-linux-ci-v1-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
       - name: Lint the native test runner
         run: shellcheck scripts/test-linux-ci.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
+      - name: Lint Rust code and test targets without warnings
+        run: cargo clippy --locked --all-features --all-targets -- -D warnings
       - name: Run the feature-enabled regression suite
         # Some FFI tests share process-wide state and must execute serially.
         run: cargo test --locked --all-features -- --test-threads=1

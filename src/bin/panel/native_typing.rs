@@ -62,7 +62,13 @@ impl NativeTyping {
                     self.base = flight.text.clone();
                     self.flight = None;
                 }
-            } else if frame.seed != self.base {
+            } else if frame.seed != self.base
+                || (flight.acknowledged && frame.revision > flight.revision)
+            {
+                // A successful replacement must have a matching newer state.
+                // The latest-only mailbox can skip that state if a physical
+                // edit restores `base`. Keep recovery text, never wait forever
+                // or replay it over the external edit.
                 self.blocked = true;
             }
         } else if frame.seed != self.base {
@@ -142,6 +148,24 @@ mod tests {
             typing.observe(&frame("hello", 12));
             assert!(typing.settled());
         }
+    }
+
+    #[test]
+    fn acknowledged_edit_waits_for_a_newer_frame_without_replaying_or_blocking_on_the_old_one() {
+        let initial = frame("hel", 10);
+        let mut typing = NativeTyping::new(&initial);
+        typing.edit(Some("l"));
+        typing.sent(10);
+        typing.edit(Some("o"));
+        assert!(typing.acknowledge(10, true));
+        typing.observe(&initial);
+        assert!(!typing.blocked);
+        assert!(!typing.ready(&initial));
+        assert!(!typing.settled());
+        let applied = frame("hell", 11);
+        typing.observe(&applied);
+        assert!(typing.ready(&applied));
+        assert_eq!(typing.draft, "hello");
     }
 
     #[test]

@@ -47,6 +47,12 @@ struct Word {
     rank: usize,
 }
 
+// Match apostrophe variants in one index, while retaining the user's original
+// prefix in every replacement. Curly punctuation must not need duplicate words.
+fn canonical_word(text: &str) -> String {
+    text.replace('’', "'").to_ascii_lowercase()
+}
+
 fn dictionary() -> &'static [Word] {
     static WORDS: OnceLock<Vec<Word>> = OnceLock::new();
     WORDS.get_or_init(|| {
@@ -64,7 +70,7 @@ fn dictionary() -> &'static [Word] {
             }))
             .enumerate()
             .map(|(rank, text)| Word {
-                text: text.to_lowercase(),
+                text: canonical_word(text),
                 rank,
             })
             .collect();
@@ -78,7 +84,7 @@ fn dictionary() -> &'static [Word] {
 /// identifiers, numbers, hyphenated expressions or mixed-script input.
 pub fn english_word_prefix(seed: &str) -> Option<&str> {
     let token = seed.rsplit(char::is_whitespace).next()?;
-    let word = token.trim_start_matches(['(', '[', '{', '"', '“', '‘']);
+    let word = token.trim_start_matches(['(', '[', '{', '"', '“', '‘', '\'']);
     if word.is_empty()
         || word.len() > 64
         || !word.starts_with(|c: char| c.is_ascii_alphabetic())
@@ -97,19 +103,47 @@ pub fn english_word_prefix(seed: &str) -> Option<&str> {
 }
 
 pub fn is_known_english_word(word: &str) -> bool {
-    let lower = word.to_lowercase();
+    let lower = canonical_word(word);
     dictionary()
         .binary_search_by(|entry| entry.text.as_str().cmp(&lower))
         .is_ok()
 }
 
-fn case_completion(word: &str, prefix: &str) -> String {
-    let word = if prefix.contains('’') {
-        word.replace('\'', "’")
-    } else {
-        word.to_owned()
+pub(crate) fn suggestion_mode(seed: &str) -> &'static str {
+    let Some(prefix) = english_word_prefix(seed) else {
+        return "next_word";
     };
-    let suffix = &word[prefix.len()..];
+    if !is_known_english_word(prefix) {
+        return "complete_word";
+    }
+    let lower = canonical_word(prefix);
+    let words = dictionary();
+    let next = words.partition_point(|word| word.text.as_str() <= lower.as_str());
+    if words
+        .get(next)
+        .is_some_and(|word| word.text.starts_with(&lower))
+    {
+        // "a", "can", "in", ... can be a complete word OR the beginning of a
+        // longer one. Only a typed separator unambiguously asks for the next word.
+        "complete_or_continue"
+    } else {
+        "next_word"
+    }
+}
+
+fn case_completion(word: &str, prefix: &str) -> String {
+    // Canonical apostrophes have a different UTF-8 width from a typed ’. Split
+    // by characters, not prefix bytes, before applying case/punctuation style.
+    let split = word
+        .char_indices()
+        .nth(prefix.chars().count())
+        .map_or(word.len(), |(i, _)| i);
+    let suffix = &word[split..];
+    let suffix = if prefix.contains('’') {
+        suffix.replace('\'', "’")
+    } else {
+        suffix.to_owned()
+    };
     let uppercase = prefix.chars().filter(char::is_ascii_alphabetic).count() > 1
         && prefix
             .chars()
@@ -119,20 +153,19 @@ fn case_completion(word: &str, prefix: &str) -> String {
         if uppercase {
             suffix.to_uppercase()
         } else {
-            suffix.to_owned()
+            suffix
         }
     )
 }
 
-fn context_words(context: &str) -> &'static [&'static str] {
+fn context_word_match(context: &str) -> (usize, &'static [&'static str]) {
     let boundary = context
         .rfind(['.', '?', '!', ';', '\n', '\r'])
         .map_or(0, |i| i + 1);
     let normalized = context[boundary..]
         .split_whitespace()
         .map(|word| {
-            word.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '’')
-                .to_lowercase()
+            canonical_word(word.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '’'))
         })
         .collect::<Vec<_>>()
         .join(" ");
@@ -145,7 +178,7 @@ fn context_words(context: &str) -> &'static [&'static str] {
                     .is_some_and(|left| left.ends_with(' '))
         })
         .max_by_key(|(prefix, _)| prefix.len())
-        .map_or(&[], |(_, words)| *words)
+        .map_or((0, &[]), |(prefix, words)| (prefix.chars().count(), *words))
 }
 
 fn bounded_context(context: &str) -> &str {
@@ -166,18 +199,23 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
         return output;
     }
     let context = format!("{} {seed}", bounded_context(committed_context));
+    let phrases = sentence_remainders(seed, committed_context);
+    let phrase_strength = phrases.first().map_or(0, |(matched, _)| *matched);
     let mut add = |text: String| {
         if output.len() < 12 && !output.contains(&text) {
             output.push(text);
         }
     };
     if seed.ends_with(char::is_whitespace) {
-        if !seed.trim_end().ends_with(',') {
-            for next in context_words(&context) {
+        let (strength, words) = context_word_match(&context);
+        // "how can I -> help" must beat the shorter "I -> am". Equal-strength
+        // authored collocations retain their priority and useful alternatives.
+        if !seed.trim_end().ends_with(',') && phrase_strength <= strength {
+            for next in words {
                 add(format!("{seed}{next}"));
             }
         }
-        for (_, remaining) in sentence_remainders(seed, committed_context) {
+        for (_, remaining) in &phrases {
             let next = remaining
                 .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
                 .next()
@@ -192,18 +230,20 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
         return output;
     };
     let left = &seed[..seed.len() - prefix.len()];
-    let lower = prefix.to_lowercase();
+    let lower = canonical_word(prefix);
     let previous = format!("{} {left}", bounded_context(committed_context));
     // Preceding words outrank general vocabulary for incomplete words.
     let mut matched_context = false;
-    for word in context_words(&previous) {
-        let word = word.to_lowercase();
+    let (strength, words) = context_word_match(&previous);
+    let phrase_context = phrase_strength.saturating_sub(prefix.chars().count() + 1);
+    for word in words.iter().filter(|_| phrase_context <= strength) {
+        let word = canonical_word(word);
         if word.starts_with(&lower) && word != lower {
             matched_context = true;
             add(format!("{left}{}", case_completion(&word, prefix)));
         }
     }
-    for (matched, remaining) in sentence_remainders(seed, committed_context) {
+    for (matched, remaining) in phrases.iter().copied() {
         // A known phrase can finish its next word even when that word has no
         // dedicated NEXT_WORDS entry. A bare prefix still uses vocabulary ranks.
         if matched <= prefix.chars().count() {
@@ -227,8 +267,29 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
         return output;
     }
     // Exact words continue naturally without being rewritten (hello -> hello world).
-    for word in context_words(&context) {
-        add(format!("{seed} {word}"));
+    let (strength, words) = context_word_match(&context);
+    if phrase_strength > strength && phrase_strength > prefix.chars().count() {
+        let mut continued = false;
+        for (_, remaining) in &phrases {
+            if remaining.starts_with(char::is_whitespace) {
+                let next = remaining
+                    .trim_start()
+                    .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                    .next()
+                    .unwrap_or("");
+                if !next.is_empty() {
+                    add(format!("{seed} {next}"));
+                    continued = true;
+                }
+            }
+        }
+        if continued {
+            return output;
+        }
+    } else {
+        for word in words {
+            add(format!("{seed} {word}"));
+        }
     }
     if let Some((_, endings)) = lexicon::PHRASE_ENDINGS
         .iter()
@@ -274,7 +335,9 @@ fn phrase_remainder<'a>(typed: &str, phrase: &'a str) -> Option<&'a str> {
             {
                 phrase_chars.next();
             }
-        } else if !ch.eq_ignore_ascii_case(&expected) {
+        } else if !(ch.eq_ignore_ascii_case(&expected)
+            || matches!(ch, '\'' | '’') && matches!(expected, '\'' | '’'))
+        {
             return None;
         }
     }
@@ -294,7 +357,11 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
         .char_indices()
         .filter_map(|(index, ch)| {
             let start = boundary && ch.is_ascii_alphabetic();
-            boundary = ch.is_whitespace() || matches!(ch, '(' | '[' | '{' | '"' | '“' | '‘');
+            // An ASCII quote opens a word only at an existing boundary. Treating
+            // every apostrophe as a boundary would split contractions/identifiers.
+            boundary = ch.is_whitespace()
+                || matches!(ch, '(' | '[' | '{' | '"' | '“' | '‘')
+                || (boundary && ch == '\'');
             start.then_some(index)
         })
         .collect();
@@ -302,14 +369,19 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
     // phrase match. A failed match never falls back to a fabricated suffix.
     for start in starts {
         let typed = &combined[start..];
-        let matches: Vec<_> = lexicon::SENTENCES
+        let remainders: Vec<_> = lexicon::SENTENCES
             .iter()
-            .filter_map(|phrase| {
-                phrase_remainder(typed, phrase).map(|rest| (typed.chars().count(), rest))
-            })
+            .filter_map(|phrase| phrase_remainder(typed, phrase))
             .collect();
-        if !matches.is_empty() {
-            return matches;
+        if !remainders.is_empty() {
+            // Compare content length, not repeated spaces or UTF-8 byte width,
+            // with the normalized explicit collocation match. Compute it once.
+            let matched = typed
+                .split_whitespace()
+                .map(|word| word.chars().count() + 1)
+                .sum::<usize>()
+                .saturating_sub(1);
+            return remainders.into_iter().map(|rest| (matched, rest)).collect();
         }
     }
     Vec::new()
@@ -331,7 +403,7 @@ pub(crate) fn mixed_candidates(
             let word = case_completion(
                 &format!(
                     "{}{suffix}",
-                    prefix.to_lowercase(),
+                    canonical_word(prefix),
                     suffix = &remaining[..split]
                 ),
                 prefix,
@@ -349,6 +421,38 @@ pub(crate) fn mixed_candidates(
         }
     }
     output
+}
+
+/// Extract only a complete next word actually present in a valid continuation.
+/// This never rewrites the typed prefix or splits URLs, hyphenations/identifiers.
+pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'a str> {
+    if seed.is_empty() {
+        return None;
+    }
+    let suffix = text.strip_prefix(seed)?;
+    if !seed.ends_with(char::is_whitespace) {
+        english_word_prefix(seed)?;
+    }
+    // Before a separator, complete the current word; after one, finish the next.
+    // Do not turn "hel there" into a purported word completion.
+    let split = suffix.find(|ch: char| !ch.is_ascii_alphabetic() && !matches!(ch, '\'' | '’'))?;
+    if split == 0 {
+        return None;
+    }
+    let end = seed.len() + split;
+    let word = &text[..end];
+    let prefix = english_word_prefix(word)?;
+    if !prefix.ends_with(|ch: char| ch.is_ascii_alphabetic()) {
+        return None;
+    }
+    let mut rest = text[end..].chars();
+    let boundary = rest.next()?;
+    let separated = boundary.is_whitespace()
+        || (matches!(
+            boundary,
+            ',' | '.' | '?' | '!' | ';' | ':' | ')' | ']' | '}' | '"'
+        ) && rest.next().is_none_or(char::is_whitespace));
+    separated.then_some(word)
 }
 
 #[cfg(test)]
@@ -371,6 +475,97 @@ mod tests {
             assert!(words.contains(&expected.into()), "{seed}: {words:?}");
             assert!(words.iter().all(|word| word.starts_with(seed)));
         }
+    }
+
+    #[test]
+    fn contractions_complete_equally_with_straight_and_smart_apostrophes() {
+        for (prefix, expected) in [
+            ("we'", "we're"),
+            ("they'", "they're"),
+            ("isn'", "isn't"),
+            ("couldn'", "couldn't"),
+            ("haven'", "haven't"),
+            ("I'V", "I'VE"),
+        ] {
+            let straight = english_sentence_variants(prefix);
+            assert!(straight.contains(&expected.to_owned()), "{straight:?}");
+            let smart_prefix = prefix.replace('\'', "’");
+            let smart = english_sentence_variants(&smart_prefix);
+            assert_eq!(
+                smart,
+                straight
+                    .iter()
+                    .map(|word| word.replace('\'', "’"))
+                    .collect::<Vec<_>>()
+            );
+            assert!(is_known_english_word(&expected.replace('\'', "’")));
+        }
+    }
+
+    #[test]
+    fn projected_model_words_are_exact_complete_natural_language_tails() {
+        for (seed, text, expected) in [
+            ("don", "don't worry.", "don't"),
+            ("don’", "don’t worry.", "don’t"),
+            ("let's ", "let's try again.", "let's try"),
+            ("hel", "hello, how are you?", "hello"),
+            ("appre", "appreciate.", "appreciate"),
+            ("Please RE", "Please REVIEW the changes.", "Please REVIEW"),
+        ] {
+            assert_eq!(word_from_continuation(seed, text), Some(expected));
+        }
+        for (seed, text) in [
+            ("hel", "hel there"),
+            ("hel", "hello-world event"),
+            ("hel", "hello.com site"),
+            ("hel", "hello@example.com"),
+            ("user_na", "user_name is ready"),
+            ("src/he", "src/hello.rs"),
+            ("hel", "helloЖ test"),
+            ("hel", "hello123 test"),
+            ("hel", "hello' word"),
+            ("hel", "goodbye, hello"),
+            ("hel", "hello"),
+        ] {
+            assert_eq!(word_from_continuation(seed, text), None, "{seed} -> {text}");
+        }
+    }
+
+    #[test]
+    fn opening_quotes_allow_completion_without_splitting_contractions() {
+        for (seed, word, sentence) in [
+            ("'hel", "'hello", "'hello, how are you?"),
+            (
+                "He said 'please sen",
+                "He said 'please send",
+                "He said 'please send me the details.",
+            ),
+            (
+                "('Please  sen",
+                "('Please  send",
+                "('Please  send me the details.",
+            ),
+        ] {
+            assert!(
+                english_sentence_variants(seed).contains(&word.to_owned()),
+                "{seed}"
+            );
+            assert!(
+                mixed_candidates(seed, "")
+                    .iter()
+                    .any(|(text, _)| text == sentence),
+                "{seed}"
+            );
+        }
+        for seed in ["'hello'", "can't'hel", "don't'please", "user'hel"] {
+            assert_eq!(english_sentence_variants(seed), [seed]);
+            assert!(mixed_candidates(seed, "").is_empty(), "{seed}");
+        }
+        assert_eq!(
+            phrase_remainder("We’re  wor", "we're working on it."),
+            Some("king on it.")
+        );
+        assert_eq!(case_completion("wouldn't've", "wouldn’t'v"), "wouldn’t've");
     }
 
     #[test]

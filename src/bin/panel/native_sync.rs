@@ -305,10 +305,11 @@ impl PanelState {
     }
 
     pub(super) fn receive_native_frame(&mut self, frame: Option<NativeComposition>) {
-        if let (Some(previous), Some(next)) = (&self.native.frame, &frame) {
-            if previous.host == next.host && previous.revision >= next.revision {
-                return;
-            }
+        if let (Some(previous), Some(next)) = (&self.native.frame, &frame)
+            && previous.host == next.host
+            && previous.revision >= next.revision
+        {
+            return;
         }
         let keyboard_target_unchanged =
             self.native
@@ -472,30 +473,31 @@ impl PanelState {
         insertion: Option<NativeInsertion>,
     ) -> bool {
         #[cfg(target_os = "linux")]
-        if !self.is_focused && !self.chrome.settings_open && self.native.pending.is_none() {
-            if let Some(frame) = self.native.frame.as_ref() {
-                if let (Ok(command), Some(sender)) = (
-                    suzaku_map::platform::linux_ime_sync::action_command(frame, &operation),
-                    self.native.sender.as_ref(),
-                ) {
-                    let id = (frame.host.clone(), frame.revision);
-                    if sender
-                        .try_send(ActionRequest {
-                            command,
-                            host: id.0.clone(),
-                            revision: id.1,
-                        })
-                        .is_ok()
-                    {
-                        if insertion.is_some() {
-                            self.last_commit_feedback =
-                                Some("Inserting; source retained until confirmation.".into());
-                            self.commit_feedback_ticks = 120;
-                        }
-                        self.native.pending = Some(PendingAction { id, insertion });
-                        return true;
-                    }
+        if !self.is_focused
+            && !self.chrome.settings_open
+            && self.native.pending.is_none()
+            && let Some(frame) = self.native.frame.as_ref()
+            && let (Ok(command), Some(sender)) = (
+                suzaku_map::platform::linux_ime_sync::action_command(frame, &operation),
+                self.native.sender.as_ref(),
+            )
+        {
+            let id = (frame.host.clone(), frame.revision);
+            if sender
+                .try_send(ActionRequest {
+                    command,
+                    host: id.0.clone(),
+                    revision: id.1,
+                })
+                .is_ok()
+            {
+                if insertion.is_some() {
+                    self.last_commit_feedback =
+                        Some("Inserting; source retained until confirmation.".into());
+                    self.commit_feedback_ticks = 120;
                 }
+                self.native.pending = Some(PendingAction { id, insertion });
+                return true;
             }
         }
         let _ = operation;
@@ -527,10 +529,10 @@ impl PanelState {
             .as_mut()
             .is_some_and(|typing| typing.acknowledge(revision, matches!(result, Ok(true))))
         {
-            if let (Some(typing), Some(frame)) = (&mut self.native.typing, &self.native.frame) {
-                if typing.matches(frame) {
-                    typing.observe(frame);
-                }
+            if let (Some(typing), Some(frame)) = (&mut self.native.typing, &self.native.frame)
+                && typing.matches(frame)
+            {
+                typing.observe(frame);
             }
             self.flush_native_typing();
             self.refresh_native_view();

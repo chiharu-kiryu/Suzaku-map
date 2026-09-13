@@ -192,16 +192,16 @@ impl PanelState {
         }
 
         let next_token_scroll_index = self.interaction.next_token_candidate_scroll_index;
-        if !next_token_scroll_index
-            .is_none_or(|index| index < self.chrome.next_token_candidates.len())
+        if next_token_scroll_index
+            .is_some_and(|index| index >= self.chrome.next_token_candidates.len())
         {
             self.interaction.next_token_candidate_scroll_index = None;
             self.interaction.next_token_candidate_scroll_started_at = None;
         }
 
         let handwriting_scroll_index = self.interaction.handwriting_candidate_scroll_index;
-        if !handwriting_scroll_index
-            .is_none_or(|index| index < self.chrome.handwriting_candidates.len())
+        if handwriting_scroll_index
+            .is_some_and(|index| index >= self.chrome.handwriting_candidates.len())
         {
             self.interaction.handwriting_candidate_scroll_index = None;
             self.interaction.handwriting_candidate_scroll_started_at = None;
@@ -414,11 +414,13 @@ mod tests {
 
     #[test]
     fn text_input_inserts_emoji_when_allowed() {
-        let mut chrome = PanelChromeState::default();
-        chrome.seed_text = "hi".to_string();
-        chrome.caret_index = 2;
-        chrome.active_input_mode = suzaku_map::ime::gpu::InputMode::VirtualKeyboard;
-        chrome.input_focused = true;
+        let mut chrome = PanelChromeState {
+            seed_text: "hi".to_string(),
+            caret_index: 2,
+            active_input_mode: suzaku_map::ime::gpu::InputMode::VirtualKeyboard,
+            input_focused: true,
+            ..Default::default()
+        };
 
         if can_process_text_input(chrome.input_focused) {
             let accepted = sanitize_text_input(" 😀");
@@ -433,11 +435,13 @@ mod tests {
 
     #[test]
     fn handwriting_text_field_accepts_keyboard_input() {
-        let mut chrome = PanelChromeState::default();
-        chrome.seed_text = "hello".to_string();
-        chrome.caret_index = 5;
-        chrome.active_input_mode = suzaku_map::ime::gpu::InputMode::Handwriting;
-        chrome.input_focused = true;
+        let mut chrome = PanelChromeState {
+            seed_text: "hello".to_string(),
+            caret_index: 5,
+            active_input_mode: suzaku_map::ime::gpu::InputMode::Handwriting,
+            input_focused: true,
+            ..Default::default()
+        };
         if can_process_text_input(chrome.input_focused) {
             let accepted = sanitize_text_input(" 🐶");
             if !accepted.is_empty() {
@@ -451,10 +455,12 @@ mod tests {
 
     #[test]
     fn text_input_does_not_mutate_seed_when_rejected_by_blur() {
-        let mut chrome = PanelChromeState::default();
-        chrome.seed_text = "hello".to_string();
-        chrome.input_focused = false;
-        chrome.caret_index = 5;
+        let mut chrome = PanelChromeState {
+            seed_text: "hello".to_string(),
+            input_focused: false,
+            caret_index: 5,
+            ..Default::default()
+        };
 
         let expected = chrome.seed_text.clone();
         let snapshot = chrome.caret_index;

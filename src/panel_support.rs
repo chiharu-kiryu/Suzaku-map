@@ -979,8 +979,7 @@ fn clean_sentence_candidate(seed_text: &str, candidate: &str) -> String {
 
     let normalized_seed = seed.to_lowercase();
     let normalized_candidate = candidate.to_lowercase();
-    let normalized_template_candidate =
-        normalized_candidate.trim_end_matches(|ch: char| matches!(ch, '.' | '!' | '?'));
+    let normalized_template_candidate = normalized_candidate.trim_end_matches(['.', '!', '?']);
 
     let template_prefix = |template: &str| -> Option<String> {
         if !normalized_template_candidate.ends_with(template) {
@@ -1039,9 +1038,9 @@ fn finalize_sentence(sentence: &str, normalized_seed: &str) -> String {
     if text.is_empty() {
         return text;
     }
-    if !normalized_seed.is_empty() && text.to_lowercase() == normalized_seed.to_lowercase() {
-        text.push('.');
-    } else if !matches!(text.chars().last(), Some('.' | '!' | '?')) {
+    if (!normalized_seed.is_empty() && text.to_lowercase() == normalized_seed.to_lowercase())
+        || !matches!(text.chars().last(), Some('.' | '!' | '?'))
+    {
         text.push('.');
     }
 

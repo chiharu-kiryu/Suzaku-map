@@ -15,7 +15,9 @@ sudo apt install build-essential pkg-config libibus-1.0-dev libglib2.0-dev \
   dbus-daemon ibus gir1.2-ibus-1.0 gir1.2-pango-1.0 python3-gi \
   xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck \
   dpkg-dev jq desktop-file-utils
+rustup component add rustfmt clippy
 cargo fmt --all --check
+cargo clippy --locked --all-features --all-targets -- -D warnings
 cargo test --locked --all-features -- --test-threads=1
 bash scripts/test-linux-ci.sh ibus
 bash scripts/test-linux-ci.sh ui

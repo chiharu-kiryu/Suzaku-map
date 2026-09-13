@@ -96,7 +96,7 @@ impl UiLanguage {
         })
     }
 
-    pub fn tr<'a>(self, key: &'a str) -> &'a str {
+    pub fn tr(self, key: &str) -> &str {
         let index = match self.resolved() {
             Self::ChineseSimplified => 0,
             Self::Japanese => 1,

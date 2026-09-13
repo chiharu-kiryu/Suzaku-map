@@ -17,6 +17,9 @@ mod controller;
 mod controller_hints;
 #[path = "panel/font_atlas.rs"]
 mod font_atlas;
+#[cfg(all(test, target_os = "linux"))]
+#[path = "panel/functional_network_audit_test.rs"]
+mod functional_network_audit_test;
 #[path = "panel/handwriting.rs"]
 mod handwriting;
 #[path = "panel/helpers.rs"]
@@ -367,6 +370,13 @@ impl PanelApp {
     ) {
         let language = ime_settings.language;
         let configuration_changed = self.last_native_ime_settings.as_ref() != Some(&ime_settings);
+        let context_changed = self
+            .last_native_ime_settings
+            .as_ref()
+            .is_none_or(|previous| {
+                previous.language != language
+                    || !previous.provider.same_identity(&ime_settings.provider)
+            });
         self.last_native_ime_settings = Some(ime_settings.clone());
         if let Some(panel) = self.panel.as_mut() {
             let previous = (panel.chrome.llm_enabled, panel.chrome.llm_temperature);
@@ -386,6 +396,11 @@ impl PanelApp {
                 || panel.engine.snapshot().active_language != language.id()
                 || previous != (panel.chrome.llm_enabled, panel.chrome.llm_temperature)
             {
+                if context_changed {
+                    // The standalone engine owns its own commit history; the
+                    // host clearing its context does not clear this instance.
+                    panel.engine.clear_prediction_context();
+                }
                 panel.sync_manual_seed_base();
                 panel.engine.set_language(language.id());
                 panel.reconfigure_model_provider();
@@ -412,12 +427,11 @@ impl PanelApp {
     }
 
     fn push_prediction_settings(&mut self) {
-        if let (Some(panel), Some(tray)) = (&self.panel, &self.tray) {
-            if let Some(patch) = self.prediction_settings_sync.next_patch(&panel.chrome) {
-                if !tray.set_prediction_settings(patch) {
-                    self.finish_prediction_settings(None);
-                }
-            }
+        if let (Some(panel), Some(tray)) = (&self.panel, &self.tray)
+            && let Some(patch) = self.prediction_settings_sync.next_patch(&panel.chrome)
+            && !tray.set_prediction_settings(patch)
+        {
+            self.finish_prediction_settings(None);
         }
     }
 
@@ -678,34 +692,33 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     .native_sync
                     .as_ref()
                     .and_then(|sync| sync.take_update())
+                    && let Some(panel) = self.panel.as_mut()
                 {
-                    if let Some(panel) = self.panel.as_mut() {
-                        let was_visible = panel
+                    let was_visible = panel
+                        .native
+                        .frame
+                        .as_ref()
+                        .is_some_and(|frame| frame.visible());
+                    panel.receive_native_frame(update);
+                    let visible = panel.native.showing
+                        && panel
                             .native
                             .frame
                             .as_ref()
                             .is_some_and(|frame| frame.visible());
-                        panel.receive_native_frame(update);
-                        let visible = panel.native.showing
-                            && panel
-                                .native
-                                .frame
-                                .as_ref()
-                                .is_some_and(|frame| frame.visible());
-                        let manually_hidden = panel.native.frame.as_ref().is_some_and(|frame| {
-                            self.native_hidden_context.as_ref()
-                                == Some(&(frame.host.clone(), frame.context))
-                        });
-                        let can_show = !manually_hidden
-                            && panel.runs_without_window_focus
-                            && !panel.is_focused
-                            && !panel.chrome.settings_open;
-                        if visible && !was_visible && !self.panel_visible && can_show {
-                            self.set_panel_visible(true);
-                            self.native_auto_shown = true;
-                        } else if !visible && self.native_auto_shown {
-                            self.set_panel_visible(false);
-                        }
+                    let manually_hidden = panel.native.frame.as_ref().is_some_and(|frame| {
+                        self.native_hidden_context.as_ref()
+                            == Some(&(frame.host.clone(), frame.context))
+                    });
+                    let can_show = !manually_hidden
+                        && panel.runs_without_window_focus
+                        && !panel.is_focused
+                        && !panel.chrome.settings_open;
+                    if visible && !was_visible && !self.panel_visible && can_show {
+                        self.set_panel_visible(true);
+                        self.native_auto_shown = true;
+                    } else if !visible && self.native_auto_shown {
+                        self.set_panel_visible(false);
                     }
                 }
             }
@@ -1262,22 +1275,22 @@ impl PanelState {
 }
 
 fn apply_pointer_stability_env_overrides(chrome: &mut PanelChromeState) {
-    if let Ok(raw_tap_slop_px) = std::env::var("SUZAKU_POINTER_TAP_SLOP_PX") {
-        if let Ok(px) = raw_tap_slop_px.parse::<f32>() {
-            let clamped = (px * 10.0).round().clamp(20.0, 120.0) as u16;
-            chrome.pointer_tap_slop_tenths = clamped;
-        }
+    if let Ok(raw_tap_slop_px) = std::env::var("SUZAKU_POINTER_TAP_SLOP_PX")
+        && let Ok(px) = raw_tap_slop_px.parse::<f32>()
+    {
+        let clamped = (px * 10.0).round().clamp(20.0, 120.0) as u16;
+        chrome.pointer_tap_slop_tenths = clamped;
     }
-    if let Ok(raw_tap_max_ms) = std::env::var("SUZAKU_POINTER_TAP_MAX_MS") {
-        if let Ok(ms) = raw_tap_max_ms.parse::<u16>() {
-            chrome.pointer_tap_max_ms = ms;
-        }
+    if let Ok(raw_tap_max_ms) = std::env::var("SUZAKU_POINTER_TAP_MAX_MS")
+        && let Ok(ms) = raw_tap_max_ms.parse::<u16>()
+    {
+        chrome.pointer_tap_max_ms = ms;
     }
-    if let Ok(raw_target_slop_px) = std::env::var("SUZAKU_POINTER_TARGET_SLOP_PX") {
-        if let Ok(px) = raw_target_slop_px.parse::<f32>() {
-            let clamped = (px * 10.0).round().clamp(10.0, 120.0) as u16;
-            chrome.pointer_target_slop_tenths = clamped;
-        }
+    if let Ok(raw_target_slop_px) = std::env::var("SUZAKU_POINTER_TARGET_SLOP_PX")
+        && let Ok(px) = raw_target_slop_px.parse::<f32>()
+    {
+        let clamped = (px * 10.0).round().clamp(10.0, 120.0) as u16;
+        chrome.pointer_target_slop_tenths = clamped;
     }
 
     normalize_pointer_stability_settings(chrome);

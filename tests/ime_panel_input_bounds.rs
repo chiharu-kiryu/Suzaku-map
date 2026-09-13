@@ -54,7 +54,7 @@ fn long_input_and_caret_stay_inside_the_editor_at_every_text_scale() {
                             .unwrap();
                         assert_eq!(
                             layout.lines,
-                            [seed.clone()],
+                            std::slice::from_ref(&seed),
                             "editing must preserve spaces and not wrap"
                         );
                         assert!(

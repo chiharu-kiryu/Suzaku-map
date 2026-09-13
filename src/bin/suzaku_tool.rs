@@ -1440,6 +1440,13 @@ fn env_var_path() -> String {
     env::var("PATH").unwrap_or_default()
 }
 
+struct AndroidTargetSpec {
+    abi: &'static str,
+    rust_target: &'static str,
+    clang: &'static str,
+    linker_var: &'static str,
+}
+
 fn run_android_build_native_with_flags(release_flag: bool) -> i32 {
     let profile = if release_flag {
         "release".to_string()
@@ -1463,43 +1470,34 @@ fn run_android_build_native_with_flags(release_flag: bool) -> i32 {
     };
 
     let specs = [
-        (
-            "arm64-v8a",
-            "aarch64-linux-android",
-            "aarch64-linux-android29-clang",
-            "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER",
-        ),
-        (
-            "armeabi-v7a",
-            "armv7-linux-androideabi",
-            "armv7a-linux-androideabi29-clang",
-            "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER",
-        ),
-        (
-            "x86",
-            "i686-linux-android",
-            "i686-linux-android29-clang",
-            "CARGO_TARGET_I686_LINUX_ANDROID_LINKER",
-        ),
-        (
-            "x86_64",
-            "x86_64-linux-android",
-            "x86_64-linux-android29-clang",
-            "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER",
-        ),
+        AndroidTargetSpec {
+            abi: "arm64-v8a",
+            rust_target: "aarch64-linux-android",
+            clang: "aarch64-linux-android29-clang",
+            linker_var: "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER",
+        },
+        AndroidTargetSpec {
+            abi: "armeabi-v7a",
+            rust_target: "armv7-linux-androideabi",
+            clang: "armv7a-linux-androideabi29-clang",
+            linker_var: "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER",
+        },
+        AndroidTargetSpec {
+            abi: "x86",
+            rust_target: "i686-linux-android",
+            clang: "i686-linux-android29-clang",
+            linker_var: "CARGO_TARGET_I686_LINUX_ANDROID_LINKER",
+        },
+        AndroidTargetSpec {
+            abi: "x86_64",
+            rust_target: "x86_64-linux-android",
+            clang: "x86_64-linux-android29-clang",
+            linker_var: "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER",
+        },
     ];
 
-    for (abi, rust_target, clang, linker_var) in specs {
-        if let Err(err) = run_android_one_target(
-            &root,
-            &env,
-            &profile,
-            abi,
-            rust_target,
-            clang,
-            linker_var,
-            release_flag,
-        ) {
+    for spec in specs {
+        if let Err(err) = run_android_one_target(&root, &env, &profile, &spec, release_flag) {
             eprintln!("{err}");
             return 1;
         }
@@ -1513,12 +1511,15 @@ fn run_android_one_target(
     root: &Path,
     env: &AndroidEnv,
     profile: &str,
-    abi: &str,
-    rust_target: &str,
-    clang: &str,
-    linker_var: &str,
+    spec: &AndroidTargetSpec,
     release_flag: bool,
 ) -> Result<(), String> {
+    let AndroidTargetSpec {
+        abi,
+        rust_target,
+        clang,
+        linker_var,
+    } = *spec;
     let target_path = root
         .join(format!("target/{rust_target}/{profile}"))
         .join("libsuzaku_map.so");
@@ -1642,7 +1643,7 @@ fn resolve_android_apk_path(root: &Path) -> Result<PathBuf, String> {
     if canonical
         .extension()
         .and_then(|ext| ext.to_str())
-        .is_none_or(|ext| ext.to_ascii_lowercase() != "apk")
+        .is_none_or(|ext| !ext.eq_ignore_ascii_case("apk"))
     {
         return Err(format!(
             "Invalid APK path (must be *.apk): {}",
@@ -1836,10 +1837,8 @@ fn macos_open_app_for(target: MacTarget) -> i32 {
             return 1;
         }
     };
-    if !app.is_dir() {
-        if macos_build_app_for(target) != 0 {
-            return 1;
-        }
+    if !app.is_dir() && macos_build_app_for(target) != 0 {
+        return 1;
     }
     if let Some(mut open_cmd) = command("open") {
         if let Err(err) = open_cmd.arg(&app).status() {

@@ -40,6 +40,8 @@ if [[ "$suzaku_ci_mode" == ibus ]]; then
     XDG_RUNTIME_DIR="$suzaku_ci_tmp" \
     XDG_CONFIG_HOME="$suzaku_ci_tmp/config" \
     XDG_DATA_HOME="$suzaku_ci_tmp/data" \
+    XCOMPOSEFILE="$suzaku_ci_script_dir/fixtures/compose.XCompose" \
+    XLOCALEDIR=/usr/share/X11/locale \
     GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
     SUZAKU_IME_CONFIG="$suzaku_ci_tmp/ime.json" \
     SUZAKU_LINUX_IME_SOCKET="$suzaku_ci_tmp/suzaku-ime/host.sock" \
@@ -56,6 +58,7 @@ else
     keyboard_native_test::native_keyboard_editing_and_focus_return \
     candidates_native_test::native_candidate_clicks_and_async_refresh_are_safe \
     settings_native_test::native_tone_controls_follow_acknowledgements_and_reload \
+    functional_network_audit_test::audit_provider_change_must_forget_standalone_commit_context \
     translation::tests::native_translation_preserves_drafts_and_rejects_stale_contexts \
     native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
     status_native_test::native_panel_input_does_not_wait_for_status_probes \

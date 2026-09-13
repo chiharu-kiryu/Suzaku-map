@@ -177,8 +177,8 @@ mod platform_tests {
     #[test]
     fn support_profile_marked_as_readable() {
         let windows = support_for_const(TargetPlatform::Windows);
-        assert_eq!(windows.capabilities.voice_input, true);
-        assert_eq!(windows.capabilities.permission_bridge, true);
+        assert!(windows.capabilities.voice_input);
+        assert!(windows.capabilities.permission_bridge);
     }
 }
 

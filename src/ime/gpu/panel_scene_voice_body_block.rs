@@ -354,9 +354,7 @@
                             } else {
                                 surface_alt
                             },
-                            if pressed {
-                                accent
-                            } else if emphasized {
+                            if pressed || emphasized {
                                 accent
                             } else if hovered {
                                 hover_border

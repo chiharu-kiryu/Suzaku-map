@@ -66,7 +66,7 @@ fn build_linux_ibus_bridge() {
         )
     });
     build.include(ibus_include);
-    add_pkg_config_cflags(&mut build, &["glib-2.0", "gio-2.0"]);
+    add_pkg_config_cflags(&mut build, &["glib-2.0", "gio-2.0", "xkbcommon"]);
     build.compile("suzaku_linux_ibus_bridge");
 
     // libibus keeps SONAME 5 on supported IBus 1.x installations. Linking the
@@ -76,9 +76,11 @@ fn build_linux_ibus_bridge() {
     println!("cargo:rustc-link-lib=gio-2.0");
     println!("cargo:rustc-link-lib=gobject-2.0");
     println!("cargo:rustc-link-lib=glib-2.0");
+    println!("cargo:rustc-link-lib=xkbcommon");
     println!("cargo:rerun-if-env-changed=SUZAKU_IBUS_INCLUDE_DIR");
     println!("cargo:rerun-if-changed=src/linux/ibus_engine_bridge.c");
     println!("cargo:rerun-if-changed=src/linux/ibus_companion.inc.c");
+    println!("cargo:rerun-if-changed=src/linux/ibus_compose.inc.c");
     println!("cargo:rerun-if-changed=src/linux/ibus_ipc.inc.c");
 }
 
@@ -105,10 +107,10 @@ fn add_pkg_config_cflags(build: &mut cc::Build, packages: &[&str]) {
         .arg("--cflags")
         .args(packages)
         .output()
-        .unwrap_or_else(|error| panic!("failed to run pkg-config for GLib headers: {error}"));
+        .unwrap_or_else(|error| panic!("failed to run pkg-config for {packages:?}: {error}"));
     if !output.status.success() {
         panic!(
-            "pkg-config could not resolve GLib/GIO headers: {}",
+            "pkg-config could not resolve {packages:?} headers: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }

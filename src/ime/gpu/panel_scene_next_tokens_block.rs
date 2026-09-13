@@ -322,16 +322,17 @@
             if needs_single_line_truncate {
                 next_token_candidate_truncated.push(index);
             }
-            if let Some(&(scroll_index, started_at)) = next_token_candidate_scroll {
-                if scroll_index == index && layout.truncated {
-                    final_text = scroll_text_for_candidate(
-                        &final_text,
-                        started_at,
-                        if collapsed_daily_mode { chip_px * 0.95 } else { chip_px },
-                        ui_tracking,
-                        (visual_rect[2] - 14.0 * responsive_scale).max(0.0),
-                    );
-                }
+            if let Some(&(scroll_index, started_at)) = next_token_candidate_scroll
+                && scroll_index == index
+                && layout.truncated
+            {
+                final_text = scroll_text_for_candidate(
+                    &final_text,
+                    started_at,
+                    if collapsed_daily_mode { chip_px * 0.95 } else { chip_px },
+                    ui_tracking,
+                    (visual_rect[2] - 14.0 * responsive_scale).max(0.0),
+                );
             }
 
             let layout = TextBlock {

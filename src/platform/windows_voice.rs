@@ -111,6 +111,12 @@ struct WindowsSpeechState {
     queued_transcript: Option<String>,
 }
 
+impl Default for WindowsSpeechBridge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 impl WindowsSpeechBridge {
     pub fn new() -> Self {

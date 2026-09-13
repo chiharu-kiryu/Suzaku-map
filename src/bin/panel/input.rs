@@ -24,10 +24,8 @@ pub(super) fn handle_panel_window_event(
         }
 
         match event {
-            WindowEvent::CloseRequested => {
-                if allow_exit {
-                    state.close_requested = true;
-                }
+            WindowEvent::CloseRequested if allow_exit => {
+                state.close_requested = true;
             }
             WindowEvent::Resized(size) => {
                 state.resize(size.width, size.height);
@@ -77,10 +75,8 @@ pub(super) fn handle_panel_window_event(
                     state.window.request_redraw();
                 }
             }
-            WindowEvent::CursorLeft { .. } => {
-                if state.clear_pointer_hover() {
-                    state.window.request_redraw();
-                }
+            WindowEvent::CursorLeft { .. } if state.clear_pointer_hover() => {
+                state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 state.modifiers = modifiers.state();
@@ -123,270 +119,255 @@ pub(super) fn handle_panel_window_event(
                 event,
                 is_synthetic,
                 ..
-            } => {
-                if event.state == ElementState::Pressed && !is_synthetic {
-                    // IME preedit owns its editing keys; do not run panel shortcuts.
-                    if state.text_input.composing() {
-                        return;
-                    }
-                    let scale_modifier =
-                        super::keyboard::primary_shortcut_modifier(state.modifiers);
-                    let scale_shortcut_handled = if scale_modifier {
-                        match event.physical_key {
-                            PhysicalKey::Code(KeyCode::Equal) if state.modifiers.shift_key() => {
-                                state.adjust_window_scale(1);
-                                true
-                            }
-                            PhysicalKey::Code(KeyCode::Minus) => {
-                                state.adjust_window_scale(-1);
-                                true
-                            }
-                            PhysicalKey::Code(KeyCode::NumpadAdd) => {
-                                state.adjust_window_scale(1);
-                                true
-                            }
-                            PhysicalKey::Code(KeyCode::NumpadSubtract) => {
-                                state.adjust_window_scale(-1);
-                                true
-                            }
-                            PhysicalKey::Code(KeyCode::Digit0) => {
-                                state.reset_window_scale();
-                                true
-                            }
-                            _ => false,
+            } if event.state == ElementState::Pressed && !is_synthetic => {
+                // IME preedit owns its editing keys; do not run panel shortcuts.
+                if state.text_input.composing() {
+                    return;
+                }
+                let scale_modifier = super::keyboard::primary_shortcut_modifier(state.modifiers);
+                let scale_shortcut_handled = if scale_modifier {
+                    match event.physical_key {
+                        PhysicalKey::Code(KeyCode::Equal) if state.modifiers.shift_key() => {
+                            state.adjust_window_scale(1);
+                            true
                         }
-                    } else {
-                        false
-                    };
-                    if scale_shortcut_handled {
-                        state.window.request_redraw();
-                        return;
-                    }
-
-                    if allow_exit && scale_modifier && state.is_quit_shortcut(&event.physical_key) {
-                        state.quit_requested = true;
-                        return;
-                    }
-                    if state.kind == PanelWindowKind::Main
-                        && !state.chrome.settings_open
-                        && state.chrome.input_focused
-                    {
-                        state.handle_editing_key(
-                            &event.logical_key,
-                            event.text.as_deref(),
-                            event.repeat,
-                        );
-                        state.window.request_redraw();
-                        return;
-                    }
-                    if !super::keyboard::text_modifiers_allowed(state.modifiers) {
-                        return;
-                    }
-
-                    if event.repeat
-                        && state.kind == PanelWindowKind::Main
-                        && !state.chrome.settings_open
-                        && matches!(
-                            event.physical_key,
-                            PhysicalKey::Code(KeyCode::Enter)
-                                | PhysicalKey::Code(KeyCode::NumpadEnter)
-                                | PhysicalKey::Code(KeyCode::Digit1)
-                                | PhysicalKey::Code(KeyCode::Digit2)
-                                | PhysicalKey::Code(KeyCode::Digit3)
-                                | PhysicalKey::Code(KeyCode::Digit4)
-                                | PhysicalKey::Code(KeyCode::Tab)
-                                | PhysicalKey::Code(KeyCode::KeyV)
-                                | PhysicalKey::Code(KeyCode::KeyN)
-                                | PhysicalKey::Code(KeyCode::KeyI)
-                                | PhysicalKey::Code(KeyCode::KeyR)
-                                | PhysicalKey::Code(KeyCode::KeyD)
-                        )
-                    {
-                        state.window.request_redraw();
-                        return;
-                    }
-
-                    if state.kind == PanelWindowKind::Settings
-                        || (state.kind == PanelWindowKind::Main && state.chrome.settings_open)
-                    {
-                        match event.physical_key {
-                            PhysicalKey::Code(KeyCode::Escape) => {
-                                state.chrome.settings_open = false;
-                            }
-                            PhysicalKey::Code(KeyCode::PageUp) => {
-                                state.current_scene();
-                                state.adjust_settings_scroll(-34.0);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            PhysicalKey::Code(KeyCode::PageDown) => {
-                                state.current_scene();
-                                state.adjust_settings_scroll(34.0);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            PhysicalKey::Code(KeyCode::Home) => {
-                                state.current_scene();
-                                state.set_settings_scroll_offset(0.0);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            PhysicalKey::Code(KeyCode::End) => {
-                                state.current_scene();
-                                state.set_settings_scroll_offset(
-                                    state.interaction.settings_scroll_max_offset,
-                                );
-                                state.window.request_redraw();
-                                return;
-                            }
-                            PhysicalKey::Code(KeyCode::Backspace) => {
-                                state.backspace_settings_search_text();
-                                state.window.request_redraw();
-                                return;
-                            }
-                            _ => {}
+                        PhysicalKey::Code(KeyCode::Minus) => {
+                            state.adjust_window_scale(-1);
+                            true
                         }
+                        PhysicalKey::Code(KeyCode::NumpadAdd) => {
+                            state.adjust_window_scale(1);
+                            true
+                        }
+                        PhysicalKey::Code(KeyCode::NumpadSubtract) => {
+                            state.adjust_window_scale(-1);
+                            true
+                        }
+                        PhysicalKey::Code(KeyCode::Digit0) => {
+                            state.reset_window_scale();
+                            true
+                        }
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+                if scale_shortcut_handled {
+                    state.window.request_redraw();
+                    return;
+                }
 
-                        if let Some(text) = event.text.as_deref() {
-                            state.handle_settings_search_text(text);
+                if allow_exit && scale_modifier && state.is_quit_shortcut(&event.physical_key) {
+                    state.quit_requested = true;
+                    return;
+                }
+                if state.kind == PanelWindowKind::Main
+                    && !state.chrome.settings_open
+                    && state.chrome.input_focused
+                {
+                    state.handle_editing_key(
+                        &event.logical_key,
+                        event.text.as_deref(),
+                        event.repeat,
+                    );
+                    state.window.request_redraw();
+                    return;
+                }
+                if !super::keyboard::text_modifiers_allowed(state.modifiers) {
+                    return;
+                }
+
+                if event.repeat
+                    && state.kind == PanelWindowKind::Main
+                    && !state.chrome.settings_open
+                    && matches!(
+                        event.physical_key,
+                        PhysicalKey::Code(KeyCode::Enter)
+                            | PhysicalKey::Code(KeyCode::NumpadEnter)
+                            | PhysicalKey::Code(KeyCode::Digit1)
+                            | PhysicalKey::Code(KeyCode::Digit2)
+                            | PhysicalKey::Code(KeyCode::Digit3)
+                            | PhysicalKey::Code(KeyCode::Digit4)
+                            | PhysicalKey::Code(KeyCode::Tab)
+                            | PhysicalKey::Code(KeyCode::KeyV)
+                            | PhysicalKey::Code(KeyCode::KeyN)
+                            | PhysicalKey::Code(KeyCode::KeyI)
+                            | PhysicalKey::Code(KeyCode::KeyR)
+                            | PhysicalKey::Code(KeyCode::KeyD)
+                    )
+                {
+                    state.window.request_redraw();
+                    return;
+                }
+
+                if state.kind == PanelWindowKind::Settings
+                    || (state.kind == PanelWindowKind::Main && state.chrome.settings_open)
+                {
+                    match event.physical_key {
+                        PhysicalKey::Code(KeyCode::Escape) => {
+                            state.chrome.settings_open = false;
+                        }
+                        PhysicalKey::Code(KeyCode::PageUp) => {
+                            state.current_scene();
+                            state.adjust_settings_scroll(-34.0);
                             state.window.request_redraw();
                             return;
                         }
-                    } else {
-                        // Chords such as AltGr are text only, never tab/voice commands.
-                        if !state.modifiers.is_empty() {
+                        PhysicalKey::Code(KeyCode::PageDown) => {
+                            state.current_scene();
+                            state.adjust_settings_scroll(34.0);
+                            state.window.request_redraw();
                             return;
                         }
-                        match event.physical_key {
-                            PhysicalKey::Code(KeyCode::Escape) => state.finish_text_editing(),
-                            PhysicalKey::Code(KeyCode::ArrowLeft) => state.chrome.move_caret_left(),
-                            PhysicalKey::Code(KeyCode::ArrowRight) => {
-                                state.chrome.move_caret_right()
-                            }
-                            PhysicalKey::Code(KeyCode::ArrowDown) => {
-                                if state.chrome.input_focused {
-                                    state.chrome.blur_input();
-                                } else {
-                                    state.move_candidate_selection(1);
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::ArrowUp) => {
-                                state.move_candidate_selection(-1);
-                            }
-                            PhysicalKey::Code(KeyCode::Digit1) => {
-                                if !state.chrome.input_modes_expanded
-                                    && !state.chrome.sentence_candidate_source_indices.is_empty()
-                                {
-                                    let index = state.chrome.sentence_candidate_source_indices[0];
-                                    state.continue_sentence_candidate(index);
-                                } else {
-                                    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
-                                    state.chrome.input_modes_expanded = true;
-                                    state.chrome.focus_input();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Digit2) => {
-                                if !state.chrome.input_modes_expanded
-                                    && state.chrome.sentence_candidate_source_indices.len() > 1
-                                {
-                                    let index = state.chrome.sentence_candidate_source_indices[1];
-                                    state.continue_sentence_candidate(index);
-                                } else {
-                                    state.chrome.input_modes_expanded = true;
-                                    state.enter_voice_mode();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Digit3) => {
-                                if !state.chrome.input_modes_expanded
-                                    && state.chrome.sentence_candidate_source_indices.len() > 2
-                                {
-                                    let index = state.chrome.sentence_candidate_source_indices[2];
-                                    state.continue_sentence_candidate(index);
-                                } else {
-                                    state.chrome.active_input_mode = InputMode::Handwriting;
-                                    state.chrome.input_modes_expanded = true;
-                                    state.chrome.blur_input();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Digit4) => {
-                                if !state.chrome.input_modes_expanded
-                                    && state.chrome.sentence_candidate_source_indices.len() > 3
-                                {
-                                    let index = state.chrome.sentence_candidate_source_indices[3];
-                                    state.continue_sentence_candidate(index);
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Tab) => {
-                                state.chrome.input_modes_expanded =
-                                    !state.chrome.input_modes_expanded;
-                            }
-                            PhysicalKey::Code(KeyCode::KeyD) => {
-                                if !state.chrome.input_focused {
-                                    state.engine.update_signal(SignalState {
-                                        pointer_precision: 0.2,
-                                        gaze_stability: 0.2,
-                                        host_intent_weight: 0.4,
-                                        source_confidence: 0.4,
-                                    });
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::KeyV) => {
-                                if state.chrome.active_input_mode == InputMode::Dictation {
-                                    if state.chrome.voice_state == VoiceCaptureState::Listening {
-                                        state.stop_voice_capture();
-                                    } else {
-                                        state.start_voice_capture();
-                                    }
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::KeyN) => {
-                                if state.chrome.active_input_mode == InputMode::Dictation {
-                                    state.advance_voice_sample();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::KeyI) => {
-                                if state.chrome.active_input_mode == InputMode::Dictation {
-                                    state.insert_voice_transcript();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::KeyR) => {
-                                if !state.chrome.input_focused {
-                                    state.reset_signal();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::KeyZ) => {
-                                if state.chrome.active_input_mode == InputMode::Handwriting
-                                    && !state.chrome.input_focused
-                                {
-                                    state.undo_handwriting_stroke();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Backspace) => {
-                                if state.chrome.input_focused {
-                                    state.backspace_seed();
-                                }
-                            }
-                            PhysicalKey::Code(KeyCode::Space) => {
-                                state.continue_composition_with_space();
-                            }
-                            PhysicalKey::Code(KeyCode::Enter)
-                            | PhysicalKey::Code(KeyCode::NumpadEnter) => {
-                                if state.chrome.input_focused {
-                                    state.chrome.blur_input();
-                                } else if state.commit_primary_sentence_candidate() {
-                                    // The main sentence action should feel like a direct submit.
-                                } else {
-                                    let _ =
-                                        state.commit_selected_candidate_to_host(CommitOptions {
-                                            force: true,
-                                        });
-                                }
-                            }
-                            _ => {}
+                        PhysicalKey::Code(KeyCode::Home) => {
+                            state.current_scene();
+                            state.set_settings_scroll_offset(0.0);
+                            state.window.request_redraw();
+                            return;
                         }
+                        PhysicalKey::Code(KeyCode::End) => {
+                            state.current_scene();
+                            state.set_settings_scroll_offset(
+                                state.interaction.settings_scroll_max_offset,
+                            );
+                            state.window.request_redraw();
+                            return;
+                        }
+                        PhysicalKey::Code(KeyCode::Backspace) => {
+                            state.backspace_settings_search_text();
+                            state.window.request_redraw();
+                            return;
+                        }
+                        _ => {}
                     }
-                    state.window.request_redraw();
+
+                    if let Some(text) = event.text.as_deref() {
+                        state.handle_settings_search_text(text);
+                        state.window.request_redraw();
+                        return;
+                    }
+                } else {
+                    // Chords such as AltGr are text only, never tab/voice commands.
+                    if !state.modifiers.is_empty() {
+                        return;
+                    }
+                    match event.physical_key {
+                        PhysicalKey::Code(KeyCode::Escape) => state.finish_text_editing(),
+                        PhysicalKey::Code(KeyCode::ArrowLeft) => state.chrome.move_caret_left(),
+                        PhysicalKey::Code(KeyCode::ArrowRight) => state.chrome.move_caret_right(),
+                        PhysicalKey::Code(KeyCode::ArrowDown) => {
+                            if state.chrome.input_focused {
+                                state.chrome.blur_input();
+                            } else {
+                                state.move_candidate_selection(1);
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::ArrowUp) => {
+                            state.move_candidate_selection(-1);
+                        }
+                        PhysicalKey::Code(KeyCode::Digit1) => {
+                            if !state.chrome.input_modes_expanded
+                                && !state.chrome.sentence_candidate_source_indices.is_empty()
+                            {
+                                let index = state.chrome.sentence_candidate_source_indices[0];
+                                state.continue_sentence_candidate(index);
+                            } else {
+                                state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                                state.chrome.input_modes_expanded = true;
+                                state.chrome.focus_input();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::Digit2) => {
+                            if !state.chrome.input_modes_expanded
+                                && state.chrome.sentence_candidate_source_indices.len() > 1
+                            {
+                                let index = state.chrome.sentence_candidate_source_indices[1];
+                                state.continue_sentence_candidate(index);
+                            } else {
+                                state.chrome.input_modes_expanded = true;
+                                state.enter_voice_mode();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::Digit3) => {
+                            if !state.chrome.input_modes_expanded
+                                && state.chrome.sentence_candidate_source_indices.len() > 2
+                            {
+                                let index = state.chrome.sentence_candidate_source_indices[2];
+                                state.continue_sentence_candidate(index);
+                            } else {
+                                state.chrome.active_input_mode = InputMode::Handwriting;
+                                state.chrome.input_modes_expanded = true;
+                                state.chrome.blur_input();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::Digit4)
+                            if !state.chrome.input_modes_expanded
+                                && state.chrome.sentence_candidate_source_indices.len() > 3 =>
+                        {
+                            let index = state.chrome.sentence_candidate_source_indices[3];
+                            state.continue_sentence_candidate(index);
+                        }
+                        PhysicalKey::Code(KeyCode::Tab) => {
+                            state.chrome.input_modes_expanded = !state.chrome.input_modes_expanded;
+                        }
+                        PhysicalKey::Code(KeyCode::KeyD) if !state.chrome.input_focused => {
+                            state.engine.update_signal(SignalState {
+                                pointer_precision: 0.2,
+                                gaze_stability: 0.2,
+                                host_intent_weight: 0.4,
+                                source_confidence: 0.4,
+                            });
+                        }
+                        PhysicalKey::Code(KeyCode::KeyV)
+                            if state.chrome.active_input_mode == InputMode::Dictation =>
+                        {
+                            if state.chrome.voice_state == VoiceCaptureState::Listening {
+                                state.stop_voice_capture();
+                            } else {
+                                state.start_voice_capture();
+                            }
+                        }
+                        PhysicalKey::Code(KeyCode::KeyN)
+                            if state.chrome.active_input_mode == InputMode::Dictation =>
+                        {
+                            state.advance_voice_sample();
+                        }
+                        PhysicalKey::Code(KeyCode::KeyI)
+                            if state.chrome.active_input_mode == InputMode::Dictation =>
+                        {
+                            state.insert_voice_transcript();
+                        }
+                        PhysicalKey::Code(KeyCode::KeyR) if !state.chrome.input_focused => {
+                            state.reset_signal();
+                        }
+                        PhysicalKey::Code(KeyCode::KeyZ)
+                            if state.chrome.active_input_mode == InputMode::Handwriting
+                                && !state.chrome.input_focused =>
+                        {
+                            state.undo_handwriting_stroke();
+                        }
+                        PhysicalKey::Code(KeyCode::Backspace) if state.chrome.input_focused => {
+                            state.backspace_seed();
+                        }
+                        PhysicalKey::Code(KeyCode::Space) => {
+                            state.continue_composition_with_space();
+                        }
+                        PhysicalKey::Code(KeyCode::Enter)
+                        | PhysicalKey::Code(KeyCode::NumpadEnter) => {
+                            if state.chrome.input_focused {
+                                state.chrome.blur_input();
+                            } else if state.commit_primary_sentence_candidate() {
+                                // The main sentence action should feel like a direct submit.
+                            } else {
+                                let _ = state.commit_selected_candidate_to_host(CommitOptions {
+                                    force: true,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
                 }
+                state.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let zoom_delta = match delta {

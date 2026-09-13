@@ -37,7 +37,8 @@ class ModelFixture(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
-        model_requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        model_requests.append(request)
         time.sleep(0.08)
         candidates = [
             {"text": text, "kind": kind} for text, kind in [
@@ -46,6 +47,16 @@ class ModelFixture(BaseHTTPRequestHandler):
                 ("hello internationalization compatibility verification works", "sentence"),
             ]
         ]
+        composition = json.loads(request["messages"][1]["content"])["raw_composition"]
+        if composition.startswith("please rec"):
+            candidates = [{"text": text, "kind": "sentence"} for text in [
+                "please reconsider the proposal.", "please reconsider the schedule."]]
+        if composition.startswith("note ") and composition.endswith("hel"):
+            candidates = [
+                {"text": composition + "ioseismology", "kind": "word"},
+                {"text": composition + "ioseismology is interesting.", "kind": "sentence"},
+                {"text": composition + "x" * 161, "kind": "word"},
+            ]
         body = json.dumps({"choices": [{"message": {"content": json.dumps({"candidates": candidates})}}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -163,6 +174,41 @@ def check_tray_activation(bus):
     assert result.returncode == 0, result.stdout + result.stderr
     assert bus.get_global_engine().get_name() == previous, "activation test did not restore its private engine"
     print(result.stdout.strip())
+
+
+def check_whitespace_commit(context, watch, commits):
+    """N03: the companion accepts this draft, so Enter must submit it once."""
+    assert json.loads(command("P0"))["ok"]
+    for language in ["en", "zh", "ja"]:
+        assert json.loads(command("L" + language))["ok"]
+        pump()
+        assert not context.process_key_event(IBus.KEY_space, 0, 0), "empty-field Space must still pass through"
+        for draft in [" ", "   ", "\u00a0", " \u3000 "]:
+            for click in [False, True]:
+                before = len(commits)
+                assert action(watch.latest, "T" + draft)
+                wait(lambda: watch.latest["seed"] == draft, "accepted whitespace was not mirrored")
+                assert any(c["text"] == draft and c["kind"] == "literal" for c in watch.latest["candidates"])
+                if click:
+                    assert action(watch.latest, "K0")
+                else:
+                    assert context.process_key_event(IBus.KEY_Return, 0, 0), "N03: Enter did not submit whitespace"
+                wait(lambda: commits[before:] == [draft] and not watch.latest["seed"],
+                     "N03: whitespace must commit exactly once without changing its content")
+                assert not context.process_key_event(IBus.KEY_Return, 0, 0)
+                pump()
+                assert commits[before:] == [draft], "empty Enter replayed the previous whitespace"
+    assert json.loads(command("Len"))["ok"]
+    pump()
+    before = len(commits)
+    assert action(watch.latest, "T   hello")
+    wait(lambda: watch.latest["seed"] == "   hello", "prepare whitespace after word deletion")
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, IBus.ModifierType.CONTROL_MASK)
+    wait(lambda: watch.latest["seed"] == "   ", "word deletion must retain leading spaces")
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == ["   "] and not watch.latest["seed"], "commit whitespace after word deletion")
+    commits.clear()
+    print("PASS: N03 whitespace-only preedit in English/Chinese/Japanese, exact Enter/click commits, word deletion and empty-field pass-through")
 
 
 def check_settings_file_boundaries(context, watch, commits):
@@ -317,12 +363,15 @@ def check_engine_event_boundaries(bus):
         # Even an engine reused without FocusOut starts from an empty field.
         for target in [a, b]:
             start(a, "old")
+            assert a.process_key_event(IBus.KEY_dead_acute)
             previous = watch.latest["context"]
             target.event("FocusIn")
             wait(lambda: watch.latest["context"] != previous and watch.latest["focused"],
                  "fresh focus session")
             if watch.latest["seed"] or watch.latest["candidates"]:
                 failures.append("focus-in carried an earlier field's preedit/candidates")
+            type_seed(target, "e")
+            wait(lambda: watch.latest["seed"] == "e", "focus-in retained an old dead key")
             target.event("FocusOut")
             wait(lambda: not watch.latest["focused"], "unfocused engine peer")
             baseline, before = watch.latest, len(target.commits)
@@ -675,9 +724,108 @@ def check_writing_stream_prediction(context, watch, commits):
     wait(lambda: requests_for("ne"), "next stream did not request predictions")
     assert all(payload["committed_context"] == draft for payload in requests_for("ne"))
     fresh_field()
+    before = len(commits)
+    type_seed(context, "caf")
+    assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+    assert context.process_key_event(IBus.KEY_e, 0, 0)
+    type_seed(context, " please sen")
+    composed = "café please sen"
+    wait(lambda: requests_for(composed), "LLM did not receive the composed Unicode writing stream")
+    assert all(payload["committed_context"] == "" for payload in requests_for(composed))
+    assert watch.latest["seed"] == composed and len(commits) == before
+    fresh_field()
     type_seed(context, "hel")
     wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "restore AI fixture draft")
     print("PASS: LLM sees the full uncommitted stream; context advances only after explicit Enter")
+
+
+def check_long_model_completions(context, watch, commits):
+    """N02: both complete payloads survive decoding, merging and native commit."""
+    for length in [160, 256]:
+        seed = "note " * ((length - 3) // 5) + " " * ((length - 3) % 5) + "hel"
+        assert len(seed) == length
+        word, sentence = seed + "ioseismology", seed + "ioseismology is interesting."
+        for chosen in [word, sentence]:
+            # Reset() is asynchronous on a different D-Bus channel. If the
+            # previous commit already emptied the seed, merely waiting for an
+            # empty seed can race the following Unix-socket replacement.
+            revision = watch.latest["revision"]
+            assert action(watch.latest, "X")
+            wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"],
+                 "acknowledged clear before long model draft")
+            before = len(commits)
+            assert action(watch.latest, "T" + seed)
+            try:
+                wait(lambda: watch.latest["seed"] == seed and any(c["source"] == "model" for c in watch.latest["candidates"]),
+                     "N02: long draft did not receive a usable model result")
+            except AssertionError as error:
+                # Only synthetic fixture data; distinguish a request/decoder
+                # failure from a snapshot/ranking failure when CI regresses.
+                requests = [payload for request in model_requests
+                            if (payload := json.loads(request["messages"][1]["content"]))["raw_composition"] == seed]
+                raise AssertionError({
+                    "length": length, "word_choice": chosen == word, "seed_length": len(watch.latest["seed"]),
+                    "private": watch.latest["private"], "language": watch.latest["language"],
+                    "requests": [(len(p["local_conversion"]), p["local_conversion"] == seed) for p in requests],
+                    "candidates": [(len(c["text"]), c["text"][-35:], c["kind"], c["source"]) for c in watch.latest["candidates"]],
+                }) from error
+            candidates = watch.latest["candidates"]
+            assert any(c["text"] == word and c["kind"] == "word" and c["source"] == "model" for c in candidates)
+            assert any(c["text"] == sentence and c["kind"] == "sentence" and c["source"] == "model" for c in candidates)
+            assert any(c["text"] == seed for c in candidates), "literal draft was lost"
+            assert not any(c["text"] == seed + "x" * 161 for c in candidates), "generated-text budget was bypassed"
+            index = next(i for i, c in enumerate(candidates) if c["text"] == chosen)
+            if chosen == word:
+                assert action(watch.latest, f"N{index}")
+                wait(lambda: watch.latest["selected"] == index, "select the full long word completion")
+                assert context.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
+                wait(lambda: watch.latest["seed"] == chosen, "adopted word lost its long prefix")
+                assert len(commits) == before, "word adoption must not submit"
+                assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            else:
+                assert action(watch.latest, f"K{index}")
+            wait(lambda: commits[before:] == [chosen] and not watch.latest["seed"],
+                 "N02: long completion must commit its exact full payload once")
+    type_seed(context, "hel")
+    wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "restore ordinary model draft")
+    print("PASS: N02 160/256-character model word/sentence completions, bounded additions, editable adoption and exact commits")
+
+
+def check_sentence_only_prediction(context, watch, commits, lookup):
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "clear sentence-only fixture")
+    type_seed(context, "please rec")
+    word, sentence = "please reconsider", "please reconsider the proposal."
+
+    def ready():
+        return any(c["text"] == word and c["kind"] == "word" and c["source"] == "model"
+                   for c in watch.latest["candidates"][:6])
+
+    wait(ready, "sentence-only reply did not expose its first completed word")
+    check_candidate_presentation(watch, lookup)
+    assert any(c["text"] == sentence and c["kind"] == "sentence" for c in watch.latest["candidates"][:6])
+    before = len(commits)
+    for undo in [True, False]:
+        wait(ready, "word completion disappeared after undo")
+        index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == word)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == word, "choose the projected word, not the full sentence")
+        assert len(commits) == before
+        if undo:
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == "please rec", "restore spelling after model-word adoption")
+    type_seed(context, " again")
+    wait(lambda: watch.latest["seed"] == "please reconsider again", "model word must stay editable")
+    assert len(commits) == before
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == ["please reconsider again"] and not watch.latest["seed"], "submit continued model word")
+    type_seed(context, "please rec")
+    wait(ready, "restore sentence-only candidates")
+    index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == sentence)
+    before = len(commits)
+    assert action(watch.latest, f"K{index}")
+    wait(lambda: commits[before:] == [sentence] and not watch.latest["seed"], "full sentence must remain independently selectable")
+    print("PASS: sentence-only model replies provide distinct word/sentence choices, numeric adoption/undo, continued drafting and exact commits")
 
 
 def check_nonblocking_ipc(context, watch):
@@ -850,6 +998,20 @@ def check_english_key_regressions(context, watch, commits):
             cases.append(("hel", [(key, mask, False)], "hel"))
         cases.append(("hel", [(IBus.KEY_1, mask | IBus.ModifierType.MOD1_MASK, False)], "hel"))
     cases.append(("hel", [(IBus.KEY_x, IBus.ModifierType.RELEASE_MASK, False)], "hel"))
+    for prefix, keys, expected in [
+        ("caf", [IBus.KEY_dead_acute, IBus.KEY_e], "café"),
+        ("", [IBus.KEY_dead_acute, IBus.KEY_E], "É"),
+        ("", [IBus.KEY_Multi_key, IBus.KEY_apostrophe, IBus.KEY_e], "é"),
+        ("pi", [IBus.KEY_Multi_key, IBus.KEY_s, IBus.KEY_s], "piß"),
+        ("pay ", [IBus.KEY_Multi_key, IBus.KEY_1, IBus.KEY_2], "pay ½"),
+        ("caf", [IBus.KEY_dead_acute, IBus.KEY_space], "caf'"),
+        ("", [IBus.unicode_to_keyval("é")], "é"),
+        ("", [IBus.KEY_dead_acute, IBus.KEY_dead_tilde, IBus.KEY_e], "ẽ́"),
+        ("hel", [IBus.KEY_Multi_key, IBus.KEY_F11, IBus.KEY_1], "heltwo words"),
+        ("hel", [IBus.KEY_Multi_key, IBus.KEY_F11, IBus.KEY_2], "hel"),
+        ("hel", [IBus.KEY_Multi_key, IBus.KEY_F11, IBus.KEY_3], "hel" + "é" * 127),
+    ]:
+        cases.append((prefix, [(key, 0, True) for key in keys], expected))
     failures = []
     for prefix, keys, expected in cases:
         context.reset()
@@ -897,10 +1059,11 @@ def check_numeric_field_routing(context, watch, commits):
         context.reset()
         wait(lambda: not watch.latest["seed"] and not watch.latest["private"], "numeric fixture reset")
         type_seed(context, "hel")
+        assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
         context.set_content_type(purpose, 0)
         wait(lambda: not watch.latest["seed"] and watch.latest["private"], "numeric transition clears the old draft")
         before, requested = len(commits), len(model_requests)
-        keys = [ord(ch) for ch in "1234567890+-.()"] + [IBus.KEY_KP_1, IBus.KEY_BackSpace,
+        keys = [ord(ch) for ch in "1234567890+-.()"] + [IBus.KEY_dead_acute, IBus.KEY_Multi_key, IBus.KEY_KP_1, IBus.KEY_BackSpace,
                 IBus.KEY_Return, IBus.KEY_space, IBus.KEY_Tab]
         for key in keys:
             assert not context.process_key_event(key, 0, 0), (purpose, key)
@@ -920,8 +1083,108 @@ def check_numeric_field_routing(context, watch, commits):
     print("PASS: numeric/decimal/phone fields bypass candidate keys and panel injection; normal-field choices resume")
 
 
+def check_english_compose_boundaries(context, watch, commits, lookup):
+    before = len(commits)
+
+    def start(prefix="hel"):
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "clear compose fixture")
+        type_seed(context, prefix)
+        assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+        wait(lambda: lookup["aux_visible"] and lookup["aux"].startswith("Compose"), "missing compose hint")
+        assert not lookup["visible"] and watch.latest["seed"] == prefix
+
+    for prefix in ["", "hel"]:
+        for key in [IBus.KEY_BackSpace, IBus.KEY_Escape]:
+            start(prefix)
+            assert context.process_key_event(key, 0, 0)
+            type_seed(context, "e")
+            wait(lambda: watch.latest["seed"] == prefix + "e", "cancel must preserve the draft, not the accent")
+    for mask in [IBus.ModifierType.CONTROL_MASK, IBus.ModifierType.MOD1_MASK,
+                 IBus.ModifierType.SUPER_MASK, IBus.ModifierType.MOD4_MASK]:
+        start()
+        assert not context.process_key_event(IBus.KEY_c, 0, mask)
+        type_seed(context, "e")
+        wait(lambda: watch.latest["seed"] == "hele", "shortcut retained a pending accent")
+
+    start("caf")
+    assert not context.process_key_event(IBus.KEY_dead_acute, 0, IBus.ModifierType.RELEASE_MASK)
+    assert not context.process_key_event(IBus.KEY_Shift_L, 0, 0)
+    assert context.process_key_event(IBus.KEY_E, 0, IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.LOCK_MASK)
+    wait(lambda: watch.latest["seed"] == "cafÉ", "Shift/lock/release interrupted composition")
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+    wait(lambda: watch.latest["seed"] == "caf", "Backspace must edit a composed letter normally")
+    for key, expected in [(IBus.KEY_b, "helb"), (IBus.KEY_9, "hel9")]:
+        start()
+        assert context.process_key_event(key, 0, 0)
+        wait(lambda: watch.latest["seed"] == expected, "invalid sequence must retain its final printable key literally")
+
+    start("hello world")
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, IBus.ModifierType.CONTROL_MASK)
+    type_seed(context, "e")
+    wait(lambda: watch.latest["seed"] == "hello e", "draft word deletion retained an accent")
+    start()
+    assert action(watch.latest, "Tnew")
+    type_seed(context, "e")
+    wait(lambda: watch.latest["seed"] == "newe", "panel replacement retained an accent")
+    for label, operation in [
+        ("reset", lambda: context.reset()), ("language", lambda: command("Lja")),
+        ("password", lambda: context.set_content_type(IBus.InputPurpose.PASSWORD, 0)),
+        ("private", lambda: context.set_content_type(IBus.InputPurpose.FREE_FORM, 1 << 11)),
+    ]:
+        start()
+        operation()
+        wait(lambda: not watch.latest["seed"], "compose field boundary must clear the draft")
+        if label == "password":
+            assert not context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+            assert not context.process_key_event(IBus.KEY_e, 0, 0)
+        context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+        if label == "language":
+            type_seed(context, "e")
+            wait(lambda: watch.latest["seed"] == "e", "language switch retained a pending accent")
+            assert json.loads(command("Len"))["ok"]
+        type_seed(context, "e")
+        wait(lambda: watch.latest["seed"] == "e", "compose leaked through a reset/language/privacy boundary")
+    assert len(commits) == before, "composition/cancellation committed unexpectedly"
+
+    start()
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == ["hel"] and not watch.latest["seed"], "Enter must still submit only the existing draft")
+    type_seed(context, "e")
+    wait(lambda: watch.latest["seed"] == "e", "submit retained a pending accent")
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "finish compose fixture")
+    print("PASS: dead-key/Compose cancellation, modifiers, invalid sequences, panel edits, draft-only commit and reset/privacy boundaries")
+
+
 def check_english_writing_flow(context, watch, commits, lookup):
     assert json.loads(command("Len"))["ok"]
+    for seed, expected, kind in [
+        ("we’", "we’re", "word"), ("THEY’", "THEY’RE", "word"),
+        ("He said 'please sen", "He said 'please send", "word"),
+        ("'hel", "'hello, how are you?", "sentence"),
+        ("how can I ", "how can I help", "word"),
+        ("I’m w", "I’m working", "word"),
+        ("could you sh", "could you share", "word"),
+        ("I would like to ", "I would like to ask a question.", "sentence"),
+    ]:
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "reset quoted/contraction draft")
+        type_seed(context, seed)
+        check_candidate_presentation(watch, lookup, require_mix=kind == "sentence")
+        first = watch.latest["candidates"][:6]
+        index = next(i for i, c in enumerate(first) if c["text"] == expected and c["kind"] == kind)
+        before = len(commits)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == expected, "quote/apostrophe changed on number choice")
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == seed, "quote/apostrophe changed on undo")
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        assert context.process_key_event(IBus.KEY_space, 0, 0)
+        wait(lambda: watch.latest["seed"] == expected + " ", "quoted completion did not continue")
+        assert len(commits) == before
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: commits[before:] == [expected + " "] and not watch.latest["seed"], "quoted literal commit")
     context.reset()
     wait(lambda: not watch.latest["seed"], "start English writing flow")
     before = len(commits)
@@ -1027,6 +1290,7 @@ try:
     wait(lambda: watch.latest is not None and watch.latest["focused"], "initial subscription")
     assert not watch.latest["seed"] and not watch.latest["candidates"]
     assert json.loads(command("Len"))["ok"]
+    check_whitespace_commit(context, watch, commits)
     check_settings_file_boundaries(context, watch, commits)
     check_nonblocking_ipc(context, watch)
     check_ipc_boundaries(bus, context, watch, commits)
@@ -1078,6 +1342,7 @@ try:
              "CJK numeric candidate selection changed")
     assert json.loads(command("Len"))["ok"]
     check_english_key_regressions(other, watch, other_commits)
+    check_english_compose_boundaries(other, watch, other_commits, other_lookup)
     check_lossless_commit_chunks(other, watch, other_commits)
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
@@ -1111,7 +1376,9 @@ try:
         wait(lambda: watch.latest["seed"] == "help", "native input buffer diverged after reload")
         assert other.process_key_event(IBus.KEY_BackSpace, 0, 0)
         wait(lambda: watch.latest["seed"] == "hel", "native editing broke after reload")
+    check_sentence_only_prediction(other, watch, other_commits, other_lookup)
     check_writing_stream_prediction(other, watch, other_commits)
+    check_long_model_completions(other, watch, other_commits)
     # Loading a different language still clears the incompatible composition.
     settings["language"] = "ja"
     Path(os.environ["SUZAKU_IME_CONFIG"]).write_text(json.dumps(settings))

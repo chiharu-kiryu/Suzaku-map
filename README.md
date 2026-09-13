@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.5.5 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.5.6 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -13,9 +13,12 @@ as a fallback. Other platforms remain experimental.
 ## What works today
 
 - English-first completion, Chinese Pinyin and Japanese Romaji/Kana with small offline vocabularies.
-  Word and phrase/sentence candidates appear together when available.
+  Word and phrase/sentence candidates appear together when available; English continuations use
+  the preceding phrase and preserve straight/curly apostrophes.
 - Continuous drafts: spaces and punctuation keep writing open; Enter or a candidate click submits.
   Labels distinguish candidate type, model origin and ranking weight, not confidence.
+- Linux dead-key/Compose sequences produce editable accents and symbols using the system Compose
+  table, without changing the keyboard layout or Caps Lock state.
 - Optional local or explicitly authorized HTTPS cloud models through Ollama and compatible chat APIs.
   Local discovery prefers an already installed LLaMA; no model is bundled or automatically downloaded.
 - A floating panel/orb, screen keyboard, tray activation/restoration, guardian themes, sharper text,
@@ -31,11 +34,12 @@ speech and application compatibility. This is not a replacement for a full Chine
 ## Install the Linux preview
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
-In the download directory, on Ubuntu 24.04 amd64:
+Source tags can precede downloadable packages; use a release with attached packages or build from
+source. For the 0.5.6 package, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.5.5_amd64.deb.sha256
-sudo apt install ./suzaku_0.5.5_amd64.deb
+sha256sum -c suzaku_0.5.6_amd64.deb.sha256
+sudo apt install ./suzaku_0.5.6_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -104,6 +108,7 @@ Rust 1.95.0 is the CI toolchain. Install the dependencies in [CONTRIBUTING.md](C
 
 ```bash
 cargo build --locked --release --all-features --bin panel --bin linux_ime_host --bin linux_ime_probe --bin suzaku_tool
+cargo clippy --locked --all-features --all-targets -- -D warnings
 cargo test --locked --all-features -- --test-threads=1
 ```
 
@@ -113,10 +118,11 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.5.6 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.5.5 release notes](docs/releases/0.5.5.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.5.6 release notes](docs/releases/0.5.6.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

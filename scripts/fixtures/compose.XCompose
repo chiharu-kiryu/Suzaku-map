@@ -1,0 +1,7 @@
+# Private native QA only: the normal system sequences plus bounded test results.
+# No user's Compose file or home directory is consulted.
+include "%S/en_US.UTF-8/Compose"
+<Multi_key> <F11> <1> : "two words"
+<Multi_key> <F11> <2> : Return
+# 254 UTF-8 bytes: the largest result accepted by Ubuntu's libxkbcommon 1.6 parser.
+<Multi_key> <F11> <3> : "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"

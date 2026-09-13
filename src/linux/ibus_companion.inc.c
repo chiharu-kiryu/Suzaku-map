@@ -78,6 +78,7 @@ static gboolean suzaku_companion_action(const char *request) {
             g_ascii_string_to_unsigned(action + 1, 10, 0, G_MAXUINT64, &index, NULL) &&
             index < suzaku_host_ime_candidate_count()) {
             g_clear_pointer(&engine->completion_undo, g_free);
+            suzaku_ibus_engine_reset_compose(engine);
             suzaku_host_ime_select_candidate((size_t)index);
             if (action[0] == 'K') { applied = suzaku_ibus_engine_commit(engine); }
             else { suzaku_ibus_engine_render(engine); applied = TRUE; }

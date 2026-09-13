@@ -3,7 +3,9 @@
 use super::Candidate;
 use crate::languages::{
     BuiltinLanguage, chinese, english, japanese,
-    llm::{LlmCompletion, normalize_completion_text},
+    llm::{
+        LlmCompletion, MAX_PREDICTION_SEED_CHARS, completion_fits_budget, normalize_completion_text,
+    },
 };
 use std::collections::HashSet;
 
@@ -127,7 +129,7 @@ pub fn offline(
     base: Vec<Candidate>,
     limit: usize,
 ) -> Vec<Candidate> {
-    if seed.chars().count() > 256 {
+    if seed.chars().count() > MAX_PREDICTION_SEED_CHARS {
         return vec![candidate(seed.into(), CandidateKind::Literal, 100.0)];
     }
     let mut pool: Vec<_> = base
@@ -189,13 +191,15 @@ pub fn merge_model(
     limit: usize,
 ) -> (Vec<Candidate>, bool) {
     let pinned = pinned_count(language, &local);
+    // This is also the normalized prefix that request_prediction sends.
+    let prefix = local.first().map(|candidate| candidate.text.clone());
     let mut accepted = false;
     for completion in completions.into_iter().take(6) {
         let text = normalize_completion_text(&completion.text, (language == "en").then_some(seed))
             .to_owned();
         if text.is_empty()
             || text == seed
-            || text.chars().count() > 160
+            || !completion_fits_budget(&text, prefix.as_deref())
             || text.chars().any(char::is_control)
             || !completion.score_bias.is_finite()
         {
@@ -212,20 +216,31 @@ pub fn merge_model(
         } else {
             82.0
         }) + completion.score_bias.clamp(0.0, 1.0) * 6.0;
-        if let Some(existing) = local.iter_mut().find(|c| c.text == text) {
-            // Corroboration may raise a local candidate's weight, never relabel or move its anchor.
-            existing.score = existing.score.max(weight);
-            accepted = true;
-            continue;
-        }
+        // Some providers return only sentences despite the requested groups.
+        // Offer their first actual word completion too, without inventing text,
+        // hiding the original sentence or reclassifying local corroboration as AI.
+        let word = (language == "en" && kind == CandidateKind::Sentence)
+            .then(|| english::word_from_continuation(seed, &text))
+            .flatten()
+            .map(str::to_owned);
         accepted = true;
-        local.push(Candidate {
-            label: format!("{text} · AI"),
-            text,
-            score: weight,
-            kind,
-            source: CandidateSource::Model,
-        });
+        let derived_weight = 89.0 + completion.score_bias.clamp(0.0, 1.0) * 6.0;
+        for (text, kind, score) in std::iter::once((text, kind, weight))
+            .chain(word.map(|text| (text, CandidateKind::Word, derived_weight)))
+        {
+            if let Some(existing) = local.iter_mut().find(|c| c.text == text) {
+                // Corroboration raises weight, never moves/relabels a local anchor.
+                existing.score = existing.score.max(score);
+            } else {
+                local.push(Candidate {
+                    label: format!("{text} · AI"),
+                    text,
+                    score,
+                    kind,
+                    source: CandidateSource::Model,
+                });
+            }
+        }
     }
     (balance(local, pinned, limit), accepted)
 }

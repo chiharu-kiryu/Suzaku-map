@@ -352,8 +352,8 @@ impl PanelState {
         self.chrome.handwriting_candidates =
             recognize_handwriting_candidates(&self.chrome.handwriting_strokes);
         let handwriting_scroll_index = self.interaction.handwriting_candidate_scroll_index;
-        if !handwriting_scroll_index
-            .is_none_or(|index| index < self.chrome.handwriting_candidates.len())
+        if handwriting_scroll_index
+            .is_some_and(|index| index >= self.chrome.handwriting_candidates.len())
         {
             self.interaction.handwriting_candidate_scroll_index = None;
             self.interaction.handwriting_candidate_scroll_started_at = None;

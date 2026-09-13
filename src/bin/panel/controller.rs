@@ -387,11 +387,10 @@ impl PanelState {
             return Some(index);
         }
 
-        if let Some(label) = self.chrome.sentence_candidates.get(index) {
-            if let Some(fallback) = self.candidate_index_matching_sentence_label(label, candidates)
-            {
-                return Some(fallback);
-            }
+        if let Some(label) = self.chrome.sentence_candidates.get(index)
+            && let Some(fallback) = self.candidate_index_matching_sentence_label(label, candidates)
+        {
+            return Some(fallback);
         }
 
         let selected_index = self.engine.snapshot().selected_index;
@@ -451,7 +450,7 @@ impl PanelState {
     pub(super) fn normalize_candidate_text(text: &str) -> String {
         text.to_lowercase()
             .trim()
-            .trim_end_matches(|ch| matches!(ch, '.' | '!' | '?'))
+            .trim_end_matches(['.', '!', '?'])
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -1665,12 +1664,13 @@ impl PanelState {
             return;
         }
 
-        if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
-            if self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode) {
-                self.interaction.touch_tap_pending = false;
-                self.begin_panel_drag();
-                return;
-            }
+        if self.kind == PanelWindowKind::Main
+            && self.chrome.compact_mode
+            && self.interaction.pressed_interaction == Some(InteractionKind::ToggleCompactMode)
+        {
+            self.interaction.touch_tap_pending = false;
+            self.begin_panel_drag();
+            return;
         }
 
         if self.interaction.pressed_interaction == Some(InteractionKind::DragWindow) {

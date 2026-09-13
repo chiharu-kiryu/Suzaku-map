@@ -6,11 +6,11 @@ use std::time::{Duration, Instant};
 
 use crate::languages::BuiltinLanguage;
 use crate::languages::english::{
-    english_sentence_variants, english_word_prefix, is_known_english_word,
+    english_sentence_variants, english_word_prefix, is_known_english_word, suggestion_mode,
 };
 use crate::languages::llm::{
     LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmLanguagePlugin,
-    LlmProviderError, normalize_completion_text,
+    LlmProviderError, completion_fits_budget, normalize_completion_text,
 };
 
 pub mod runtime;
@@ -96,6 +96,16 @@ impl Default for ModelProviderConfig {
 }
 
 impl ModelProviderConfig {
+    /// Context can only be reused for the same deployment, model and credential reference.
+    /// Sampling, deadlines and hints do not change the recipient of input text.
+    pub fn same_identity(&self, other: &Self) -> bool {
+        self.scope == other.scope
+            && self.endpoint == other.endpoint
+            && self.model == other.model
+            && self.protocol == other.protocol
+            && self.api_key_env == other.api_key_env
+    }
+
     pub fn uses_ollama_api(&self) -> bool {
         match self.protocol {
             ModelProtocol::Ollama => true,
@@ -174,12 +184,11 @@ impl HttpModelProvider {
         if BuiltinLanguage::resolve(&request.language_id) == Some(BuiltinLanguage::English) {
             let prefix = english_word_prefix(&request.seed_text);
             input["word_prefix"] = json!(prefix.unwrap_or(""));
-            input["suggestion_mode"] =
-                json!(if prefix.is_some_and(|word| !is_known_english_word(word)) {
-                    "complete_word"
-                } else {
-                    "next_word"
-                });
+            input["suggestion_mode"] = json!(suggestion_mode(&request.seed_text));
+            input["text_before_word"] = json!(
+                prefix.map_or(request.seed_text.as_str(), |word| &request.seed_text
+                    [..request.seed_text.len() - word.len()])
+            );
         }
         let mode = if completion_prefix(request).is_some() {
             "Every candidate MUST begin with local_conversion exactly and add useful text."
@@ -286,7 +295,7 @@ fn language_instruction(language: &str) -> &'static str {
             "Language: Simplified Chinese. Use Chinese characters, not Pinyin. Use appropriate Chinese punctuation."
         }
         Some(BuiltinLanguage::English) => {
-            "Language: English. Prioritize everyday word completion. In complete_word mode, finish word_prefix within the last word before adding any spaces; prefer single completed words or at most a few more words. Never append a new word to an unfinished fragment. In next_word mode, suggest a short natural continuation. Preserve typed case, punctuation and spaces exactly. Use committed_context only to rank suggestions; never repeat it in the replacement."
+            "Language: English. Prioritize everyday word completion. In complete_word mode, finish word_prefix within the last word before adding any spaces; prefer single completed words or at most a few more words. Never append a new word to an unfinished fragment. In complete_or_continue mode, word_prefix is both a word and a possible fragment: offer longer word completions or next-word continuations according to the preceding words, not the isolated last token. In next_word mode, suggest a short natural continuation. A word candidate completes exactly one word, retaining text_before_word; a sentence candidate may continue that word into a short phrase. Preserve typed case, punctuation and spaces exactly. Use committed_context only to rank suggestions; never repeat it in the replacement."
         }
         Some(BuiltinLanguage::Japanese) => {
             "Language: Japanese. Use natural Japanese kanji and kana, not Romaji or pronunciation variants."
@@ -462,7 +471,7 @@ fn structured_candidate_texts(values: &[Value], prefix: Option<&str>) -> Vec<Str
         };
         let text = normalize_completion_text(text, prefix);
         if !text.is_empty()
-            && text.chars().count() <= 160
+            && completion_fits_budget(text, prefix)
             && !text.chars().any(char::is_control)
             && !candidates.iter().any(|value| value == text)
         {
@@ -689,7 +698,7 @@ fn normalize_model_lines(content: &str, prefix: Option<&str>) -> Vec<String> {
             // response formatting. Only strip markers outside a matching prefix.
             if prefix.is_some_and(|prefix| !prefix.is_empty() && line.starts_with(prefix)) {
                 return (!line.is_empty()
-                    && line.chars().count() <= 160
+                    && completion_fits_budget(line, prefix)
                     && !line.chars().any(char::is_control))
                 .then(|| line.to_string());
             }
@@ -715,8 +724,10 @@ fn normalize_model_lines(content: &str, prefix: Option<&str>) -> Vec<String> {
                     line = rest.trim();
                 }
             }
-            (!line.is_empty() && line.chars().count() <= 160 && !line.chars().any(char::is_control))
-                .then(|| line.to_string())
+            (!line.is_empty()
+                && completion_fits_budget(line, prefix)
+                && !line.chars().any(char::is_control))
+            .then(|| line.to_string())
         })
         .take(6)
         .collect()
@@ -737,6 +748,70 @@ mod tests {
             degraded: false,
         }
     }
+    #[test]
+    fn provider_identity_is_shared_by_host_and_standalone_settings_boundaries() {
+        let original = ModelProviderConfig::default();
+        for field in ["scope", "protocol", "credential", "endpoint", "model"] {
+            let mut changed = original.clone();
+            match field {
+                "scope" => changed.scope = ModelScope::Cloud,
+                "protocol" => changed.protocol = ModelProtocol::Ollama,
+                "credential" => changed.api_key_env = Some("SUZAKU_AUDIT_NEW_KEY".into()),
+                "endpoint" => changed.endpoint = "http://127.0.0.1:9/api/chat".into(),
+                "model" => changed.model = "another-model".into(),
+                _ => unreachable!(),
+            }
+            assert!(!original.same_identity(&changed), "{field}");
+            assert!(!changed.same_identity(&original), "{field}");
+        }
+        let mut preferences = original.clone();
+        preferences.temperature_tenths = 8;
+        preferences.timeout_ms = 2500;
+        preferences.max_tokens = 512;
+        preferences.handwriting_hint = Some("synthetic hint".into());
+        preferences.system_prompt = "synthetic prompt".into();
+        assert!(original.same_identity(&original));
+        assert!(original.same_identity(&preferences));
+    }
+
+    #[test]
+    fn complete_replacement_budget_is_consistent_in_both_protocols_and_plain_text() {
+        for count in [159, 160, 256] {
+            let prefix = format!("{}hel", " ".repeat(count - 3));
+            let word = format!("{prefix}ioseismology");
+            let sentence = format!("{word} is interesting.");
+            let values = json!([
+                {"text":word,"kind":"word"},
+                {"text":sentence,"kind":"sentence"},
+                {"text":format!("{prefix}{}", "x".repeat(161)),"kind":"word"},
+                {"text":"z".repeat(161),"kind":"word"},
+                {"text":format!("{prefix}bad\u{0}control"),"kind":"word"}
+            ]);
+            let content = json!({"candidates": values}).to_string();
+            let ollama = json!({"message":{"content":content},"done":true}).to_string();
+            let compatible = json!({"choices":[{"message":{"content":content}}]}).to_string();
+            assert_eq!(
+                parse_ollama_candidates(&ollama, Some(&prefix)).unwrap(),
+                [word.clone(), sentence.clone()]
+            );
+            assert_eq!(
+                parse_chat_completion_candidates(&compatible, Some(&prefix)),
+                [word.clone(), sentence.clone()]
+            );
+            let plain = format!("{word}\n{sentence}\n{prefix}{}", "x".repeat(161));
+            assert_eq!(
+                normalize_model_lines(&plain, Some(&prefix)),
+                [word.clone(), sentence.clone()]
+            );
+            let mut request = request("en");
+            request.seed_text = prefix.clone();
+            request.normalized_phrase = prefix;
+            assert!(useful_candidate(&word, &request));
+            assert!(useful_candidate(&sentence, &request));
+            assert!(!useful_candidate(&"z".repeat(161), &request));
+        }
+    }
+
     #[test]
     fn parses_multilingual_json_whitespace_and_unicode_escapes() {
         let body = r#"{ "choices": [{ "message": { "content": "1. \u4f60\u597d\n2) こんにちは\n3、 hello 👋" } }] }"#;
@@ -1042,6 +1117,14 @@ mod tests {
             ),
             ("hello ", "next_word", "hello world", "helloworld"),
             ("hello", "next_word", "hello there", "unrelated"),
+            (
+                "I would like to a",
+                "complete_or_continue",
+                "I would like to ask a question",
+                "I would like to a",
+            ),
+            ("can", "complete_or_continue", "can't", "unrelated"),
+            ("can ", "next_word", "can you help", "can't"),
         ] {
             let request = LlmCompletionRequest {
                 seed_text: seed.into(),
@@ -1052,6 +1135,14 @@ mod tests {
             let input: Value =
                 serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
             assert_eq!(input["suggestion_mode"], expected_mode);
+            assert_eq!(
+                format!(
+                    "{}{}",
+                    input["text_before_word"].as_str().unwrap(),
+                    input["word_prefix"].as_str().unwrap()
+                ),
+                seed
+            );
             assert!(useful_candidate(good, &request), "{seed} -> {good}");
             assert!(!useful_candidate(bad, &request), "{seed} -> {bad}");
         }
@@ -1349,12 +1440,10 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .unwrap();
-            let mut bytes = [0; 4096];
-            stream.read(&mut bytes).unwrap();
+            let (mut stream, _) = test_server::accept(&listener);
+            let request = test_server::read_request(&mut stream).unwrap();
+            assert!(request.starts_with("POST /api/chat HTTP/1.1\r\n"));
+            assert!(request.ends_with("\r\n\r\n{}"));
             stream
                 .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
                 .unwrap();
@@ -1445,12 +1534,10 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .unwrap();
-            let mut buffer = [0; 4096];
-            stream.read(&mut buffer).unwrap();
+            let (mut stream, _) = test_server::accept(&listener);
+            let request = test_server::read_request(&mut stream).unwrap();
+            assert!(request.starts_with("POST /api/chat HTTP/1.1\r\n"));
+            assert!(request.ends_with("\r\n\r\n{}"));
             thread::sleep(Duration::from_millis(100));
         });
         assert_eq!(

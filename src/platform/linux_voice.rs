@@ -5,6 +5,12 @@ use crate::platform::linux;
 #[derive(Debug)]
 pub struct LinuxSpeechBridge;
 
+impl Default for LinuxSpeechBridge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(target_os = "linux")]
 impl LinuxSpeechBridge {
     pub fn new() -> Self {

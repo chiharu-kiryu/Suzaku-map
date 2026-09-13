@@ -1,0 +1,49 @@
+%% Suzaku functional network: 2026-09-13 source snapshot for 0.5.6, not the installed build.
+%% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); development changes included in 0.5.6.
+%% Solid edges: implemented logical routes. Dotted edges: optional model requests.
+%% Reused engine/provider code does not mean shared state across processes.
+flowchart TB
+    APP["目标应用 / 实体键盘"]
+    INPUT["IBus 宿主：事件、隐私门控、连续草稿"]
+    CORE["宿主引擎：中英日插件、词句候选、排序"]
+    CAND["IBus 预编辑与候选条"]
+    IPC["本用户 Unix 通道：快照、动作、确认"]
+    PANEL["浮动面板 / 屏幕键盘 / 悬浮球"]
+    LOCAL["面板独立编辑：另一引擎实例与候选"]
+    TOOLS["翻译 / 有限手写 / 模拟语音"]
+    MODEL["可选模型适配：本地或已授权云端"]
+    TRAY["托盘 / 生命周期控制器"]
+    SERVICE["已注册的用户服务"]
+    IMESET["输入语言与模型设置"]
+    UISET["外观、交互与界面语言设置"]
+    DATA["配置备份 / 预览恢复"]
+    PACKAGE["Linux 分发包：只提供程序文件"]
+
+    APP -->|输入事件| INPUT
+    INPUT -->|当前草稿| CORE
+    CORE -->|候选与选中状态| CAND
+    CAND -->|采用后继续写| INPUT
+    CAND -->|回车或主按钮点击提交| APP
+    INPUT -->|当前公开快照| IPC
+    IPC -->|镜像| PANEL
+    PANEL -->|带版本的动作或独立文本发送| IPC
+    IPC -->|校验后执行并确认| INPUT
+    PANEL -->|进入独立编辑| LOCAL
+    LOCAL -->|确认目标后发送候选| IPC
+    PANEL -->|显式使用工具| TOOLS
+    TOOLS -->|回填草稿而非自动提交| PANEL
+    CORE -.->|启用联想：请求与结果| MODEL
+    LOCAL -.->|启用联想：请求与结果| MODEL
+    TOOLS -.->|显式翻译：请求与结果| MODEL
+    PANEL -->|启动与退出事件| TRAY
+    TRAY -->|启动就绪 / 安全停止| SERVICE
+    SERVICE -->|运行宿主| INPUT
+    TRAY -->|语言或联想设置| IMESET
+    IMESET -->|加载与重载| CORE
+    IMESET -->|模型配置| MODEL
+    IMESET -->|独立编辑配置| LOCAL
+    UISET -->|布局、主题、字体、本地化| PANEL
+    DATA -->|备份 / 显式恢复| IMESET
+    DATA -->|备份 / 显式恢复| UISET
+    PACKAGE -->|提供宿主文件，不自动注册或启动| INPUT
+    PACKAGE -->|提供启动器| PANEL

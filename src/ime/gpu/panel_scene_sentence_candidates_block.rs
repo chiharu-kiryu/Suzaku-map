@@ -92,8 +92,6 @@
                 (collapsed_fallback_card_w, true)
             }
         }
-    } else if candidate_columns > 1 {
-        (0.0, false)
     } else {
         (0.0, false)
     };
@@ -127,9 +125,7 @@
         0.0
     };
     if !visible_sentence_candidates.is_empty() && available_sentence_area > 0.0 {
-        let alternate_rows = if collapsed_daily_mode {
-            0
-        } else if alternate_count == 0 {
+        let alternate_rows = if collapsed_daily_mode || alternate_count == 0 {
             0
         } else {
         alternate_count.div_ceil(candidate_columns)
@@ -281,9 +277,7 @@
         } else {
             surface
         },
-            if pressed {
-                accent
-        } else if collapsed_primary || selected || is_hero {
+        if pressed || collapsed_primary || selected || is_hero {
             accent
         } else if hovered {
             hover_border
@@ -416,52 +410,53 @@
     };
     let mut primary_layout = build_primary_layout(&primary_text, primary_max_lines);
     if primary_layout.lines.is_empty() {
-        primary_layout = build_primary_layout("", primary_max_lines.min(1).max(1));
+        primary_layout = build_primary_layout("", 1);
     }
     if primary_layout.truncated {
         sentence_candidate_truncated.push(*source_index);
     }
 
-    if let Some(&(scroll_index, started_at)) = sentence_candidate_scroll {
-        if scroll_index == *source_index && primary_layout.truncated {
-            let scrolled = scroll_text_for_candidate(
-                &primary_text,
-                started_at,
-                primary_pixel_size,
-                heading_tracking,
-                (visual_rect[2]
-                    - if collapsed_daily_mode {
-                        20.0 * responsive_scale
-                    } else {
-                        36.0 * responsive_scale
-                    })
-                    .max(4.0 * responsive_scale),
-            );
-            primary_text = scrolled;
-            primary_layout = TextBlock {
-                text: primary_text,
-                origin: primary_origin,
-                max_width: (visual_rect[2]
-                    - if collapsed_daily_mode {
-                        20.0 * responsive_scale
-                    } else {
-                        36.0 * responsive_scale
-                    })
-                    .max(4.0 * responsive_scale),
-                pixel_size: primary_pixel_size,
-                letter_spacing: heading_tracking,
-                line_gap: base_line_gap,
-                max_lines: 1,
-                color: if collapsed_primary || selected {
-                    accent_text
+    if let Some(&(scroll_index, started_at)) = sentence_candidate_scroll
+        && scroll_index == *source_index
+        && primary_layout.truncated
+    {
+        let scrolled = scroll_text_for_candidate(
+            &primary_text,
+            started_at,
+            primary_pixel_size,
+            heading_tracking,
+            (visual_rect[2]
+                - if collapsed_daily_mode {
+                    20.0 * responsive_scale
                 } else {
-                    text_primary
-                },
-                align: TextAlign::Left,
-                role: TextRole::CandidatePrimary,
-            }
-            .layout();
+                    36.0 * responsive_scale
+                })
+                .max(4.0 * responsive_scale),
+        );
+        primary_text = scrolled;
+        primary_layout = TextBlock {
+            text: primary_text,
+            origin: primary_origin,
+            max_width: (visual_rect[2]
+                - if collapsed_daily_mode {
+                    20.0 * responsive_scale
+                } else {
+                    36.0 * responsive_scale
+                })
+                .max(4.0 * responsive_scale),
+            pixel_size: primary_pixel_size,
+            letter_spacing: heading_tracking,
+            line_gap: base_line_gap,
+            max_lines: 1,
+            color: if collapsed_primary || selected {
+                accent_text
+            } else {
+                text_primary
+            },
+            align: TextAlign::Left,
+            role: TextRole::CandidatePrimary,
         }
+        .layout();
     }
     let mut candidate_layouts = Vec::new();
     let primary_bottom = primary_layout.bounds[1] + primary_layout.bounds[3];
@@ -514,23 +509,21 @@
         }
     }
 
-    if is_hero {
-        if collapsed_daily_mode {
-            let available_badge_width = (visual_rect[2] - 6.0 * responsive_scale).max(0.0);
-            if available_badge_width > 0.0 {
-                let badge_width = (66.0 * responsive_scale).min(available_badge_width);
-                if badge_width > 0.0 {
-                    let badge_rect = [
-                        visual_rect[0] + visual_rect[2] - badge_width,
-                        visual_rect[1] + 9.2 * responsive_scale,
-                        badge_width,
-                        17.0 * responsive_scale,
-                    ];
-                    quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
-                        rect: badge_rect,
-                        color: badge_fill,
-                    });
-                }
+    if is_hero && collapsed_daily_mode {
+        let available_badge_width = (visual_rect[2] - 6.0 * responsive_scale).max(0.0);
+        if available_badge_width > 0.0 {
+            let badge_width = (66.0 * responsive_scale).min(available_badge_width);
+            if badge_width > 0.0 {
+                let badge_rect = [
+                    visual_rect[0] + visual_rect[2] - badge_width,
+                    visual_rect[1] + 9.2 * responsive_scale,
+                    badge_width,
+                    17.0 * responsive_scale,
+                ];
+                quads.push(CandidateQuad { shape: Default::default(), clip_rect: None,
+                    rect: badge_rect,
+                    color: badge_fill,
+                });
             }
         }
     }

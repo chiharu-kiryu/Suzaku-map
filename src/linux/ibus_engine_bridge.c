@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <xkbcommon/xkbcommon-compose.h>
 
 #define SUZAKU_LOOKUP_PAGE_SIZE 6
 /* Desktop shortcuts can arrive with physical Mod4 or virtual Super/Hyper/Meta. */
@@ -38,6 +39,7 @@ typedef struct _SuzakuIBusEngine {
     IBusEngine parent_instance;
     GString *input;
     gchar *completion_undo;
+    struct xkb_compose_state *compose;
     gboolean bypass_input;
     gboolean private_input;
 } SuzakuIBusEngine;
@@ -58,6 +60,15 @@ static gchar *suzaku_companion_host_id = NULL;
 static guint64 suzaku_companion_context = 0;
 static guint64 suzaku_companion_revision = 0;
 static GPtrArray *suzaku_companion_subscribers = NULL;
+
+static gboolean suzaku_ibus_engine_is_composing(SuzakuIBusEngine *self) {
+    return self->compose != NULL &&
+        xkb_compose_state_get_status(self->compose) == XKB_COMPOSE_COMPOSING;
+}
+
+static void suzaku_ibus_engine_reset_compose(SuzakuIBusEngine *self) {
+    if (self->compose != NULL) { xkb_compose_state_reset(self->compose); }
+}
 
 static gboolean suzaku_ibus_engine_is_focused(IBusEngine *engine) {
     GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
@@ -80,6 +91,14 @@ static void suzaku_ibus_engine_hide(IBusEngine *engine) {
 static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     suzaku_companion_publish();
     IBusEngine *engine = IBUS_ENGINE(self);
+    if (suzaku_ibus_engine_is_composing(self)) {
+        /* Pending keysyms are not text: never put them in model requests or the
+         * draft. Keep existing preedit visible, with a native composing hint. */
+        ibus_engine_hide_lookup_table(engine);
+        ibus_engine_update_auxiliary_text(
+            engine, ibus_text_new_from_string("Compose… · Esc / Backspace 取消"), TRUE);
+        return;
+    }
     if (self->input->len == 0) {
         suzaku_ibus_engine_hide(engine);
         return;
@@ -129,6 +148,7 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
 }
 
 static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
+    suzaku_ibus_engine_reset_compose(self);
     g_clear_pointer(&self->completion_undo, g_free);
     if (self->input->len == 0) {
         suzaku_host_ime_clear_marked_text();
@@ -145,6 +165,8 @@ static void suzaku_ibus_engine_append_character(SuzakuIBusEngine *self, gunichar
     g_string_append_len(self->input, utf8, length);
     suzaku_ibus_engine_sync_input(self);
 }
+
+#include "ibus_compose.inc.c"
 
 /* Edit only this uncommitted English draft. Preserve preceding whitespace;
  * contractions, Unicode and attached punctuation belong to the last word. */
@@ -165,6 +187,7 @@ static void suzaku_ibus_engine_delete_word(SuzakuIBusEngine *self) {
 }
 
 static void suzaku_ibus_engine_clear_local(SuzakuIBusEngine *self) {
+    suzaku_ibus_engine_reset_compose(self);
     g_string_truncate(self->input, 0);
     g_clear_pointer(&self->completion_undo, g_free);
 }
@@ -250,6 +273,7 @@ static void suzaku_ibus_engine_move_selection(
         self->bypass_input || self->input->len == 0) {
         return;
     }
+    suzaku_ibus_engine_reset_compose(self);
     g_clear_pointer(&self->completion_undo, g_free);
     suzaku_host_ime_move_selection(delta);
     suzaku_ibus_engine_render(self);
@@ -271,6 +295,7 @@ static gboolean suzaku_ibus_engine_process_key_event(
         return TRUE;
     }
     if ((state & SUZAKU_SYSTEM_MODIFIERS) != 0) {
+        suzaku_ibus_engine_cancel_compose(self);
         return FALSE;
     }
     /* Alt+digits enter literal numbers. Leave Shift's layout-resolved symbols
@@ -282,12 +307,24 @@ static gboolean suzaku_ibus_engine_process_key_event(
         return TRUE;
     }
     if ((state & IBUS_MOD1_MASK) != 0) {
+        suzaku_ibus_engine_cancel_compose(self);
         return FALSE;
     }
     if ((state & IBUS_MOD5_MASK) != 0 &&
         (keyval == IBUS_KEY_space || keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter)) {
+        suzaku_ibus_engine_cancel_compose(self);
         return FALSE;
     }
+
+    if (suzaku_ibus_engine_is_composing(self) &&
+        (keyval == IBUS_KEY_BackSpace || keyval == IBUS_KEY_Escape)) {
+        /* First cancel the unfinished sequence, leaving the draft untouched. */
+        suzaku_ibus_engine_cancel_compose(self);
+        return TRUE;
+    }
+    /* Compose owns its sequence before Space and number-choice shortcuts.
+     * The completed UTF-8 result is one draft edit, never a direct commit. */
+    if (suzaku_ibus_engine_process_compose(self, keyval)) { return TRUE; }
 
     if (keyval == IBUS_KEY_BackSpace && self->input->len > 0) {
         if (self->completion_undo != NULL) {
@@ -366,6 +403,8 @@ static gboolean suzaku_ibus_engine_process_key_event(
     if ((character >= 'a' && character <= 'z') ||
         (character >= 'A' && character <= 'Z') || character == '\'' ||
         (character >= '0' && character <= '9') ||
+        (language == 2 && g_unichar_isalpha(character) &&
+         g_unichar_get_script(character) == G_UNICODE_SCRIPT_LATIN) ||
         (language == 1 && (character == 0xfc || character == 0xdc || character == ':')) ||
         (language == 3 && character == '-') ||
         (self->input->len > 0 && character != 0 && g_unichar_isprint(character))) {
@@ -504,6 +543,7 @@ static void suzaku_ibus_engine_candidate_clicked(
 
 static void suzaku_ibus_engine_finalize(GObject *object) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
+    g_clear_pointer(&self->compose, xkb_compose_state_unref);
     g_clear_pointer(&self->completion_undo, g_free);
     if (self->input != NULL) {
         g_string_free(self->input, TRUE);
@@ -533,6 +573,7 @@ static void suzaku_ibus_engine_class_init(SuzakuIBusEngineClass *class) {
 static void suzaku_ibus_engine_init(SuzakuIBusEngine *self) {
     suzaku_host_ime_enable_ibus_candidates();
     self->input = g_string_new(NULL);
+    self->compose = suzaku_ibus_compose_new();
 }
 
 static void suzaku_ibus_bus_disconnected(IBusBus *bus, gpointer user_data) {
