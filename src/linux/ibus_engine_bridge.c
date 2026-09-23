@@ -210,6 +210,9 @@ static gboolean suzaku_ibus_engine_complete(SuzakuIBusEngine *self, gboolean app
     gboolean changed = g_strcmp0(text, self->input->str) != 0;
     if (!changed && !append_space) {
         suzaku_host_ime_free_utf8(candidate);
+        /* A number key can select the literal row without changing the draft.
+         * Publish that selection/revision without rebuilding (or unlocking) it. */
+        suzaku_ibus_engine_render(self);
         return TRUE;
     }
     gchar *previous = changed ? g_strdup(self->input->str) : NULL;

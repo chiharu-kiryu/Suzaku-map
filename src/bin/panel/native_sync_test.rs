@@ -255,7 +255,7 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
     );
 }
 
-fn publish_wake_frames(
+pub(super) fn publish_wake_frames(
     app: &mut crate::PanelApp,
     events: &ActiveEventLoop,
     frames: impl IntoIterator<Item = Option<NativeComposition>>,
@@ -273,7 +273,7 @@ fn publish_wake_frames(
     assert!(app.native_sync.as_ref().unwrap().take_update().is_none());
 }
 
-fn assert_panel_visibility(app: &crate::PanelApp, visible: bool) {
+pub(super) fn assert_panel_visibility(app: &crate::PanelApp, visible: bool) {
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use x11rb::protocol::xproto::{ConnectionExt, MapState};
     assert_eq!(app.panel_visible, visible);
@@ -319,6 +319,24 @@ impl ApplicationHandler for SourceProbe {
         let voice_bridge = state.voice.bridge.take();
         assert_screen_keyboard_handoffs(&mut state);
         for source in [InputMode::Dictation, InputMode::Handwriting] {
+            for frame_first in [false, true] {
+                seed_source(&mut state, source);
+                let frame = state.native.frame.clone().unwrap();
+                let (sender, receiver) = mpsc::sync_channel(8);
+                state.native.sender = Some(sender);
+                insert(&mut state, source);
+                let request = receiver.try_recv().unwrap();
+                assert_insertion_keyboard_followup(
+                    &mut state,
+                    &receiver,
+                    request,
+                    frame,
+                    "hello world",
+                    frame_first,
+                );
+                assert_source_cleared(&state, source);
+            }
+            assert_insertion_followup_boundaries(&mut state, source);
             for blocked in [
                 "no sender",
                 "panel focused",
@@ -479,7 +497,7 @@ impl ApplicationHandler for SourceProbe {
     fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
 }
 
-fn keyboard_frame(seed: &str, revision: u64) -> NativeComposition {
+pub(super) fn keyboard_frame(seed: &str, revision: u64) -> NativeComposition {
     use suzaku_map::ime::{EngineConfig, XRTabletImeEngine, companion::NativeCandidate};
     let mut engine = XRTabletImeEngine::new(EngineConfig::default());
     engine.enable_ibus_candidate_mix();
@@ -528,6 +546,254 @@ fn point_key(state: &mut PanelState, ch: char) {
     let key = InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character(ch));
     let rect = state.interaction_rect(key).unwrap();
     state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+}
+
+pub(crate) fn assert_insertion_keyboard_followup(
+    state: &mut PanelState,
+    receiver: &mpsc::Receiver<ActionRequest>,
+    request: ActionRequest,
+    mut frame: NativeComposition,
+    replacement: &str,
+    frame_first: bool,
+) {
+    assert!(request.command.ends_with(&format!(" T{replacement}")));
+    frame.revision += 1;
+    frame.seed = replacement.into();
+    if frame_first {
+        state.receive_native_frame(Some(frame.clone()));
+    }
+    state.native_action_finished(request.host, request.revision, Ok(true));
+    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+    state.chrome.input_modes_expanded = true;
+    state.last_scene = None;
+    point_key(state, 'x');
+    state.select_at_cursor();
+    let next = receiver.try_recv().ok();
+    if !frame_first && let Some(action) = &next {
+        println!(
+            "AUDIT: N25 early keyboard write after {replacement:?}: {}",
+            action.command
+        );
+    }
+    assert_eq!(
+        state.chrome.seed_text,
+        format!("{replacement}x"),
+        "N25: keyboard must continue the acknowledged insertion"
+    );
+    if frame_first {
+        let next = next.expect("a matching snapshot permits the next edit");
+        assert!(
+            next.command
+                .ends_with(&format!(" {} T{replacement}x", frame.revision))
+        );
+        point_key(state, 'y');
+        state.select_at_cursor();
+        state.native_action_finished(next.host, next.revision, Ok(true));
+        frame.revision += 1;
+        frame.seed.push('x');
+    } else {
+        assert!(
+            next.is_none(),
+            "N25: ack alone must not reuse the old revision"
+        );
+        point_key(state, 'y');
+        state.select_at_cursor();
+    }
+    assert!(
+        receiver.try_recv().is_err(),
+        "wait for the matching snapshot"
+    );
+    state.receive_native_frame(Some(frame.clone()));
+    let next = receiver.try_recv().unwrap();
+    assert!(
+        next.command
+            .ends_with(&format!(" {} T{replacement}xy", frame.revision))
+    );
+    state.native_action_finished(next.host, next.revision, Ok(true));
+    frame.revision += 1;
+    frame.seed = format!("{replacement}xy");
+    state.receive_native_frame(Some(frame));
+    assert!(state.native.typing.is_none());
+    assert!(
+        receiver.try_recv().is_err(),
+        "confirmed text is never replayed"
+    );
+    assert_eq!(state.chrome.seed_text, format!("{replacement}xy"));
+}
+
+fn confirmed_source_insertion(
+    state: &mut PanelState,
+    source: InputMode,
+) -> (mpsc::Receiver<ActionRequest>, NativeComposition) {
+    seed_source(state, source);
+    let frame = state.native.frame.clone().unwrap();
+    let (sender, receiver) = mpsc::sync_channel(8);
+    state.native.sender = Some(sender);
+    insert(state, source);
+    let request = receiver.try_recv().unwrap();
+    state.native_action_finished(request.host, request.revision, Ok(true));
+    assert_source_cleared(state, source);
+    assert!(state.native.confirmed_action.is_some());
+    assert!(state.native.pending.is_none());
+    // Duplicate snapshots and ACKs must not release the revision barrier.
+    state.receive_native_frame(Some(frame.clone()));
+    state.native_action_finished(frame.host.clone(), frame.revision, Ok(true));
+    assert!(state.native.confirmed_action.is_some());
+    state.native_action(NativeOperation::Clear);
+    assert!(
+        receiver.try_recv().is_err(),
+        "no action may reuse the old revision"
+    );
+    (receiver, frame)
+}
+
+fn assert_insertion_followup_boundaries(state: &mut PanelState, source: InputMode) {
+    // Without new local edits, even a coalesced physical edit back to the old
+    // seed is authoritative. It must not leave a stale recovery overlay behind.
+    for latest in ["hello world", "physical edit", "hello"] {
+        let (receiver, mut frame) = confirmed_source_insertion(state, source);
+        frame.revision += 2;
+        frame.seed = latest.into();
+        state.receive_native_frame(Some(frame.clone()));
+        assert!(state.native.confirmed_action.is_none());
+        assert!(state.native.typing.is_none());
+        assert_eq!(state.chrome.seed_text, latest);
+        assert!(receiver.try_recv().is_err(), "never replay the insertion");
+        state.native_keyboard_edit(Some("x"));
+        assert!(
+            receiver
+                .try_recv()
+                .unwrap()
+                .command
+                .ends_with(&format!(" {} T{latest}x", frame.revision))
+        );
+    }
+
+    // Once a follow-up edit exists, a conflict or disconnect keeps recovery
+    // text instead of replaying over a physical edit (including same-value ABA).
+    for change in ["physical edit", "hello", "disconnect"] {
+        let (receiver, mut frame) = confirmed_source_insertion(state, source);
+        state.native_keyboard_edit(Some(" 日本😀"));
+        state.backspace_seed();
+        assert_eq!(state.chrome.seed_text, "hello world 日本");
+        assert!(receiver.try_recv().is_err());
+        if change == "disconnect" {
+            state.receive_native_frame(None);
+            frame.seed = "hello world".into();
+        } else {
+            frame.seed = change.into();
+        }
+        frame.revision += 2;
+        state.receive_native_frame(Some(frame));
+        assert!(state.native.typing.as_ref().unwrap().blocked);
+        assert!(receiver.try_recv().is_err(), "no replay after {change}");
+        state.begin_text_editing();
+        assert!(!state.native.showing);
+        assert_eq!(state.chrome.seed_text, "hello world 日本");
+        assert_eq!(state.engine.snapshot().seed_text, "hello world 日本");
+    }
+
+    for change in ["context", "host", "language", "private", "focus"] {
+        let (receiver, mut frame) = confirmed_source_insertion(state, source);
+        frame.revision += 1;
+        frame.seed = "new field".into();
+        match change {
+            "context" => frame.context += 1,
+            "host" => frame.host = "22222222-2222-2222-2222-222222222222".into(),
+            "language" => frame.language = "ja".into(),
+            "private" => {
+                frame.private = true;
+                frame.seed.clear();
+            }
+            "focus" => {
+                frame.focused = false;
+                frame.seed.clear();
+            }
+            _ => unreachable!(),
+        }
+        state.receive_native_frame(Some(frame.clone()));
+        assert!(state.native.confirmed_action.is_none(), "{change}");
+        assert!(state.native.typing.is_none(), "{change}");
+        assert!(receiver.try_recv().is_err());
+        state.native_keyboard_edit(Some("x"));
+        if matches!(change, "private" | "focus") {
+            assert!(receiver.try_recv().is_err());
+            assert!(state.native.typing.is_none());
+        } else {
+            let request = receiver.try_recv().unwrap();
+            assert_eq!(request.host, frame.host);
+            assert!(
+                request
+                    .command
+                    .ends_with(&format!(" {} Tnew fieldx", frame.revision))
+            );
+        }
+    }
+
+    let (receiver, mut frame) = confirmed_source_insertion(state, source);
+    state.receive_native_frame(None);
+    assert!(state.native.confirmed_action.is_none());
+    state.native_keyboard_edit(Some("x"));
+    assert!(receiver.try_recv().is_err());
+    frame.revision += 1;
+    frame.seed = "hello world".into();
+    state.receive_native_frame(Some(frame));
+    assert!(receiver.try_recv().is_err());
+    state.native_keyboard_edit(Some("x"));
+    assert!(
+        receiver
+            .try_recv()
+            .unwrap()
+            .command
+            .ends_with(" 11 Thello worldx")
+    );
+
+    let (receiver, _) = confirmed_source_insertion(state, source);
+    state.begin_text_editing();
+    assert!(!state.native.showing);
+    assert!(state.native.confirmed_action.is_none());
+    assert_eq!(state.chrome.seed_text, "hello world");
+    assert_eq!(state.engine.snapshot().seed_text, "hello world");
+    assert!(
+        receiver.try_recv().is_err(),
+        "explicit recovery stays local"
+    );
+
+    for local in [false, true] {
+        seed_source(state, source);
+        let mut frame = state.native.frame.clone().unwrap();
+        let (sender, receiver) = mpsc::sync_channel(8);
+        state.native.sender = Some(sender);
+        insert(state, source);
+        let request = receiver.try_recv().unwrap();
+        if local {
+            state.begin_text_editing();
+            state.chrome.set_seed_text("local work".into());
+            state.refresh_seed();
+        } else {
+            state.native_keyboard_edit(Some("x"));
+            assert!(state.native.typing.as_ref().unwrap().blocked);
+        }
+        state.native_action_finished(request.host, request.revision, Ok(true));
+        assert!(
+            state.native.confirmed_action.is_none(),
+            "late ACK must not overwrite newer work"
+        );
+        if local {
+            assert_eq!(state.chrome.seed_text, "local work");
+            assert_eq!(state.engine.snapshot().seed_text, "local work");
+        } else {
+            frame.revision += 1;
+            frame.seed = "hello world".into();
+            state.receive_native_frame(Some(frame));
+            assert!(state.native.typing.as_ref().unwrap().blocked);
+            assert_eq!(state.chrome.seed_text, "hellox");
+        }
+        assert!(receiver.try_recv().is_err());
+    }
+    println!(
+        "PASS: N25 {source:?} follow-up conflicts, coalesced snapshots, target/privacy changes and local recovery"
+    );
 }
 
 fn assert_screen_keyboard_handoffs(state: &mut PanelState) {

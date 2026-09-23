@@ -22,11 +22,16 @@ mod typing;
 use typing::NativeTyping;
 
 #[cfg(all(test, target_os = "linux"))]
+#[path = "native_action_audit_test.rs"]
+mod action_audit_test;
+#[cfg(all(test, target_os = "linux"))]
 #[path = "native_sync_test.rs"]
 mod tests;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "tool_chain_audit_test.rs"]
 mod tool_chain_audit_test;
+#[cfg(all(test, target_os = "linux"))]
+pub(super) use tests::assert_insertion_keyboard_followup;
 #[cfg(all(test, target_os = "linux"))]
 pub(super) use tests::assert_workers_cancel_on_shutdown;
 
@@ -38,11 +43,15 @@ pub(super) struct NativeView {
     pub sender: Option<SyncSender<ActionRequest>>,
     pending: Option<PendingAction>,
     typing: Option<NativeTyping>,
+    // An action ACK does not carry its new revision. Keep the resulting draft
+    // as the next keyboard edit's base until an authoritative frame arrives.
+    confirmed_action: Option<NativeTyping>,
 }
 
 struct PendingAction {
     id: (String, u64),
     insertion: Option<NativeInsertion>,
+    replacement: Option<NativeTyping>,
 }
 
 /// Retain the source until the revision-bound replacement is acknowledged. A
@@ -211,9 +220,13 @@ impl PanelState {
                 self.native_typing_feedback();
                 return true;
             };
-            let mut typing = NativeTyping::new(frame);
+            let mut typing = self
+                .native
+                .confirmed_action
+                .take()
+                .unwrap_or_else(|| NativeTyping::new(frame));
             // A pending translation/commit is a different operation, not a keyboard edit.
-            typing.blocked =
+            typing.blocked |=
                 self.native.pending.is_some() || self.is_focused || self.chrome.settings_open;
             self.native.typing = Some(typing);
         }
@@ -235,7 +248,11 @@ impl PanelState {
     }
 
     pub(super) fn take_native_typing_draft(&mut self) -> Option<String> {
-        self.native.typing.take().map(|typing| typing.draft)
+        self.native
+            .typing
+            .take()
+            .or_else(|| self.native.confirmed_action.take())
+            .map(|typing| typing.draft)
     }
 
     fn flush_native_typing(&mut self) {
@@ -277,6 +294,20 @@ impl PanelState {
         }
     }
 
+    /// Stay visible while either the public host draft or queued keyboard draft
+    /// is nonempty. A tentative local deletion has not yet emptied the host.
+    pub(super) fn native_composition_visible(&self) -> bool {
+        self.native.showing
+            && self.native.frame.as_ref().is_some_and(|frame| {
+                frame.focused
+                    && !frame.private
+                    && (!frame.seed.is_empty()
+                        || self.native.typing.as_ref().is_some_and(|typing| {
+                            typing.matches(frame) && !typing.draft.is_empty()
+                        }))
+            })
+    }
+
     pub(super) fn view_snapshot(&self) -> Snapshot {
         if self.native.showing {
             if let Some(frame) = &self.native.frame {
@@ -315,6 +346,10 @@ impl PanelState {
         {
             return;
         }
+        // With no follow-up edit, the latest snapshot wins, even if the mailbox
+        // skipped the action's intermediate frame after a physical edit.
+        // Once typing starts, NativeTyping instead protects the unsent edits.
+        self.native.confirmed_action = None;
         let input_target_unchanged = self.native.showing
             && self
                 .native
@@ -330,6 +365,15 @@ impl PanelState {
                         && new.focused
                         && !new.private
                 });
+        // Unlike keyboard/tool edits, translation sends the reviewed source
+        // itself. A different draft needs a fresh explicit gesture.
+        let translation_source_unchanged = input_target_unchanged
+            && self
+                .native
+                .frame
+                .as_ref()
+                .zip(frame.as_ref())
+                .is_some_and(|(old, new)| old.seed == new.seed);
         if let Some(typing) = &mut self.native.typing {
             if let Some(next) = &frame {
                 if typing.matches(next) {
@@ -364,7 +408,10 @@ impl PanelState {
                             | InteractionKind::InsertVoiceTranscript
                             | InteractionKind::UseHandwritingCandidate(_)
                     )
-                )))
+                ))
+                || (!translation_source_unchanged
+                    && self.interaction.pressed_interaction
+                        == Some(InteractionKind::TranslateText)))
         {
             self.clear_pressed_interaction();
             self.interaction.touch_tap_pending = false;
@@ -440,6 +487,7 @@ impl PanelState {
         self.native.showing = false;
         self.pause_voice_capture_if_target_changed();
         self.native.typing = None;
+        self.native.confirmed_action = None;
         if let Some((seed, caret, expanded)) = self.native.draft.take() {
             self.chrome.set_seed_text(seed);
             self.chrome.caret_index = caret;
@@ -473,9 +521,9 @@ impl PanelState {
         if !self.native.showing {
             return false;
         }
-        if self.native.typing.is_some() {
-            // Even Clear must not discard a retained draft while its write is
-            // unconfirmed. Explicit local recovery remains available in the field.
+        if self.native.typing.is_some() || self.native.confirmed_action.is_some() {
+            // Even Clear must wait for confirmation and its authoritative
+            // revision. Explicit local recovery remains available in the field.
             self.native_typing_feedback();
             return true;
         }
@@ -512,7 +560,24 @@ impl PanelState {
                         Some("Inserting; source retained until confirmation.".into());
                     self.commit_feedback_ticks = 120;
                 }
-                self.native.pending = Some(PendingAction { id, insertion });
+                // Screen-keyboard writes already own a tracked flight. Every
+                // other action needs the same ACK/frame barrier, not only tools.
+                let replacement = self.native.typing.is_none().then(|| {
+                    let mut typing = NativeTyping::new(frame);
+                    typing.draft = match &operation {
+                        NativeOperation::Replace(text) => text.clone(),
+                        NativeOperation::Commit(_) | NativeOperation::Clear => String::new(),
+                        // Selection changes the highlighted candidate, not the seed.
+                        NativeOperation::Select(_) => frame.seed.clone(),
+                    };
+                    typing.sent(frame.revision);
+                    typing
+                });
+                self.native.pending = Some(PendingAction {
+                    id,
+                    insertion,
+                    replacement,
+                });
                 return true;
             }
         }
@@ -561,6 +626,20 @@ impl PanelState {
                 self.last_commit_feedback = Some("Input added to the native composition.".into());
                 self.commit_feedback_ticks = 40;
                 self.window.request_redraw();
+            }
+            if let Some(mut replacement) = pending.replacement
+                && self.native.showing
+                && self.native.typing.is_none()
+                && let Some(frame) = &self.native.frame
+                && frame.revision == revision
+                && replacement.matches(frame)
+            {
+                replacement.acknowledge(revision, true);
+                // Do not rebase on the old visible seed or invent a new
+                // revision. Keyboard edits inherit this acknowledged flight
+                // and wait for its matching frame before the next send.
+                // Keep newer tool/translation work untouched in the meantime.
+                self.native.confirmed_action = Some(replacement);
             }
         } else {
             self.last_commit_feedback = Some(if pending.insertion.is_some() {

@@ -61,8 +61,10 @@ else
     settings_native_test::native_tone_controls_follow_acknowledgements_and_reload \
     functional_network_audit_test::audit_provider_change_must_forget_standalone_commit_context \
     functional_network_audit_test::model_configuration_stays_bound_until_confirmed_reload \
+    functional_network_audit_test::translation_requests_reject_stale_press_targets \
     translation::tests::native_translation_preserves_drafts_and_rejects_stale_contexts \
     native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
+    native_sync::action_audit_test::native_candidate_actions_preserve_followup_input \
     native_sync::tool_chain_audit_test::audit_voice_auto_insert_must_not_follow_an_unrelated_native_context \
     native_sync::tool_chain_audit_test::tool_adoption_gestures_must_not_cross_native_targets \
     native_sync::tool_chain_audit_test::audit_local_tool_insertion_must_use_the_caret_word_boundary \

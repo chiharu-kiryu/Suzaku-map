@@ -346,7 +346,12 @@ impl PanelApp {
         panel.close_requested = false;
         if visible {
             self.native_hidden_context = None;
-        } else if let Some(frame) = panel.native.frame.as_ref().filter(|f| f.visible()) {
+        } else if let Some(frame) = panel
+            .native
+            .frame
+            .as_ref()
+            .filter(|f| f.visible() || panel.native_composition_visible())
+        {
             self.native_hidden_context = Some((frame.host.clone(), frame.context));
         }
         if !visible {
@@ -635,7 +640,12 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             panel.close_requested = false;
             if self.tray.as_ref().is_some_and(SystemTray::has_icon) {
                 self.native_auto_shown = false;
-                if let Some(frame) = panel.native.frame.as_ref().filter(|f| f.visible()) {
+                if let Some(frame) = panel
+                    .native
+                    .frame
+                    .as_ref()
+                    .filter(|f| f.visible() || panel.native_composition_visible())
+                {
                     self.native_hidden_context = Some((frame.host.clone(), frame.context));
                 }
                 panel.cancel_translation();
@@ -710,12 +720,10 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     && let Some(panel) = self.panel.as_mut()
                 {
                     panel.receive_native_frame(update);
-                    let visible = panel.native.showing
-                        && panel
-                            .native
-                            .frame
-                            .as_ref()
-                            .is_some_and(|frame| frame.visible());
+                    // A public empty snapshot may only be the intermediate
+                    // deletion/commit: queued screen-keyboard input can already
+                    // have started a new draft. Keep that visible until settled.
+                    let visible = panel.native_composition_visible();
                     let manually_hidden = panel.native.frame.as_ref().is_some_and(|frame| {
                         self.native_hidden_context.as_ref()
                             == Some(&(frame.host.clone(), frame.context))

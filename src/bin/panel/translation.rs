@@ -4,7 +4,7 @@ use std::sync::Arc;
 use suzaku_map::{
     ime::{
         companion::NativeOperation,
-        gpu::{InputMode, TranslationPhase},
+        gpu::{InputMode, InteractionKind, TranslationPhase},
     },
     languages::{
         llm::LlmProviderError,
@@ -66,6 +66,8 @@ mod tests {
 
     fn assert_native_handoff_ordering(state: &mut PanelState) {
         for case in [
+            "ack then keyboard",
+            "frame then keyboard",
             "ack first",
             "frame first",
             "rejected",
@@ -83,6 +85,7 @@ mod tests {
             state.chrome.input_modes_expanded = true;
             state.chrome.settings_open = false;
             state.is_focused = false;
+            state.native = Default::default();
             let frame = NativeComposition {
                 host: "00000000-0000-0000-0000-000000000001".into(),
                 context: 20,
@@ -102,13 +105,24 @@ mod tests {
             state.start_translation_with(Arc::new(Fixed("translated draft")));
             ready(state);
             state.apply_translation();
-            assert!(receiver.try_recv().is_ok(), "{case}");
+            let request = receiver.try_recv().expect(case);
             assert_eq!(state.chrome.seed_text, frame.seed, "{case}");
             state.apply_translation();
             assert!(
                 receiver.try_recv().is_err(),
                 "a double click must not resend"
             );
+            if matches!(case, "ack then keyboard" | "frame then keyboard") {
+                native_sync::assert_insertion_keyboard_followup(
+                    state,
+                    &receiver,
+                    request,
+                    frame,
+                    "translated draft",
+                    case == "frame then keyboard",
+                );
+                continue;
+            }
             let mut next = frame.clone();
             next.revision += 1;
             next.seed = "translated draft".into();
@@ -367,6 +381,13 @@ impl PanelState {
     }
 
     pub(super) fn cancel_translation(&mut self) {
+        // Editing/reloading/cancelling invalidates an unfinished request gesture
+        // even when no worker job has been created yet. Release is not permission
+        // to translate a replacement source or a newly selected configuration.
+        if self.interaction.pressed_interaction == Some(InteractionKind::TranslateText) {
+            self.clear_pressed_interaction();
+            self.interaction.touch_tap_pending = false;
+        }
         if let Some(worker) = &self.translation.worker {
             worker.cancel();
         }

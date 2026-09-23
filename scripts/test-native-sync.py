@@ -666,6 +666,68 @@ def check_editable_completions(context, watch, commits, lookup):
     print("PASS: CJK unfinished-tail completion, Shift+Enter/Shift+Space editable choices, one-step spelling undo, exact phrase commits and reset/privacy/focus isolation")
 
 
+def check_literal_choice_publication(context, watch, commits, lookup):
+    """N28: adopting unchanged spelling still changes the selected candidate."""
+    failures = []
+    for language, seed in [("en", "hel"), ("zh-Hans", "nihao"), ("ja", "nihongo")]:
+        assert json.loads(command("L" + language))["ok"]
+        for followup, mask in [
+            ("commit", 0), ("space", IBus.ModifierType.LOCK_MASK),
+            ("delete", IBus.ModifierType.MOD2_MASK),
+            ("adopt and undo", IBus.ModifierType.LOCK_MASK | IBus.ModifierType.MOD2_MASK),
+        ]:
+            context.reset()
+            wait(lambda: not watch.latest["seed"], "reset literal choice audit")
+            type_seed(context, seed)
+            check_candidate_presentation(watch, lookup)
+            candidates = watch.latest["candidates"]
+            literal = next(i for i, c in enumerate(candidates) if c["text"] == seed)
+            page = (literal // 6) * 6
+            other = next(i for i, c in enumerate(candidates) if page <= i < page + 6 and c["text"] != seed)
+            for _ in range(other):
+                assert context.process_key_event(IBus.KEY_Tab, 0, 0)
+            wait(lambda: watch.latest["selected"] == other and lookup["selected"] == other,
+                 "prepare a different highlighted candidate")
+            baseline, before = watch.latest, len(commits)
+            assert context.process_key_event(IBus.KEY_1 + literal % 6, 0, mask)
+            assert not context.process_key_event(IBus.KEY_1 + literal % 6, 0, mask | IBus.ModifierType.RELEASE_MASK)
+            try:
+                wait(lambda: watch.latest["revision"] > baseline["revision"] and
+                     watch.latest["selected"] == literal and lookup["selected"] == literal,
+                     "literal adoption did not publish its selection")
+                assert not action(baseline, "N" + str(other)), "pre-selection revision was still accepted"
+            except AssertionError:
+                failure = (f"N28 {language}/{followup}: selected="
+                           f"{watch.latest['selected']}/{lookup['selected']}, expected={literal}; "
+                           f"revision={watch.latest['revision']}, before={baseline['revision']}")
+                print("AUDIT: " + failure)
+                failures.append(failure)
+            assert watch.latest["seed"] == seed and len(commits) == before
+            assert watch.latest["candidates"] == candidates, "literal selection rebuilt or reordered candidates"
+            if followup == "commit":
+                assert context.process_key_event(IBus.KEY_Return, 0, 0)
+                wait(lambda: commits[before:] == [seed] and not watch.latest["seed"],
+                     "literal choice must match the actual Enter payload")
+            elif followup == "space":
+                assert context.process_key_event(IBus.KEY_space, 0, 0)
+                wait(lambda: watch.latest["seed"] == seed + " ", "literal choice must continue unchanged")
+            elif followup == "delete":
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == seed[:-1], "unchanged spelling must not create completion undo")
+            else:
+                assert context.process_key_event(IBus.KEY_1 + other % 6, 0, 0)
+                wait(lambda: watch.latest["seed"] == candidates[other]["text"], "adopt after literal selection")
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == seed, "undo must still restore the original spelling")
+            if followup != "commit":
+                assert len(commits) == before, "literal selection/continuation committed unexpectedly"
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "finish literal selection audit")
+    assert json.loads(command("Len"))["ok"]
+    assert not failures, "literal selection publication: " + repr(failures)
+    print("PASS: N28 12 English/Chinese/Japanese literal choices publish selection and preserve commit/Space/deletion/undo")
+
+
 def check_lossless_commit_chunks(context, watch, commits):
     assert json.loads(command("Len"))["ok"]
     pump()
@@ -1346,6 +1408,7 @@ try:
     check_lossless_commit_chunks(other, watch, other_commits)
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
+    check_literal_choice_publication(other, watch, other_commits, other_lookup)
     check_english_writing_flow(other, watch, other_commits, other_lookup)
     check_numeric_field_routing(other, watch, other_commits)
     type_seed(other, "hel")

@@ -3,7 +3,17 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.5.8 — Linux Alpha reliability patch**.
+Current source version: **0.5.9 — Linux Alpha input-continuity patch**.
+
+### 0.5.9 — Translation gestures and continuous candidate input
+
+- Translation requests require a fresh gesture after the source, field or configuration changes;
+  cancelling also invalidates a press that has not started a request yet.
+- Screen-keyboard input after acknowledged tool/candidate operations starts from the resulting draft
+  and waits for its authoritative revision. Newer local work and target/privacy boundaries remain protected.
+- Intermediate empty snapshots no longer hide a companion with queued input or forget manual hiding.
+- Selecting unchanged literal text publishes the new selection to IBus and the companion without
+  rebuilding candidates or committing. See the [0.5.9 release notes](docs/releases/0.5.9.md).
 
 ### 0.5.8 — Lifecycle recovery and input-target boundaries
 
