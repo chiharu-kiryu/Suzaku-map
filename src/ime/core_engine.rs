@@ -426,6 +426,16 @@ impl XRTabletImeEngine {
     }
 
     pub fn commit(&mut self, options: CommitOptions) -> CommitResult {
+        self.commit_with_join(options, false)
+    }
+
+    /// Native hosts deliver the candidate alone. Their context must record the
+    /// same bytes, without the independent editor's language-specific separator.
+    pub(crate) fn commit_verbatim(&mut self, options: CommitOptions) -> CommitResult {
+        self.commit_with_join(options, true)
+    }
+
+    fn commit_with_join(&mut self, options: CommitOptions, verbatim: bool) -> CommitResult {
         let snapshot = self.snapshot();
         let Some(candidate) = self
             .state
@@ -454,6 +464,8 @@ impl XRTabletImeEngine {
 
         if self.state.committed_text.is_empty() {
             self.state.committed_text = candidate.text;
+        } else if verbatim {
+            self.state.committed_text.push_str(&candidate.text);
         } else {
             self.state.committed_text = format!(
                 "{}{}{}",

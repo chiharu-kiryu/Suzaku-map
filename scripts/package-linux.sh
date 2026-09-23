@@ -74,6 +74,8 @@ install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus
   docs/bug-audit-wakeup-2026-09-13.md docs/bug-audit-tool-gestures-2026-09-23.md \
   docs/bug-audit-translation-2026-09-23.md docs/bug-audit-insertion-followup-2026-09-23.md \
   docs/bug-audit-native-actions-2026-09-23.md docs/bug-audit-literal-selection-2026-09-23.md \
+  docs/bug-audit-noop-controls-2026-09-23.md docs/bug-audit-engine-destruction-2026-09-23.md \
+  docs/bug-audit-commit-context-2026-09-23.md \
   "$suzaku_package_tree/share/doc/suzaku/docs/"
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"

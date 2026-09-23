@@ -94,7 +94,7 @@ impl HostImeSession {
     }
 
     pub fn commit_selected(&mut self, options: CommitOptions) -> (CommitResult, HostImeUpdate) {
-        let result = self.engine.commit(options);
+        let result = self.engine.commit_verbatim(options);
         if self.private {
             self.engine.clear_session_context();
         }
@@ -438,7 +438,12 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
                     &session.settings
                 };
                 settings.save_if_unchanged(expected)?;
-                session.apply_settings(settings);
+                // Repeating a narrow setting must not rebuild candidates or
+                // unlock the user's selection. Still validate/persist above;
+                // an explicit reload must reconfigure even if values match.
+                if command == "R" || settings != session.settings {
+                    session.apply_settings(settings);
+                }
             }
             Ok(())
         });
@@ -733,6 +738,70 @@ mod tests {
         assert!(result.ok);
         assert!(update.marked_text.is_empty());
         assert!(!update.committed_text.is_empty());
+    }
+
+    #[test]
+    fn host_context_concatenates_exact_native_chunks_in_all_languages() {
+        for language in ["en", "zh-Hans", "ja"] {
+            let mut session = HostImeSession::new(EngineConfig {
+                default_language: language.into(),
+                ..Default::default()
+            });
+            session.engine.enable_ibus_candidate_mix();
+            session.activate();
+            let mut expected = String::new();
+            for chunk in ["foo", "bar", " ", "  café  ", "\u{3000}", "日本😀"] {
+                session.replace_marked_text(chunk, InputSource::HardwareKeyboard);
+                let index = session
+                    .engine
+                    .candidates()
+                    .iter()
+                    .position(|candidate| candidate.text == chunk)
+                    .unwrap();
+                session.select_candidate(index);
+                let (result, update) = session.commit_selected(CommitOptions { force: true });
+                expected.push_str(chunk);
+                assert!(result.ok);
+                assert_eq!(
+                    result.text.as_deref(),
+                    Some(expected.as_str()),
+                    "{language}"
+                );
+                assert_eq!(result.snapshot.committed_text, expected, "{language}");
+                assert_eq!(update.committed_text, expected, "{language}");
+                assert!(update.marked_text.is_empty());
+                assert!(update.candidates.is_empty());
+            }
+            let (result, update) = session.commit_selected(CommitOptions { force: true });
+            assert!(!result.ok, "empty commit must remain rejected");
+            assert_eq!(
+                update.committed_text, expected,
+                "failed commit altered context"
+            );
+            assert!(session.deactivate().committed_text.is_empty());
+        }
+    }
+
+    #[test]
+    fn native_context_join_does_not_change_independent_editor_spacing_or_undo() {
+        let mut editor = crate::ime::XRTabletImeEngine::new(EngineConfig::default());
+        editor.seed("hello");
+        assert!(editor.commit(CommitOptions { force: true }).ok);
+        editor.seed("world");
+        let result = editor.commit(CommitOptions { force: true });
+        assert!(result.ok);
+        assert_eq!(result.text.as_deref(), Some("hello world"));
+        assert_eq!(editor.undo().unwrap().committed_text, "hello");
+
+        let mut host = HostImeSession::new(EngineConfig::default());
+        host.activate();
+        for chunk in ["hello", "world"] {
+            host.replace_marked_text(chunk, InputSource::HardwareKeyboard);
+            assert!(host.commit_selected(CommitOptions { force: true }).0.ok);
+        }
+        assert_eq!(host.current_update().committed_text, "helloworld");
+        // This is internal engine history, not undo of already delivered app text.
+        assert_eq!(host.engine.undo().unwrap().committed_text, "hello");
     }
 
     #[test]

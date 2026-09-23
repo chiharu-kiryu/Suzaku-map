@@ -544,6 +544,20 @@ static void suzaku_ibus_engine_candidate_clicked(
     suzaku_ibus_engine_commit(self);
 }
 
+static void suzaku_ibus_engine_destroy(IBusObject *object) {
+    SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
+    /* Destroy does not require a preceding FocusOut. Revoke this field before
+     * the parent tears down its service; finalize only frees local resources.
+     * A late destruction of another engine must not touch the new field. */
+    if (suzaku_ibus_clear_focused_engine_if(IBUS_ENGINE(self))) {
+        suzaku_host_ime_deactivate();
+        suzaku_ibus_schedule_prediction();
+        suzaku_companion_publish();
+    }
+    suzaku_ibus_engine_clear_local(self);
+    IBUS_OBJECT_CLASS(suzaku_ibus_engine_parent_class)->destroy(object);
+}
+
 static void suzaku_ibus_engine_finalize(GObject *object) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
     g_clear_pointer(&self->compose, xkb_compose_state_unref);
@@ -557,8 +571,10 @@ static void suzaku_ibus_engine_finalize(GObject *object) {
 
 static void suzaku_ibus_engine_class_init(SuzakuIBusEngineClass *class) {
     GObjectClass *object_class = G_OBJECT_CLASS(class);
+    IBusObjectClass *ibus_object_class = IBUS_OBJECT_CLASS(class);
     IBusEngineClass *engine_class = IBUS_ENGINE_CLASS(class);
     object_class->finalize = suzaku_ibus_engine_finalize;
+    ibus_object_class->destroy = suzaku_ibus_engine_destroy;
     engine_class->process_key_event = suzaku_ibus_engine_process_key_event;
     engine_class->focus_in = suzaku_ibus_engine_focus_in;
     engine_class->focus_out = suzaku_ibus_engine_focus_out;
@@ -610,10 +626,10 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
                 GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
                 if (focused != NULL) {
                     SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
-                    /* Reloading a provider keeps the current field's draft. A language
-                     * boundary still clears both the Rust and IBus compositions. */
-                    if (request[0] == 'L' || (request[0] == 'R' &&
-                        previous_language != suzaku_host_ime_language_kind())) {
+                    /* Reloading a provider or reselecting the current language
+                     * keeps the draft. Only a real language boundary clears it. */
+                    if ((request[0] == 'L' || request[0] == 'R') &&
+                        previous_language != suzaku_host_ime_language_kind()) {
                         suzaku_ibus_engine_clear(engine);
                     }
                     if (request[0] != 'S') { suzaku_ibus_engine_render(engine); }

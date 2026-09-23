@@ -30,6 +30,7 @@ host_socket = runtime / "suzaku-ime/host.sock"
 processes = []
 watchers = []
 model_requests = []
+model_reply_gates = {}
 
 
 class ModelFixture(BaseHTTPRequestHandler):
@@ -39,6 +40,10 @@ class ModelFixture(BaseHTTPRequestHandler):
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         model_requests.append(request)
+        gate = model_reply_gates.get(request["model"])
+        if gate is not None:
+            gate["received"].set()
+            assert gate["release"].wait(timeout=5), "synthetic model reply gate timed out"
         time.sleep(0.08)
         candidates = [
             {"text": text, "kind": kind} for text, kind in [
@@ -63,6 +68,8 @@ class ModelFixture(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+        if gate is not None:
+            gate["finished"].set()
 
 
 model = HTTPServer(("127.0.0.1", 0), ModelFixture)
@@ -285,6 +292,7 @@ class EnginePeer:
 
     def __init__(self, bus):
         self.connection = bus.get_connection()
+        self.destroyed = False
         self.path = self.connection.call_sync(
             self.destination, "/org/freedesktop/IBus/Factory", "org.freedesktop.IBus.Factory",
             "CreateEngine", GLib.Variant("(s)", ("dev.suzaku.linux.ime",)),
@@ -309,11 +317,271 @@ class EnginePeer:
     def click(self, index, button=1, state=0):
         self.event("CandidateClicked", GLib.Variant("(uuu)", (index, button, int(state))))
 
-    def close(self):
-        self.event("FocusOut")
-        self.connection.signal_unsubscribe(self.subscription)
+    def destroy(self):
         self.connection.call_sync(self.destination, self.path, "org.freedesktop.IBus.Service",
                                   "Destroy", None, None, Gio.DBusCallFlags.NONE, 2000, None)
+        self.destroyed = True
+
+    def close(self):
+        if not self.destroyed:
+            self.event("FocusOut")
+            self.destroy()
+        self.connection.signal_unsubscribe(self.subscription)
+
+
+def check_engine_destruction(bus):
+    """N31: destruction is a field boundary even without an earlier FocusOut."""
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"]
+    watch = Watch()
+    failures = []
+    cases = 0
+
+    def prepare(peer, phase, seed, word):
+        peer.event("FocusIn")
+        if phase == "empty":
+            pump()
+            assert not watch.latest["seed"]
+            return ""
+        draft = "caf" if phase == "compose" else seed
+        type_seed(peer, draft)
+        wait(lambda: watch.latest["seed"] == draft, "prepare destruction draft")
+        if phase in ["selected", "adopted"]:
+            index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == word)
+            peer.event("CursorUp")
+            for _ in range(index):
+                peer.event("CursorDown")
+            wait(lambda: watch.latest["selected"] == index, "select before destruction")
+            if phase == "adopted":
+                assert peer.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
+                wait(lambda: watch.latest["seed"] == word, "adopt before destruction")
+                draft = word
+        elif phase == "compose":
+            assert peer.process_key_event(IBus.KEY_dead_acute)
+            pump()
+        return draft
+
+    try:
+        for language, seed, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好"),
+                                     ("ja", "nihongo", "日本語")]:
+            assert json.loads(command("L" + language))["ok"]
+            for phase in ["empty", "typed", "selected", "adopted", "compose"]:
+                for focused in [True, False]:
+                    cases += 1
+                    peer, survivor = EnginePeer(bus), EnginePeer(bus)
+                    try:
+                        prepare(peer, phase, seed, word)
+                        if not focused:
+                            draft = prepare(survivor, phase, seed, word)
+                        baseline = watch.latest
+                        peer.destroy()
+                        # The synchronous Destroy and this host barrier precede
+                        # reading the existing subscription; no new focus event
+                        # may mask the missing destruction publication.
+                        assert command("Q") == b"1"
+                        pump()
+                        try:
+                            if focused:
+                                assert not watch.latest["focused"] and not watch.latest["seed"] and not watch.latest["candidates"], \
+                                    "destroyed engine left a stale composition"
+                                assert watch.latest["context"] > baseline["context"] and watch.latest["revision"] > baseline["revision"]
+                                assert not action(baseline, "K0") and command("Cwrong target") == b"0"
+                                # Existing and freshly connected panels agree.
+                                late = Watch()
+                                try:
+                                    wait(lambda: late.latest is not None, "subscribe after destruction")
+                                    assert late.latest == watch.latest
+                                finally:
+                                    watchers.remove(late)
+                                    late.sock.close()
+                            else:
+                                assert watch.latest == baseline, "old engine destruction changed the new field"
+                                key = IBus.KEY_BackSpace if phase == "adopted" else \
+                                    IBus.KEY_space if phase == "selected" else IBus.KEY_e
+                                expected = seed if phase == "adopted" else word + " " if phase == "selected" else \
+                                    draft + ("é" if phase == "compose" else "e")
+                                assert survivor.process_key_event(key)
+                                wait(lambda: watch.latest["seed"] == expected, "old destruction broke continuation")
+                            assert not peer.commits and not survivor.commits
+                        except AssertionError as error:
+                            failure = f"{language}/{phase}/focused={focused}: {error}; seed={watch.latest['seed']!r}"
+                            print("AUDIT: N31 " + failure)
+                            failures.append(failure)
+                    finally:
+                        peer.close()
+                        survivor.close()
+        assert cases == 30
+        assert not failures, "engine destruction:\n" + "\n".join(failures)
+        print("PASS: N31 30 focused/stale engine destructions clear only the owned field across English/Chinese/Japanese")
+    finally:
+        assert json.loads(command("L" + saved["language"]))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
+
+
+def check_engine_destruction_prediction(bus):
+    """A controlled late reply must not revive a destroyed field."""
+    saved = json.loads(command("S"))["settings"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    assert config == runtime / "ime.json" and not config.is_symlink()
+    original = config.read_text()
+    watch = Watch()
+    try:
+        for phase in ["pending", "ready"]:
+            for focused in [True, False]:
+                name = f"synthetic-destruction-{phase}-{focused}"
+                gate = {key: threading.Event() for key in ["received", "release", "finished"]}
+                if phase == "ready":
+                    gate["release"].set()
+                model_reply_gates[name] = gate
+                peer, survivor = EnginePeer(bus), EnginePeer(bus)
+                try:
+                    settings = dict(saved, language="en", llm_enabled=False, llm_model=name,
+                                    llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+                    config.write_text(json.dumps(settings))
+                    assert json.loads(command("R"))["ok"]
+                    peer.event("FocusIn")
+                    if not focused:
+                        survivor.event("FocusIn")
+                    target = peer if focused else survivor
+                    type_seed(target, "thank")
+                    assert target.process_key_event(IBus.KEY_Return)
+                    wait(lambda: target.commits == ["thank"] and not watch.latest["seed"], "prepare owned context")
+                    assert json.loads(command("P1"))["ok"]
+                    pump()
+                    requested = len(model_requests)
+                    # One complete update avoids intermediate spelling requests
+                    # even on a heavily loaded CI host.
+                    assert action(watch.latest, "Thel")
+                    wait(gate["received"].is_set, "model request reached reply gate")
+                    payload = json.loads(model_requests[requested]["messages"][1]["content"])
+                    assert payload["raw_composition"] == "hel" and payload["committed_context"] == "thank"
+                    if phase == "ready":
+                        wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "model before destruction")
+                    else:
+                        assert json.loads(command("S"))["prediction"] == "Pending"
+                    baseline, before = watch.latest, len(target.commits)
+                    peer.destroy()
+                    state = json.loads(command("S"))
+                    pump()
+                    if focused:
+                        assert not watch.latest["focused"] and not watch.latest["seed"] and not watch.latest["candidates"]
+                        assert watch.latest["context"] > baseline["context"] and watch.latest["revision"] > baseline["revision"]
+                        assert state["prediction"] == "Idle", "destroyed field retained pending prediction"
+                        assert not action(baseline, "K0")
+                    else:
+                        assert watch.latest == baseline, "old destruction invalidated the current model field"
+                        assert state["prediction"] == ("Pending" if phase == "pending" else "Ready")
+                    after = watch.latest
+                    gate["release"].set()
+                    wait(gate["finished"].is_set, "release synthetic model reply")
+                    if focused:
+                        # Cover several native prediction ticks after the reply;
+                        # a destroyed field must never publish its old results.
+                        until = time.monotonic() + 0.2
+                        while time.monotonic() < until:
+                            pump()
+                            assert watch.latest == after
+                            time.sleep(0.01)
+                        requested = len(model_requests)
+                        survivor.event("FocusIn")
+                        pump()
+                        assert action(watch.latest, "Thel")
+                        wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "new field model recovery")
+                        payload = json.loads(model_requests[requested]["messages"][1]["content"])
+                        assert payload["raw_composition"] == "hel" and not payload["committed_context"]
+                        assert not survivor.commits
+                    else:
+                        wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "surviving field prediction")
+                        index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == "helium")
+                        assert action(watch.latest, f"N{index}")
+                        assert survivor.process_key_event(IBus.KEY_space)
+                        wait(lambda: watch.latest["seed"] == "helium ", "surviving model selection")
+                        assert survivor.process_key_event(IBus.KEY_BackSpace)
+                        wait(lambda: watch.latest["seed"] == "hel", "surviving model undo")
+                    assert len(target.commits) == before, "destruction or late reply committed text"
+                finally:
+                    gate["release"].set()
+                    peer.close()
+                    survivor.close()
+                    model_reply_gates.pop(name, None)
+        print("PASS: N31 4 pending/ready model destruction cases cancel only the owned field and reject late results")
+    finally:
+        config.write_text(original)
+        assert json.loads(command("R"))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
+
+
+def check_committed_model_context(bus):
+    """N32: model context is the exact recent native output, not editor joins."""
+    saved = json.loads(command("S"))["settings"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    assert config == runtime / "ime.json" and not config.is_symlink()
+    original = config.read_text()
+    watch = Watch()
+    failures = []
+    cases = [
+        ("en", "identifier", [("foo", "foo"), ("bar", "bar")]),
+        ("en", "trailing-space", [("hello ", "hello "), ("world", "world")]),
+        ("en", "leading-spaces", [("hello", "hello"), ("  world  ", "  world  ")]),
+        ("en", "whitespace-chunks", [("  ", "  "), ("hello", "hello"), (" ", " "), ("world", "world")]),
+        ("en", "unicode", [("café", "café"), ("\u3000", "\u3000"), ("日本😀", "日本😀")]),
+        ("en", "bounded-tail", [("prefix" + "界😀" * 78, "prefix" + "界😀" * 78), (" café  ", " café  "), ("tail", "tail")]),
+        ("zh-Hans", "conversion", [("nihao", "你好"), ("xiexie", "谢谢")]),
+        ("zh-Hans", "literal", [("nihao", "nihao"), (" \u3000", " \u3000"), ("世界", "世界")]),
+        ("ja", "conversion", [("nihongo", "日本語"), ("arigatou", "ありがとう")]),
+        ("ja", "literal", [("にほん", "にほん"), (" \u3000", " \u3000"), ("世界", "世界")]),
+    ]
+    try:
+        settings = dict(saved, llm_enabled=False, llm_model="synthetic-exact-context",
+                        llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+        config.write_text(json.dumps(settings))
+        assert json.loads(command("R"))["ok"]
+        for language, label, chunks in cases:
+            for method in ["enter", "panel-click"]:
+                peer = EnginePeer(bus)
+                try:
+                    assert json.loads(command("P0"))["ok"]
+                    assert json.loads(command("L" + language))["ok"]
+                    peer.event("FocusIn")
+                    pump()
+                    for seed, output in chunks:
+                        assert action(watch.latest, "T" + seed)
+                        wait(lambda: watch.latest["seed"] == seed, "prepare native context chunk")
+                        index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == output)
+                        before = len(peer.commits)
+                        if method == "enter":
+                            assert action(watch.latest, f"N{index}")
+                            assert peer.process_key_event(IBus.KEY_Return)
+                        else:
+                            assert action(watch.latest, f"K{index}")
+                        wait(lambda: len(peer.commits) > before and not watch.latest["seed"], "native context chunk commit")
+                        assert peer.commits[before:] == [output], "application output changed"
+                    expected = "".join(peer.commits)[-160:]
+                    assert json.loads(command("P1"))["ok"]
+                    pump()
+                    requested = len(model_requests)
+                    assert action(watch.latest, "Thel")
+                    wait(lambda: len(model_requests) > requested, "request following consecutive native commits")
+                    payload = json.loads(model_requests[requested]["messages"][1]["content"])
+                    assert payload["raw_composition"] == "hel" and payload["language"] == language
+                    actual = payload["committed_context"]
+                    if actual != expected:
+                        failure = f"{language}/{label}/{method}: expected={expected!r}, model={actual!r}"
+                        print("AUDIT: N32 " + failure)
+                        failures.append(failure)
+                    wait(lambda: json.loads(command("S"))["prediction"] != "Pending", "settle context probe")
+                    assert peer.commits == [output for _, output in chunks], "prediction submitted text"
+                finally:
+                    peer.close()
+        assert not failures, "native committed context:\n" + "\n".join(failures)
+        print("PASS: N32 20 exact native/model-context cases preserve joins, whitespace, Unicode and the 160-character tail")
+    finally:
+        config.write_text(original)
+        assert json.loads(command("R"))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
 
 
 def check_engine_event_boundaries(bus):
@@ -570,6 +838,9 @@ def check_editable_completions(context, watch, commits, lookup):
                                   ("ja", "watashihanihong", "私は日本語"),
                                   ("ja", "nihongowobenky", "日本語を勉強")]:
         assert json.loads(command("L" + language))["ok"]
+        # Setting an already active language is not a draft reset.
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "reset CJK completion fixture")
         type_seed(context, seed)
         check_candidate_presentation(watch, lookup)
         assert any(c["text"] == word and c["kind"] == "word" for c in watch.latest["candidates"][:6])
@@ -726,6 +997,162 @@ def check_literal_choice_publication(context, watch, commits, lookup):
     assert json.loads(command("Len"))["ok"]
     assert not failures, "literal selection publication: " + repr(failures)
     print("PASS: N28 12 English/Chinese/Japanese literal choices publish selection and preserve commit/Space/deletion/undo")
+
+
+def check_unchanged_input_controls(context, watch, commits, lookup):
+    """N29/N30: repeating a setting must preserve the live input state."""
+    failures = []
+    cases = 0
+
+    def controls(language, alias):
+        settings = json.loads(command("S"))["settings"]
+        assert not settings["llm_enabled"]
+        return ["L" + language, "L" + alias, "P0",
+                "U" + json.dumps({"llm_temperature_tenths": settings["llm_temperature_tenths"]})]
+
+    for language, alias, seed, word in [
+        ("en", "en_US", "hel", "hello"),
+        ("zh-Hans", "zh_CN", "nihao", "你好"),
+        ("ja", "ja_JP", "nihongo", "日本語"),
+    ]:
+        assert json.loads(command("L" + language))["ok"]
+        for request in controls(language, alias):
+            for phase in ["selected", "adopted"]:
+                cases += 1
+                context.reset()
+                wait(lambda: not watch.latest["seed"], "reset unchanged-control draft")
+                type_seed(context, seed)
+                index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == word)
+                assert context.process_key_event(IBus.KEY_Up, 0, 0)
+                for _ in range(index):
+                    assert context.process_key_event(IBus.KEY_Tab, 0, 0)
+                wait(lambda: watch.latest["selected"] == index and lookup["selected"] == index,
+                     "select before repeating a setting")
+                if phase == "adopted":
+                    assert context.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
+                    wait(lambda: watch.latest["seed"] == word, "adopt before repeating a setting")
+                baseline, before = watch.latest, len(commits)
+                assert json.loads(command(request))["ok"], request
+                wait(lambda: watch.latest["revision"] > baseline["revision"], "control acknowledgement publication")
+                try:
+                    assert watch.latest["seed"] == baseline["seed"], "same setting cleared the draft"
+                    assert watch.latest["candidates"] == baseline["candidates"], "same setting rebuilt candidates"
+                    assert watch.latest["selected"] == baseline["selected"] and lookup["selected"] == baseline["selected"]
+                    revision = watch.latest["revision"]
+                    key = IBus.KEY_space if phase == "selected" else IBus.KEY_BackSpace
+                    assert context.process_key_event(key, 0, 0)
+                    wait(lambda: watch.latest["revision"] > revision, "continue after unchanged control")
+                    expected = word + " " if phase == "selected" else seed
+                    assert watch.latest["seed"] == expected, f"expected {expected!r} after continuation"
+                except AssertionError as error:
+                    failure = f"{language}/{phase}/{request}: {error}; seed={watch.latest['seed']!r}"
+                    print("AUDIT: N29/N30 " + failure)
+                    failures.append(failure)
+                assert len(commits) == before, "settings must not submit input"
+
+    assert json.loads(command("Len"))["ok"]
+    for request in controls("en", "en_US"):
+        cases += 1
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "reset same-setting Compose check")
+        type_seed(context, "caf")
+        assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+        wait(lambda: lookup["aux"].startswith("Compose"), "prepare pending accent")
+        baseline, before = watch.latest, len(commits)
+        assert json.loads(command(request))["ok"]
+        wait(lambda: watch.latest["revision"] > baseline["revision"], "same-setting Compose publication")
+        assert context.process_key_event(IBus.KEY_e, 0, 0)
+        pump()
+        if watch.latest["seed"] != "café":
+            failure = f"en/compose/{request}: expected 'café', seed={watch.latest['seed']!r}"
+            print("AUDIT: N29 " + failure)
+            failures.append(failure)
+        assert len(commits) == before
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "finish unchanged input controls")
+    assert cases == 28
+    assert not failures, "unchanged input controls:\n" + "\n".join(failures)
+    print("PASS: N29/N30 28 unchanged-language/prediction/Tone cases preserve selection, undo and Compose")
+
+
+def check_unchanged_control_failures(context, watch, commits, lookup):
+    """Skipping a rebuild must not skip persistence/conflict validation."""
+    assert json.loads(command("Len"))["ok"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    saved = json.loads(command("S"))["settings"]
+    original = config.read_text()
+    mode = runtime.stat().st_mode & 0o777
+    requests = ["Len", "Len_US", "P0",
+                "U" + json.dumps({"llm_temperature_tenths": saved["llm_temperature_tenths"]})]
+    for request in requests:
+        for failure in ["conflict", "write failure"]:
+            context.reset()
+            wait(lambda: not watch.latest["seed"], "reset rejected unchanged control")
+            type_seed(context, "hel")
+            assert context.process_key_event(IBus.KEY_Tab, 0, 0)
+            wait(lambda: watch.latest["selected"] == 1 and lookup["selected"] == 1,
+                 "select before rejected unchanged control")
+            baseline, before = watch.latest, len(commits)
+            try:
+                if failure == "conflict":
+                    changed = dict(saved)
+                    changed["llm_temperature_tenths"] = (saved["llm_temperature_tenths"] + 1) % 11
+                    config.write_text(json.dumps(changed))
+                else:
+                    runtime.chmod(0o500)
+                disk_before = config.read_text()
+                response = json.loads(command(request))
+                assert not response["ok"] and response["settings"] == saved, (request, failure)
+                assert config.read_text() == disk_before, "failed no-op control overwrote saved settings"
+                pump()
+                assert watch.latest == baseline and len(commits) == before, (request, failure)
+            finally:
+                runtime.chmod(mode)
+                config.write_text(original)
+            assert context.process_key_event(IBus.KEY_space, 0, 0)
+            wait(lambda: watch.latest["seed"] == "hello ", "failed control discarded the selected completion")
+            assert len(commits) == before
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "finish rejected unchanged controls")
+    print("PASS: N29/N30 8 unchanged-control conflict/write failures preserve settings, draft and selection")
+
+
+def check_unchanged_model_controls(context, watch, commits, lookup):
+    settings = json.loads(command("S"))["settings"]
+    assert settings["llm_enabled"] and settings["language"] == "en"
+    requests = ["Len", "Len_US", "P1",
+                "U" + json.dumps({"llm_temperature_tenths": settings["llm_temperature_tenths"]}),
+                "U" + json.dumps({"llm_enabled": True, "llm_temperature_tenths": settings["llm_temperature_tenths"]})]
+    for request in requests:
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "reset unchanged model control")
+        type_seed(context, "hel")
+        wait(lambda: any(c["text"] == "helium" and c["source"] == "model" for c in watch.latest["candidates"]),
+             "prepare model candidate before repeating a setting")
+        index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == "helium")
+        for _ in range(index):
+            assert context.process_key_event(IBus.KEY_Tab, 0, 0)
+        wait(lambda: watch.latest["selected"] == index and lookup["selected"] == index, "lock model candidate")
+        baseline, before, requested = watch.latest, len(commits), len(model_requests)
+        assert json.loads(command(request))["ok"]
+        wait(lambda: watch.latest["revision"] > baseline["revision"], "unchanged model control publication")
+        until = time.monotonic() + 0.35
+        while time.monotonic() < until:
+            pump()
+            assert watch.latest["seed"] == "hel" and watch.latest["candidates"] == baseline["candidates"]
+            assert watch.latest["selected"] == index and lookup["selected"] == index
+            assert len(model_requests) == requested, "unchanged control restarted prediction"
+            time.sleep(0.01)
+        assert context.process_key_event(IBus.KEY_space, 0, 0)
+        wait(lambda: watch.latest["seed"] == "helium ", "same-setting control unlocked model selection")
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == "hel", "same-setting model continuation lost undo")
+        assert len(commits) == before
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "finish unchanged model controls")
+    type_seed(context, "hel")
+    wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "restore model reload fixture")
+    print("PASS: N30 5 unchanged controls preserve locked model candidates without new requests")
 
 
 def check_lossless_commit_chunks(context, watch, commits):
@@ -1341,6 +1768,9 @@ try:
     assert bus.is_connected()
     check_tray_activation(bus)
     check_engine_event_boundaries(bus)
+    check_engine_destruction(bus)
+    check_engine_destruction_prediction(bus)
+    check_committed_model_context(bus)
     context = create_context(bus, "suzaku-sync-qa-a")
     commits = []
     lookup = observe_lookup(context)
@@ -1409,6 +1839,8 @@ try:
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
     check_literal_choice_publication(other, watch, other_commits, other_lookup)
+    check_unchanged_input_controls(other, watch, other_commits, other_lookup)
+    check_unchanged_control_failures(other, watch, other_commits, other_lookup)
     check_english_writing_flow(other, watch, other_commits, other_lookup)
     check_numeric_field_routing(other, watch, other_commits)
     type_seed(other, "hel")
@@ -1419,6 +1851,7 @@ try:
     assert json.loads(command("R"))["ok"]
     wait(lambda: watch.latest["seed"] == "hel" and any(" · AI" in c["label"] for c in watch.latest["candidates"]),
          "enabling a new provider lost the native composition")
+    check_unchanged_model_controls(other, watch, other_commits, other_lookup)
     # Both unchanged and provider-changing reloads preserve Rust and native preedit.
     for model_name in ["synthetic-model", "synthetic-replacement"]:
         settings["llm_model"] = model_name

@@ -3,7 +3,18 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.5.9 — Linux Alpha input-continuity patch**.
+Current source version: **0.6.0 — Linux Alpha input-state and model-context release**.
+
+### 0.6.0 — Native input state and exact model context
+
+- Reselecting the current language preserves drafts, completion undo and pending Compose sequences.
+- Repeating the current prediction switch or Tone preserves candidate selection and model results;
+  configuration conflict checks, failed-save protection and explicit reloads remain enforced.
+- Destroying the focused IBus engine without FocusOut ends its session and clears companion state.
+  Late destruction or model results cannot affect a newer field.
+- Native model context concatenates the exact candidate payloads, without the independent editor's
+  automatic separators. Application output, editor spacing and continuous-drafting keys are unchanged.
+  See the [0.6.0 release notes](docs/releases/0.6.0.md).
 
 ### 0.5.9 — Translation gestures and continuous candidate input
 
