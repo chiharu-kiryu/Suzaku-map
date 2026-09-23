@@ -15,6 +15,15 @@ or accumulated committed history. Password/PIN and declared numeric/decimal/phon
 composition and panel injection. Private hints suppress model requests and companion snapshots.
 Applications must report purposes/hints correctly; switch input methods when unsure about a field.
 
+0.6.1 also rejects the independent panel's direct text sends into PRIVATE
+fields, while keeping native local conversion available. Changing the active field's private/bypass
+policy invalidates its old target identity, including delayed direct sends; a brief round trip back
+to public input does not revive them. Ordinary hint updates and stale events from another engine
+do not change the current target. See the [content-type audit](bug-audit-content-type-2026-09-23.md).
+0.6.1 also invalidates old targets after a successful input-language change, even
+when intermediate language snapshots are coalesced away. Same-language aliases, provider-only
+reloads and failed changes keep the target. See the [language-target audit](bug-audit-language-target-2026-09-23.md).
+
 Native focus/language/privacy changes clear session context and pending keyboard replay. Uncertain
 sends are never retried automatically. Source/recovery text can remain visible until explicitly
 handled, its native context changes or the process ends.

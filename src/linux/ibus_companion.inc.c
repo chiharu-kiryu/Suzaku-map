@@ -80,7 +80,7 @@ static gboolean suzaku_companion_action(const char *request) {
             g_clear_pointer(&engine->completion_undo, g_free);
             suzaku_ibus_engine_reset_compose(engine);
             suzaku_host_ime_select_candidate((size_t)index);
-            if (action[0] == 'K') { applied = suzaku_ibus_engine_commit(engine); }
+            if (action[0] == 'K') { applied = suzaku_ibus_engine_commit(engine, TRUE); }
             else { suzaku_ibus_engine_render(engine); applied = TRUE; }
         } else if (strcmp(action, "X") == 0) {
             suzaku_ibus_engine_clear(engine); applied = TRUE;

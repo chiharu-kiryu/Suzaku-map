@@ -3,7 +3,18 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.0 — Linux Alpha input-state and model-context release**.
+Current source version: **0.6.1 — Linux Alpha input-target reliability release**.
+
+### 0.6.1 — Input-target boundaries and safe continuous typing
+
+- Independent panel sends cannot inject into PRIVATE fields. Privacy/bypass transitions invalidate
+  old input targets, including brief round trips hidden by coalesced snapshots.
+- Actual language changes and whole-draft cancellation reject delayed old sends and stale presses;
+  same-language settings, Compose-only cancellation and ordinary editing remain continuous.
+- Physical Enter, native candidate clicks and independent text sends end old input work after a
+  successful commit. Revision-bound companion commits keep their acknowledged follow-up typing.
+- Candidate-commit history remains exact within the same field; late model replies cannot restore
+  canceled or committed drafts. See the [0.6.1 release notes](docs/releases/0.6.1.md).
 
 ### 0.6.0 — Native input state and exact model context
 

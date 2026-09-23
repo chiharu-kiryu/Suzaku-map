@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.6.0 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.6.1 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -28,9 +28,9 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.6.0 preserves drafts and selected candidates when settings are reselected, clears stale input state
-when its native field is destroyed, and keeps model context identical to the submitted candidate text.
-See the [release notes](docs/releases/0.6.0.md) for the fixes and validation scope.
+0.6.1 rejects independent-panel text sends into private fields and invalidates old input work after
+privacy/language changes, cancellation or an external commit, without breaking confirmed panel typing.
+See the [release notes](docs/releases/0.6.1.md) for the fixes and validation scope.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -39,11 +39,11 @@ speech and application compatibility. This is not a replacement for a full Chine
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
 Source tags can precede downloadable packages; use a release with attached packages or build from
-source. For the 0.6.0 package, in the download directory on Ubuntu 24.04 amd64:
+source. For the 0.6.1 package, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.6.0_amd64.deb.sha256
-sudo apt install ./suzaku_0.6.0_amd64.deb
+sha256sum -c suzaku_0.6.1_amd64.deb.sha256
+sudo apt install ./suzaku_0.6.1_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -122,11 +122,11 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.6.0 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.6.1 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.6.0 release notes](docs/releases/0.6.0.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.6.1 release notes](docs/releases/0.6.1.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.
