@@ -33,6 +33,7 @@ pub(super) struct InputMethodController<B> {
     backend: B,
     state: InputMethodState,
     last_non_suzaku: Option<String>,
+    shutdown_restore_engine: Option<String>,
 }
 
 impl<B: InputMethodBackend> InputMethodController<B> {
@@ -41,6 +42,7 @@ impl<B: InputMethodBackend> InputMethodController<B> {
             backend,
             state: InputMethodState::default(),
             last_non_suzaku: None,
+            shutdown_restore_engine: None,
         }
     }
 
@@ -108,9 +110,9 @@ impl<B: InputMethodBackend> InputMethodController<B> {
     pub fn shutdown(&mut self) -> Result<(), String> {
         self.release()?;
         if !self.backend.host_needs_stop()? {
-            return Ok(());
+            return self.finish_shutdown_recovery();
         }
-        self.refresh()?;
+        self.refresh_shutdown_engine()?;
         if self.state.active() {
             // A system menu can activate Suzaku after panel startup. Use only an
             // actually observed previous engine; never guess another user's default.
@@ -126,10 +128,29 @@ impl<B: InputMethodBackend> InputMethodController<B> {
             .current_engine
             .clone()
             .ok_or("无法确认安全回退，已保留输入法服务")?;
+        // A stop can complete even if its acknowledgement or subsequent engine
+        // restoration fails. Retain the observed fallback across Quit retries.
+        self.shutdown_restore_engine = Some(previous);
         self.backend.stop_host()?;
+        self.finish_shutdown_recovery()
+    }
+
+    fn finish_shutdown_recovery(&mut self) -> Result<(), String> {
+        if self.shutdown_restore_engine.is_some() {
+            self.refresh_shutdown_engine()?;
+            self.shutdown_restore_engine = None;
+        }
+        Ok(())
+    }
+
+    fn refresh_shutdown_engine(&mut self) -> Result<(), String> {
         // Removing an IBus component can leave no global engine. Repair only that
         // missing state; a valid engine selected manually must always win.
-        if self.refresh().is_err() {
+        // A late stop may need this repair before retrying its acknowledgement.
+        if let Err(error) = self.refresh() {
+            let Some(previous) = self.shutdown_restore_engine.clone() else {
+                return Err(error);
+            };
             self.switch_and_verify(&previous)?;
         }
         Ok(())
@@ -382,6 +403,101 @@ mod tests {
                 }
             );
             assert!(!control.backend.switches.contains(&"rime".into()));
+        }
+    }
+
+    #[test]
+    fn shutdown_retry_must_finish_post_stop_recovery_before_reporting_success() {
+        for ignored_switch in [false, true] {
+            let mut control = InputMethodController::new(FakeBackend {
+                managed: true,
+                engine_after_stop: Some(String::new()),
+                switch_fails: !ignored_switch,
+                ignore_switch: ignored_switch,
+                ..Default::default()
+            });
+            control.start().unwrap();
+            assert!(control.shutdown().is_err());
+            assert!(!control.backend.managed);
+            assert!(control.backend.current.is_empty());
+            assert!(
+                control.shutdown().is_err(),
+                "N19: a second Quit reported success with no restored input method"
+            );
+            control.backend.switch_fails = false;
+            control.backend.ignore_switch = false;
+            control.shutdown().unwrap();
+            assert_eq!(control.backend.current, "rime");
+            assert_eq!(control.state.current_engine.as_deref(), Some("rime"));
+            let switches = control.backend.switches.clone();
+            control.shutdown().unwrap();
+            assert_eq!(control.backend.switches, switches);
+            assert_eq!(
+                control
+                    .backend
+                    .lifecycle
+                    .iter()
+                    .filter(|op| *op == "stop")
+                    .count(),
+                1,
+                "recovery must not stop or restart an already stopped host"
+            );
+        }
+    }
+
+    #[test]
+    fn shutdown_recovery_retry_requires_readback_and_preserves_manual_switches() {
+        for manual in [false, true] {
+            let mut control = InputMethodController::new(FakeBackend {
+                managed: true,
+                engine_after_stop: Some(String::new()),
+                switch_fails: true,
+                ..Default::default()
+            });
+            assert!(control.shutdown().is_err());
+            control.backend.switch_fails = false;
+            if manual {
+                control.backend.current = "mozc-jp".into();
+                let switches = control.backend.switches.clone();
+                control.shutdown().unwrap();
+                assert_eq!(control.backend.current, "mozc-jp");
+                assert_eq!(control.backend.switches, switches);
+            } else {
+                control.backend.read_fails = true;
+                assert!(
+                    control.shutdown().is_err(),
+                    "N19: stopping the host does not acknowledge input-method recovery"
+                );
+                control.backend.read_fails = false;
+                control.shutdown().unwrap();
+                assert_eq!(control.backend.current, "rime");
+            }
+        }
+    }
+
+    #[test]
+    fn shutdown_retry_recovers_when_an_unconfirmed_stop_finishes_later() {
+        for still_needs_stop_ack in [false, true] {
+            let mut control = InputMethodController::new(FakeBackend {
+                managed: true,
+                stop_fails: true,
+                ..Default::default()
+            });
+            assert!(control.shutdown().is_err());
+            // A queued stop may complete after its command acknowledgement was
+            // lost. The service can still retain cleanup ownership until retry.
+            control.backend.managed = still_needs_stop_ack;
+            control.backend.current.clear();
+            control.backend.switch_fails = true;
+            assert!(
+                control.shutdown().is_err(),
+                "N19: late service stop completion must retain the observed recovery target"
+            );
+            control.backend.switch_fails = false;
+            control.backend.stop_fails = false;
+            control.shutdown().unwrap();
+            assert_eq!(control.backend.current, "rime");
+            assert!(!control.backend.managed);
         }
     }
 

@@ -1,4 +1,4 @@
-//! Regression coverage for F32/F33 source-to-draft boundaries (N05/N06).
+//! Regression coverage for F32/F33 source-to-draft boundaries (N05/N06/N23).
 //! Uses private Xvfb, the Linux simulated speech bridge and an in-memory action queue.
 use super::*;
 use crate::{PanelChromeState, panel_window_attributes};
@@ -104,6 +104,203 @@ fn reset(state: &mut PanelState) {
     state.engine.clear_session_context();
     state.is_focused = false;
     state.last_scene = None;
+}
+
+#[test]
+#[ignore = "requires private Xvfb and SUZAKU_PANEL_NATIVE_QA=1; run by test-linux-ci.sh ui"]
+fn tool_adoption_gestures_must_not_cross_native_targets() {
+    use suzaku_map::ime::gpu::InteractionKind;
+    run_probe(|state| {
+        let mut findings = Vec::new();
+        for mode in [InputMode::Dictation, InputMode::Handwriting] {
+            for touch in [false, true] {
+                for case in [
+                    "same target",
+                    "metadata refresh",
+                    "same-field edit",
+                    "new context",
+                    "host restart",
+                    "language",
+                    "disconnect then return",
+                    "private then return",
+                    "unfocused then return",
+                    "context away and back",
+                    "settings during boundary",
+                    "starts private",
+                    "starts unfocused",
+                    "starts disconnected",
+                    "local to native",
+                    "local stays local",
+                ] {
+                    reset(state);
+                    state.cancel_primary_interaction();
+                    state.last_interaction_action = None;
+                    let initial = frame("alpha", 1, 10);
+                    state.receive_native_frame(Some(initial.clone()));
+                    if case.starts_with("starts") {
+                        let mut unavailable = initial.clone();
+                        unavailable.revision += 1;
+                        unavailable.seed.clear();
+                        unavailable.private = case == "starts private";
+                        unavailable.focused = case != "starts unfocused";
+                        state.receive_native_frame(
+                            (case != "starts disconnected").then_some(unavailable),
+                        );
+                    }
+                    if case.starts_with("local") {
+                        state.leave_native_view();
+                        state.chrome.set_seed_text("local".into());
+                        state.chrome.move_caret_to_end();
+                        state.refresh_seed();
+                    }
+                    state.chrome.active_input_mode = mode;
+                    state.chrome.input_modes_expanded = true;
+                    state.chrome.voice_transcript = "world".into();
+                    state.chrome.handwriting_strokes = vec![vec![[1.0, 2.0], [2.0, 3.0]]];
+                    state.chrome.handwriting_candidates = vec!["world".into()];
+                    let (sender, receiver) = mpsc::sync_channel(4);
+                    state.native.sender = Some(sender);
+                    let kind = match mode {
+                        InputMode::Dictation => InteractionKind::InsertVoiceTranscript,
+                        InputMode::Handwriting => InteractionKind::UseHandwritingCandidate(0),
+                        _ => unreachable!(),
+                    };
+                    point_tool(state, kind);
+                    state.interaction.last_input_was_touch = touch;
+                    state.begin_primary_press(touch);
+                    assert_eq!(state.interaction.pressed_interaction, Some(kind));
+                    let mut next = initial.clone();
+                    next.revision = 20;
+                    match case {
+                        "same target" => {}
+                        "metadata refresh"
+                        | "local to native"
+                        | "starts private"
+                        | "starts unfocused"
+                        | "starts disconnected" => state.receive_native_frame(Some(next)),
+                        "same-field edit" => {
+                            next.seed = "beta".into();
+                            state.receive_native_frame(Some(next));
+                        }
+                        "new context" | "settings during boundary" => {
+                            next.context = 2;
+                            next.seed = "beta".into();
+                            state.chrome.settings_open = case == "settings during boundary";
+                            state.receive_native_frame(Some(next.clone()));
+                            state.chrome.settings_open = false;
+                            if case == "settings during boundary" {
+                                next.revision += 1;
+                                state.receive_native_frame(Some(next));
+                            }
+                        }
+                        "host restart" => {
+                            next.host = "00000000-0000-0000-0000-000000000002".into();
+                            next.revision = 1;
+                            state.receive_native_frame(Some(next));
+                        }
+                        "language" => {
+                            next.language = "ja".into();
+                            state.receive_native_frame(Some(next));
+                        }
+                        "disconnect then return" => {
+                            state.receive_native_frame(None);
+                            state.receive_native_frame(Some(next));
+                        }
+                        "private then return"
+                        | "unfocused then return"
+                        | "context away and back" => {
+                            let mut intermediate = next.clone();
+                            intermediate.seed.clear();
+                            intermediate.private = case == "private then return";
+                            intermediate.focused = case != "unfocused then return";
+                            if case == "context away and back" {
+                                intermediate.context = 2;
+                            }
+                            state.receive_native_frame(Some(intermediate));
+                            next.revision += 1;
+                            state.receive_native_frame(Some(next));
+                        }
+                        "local stays local" => {
+                            state.is_focused = true;
+                            state.receive_native_frame(Some(next));
+                        }
+                        _ => unreachable!(),
+                    }
+                    let same_target =
+                        matches!(case, "same target" | "metadata refresh" | "same-field edit");
+                    let local = case == "local stays local";
+                    let canceled = !same_target && !local;
+                    // Layout may shift when entering native view; cancellation
+                    // must come from target identity, not an accidental miss.
+                    if canceled && state.interaction.pressed_interaction.is_some() {
+                        findings.push(format!(
+                            "N23 {mode:?}, touch={touch}, {case}: old press survived"
+                        ));
+                    }
+                    state.complete_primary_release(touch);
+                    if same_target {
+                        let request = receiver
+                            .try_recv()
+                            .expect("stable tool adoption must still work");
+                        let seed = if case == "same-field edit" {
+                            "beta"
+                        } else {
+                            "alpha"
+                        };
+                        assert!(request.command.ends_with(&format!("T{seed} world")));
+                        assert!(receiver.try_recv().is_err());
+                    } else if local {
+                        assert_eq!(state.chrome.seed_text, "local world");
+                        assert!(receiver.try_recv().is_err());
+                    } else {
+                        if let Ok(request) = receiver.try_recv() {
+                            findings.push(format!(
+                                "N23 {mode:?}, touch={touch}, {case}: stale release sent {}",
+                                request.command
+                            ));
+                            // Keep probing independent failures without a pending action.
+                            state.native_action_finished(request.host, request.revision, Ok(false));
+                        }
+                        assert_eq!(state.chrome.voice_transcript, "world");
+                        assert_eq!(state.chrome.handwriting_candidates, ["world"]);
+                        assert!(!state.chrome.handwriting_strokes.is_empty());
+                        // A fresh gesture is an explicit choice of the now-visible target.
+                        state.last_interaction_action = None;
+                        state.chrome.input_modes_expanded = true;
+                        state.last_scene = None;
+                        point_tool(state, kind);
+                        state.begin_primary_press(touch);
+                        state.complete_primary_release(touch);
+                        assert!(
+                            receiver.try_recv().is_ok(),
+                            "explicit retry: {mode:?}, {case}"
+                        );
+                        assert!(receiver.try_recv().is_err());
+                    }
+                    state.complete_primary_release(touch);
+                    assert!(
+                        receiver.try_recv().is_err(),
+                        "duplicate release must not insert again"
+                    );
+                }
+            }
+        }
+        findings
+    });
+}
+
+fn point_tool(state: &mut PanelState, kind: suzaku_map::ime::gpu::InteractionKind) {
+    let scene = state.current_scene();
+    let rect = scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == kind)
+        .expect("visible tool control")
+        .rect;
+    let point = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
+    assert_eq!(scene.hit_interaction(point.0, point.1), Some(kind));
+    state.cursor_position = Some(point);
+    state.last_scene = Some(scene);
 }
 
 #[test]

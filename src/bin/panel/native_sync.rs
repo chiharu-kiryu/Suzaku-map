@@ -11,6 +11,7 @@ use suzaku_map::{
     ime::{
         Mode, Snapshot,
         companion::{NativeComposition, NativeOperation},
+        gpu::InteractionKind,
     },
     panel_support::composition_candidate_previews,
 };
@@ -314,8 +315,9 @@ impl PanelState {
         {
             return;
         }
-        let keyboard_target_unchanged =
-            self.native
+        let input_target_unchanged = self.native.showing
+            && self
+                .native
                 .frame
                 .as_ref()
                 .zip(frame.as_ref())
@@ -323,6 +325,8 @@ impl PanelState {
                     old.host == new.host
                         && old.context == new.context
                         && old.language == new.language
+                        && old.focused
+                        && !old.private
                         && new.focused
                         && !new.private
                 });
@@ -341,6 +345,30 @@ impl PanelState {
         let visible = frame.as_ref().is_some_and(NativeComposition::visible);
         self.native.frame = frame;
         self.pause_voice_capture_if_target_changed();
+        // Candidate presses depend on the exact snapshot. Keyboard/tool presses
+        // can survive metadata or same-field edits, but never a change of target
+        // (including entering native view from local editing). Cancel before the
+        // focus/settings early return so an away-and-back update cannot revive
+        // a press that began in another field. Retain tool sources for a new click.
+        let updates_native_view =
+            self.native.showing || (visible && !self.is_focused && !self.chrome.settings_open);
+        if updates_native_view
+            && (matches!(
+                self.interaction.pressed_interaction,
+                Some(InteractionKind::Candidate(_) | InteractionKind::SelectNextToken(_))
+            ) || (!input_target_unchanged
+                && matches!(
+                    self.interaction.pressed_interaction,
+                    Some(
+                        InteractionKind::VirtualKeyboardKey(_)
+                            | InteractionKind::InsertVoiceTranscript
+                            | InteractionKind::UseHandwritingCandidate(_)
+                    )
+                )))
+        {
+            self.clear_pressed_interaction();
+            self.interaction.touch_tap_pending = false;
+        }
         // Our own text IME context is not an external app to mirror back into itself.
         if self.is_focused || self.chrome.settings_open {
             if self.native.showing && !visible {
@@ -362,22 +390,6 @@ impl PanelState {
             self.pause_voice_capture_if_target_changed();
             self.engine.configure_prediction(None);
             self.chrome.input_modes_expanded = false;
-        }
-        // A press begun on older candidates must not select their replacement.
-        if matches!(
-            self.interaction.pressed_interaction,
-            Some(
-                suzaku_map::ime::gpu::InteractionKind::Candidate(_)
-                    | suzaku_map::ime::gpu::InteractionKind::SelectNextToken(_)
-            )
-        ) || (!keyboard_target_unchanged
-            && matches!(
-                self.interaction.pressed_interaction,
-                Some(suzaku_map::ime::gpu::InteractionKind::VirtualKeyboardKey(_))
-            ))
-        {
-            self.clear_pressed_interaction();
-            self.interaction.touch_tap_pending = false;
         }
         self.flush_native_typing();
         self.refresh_native_view();

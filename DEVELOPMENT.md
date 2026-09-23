@@ -3,7 +3,26 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.5.5 — Linux Alpha preview**.
+Current source version: **0.5.8 — Linux Alpha reliability patch**.
+
+### 0.5.8 — Lifecycle recovery and input-target boundaries
+
+- Quit retries retain unfinished input-method restoration and queued host-start cleanup.
+- Failed single-instance handoffs no longer open an unguarded extra panel. Coalesced native
+  updates can wake the companion for a new field without overriding manual hiding in the old field.
+- Voice/handwriting adoption gestures are cancelled when their native input target changes;
+  source material remains available for a fresh click. Continuous drafting and explicit submission
+  rules are unchanged. See the [0.5.8 release notes](docs/releases/0.5.8.md).
+
+### 0.5.7 — Continuous input and Linux reliability
+
+Completion/undo, tool insertion, settings recovery, confirmed model configuration, data restore
+locks and Linux registration/packaging were hardened. See the [0.5.7 release notes](docs/releases/0.5.7.md).
+
+### 0.5.6 — English completion and input reliability
+
+Improved English completion, Compose/dead-key handling and native editing recovery, with functional
+network audits and strict Clippy coverage. See the [0.5.6 release notes](docs/releases/0.5.6.md).
 
 ### 0.5.5 — Draft translation, clearer text and compact settings
 

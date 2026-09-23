@@ -109,6 +109,208 @@ struct SourceProbe {
     completed: bool,
 }
 
+#[test]
+#[ignore = "requires private Xvfb/D-Bus/XDG; run by scripts/test-linux-ci.sh ui"]
+fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
+    assert_eq!(std::env::var("SUZAKU_PANEL_NATIVE_QA").as_deref(), Ok("1"));
+    for key in ["XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME"] {
+        assert!(
+            std::path::Path::new(&std::env::var_os(key).unwrap()).starts_with(std::env::temp_dir())
+        );
+    }
+    let mut builder = EventLoop::<PanelUserEvent>::with_user_event();
+    builder.with_x11().with_any_thread(true);
+    let events = builder.build().unwrap();
+    struct WakeProbe {
+        proxy: EventLoopProxy<PanelUserEvent>,
+        completed: bool,
+    }
+    impl ApplicationHandler<PanelUserEvent> for WakeProbe {
+        fn resumed(&mut self, events: &ActiveEventLoop) {
+            let window = Arc::new(events.create_window(panel_window_attributes()).unwrap());
+            let mut panel = pollster::block_on(PanelState::new(window)).unwrap();
+            panel.runs_without_window_focus = true;
+            panel.is_focused = false;
+            let mut app = crate::PanelApp::new(self.proxy.clone(), None);
+            app.panel = Some(panel);
+            app.panel_visible = true;
+            let (sender, receiver) = mpsc::sync_channel(1);
+            app.panel.as_mut().unwrap().native.sender = Some(sender.clone());
+            // Use the real mailbox and event handler, but no desktop/service or
+            // action workers. Only the last update survives until the UI wake.
+            app.native_sync = Some(NativeSync {
+                mailbox: Arc::new(Mutex::new(Mailbox::default())),
+                sender,
+                stop: Arc::new(AtomicBool::new(false)),
+                threads: Vec::new(),
+            });
+            let mut frame = keyboard_frame("hel", 1);
+            publish_wake_frames(&mut app, events, [Some(frame.clone())]);
+            app.user_event(events, PanelUserEvent::HidePanel);
+            assert_panel_visibility(&app, false);
+            frame.revision += 1;
+            publish_wake_frames(&mut app, events, [Some(frame.clone())]);
+            assert_panel_visibility(&app, false); // Same manually hidden field.
+
+            for restart in [false, true] {
+                if restart {
+                    frame.host = "22222222-2222-4222-8222-222222222222".into();
+                    frame.revision = 1;
+                } else {
+                    frame.context += 1;
+                    frame.revision += 1;
+                }
+                publish_wake_frames(&mut app, events, [None, Some(frame.clone())]);
+                assert!(
+                    app.panel_visible,
+                    "N22: coalesced new context stayed hidden; restart={restart}"
+                );
+                assert_panel_visibility(&app, true);
+                assert!(app.native_auto_shown);
+                assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, frame.seed);
+                assert!(app.native_hidden_context.is_none());
+                app.user_event(events, PanelUserEvent::HidePanel);
+                assert_panel_visibility(&app, false);
+            }
+
+            // A new field is not permission to steal panel/settings focus or to
+            // bypass privacy, empty/unfocused input or a focus-taking backend.
+            for guard in [
+                "panel focus",
+                "settings",
+                "backend",
+                "private",
+                "unfocused",
+                "empty",
+            ] {
+                frame.context += 1;
+                frame.revision += 1;
+                let mut blocked = frame.clone();
+                let panel = app.panel.as_mut().unwrap();
+                match guard {
+                    "panel focus" => panel.is_focused = true,
+                    "settings" => panel.chrome.settings_open = true,
+                    "backend" => panel.runs_without_window_focus = false,
+                    "private" => {
+                        blocked.private = true;
+                        blocked.seed.clear();
+                        blocked.candidates.clear();
+                    }
+                    "unfocused" => {
+                        blocked.focused = false;
+                        blocked.seed.clear();
+                        blocked.candidates.clear();
+                    }
+                    "empty" => {
+                        blocked.seed.clear();
+                        blocked.candidates.clear();
+                    }
+                    _ => unreachable!(),
+                }
+                publish_wake_frames(&mut app, events, [Some(blocked)]);
+                assert!(!app.panel_visible, "visibility guard bypassed: {guard}");
+                let panel = app.panel.as_mut().unwrap();
+                panel.is_focused = false;
+                panel.chrome.settings_open = false;
+                panel.runs_without_window_focus = true;
+                frame.revision += 1;
+                publish_wake_frames(&mut app, events, [Some(frame.clone())]);
+                assert_panel_visibility(&app, true);
+                assert!(app.native_auto_shown);
+                app.user_event(events, PanelUserEvent::HidePanel);
+            }
+
+            // Explicit Show clears manual suppression and remains visible after
+            // composition ends; automatic visibility still follows composition.
+            app.user_event(events, PanelUserEvent::ShowPanel);
+            publish_wake_frames(&mut app, events, [None]);
+            assert_panel_visibility(&app, true);
+            assert!(!app.native_auto_shown);
+            app.user_event(events, PanelUserEvent::HidePanel);
+            frame.context += 1;
+            frame.revision += 1;
+            publish_wake_frames(&mut app, events, [Some(frame)]);
+            assert_panel_visibility(&app, true);
+            assert!(app.native_auto_shown);
+            publish_wake_frames(&mut app, events, [None]);
+            assert_panel_visibility(&app, false);
+            assert!(
+                receiver.try_recv().is_err(),
+                "visibility must not send input actions"
+            );
+            self.completed = true;
+            events.exit();
+        }
+
+        fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+    }
+    let mut probe = WakeProbe {
+        proxy: events.create_proxy(),
+        completed: false,
+    };
+    events.run_app(&mut probe).unwrap();
+    assert!(probe.completed);
+    println!(
+        "PASS: coalesced context/restart wakeups, manual hiding, focus/privacy guards and auto-hide"
+    );
+}
+
+fn publish_wake_frames(
+    app: &mut crate::PanelApp,
+    events: &ActiveEventLoop,
+    frames: impl IntoIterator<Item = Option<NativeComposition>>,
+) {
+    for frame in frames {
+        app.native_sync
+            .as_ref()
+            .unwrap()
+            .mailbox
+            .lock()
+            .unwrap()
+            .update = Some(frame);
+    }
+    app.user_event(events, PanelUserEvent::NativeCompositionReady);
+    assert!(app.native_sync.as_ref().unwrap().take_update().is_none());
+}
+
+fn assert_panel_visibility(app: &crate::PanelApp, visible: bool) {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use x11rb::protocol::xproto::{ConnectionExt, MapState};
+    assert_eq!(app.panel_visible, visible);
+    let RawWindowHandle::Xlib(handle) = app
+        .panel
+        .as_ref()
+        .unwrap()
+        .window
+        .window_handle()
+        .unwrap()
+        .as_raw()
+    else {
+        panic!("isolated X11 fixture required");
+    };
+    // winit's cached visibility stays in YesWait until MapNotify is dispatched.
+    // This batch runs inside one UI callback: read the actual test window on the
+    // private X server, allowing its asynchronous map/unmap request to settle.
+    let (connection, _) = x11rb::connect(None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        let state = connection
+            .get_window_attributes(handle.window as u32)
+            .unwrap()
+            .reply()
+            .unwrap()
+            .map_state;
+        if (state == MapState::VIEWABLE) == visible {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "native visibility never became {visible}: {state:?}"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 impl ApplicationHandler for SourceProbe {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = Arc::new(event_loop.create_window(panel_window_attributes()).unwrap());

@@ -88,7 +88,10 @@ impl<T: Transport> HostService<T> {
         if !self.managed {
             return Ok(false);
         }
-        if self.transport.state(COMMAND_TIMEOUT)? != UnitState::Running {
+        // Inactive does not mean no start job is queued: it may still be waiting
+        // for dependencies. Keep ownership until stop acknowledges cancellation,
+        // or the unit is actually gone.
+        if self.transport.state(COMMAND_TIMEOUT)? == UnitState::Missing {
             self.managed = false;
         }
         Ok(self.managed)
@@ -237,6 +240,8 @@ mod tests {
         custom: bool,
         fail: bool,
         delayed: bool,
+        defer_start: bool,
+        pending_start: bool,
         calls: Vec<String>,
     }
     impl Transport for Fake {
@@ -256,8 +261,21 @@ mod tests {
         }
         fn command(&mut self, operation: &str, _: Duration) -> Result<(), String> {
             self.calls.push(operation.into());
+            if operation == "start" && self.defer_start {
+                // A start job may wait for dependencies while ActiveState stays
+                // inactive, even when the systemctl acknowledgement times out.
+                self.pending_start = true;
+                return if self.fail {
+                    Err("start acknowledgement timed out".into())
+                } else {
+                    Ok(())
+                };
+            }
             if self.fail {
                 return Err("command failed".into());
+            }
+            if operation == "stop" {
+                self.pending_start = false;
             }
             self.state = if operation == "start" {
                 UnitState::Running
@@ -277,6 +295,8 @@ mod tests {
                 custom: false,
                 fail: false,
                 delayed: false,
+                defer_start: false,
+                pending_start: false,
                 calls: vec![],
             },
         }
@@ -385,6 +405,66 @@ mod tests {
         assert!(host.managed, "a failed stop must remain retryable");
         host.transport.fail = false;
         host.stop().unwrap();
+    }
+
+    #[test]
+    fn queued_start_is_cancelled_on_quit_even_while_the_unit_is_inactive() {
+        for missing_ack in [false, true] {
+            let mut host = fixture(UnitState::Stopped, false);
+            host.transport.defer_start = true;
+            host.transport.fail = missing_ack;
+            assert!(host.ensure_with_timeout(Duration::from_millis(25)).is_err());
+            assert!(host.transport.pending_start);
+            assert_eq!(host.transport.state, UnitState::Stopped);
+            assert!(
+                host.needs_stop().unwrap(),
+                "N20: inactive state discarded ownership of a queued start"
+            );
+            host.transport.fail = false;
+            host.stop().unwrap();
+            assert!(
+                !host.transport.pending_start,
+                "Quit must cancel the pending job"
+            );
+            assert_eq!(host.transport.state, UnitState::Stopped);
+            assert_eq!(
+                host.transport
+                    .calls
+                    .iter()
+                    .filter(|op| *op == "stop")
+                    .count(),
+                1
+            );
+            assert!(!host.needs_stop().unwrap());
+            host.stop().unwrap();
+            assert_eq!(
+                host.transport
+                    .calls
+                    .iter()
+                    .filter(|op| *op == "stop")
+                    .count(),
+                1,
+                "an acknowledged cancellation must not be replayed"
+            );
+        }
+    }
+
+    #[test]
+    fn failed_cancellation_remains_owned_but_a_removed_unit_can_be_released() {
+        let mut host = fixture(UnitState::Stopped, false);
+        host.transport.defer_start = true;
+        assert!(host.ensure_with_timeout(Duration::from_millis(25)).is_err());
+        host.transport.fail = true;
+        assert!(host.stop().is_err());
+        assert!(host.transport.pending_start);
+        assert!(
+            host.needs_stop().unwrap(),
+            "a failed cancellation must be retryable"
+        );
+        // Simulate the unit being explicitly removed before retrying cleanup.
+        host.transport.state = UnitState::Missing;
+        host.transport.pending_start = false;
+        assert!(!host.needs_stop().unwrap());
     }
 
     #[test]

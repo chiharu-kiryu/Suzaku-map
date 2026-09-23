@@ -55,6 +55,7 @@ else
   suzaku_ci_tests="$(cargo test --locked --all-features --bin panel -- --list)"
   for suzaku_ci_test in \
     windowing_native_test::native_window_fits_content_through_fold_zoom_and_restore \
+    native_sync::tests::hidden_panel_wakes_for_new_contexts_after_coalesced_updates \
     keyboard_native_test::native_keyboard_editing_and_focus_return \
     candidates_native_test::native_candidate_clicks_and_async_refresh_are_safe \
     settings_native_test::native_tone_controls_follow_acknowledgements_and_reload \
@@ -63,6 +64,7 @@ else
     translation::tests::native_translation_preserves_drafts_and_rejects_stale_contexts \
     native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
     native_sync::tool_chain_audit_test::audit_voice_auto_insert_must_not_follow_an_unrelated_native_context \
+    native_sync::tool_chain_audit_test::tool_adoption_gestures_must_not_cross_native_targets \
     native_sync::tool_chain_audit_test::audit_local_tool_insertion_must_use_the_caret_word_boundary \
     status_native_test::native_panel_input_does_not_wait_for_status_probes \
     font_atlas::visual_tests::multilingual_candidates_render_through_the_gpu_without_question_mark_fallback
@@ -111,4 +113,23 @@ else
       cargo test --locked --all-features --bin panel "$suzaku_ci_test" \
       -- --exact --ignored --nocapture --test-threads=1
   done
+
+  # Exercise the executable's startup gate, not just the instance helper. A
+  # failed handoff must never fall through into a second unguarded window.
+  suzaku_ci_launch_test=single_instance_failures_never_launch_an_unguarded_panel
+  suzaku_ci_launch_tests=$(cargo test --locked --all-features --test linux_panel_instance_cli -- --list)
+  [[ $'\n'"$suzaku_ci_launch_tests"$'\n' == *$'\n'"$suzaku_ci_launch_test: test"$'\n'* ]] || {
+    printf 'Required panel launch test is missing.\n' >&2
+    exit 1
+  }
+  timeout --kill-after=3s 90s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
+    dbus-run-session -- env \
+    XDG_RUNTIME_DIR="$suzaku_ci_tmp/runtime" \
+    XDG_CONFIG_HOME="$suzaku_ci_tmp/launch/config" \
+    XDG_DATA_HOME="$suzaku_ci_tmp/launch/data" \
+    SUZAKU_PANEL_NATIVE_QA=1 SUZAKU_LINUX_PANEL_BACKEND=x11-nofocus \
+    GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
+    xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
+    cargo test --locked --all-features --test linux_panel_instance_cli "$suzaku_ci_launch_test" \
+    -- --exact --ignored --nocapture --test-threads=1
 fi

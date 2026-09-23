@@ -11,6 +11,7 @@ mkdir -m 700 "$suzaku_tool_audit_tmp/runtime"
 suzaku_tool_audit_failed=0
 for suzaku_tool_audit_case in \
   audit_voice_auto_insert_must_not_follow_an_unrelated_native_context \
+  tool_adoption_gestures_must_not_cross_native_targets \
   audit_local_tool_insertion_must_use_the_caret_word_boundary
 do
   suzaku_tool_audit_test="native_sync::tool_chain_audit_test::$suzaku_tool_audit_case"

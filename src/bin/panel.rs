@@ -191,13 +191,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         suzaku_map::data::files::DataLease::current_shared().map_err(std::io::Error::other)?;
     let event_loop = build_event_loop()?;
     let event_proxy = event_loop.create_proxy();
-    let instance = match claim_single_instance(event_proxy.clone()) {
-        Ok(InstanceLaunch::Primary(instance)) => Some(instance),
-        Ok(InstanceLaunch::ExistingSignaled) => return Ok(()),
-        Err(error) => {
-            eprintln!("Suzaku single-instance control unavailable: {error}");
-            None
-        }
+    let instance = match claim_single_instance(event_proxy.clone()).map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!(
+                "Suzaku single-instance control unavailable; refusing an unguarded panel: {error}"
+            ),
+        )
+    })? {
+        InstanceLaunch::Primary(instance) => Some(instance),
+        InstanceLaunch::ExistingSignaled => return Ok(()),
     };
     let mut app = PanelApp::new(event_proxy, instance);
     event_loop.run_app(&mut app)?;
@@ -706,11 +709,6 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     .and_then(|sync| sync.take_update())
                     && let Some(panel) = self.panel.as_mut()
                 {
-                    let was_visible = panel
-                        .native
-                        .frame
-                        .as_ref()
-                        .is_some_and(|frame| frame.visible());
                     panel.receive_native_frame(update);
                     let visible = panel.native.showing
                         && panel
@@ -726,7 +724,10 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                         && panel.runs_without_window_focus
                         && !panel.is_focused
                         && !panel.chrome.settings_open;
-                    if visible && !was_visible && !self.panel_visible && can_show {
+                    // The mailbox can coalesce an empty transition between two
+                    // fields. Wake from the current context, not an observed
+                    // invisible-to-visible edge; manual hiding is context-bound.
+                    if visible && !self.panel_visible && can_show {
                         self.set_panel_visible(true);
                         self.native_auto_shown = true;
                     } else if !visible && self.native_auto_shown {
