@@ -1082,6 +1082,81 @@ mod tests {
         assert!(!host_bridge_snapshot().active);
     }
 
+    #[test]
+    fn companion_byte_limits_hide_only_the_view_and_preserve_native_text() {
+        use crate::ime::companion::{MAX_FRAME_BYTES, MAX_TEXT_BYTES, NativeComposition};
+        use crate::languages::BuiltinLanguage;
+
+        let _guard = host_bridge_test_lock();
+        let drafts = [
+            "x".repeat(MAX_TEXT_BYTES),
+            "\"\\".repeat(MAX_TEXT_BYTES / 2),
+            format!("{}é", "界".repeat(MAX_TEXT_BYTES / 3)),
+            "😀".repeat(MAX_TEXT_BYTES / 4),
+            "\u{a0}".repeat(MAX_TEXT_BYTES / 2),
+        ];
+        for language in [
+            BuiltinLanguage::English,
+            BuiltinLanguage::ChineseSimplified,
+            BuiltinLanguage::Japanese,
+        ] {
+            reset_host_bridge_session();
+            super::with_shared_host_ime_session(|session| {
+                *session = HostImeSession::new(EngineConfig {
+                    default_language: language.id().into(),
+                    ..EngineConfig::default()
+                });
+                session.engine.enable_ibus_candidate_mix();
+                session.activate();
+            });
+            for draft in &drafts {
+                assert_eq!(draft.len(), MAX_TEXT_BYTES);
+                for overflow in [false, true] {
+                    let text = format!("{draft}{}", if overflow { "x" } else { "" });
+                    assert!(host_bridge_replace_marked_text(
+                        &text,
+                        InputSource::HardwareKeyboard
+                    ));
+                    let before = host_bridge_snapshot();
+                    let raw = c_string_to_owned(super::suzaku_host_ime_companion_snapshot_utf8(
+                        c"00000000-0000-0000-0000-000000000001".as_ptr(),
+                        7,
+                        42,
+                        true,
+                        false,
+                    ))
+                    .unwrap();
+                    assert!(raw.ends_with('\n') && raw.len() <= MAX_FRAME_BYTES);
+                    let frame = NativeComposition::parse(raw.as_bytes()).unwrap();
+                    assert_eq!((frame.context, frame.revision), (7, 42));
+                    assert_eq!(frame.language, language.id());
+                    assert!(frame.focused);
+                    assert_eq!(frame.private, overflow);
+                    if overflow {
+                        assert!(frame.seed.is_empty() && frame.candidates.is_empty());
+                        assert_eq!(frame.selected, 0);
+                    } else {
+                        assert_eq!(frame.seed, text);
+                        assert_eq!(frame.candidates.len(), 1);
+                        assert_eq!(frame.candidates[0].text, text);
+                    }
+                    assert_eq!(host_bridge_snapshot(), before);
+                    assert_eq!(before.marked_text, text);
+                    assert_eq!(before.draft_text, text);
+                    // Serialization limits must not turn the actual field
+                    // private or change the selected native commit payload.
+                    super::with_shared_host_ime_session(|session| assert!(!session.private));
+                    assert!(host_bridge_commit_selected(true));
+                    assert_eq!(
+                        host_bridge_take_last_committed_text().as_deref(),
+                        Some(text.as_str())
+                    );
+                }
+            }
+        }
+        reset_host_bridge_session();
+    }
+
     fn c_string_to_owned(raw: *mut c_char) -> Option<String> {
         if raw.is_null() {
             return None;

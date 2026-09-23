@@ -23,6 +23,22 @@ bash scripts/test-linux-ci.sh ibus
 bash scripts/test-linux-ci.sh ui
 ```
 
+Real application checks additionally need GTK input modules and Qt test bindings:
+
+```bash
+sudo apt install gnome-text-editor zenity x11-utils libxtst6 ibus-gtk3 ibus-gtk4 \
+  gir1.2-gtk-3.0 python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
+bash scripts/test-linux-apps.sh gtk
+bash scripts/test-linux-apps.sh qt5
+bash scripts/test-linux-apps.sh qt6
+SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
+```
+
+`bash scripts/test-linux-apps.sh cross` also tests an already installed `google-chrome`, or the
+executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
+not personal browser tabs. CI runs GTK/Qt; the documented Chrome checks are local, not a CI gate.
+Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
+
 FFI tests share process-wide state, so keep them serial. Native runners create private D-Bus/IBus/
 Xvfb sessions; never remove isolation guards or aim them at the real desktop. Regression tests
 must not connect a real microphone or cloud provider.

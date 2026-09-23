@@ -1,12 +1,12 @@
-%% Suzaku functional network: 2026-09-23 source snapshot for 0.6.1, not the installed build.
-%% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); N01-N04 in 0.5.6, N05-N18 in 0.5.7, N19-N23 in 0.5.8, N24-N28 in 0.5.9, N29-N32 in 0.6.0, N33-N37 in 0.6.1.
+%% Suzaku functional network: 2026-09-23 source snapshot for 0.6.2, not the installed build.
+%% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); N01-N04 in 0.5.6, N05-N18 in 0.5.7, N19-N23 in 0.5.8, N24-N28 in 0.5.9, N29-N32 in 0.6.0, N33-N37 in 0.6.1, N38-N40 in 0.6.2.
 %% Solid edges: implemented logical routes. Dotted edges: optional model requests.
 %% Reused engine/provider code does not mean shared state across processes.
 flowchart TB
     APP["目标应用 / 实体键盘"]
     INPUT["IBus 宿主：事件、隐私门控、连续草稿"]
     CORE["宿主引擎：中英日插件、词句候选、排序"]
-    CAND["IBus 预编辑与候选条"]
+    CAND["IBus 候选区草稿与候选条"]
     IPC["本用户 Unix 通道：快照、动作、确认"]
     PANEL["浮动面板 / 屏幕键盘 / 悬浮球"]
     LOCAL["面板独立编辑：另一引擎实例与候选"]

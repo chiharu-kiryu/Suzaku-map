@@ -29,6 +29,7 @@ unsafe extern "C" {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinuxImeProbeReport {
+    /// Visible draft preview (candidate-area by default, inline when opted in).
     pub preedit: String,
     pub primary_candidate: String,
     pub candidate_count: usize,
@@ -117,7 +118,7 @@ fn probe_roundtrip_mode(
             9 => "the client did not receive CommitText",
             10 => "the previous IBus engine could not be restored",
             11 => "the panel IPC channel rejected the commit",
-            12 => "the client did not receive visible preedit text",
+            12 => "the client did not receive a visible draft preview",
             13 => "the client did not receive a visible candidate lookup table",
             14 => "the candidate window is not using the six-row layout",
             15 => "the candidate window appeared before an input event",

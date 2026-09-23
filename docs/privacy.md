@@ -14,6 +14,16 @@ The native companion channel contains active preedit/candidates, not surrounding
 or accumulated committed history. Password/PIN and declared numeric/decimal/phone fields bypass
 composition and panel injection. Private hints suppress model requests and companion snapshots.
 Applications must report purposes/hints correctly; switch input methods when unsure about a field.
+For example, local testing of Zenity 4.0.1 `--entry --hide-text` found that it masks text visually
+but reports an ordinary unhinted field to IBus, unlike its `--password` dialog. Visual masking
+alone does not guarantee private handling; disabling the model also does not hide local companion
+drafts. See the [GTK application audit](bug-audit-gtk-apps-2026-09-23.md).
+The tested Chrome 153 X11/GTK path and Qt 5.15.13/6.4.2 IBus plugins also do not convey numeric
+field purposes. 0.6.2 passes digits directly while the draft is empty, without
+creating candidates; this does not mark the whole field private. Letters, explicit Alt+digits
+and panel actions can still use ordinary-field routing when purposes are missing. Standard
+password keyboard paths passed isolated tests, but this does not qualify arbitrary masked
+controls or companion injection. See the [compatibility fixes](bug-audit-cross-app-fixes-2026-09-23.md).
 
 0.6.1 also rejects the independent panel's direct text sends into PRIVATE
 fields, while keeping native local conversion available. Changing the active field's private/bypass

@@ -3,7 +3,19 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.1 — Linux Alpha input-target reliability release**.
+Current source version: **0.6.2 — Linux Alpha cross-application input reliability patch**.
+
+### 0.6.2 — Candidate-area drafts and literal numeric input
+
+- Default drafts stay in the candidate area/companion, not the application's preedit cache.
+  Tested Chrome/Qt fields no longer commit them on focus changes, and cancelling a replacement
+  preserves the original selection. Enter/candidate clicks remain explicit submission.
+- With no draft, ordinary/keypad digits go directly to the application. Within a draft, number
+  choices and Alt+digits retain their existing behavior; Space still continues writing.
+- Opt-in inline preedit remains available, with complete empty updates for synchronous IBus
+  cleanup. It retains the client's implicit-confirmation risk on focus changes.
+- Real GTK/Chrome/Qt workflows and Unicode/long-draft boundaries have isolated regression coverage.
+  See the [0.6.2 release notes](docs/releases/0.6.2.md).
 
 ### 0.6.1 — Input-target boundaries and safe continuous typing
 
@@ -1021,9 +1033,10 @@ Wayland.
 - Ubuntu / Arch / SteamOS capability profiles
 - Linux voice backend and probe path
 - native IBus `Factory`/`Engine` host backed by the shared Rust candidate engine
-- IBus preedit and a cursor-anchored candidate window with six visible rows, mixed word/sentence
-  ranking, and bounded annotated previews; arrow/Tab navigation, paging, 1–6 editable selection
-  in all three languages, Alt+digits literal input, candidate clicks, Space continuation, and commit
+- engine-owned IBus drafts shown in the candidate area's auxiliary line by default, with six
+  visible candidate rows, mixed word/sentence ranking, and bounded annotated previews;
+  arrow/Tab navigation, paging, 1–6 editable selection in all three languages, Alt+digits
+  literal draft input, candidate clicks, Space continuation, and explicit commit
 - tray-controlled IBus activation/restoration with verified switches, bounded off-thread host I/O,
   on-menu-open status refresh, and no global keyboard hook or input polling
 - native roundtrip probe coverage for input-triggered preedit/candidates, final commit, and dismissal
@@ -1122,7 +1135,18 @@ preservation, and cancellation of outdated presses.
 You can also use `Super+Space` to select **Suzaku**, type a Latin seed, use arrows or Tab to
 move through candidates, `Page Up` / `Page Down` to change pages, and `1`–`6` to adopt a candidate
 without committing. Space and punctuation continue the draft; Enter or a left click submits it.
-Alt+digits enters literal numbers. Escape cancels the current preedit. `linux-register uninstall`
+Without an active draft, ordinary digits go directly to the application. Alt+digits explicitly
+enters literal numbers into the draft. Escape cancels the current draft.
+
+Unconfirmed text appears in the candidate area/companion panel, not in the application's inline
+preedit buffer. This prevents clients such as Qt and Chrome from committing cached draft text
+when focus changes. The candidate-area preview shows the last 160 Unicode characters without
+truncating the draft or committed text. Advanced users may start the host with
+`SUZAKU_IBUS_INLINE_PREEDIT=1` to restore inline preedit, but that also restores the risk of
+client-initiated commits on focus changes. See the
+[cross-application fix audit](docs/bug-audit-cross-app-fixes-2026-09-23.md) for tested boundaries.
+
+`linux-register uninstall`
 removes Suzaku from the GNOME switcher, disables the user service, and removes the installed host
 and component metadata.
 

@@ -79,7 +79,9 @@ jobs:
             libegl1-mesa-dev libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers \
             dbus-daemon ibus gir1.2-ibus-1.0 gir1.2-pango-1.0 python3-gi \
             xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck \
-            dpkg-dev jq desktop-file-utils
+            dpkg-dev jq desktop-file-utils gnome-text-editor zenity x11-utils libxtst6 \
+            ibus-gtk3 ibus-gtk4 gir1.2-gtk-3.0 \
+            python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
       - name: Install Rust
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component clippy
       - name: Cache Cargo downloads and build outputs
@@ -94,7 +96,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-linux-ci-v1-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
       - name: Lint the native test runner
-        run: shellcheck scripts/test-linux-ci.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
+        run: shellcheck scripts/test-linux-ci.sh scripts/test-linux-apps.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
       - name: Lint Rust code and test targets without warnings
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
       - name: Run the feature-enabled regression suite
@@ -102,8 +104,18 @@ jobs:
         run: cargo test --locked --all-features -- --test-threads=1
       - name: Test native IBus composition and candidate synchronization
         run: bash scripts/test-linux-ci.sh ibus
+      - name: Test opt-in legacy inline IBus composition
+        env:
+          SUZAKU_IBUS_INLINE_PREEDIT: "1"
+        run: bash scripts/test-linux-ci.sh ibus
       - name: Test isolated windows, keyboard input and multilingual GPU rendering
         run: bash scripts/test-linux-ci.sh ui
+      - name: Test English typing in real GTK applications on an isolated display
+        run: bash scripts/test-linux-apps.sh
+      - name: Test Qt workflows, focus cancellation and literal numeric fields
+        run: |
+          bash scripts/test-linux-apps.sh qt5
+          bash scripts/test-linux-apps.sh qt6
       - name: Test isolated settings startup, conflicts and save recovery
         run: bash scripts/test-settings-chain-audit.sh
       - name: Test isolated restore gates, path aliases and data recovery

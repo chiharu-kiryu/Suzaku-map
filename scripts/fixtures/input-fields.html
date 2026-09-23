@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'">
+<title>Suzaku Browser QA</title>
+<style>
+  body { font: 18px sans-serif; margin: 24px; }
+  label { display: block; margin: 10px 0; }
+  textarea, input, [contenteditable] { font: inherit; width: 700px; border: 1px solid #aaa; padding: 8px; }
+  textarea, [contenteditable] { height: 60px; }
+</style>
+<h1>Synthetic input only</h1>
+<label>Multiline<textarea id="editor" spellcheck="false" autofocus></textarea></label>
+<label>Rich text<div id="rich" contenteditable="true" spellcheck="false"></div></label>
+<label>Single line<input id="entry" autocomplete="off" spellcheck="false"></label>
+<label>Password<input id="password" type="password" autocomplete="off"></label>
+<label>Number<input id="number" type="number" step="any"></label>
+<script>
+  const token = location.pathname.split('/').pop();
+  const fields = ['editor', 'rich', 'entry', 'password', 'number'];
+  let ack = 0, seq = 0;
+  const composition = Object.fromEntries(fields.map(id => [id, '']));
+  const events = [];
+  function state() {
+    const values = {};
+    for (const id of fields) {
+      const element = document.getElementById(id);
+      // An empty contenteditable keeps a browser-owned caret placeholder <br>.
+      // Do not trim text: real spaces/newlines must still fail exact assertions.
+      const emptyPlaceholder = element.childNodes.length === 1 &&
+        element.firstChild.nodeName === 'BR';
+      values[id] = id === 'rich' ? (emptyPlaceholder ? '' : element.innerText) : element.value;
+    }
+    return {seq: ++seq, ack, active: document.activeElement.id, values, composition, events,
+      richMarkup: document.getElementById('rich').innerHTML, userAgent: navigator.userAgent};
+  }
+  async function publish() {
+    await fetch('/state/' + token, {method: 'POST', body: JSON.stringify(state())});
+  }
+  for (const type of ['compositionstart', 'compositionupdate', 'compositionend']) {
+    document.addEventListener(type, event => {
+      if (!fields.includes(event.target.id)) return;
+      composition[event.target.id] = type === 'compositionend' ? '' : (event.data || '');
+      events.push({field: event.target.id, type, text: event.data || ''});
+      if (events.length > 200) events.shift();
+    });
+  }
+  async function poll() {
+    try {
+      const commands = await (await fetch('/next/' + token)).json();
+      for (const command of commands) {
+        const field = document.getElementById(command.field);
+        field.focus();
+        if (command.start !== undefined) {
+          if (command.field === 'rich') {
+            const range = document.createRange();
+            range.setStart(field.firstChild, command.start);
+            range.setEnd(field.firstChild, command.end);
+            const selection = window.getSelection();
+            selection.removeAllRanges(); selection.addRange(range);
+          } else field.setSelectionRange(command.start, command.end);
+        }
+        ack = command.id;
+      }
+      await publish();
+    } finally { setTimeout(poll, 60); }
+  }
+  poll();
+</script>

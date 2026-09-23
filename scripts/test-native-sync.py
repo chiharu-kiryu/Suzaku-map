@@ -160,6 +160,91 @@ def create_context(bus, name):
     return context
 
 
+def check_post_process_preedit(bus):
+    """Candidate-area drafts stay out of the client; opt-in inline drafts clear."""
+    inline = os.environ.get("SUZAKU_IBUS_INLINE_PREEDIT") == "1"
+    assert json.loads(command("P0"))["ok"]
+    assert json.loads(command("Len"))["ok"]
+    checked = 0
+    for client_commit in [False, True]:
+        for operation in ["enter", "escape", "backspace", "delete word", "reset", "focus out"]:
+            context = create_context(bus, "suzaku-post-process-qa")
+            context.set_client_commit_preedit(client_commit)
+            context.set_post_process_key_event(True)
+            preedit = {"text": "", "visible": False}
+            auxiliary = {"text": "", "visible": False}
+            commits = []
+            updates = []
+
+            def update(_, text, cursor, visible, *mode, state=preedit, history=updates):
+                state.update(text=text.get_text(), visible=visible)
+                history.append(dict(state))
+
+            context.connect("update-preedit-text", update)
+            context.connect("update-preedit-text-with-mode", update)
+            context.connect("hide-preedit-text", lambda _, state=preedit: state.update(visible=False))
+            context.connect("update-auxiliary-text", lambda _, text, visible, state=auxiliary:
+                            state.update(text=text.get_text(), visible=visible))
+            context.connect("hide-auxiliary-text", lambda _, state=auxiliary: state.update(visible=False))
+            context.connect("commit-text", lambda _, text, output=commits: output.append(text.get_text()))
+            context.focus_in()
+            assert bus.set_global_engine("dev.suzaku.linux.ime")
+            # Drain the initial FocusIn clear before synchronous post-processing;
+            # an older queued signal must not be mistaken for the next key's result.
+            wait(lambda: context.get_engine() is not None, "initial synchronous context ready")
+            count, changed = len(updates), time.monotonic()
+
+            def settled():
+                nonlocal count, changed
+                if len(updates) != count:
+                    count, changed = len(updates), time.monotonic()
+                return time.monotonic() - changed >= 0.15
+
+            wait(settled, "initial context notifications drained")
+            try:
+                # One non-word letter keeps Backspace and Enter expectations exact.
+                assert context.process_key_event(IBus.KEY_x, 0, 0)
+                context.post_process_key_event()
+                if inline:
+                    wait(lambda: preedit == {"text": "x", "visible": True},
+                         f"synchronous preedit before {operation}, client_commit={client_commit}")
+                else:
+                    wait(lambda: auxiliary["visible"] and auxiliary["text"].startswith("Suzaku · x\n"),
+                         "candidate-area draft visible to synchronous client")
+                    # IBus itself can publish empty resets while switching
+                    # engines; only application-owned nonempty text is forbidden.
+                    assert all(not item["text"] and not item["visible"] for item in updates)
+                    assert preedit == {"text": "", "visible": False}
+                if operation == "reset":
+                    context.reset()
+                elif operation == "focus out":
+                    context.focus_out()
+                else:
+                    key = {"enter": IBus.KEY_Return, "escape": IBus.KEY_Escape,
+                           "backspace": IBus.KEY_BackSpace, "delete word": IBus.KEY_BackSpace}[operation]
+                    mask = IBus.ModifierType.CONTROL_MASK if operation == "delete word" else 0
+                    assert context.process_key_event(key, 0, mask)
+                    context.post_process_key_event()
+                wait(lambda: preedit == {"text": "", "visible": False},
+                     f"stale synchronous preedit after {operation}, client_commit={client_commit}")
+                wait(lambda: not auxiliary["visible"], "candidate-area draft clears on boundary")
+                if not inline:
+                    assert all(not item["text"] and not item["visible"] for item in updates), \
+                        "candidate-area mode must never populate the application's cache"
+                assert commits == (["x"] if operation == "enter" else [])
+                checked += 1
+            except Exception:
+                print("post-process QA:", client_commit, operation, updates, commits,
+                      bus.current_input_context(), flush=True)
+                raise
+            finally:
+                context.focus_out()
+                context.destroy()
+                pump()
+    assert checked == 12
+    print("PASS: 12 synchronous post-process draft clear/commit/cancel/reset/focus cases; inline:", inline)
+
+
 def check_tray_activation(bus):
     executable = os.environ["SUZAKU_NATIVE_ACTIVATION_TEST"]
     test = "input_method::tests::native_activation_input_and_release_roundtrip"
@@ -336,6 +421,184 @@ class EnginePeer:
         self.connection.signal_unsubscribe(self.subscription)
 
 
+def check_native_draft_limits(bus):
+    """Long native drafts remain lossless when the bounded panel view is hidden."""
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"]
+    watch = Watch()
+    peer = EnginePeer(bus)
+    limit = 8192
+    operations = [
+        ("letter", [(IBus.KEY_x, 0)], "x"),
+        ("literal digit", [(IBus.KEY_9, IBus.ModifierType.MOD1_MASK)], "9"),
+        ("space", [(IBus.KEY_space, 0)], " "),
+        ("accent", [(IBus.KEY_dead_acute, 0), (IBus.KEY_e, 0)], "é"),
+        ("long Compose", [(IBus.KEY_Multi_key, 0), (IBus.KEY_F11, 0), (IBus.KEY_3, 0)], "é" * 127),
+        ("cancelled Compose", [(IBus.KEY_dead_acute, 0), (IBus.KEY_9, 0)], "9"),
+    ]
+    passed = 0
+    try:
+        for language in ["en", "zh-Hans", "ja"]:
+            assert json.loads(command("L" + language))["ok"]
+            for label, keys, suffix in operations:
+                for overflow in [False, True]:
+                    for recover in [False, True]:
+                        peer.event("FocusIn")
+                        pump()
+                        # Include multibyte and JSON-escaped characters, but pad
+                        # in bytes so the exact/over-limit distinction is real.
+                        prefix = '"\\界😀é' * 500
+                        budget = limit + int(overflow) - len(suffix.encode())
+                        draft = prefix + "z" * (budget - len(prefix.encode()))
+                        assert len(draft.encode()) == budget <= limit
+                        assert action(watch.latest, "T" + draft)
+                        wait(lambda: watch.latest["seed"] == draft, "prepare bounded native draft")
+                        baseline, before = watch.latest, len(peer.commits)
+                        assert not baseline["private"] and len(baseline["candidates"]) == 1
+                        assert baseline["candidates"][0]["text"] == draft
+                        assert baseline["candidates"][0]["kind"] == "literal"
+                        # A rejected replacement must not truncate or clear an
+                        # already accepted draft, including at the UTF-8 limit.
+                        assert not action(baseline, "T" + "界" * 2731)
+                        assert not action(baseline, "Tbad\ntext")
+                        pump()
+                        assert watch.latest == baseline
+                        for key, mask in keys:
+                            assert peer.process_key_event(key, 0, mask), (language, label)
+                        expected = draft + suffix
+                        wait(lambda: watch.latest["revision"] > baseline["revision"], "publish long edit")
+                        pump()
+                        frame = watch.latest
+                        assert frame["context"] == baseline["context"]
+                        assert frame["private"] == overflow, (language, label, overflow)
+                        if overflow:
+                            assert not frame["seed"] and not frame["candidates"]
+                        else:
+                            assert frame["seed"] == expected
+                            assert frame["candidates"][frame["selected"]]["text"] == expected
+                        assert not action(baseline, "Tstale"), "long edit retained an old revision"
+                        assert peer.commits[before:] == [], "long edit unexpectedly committed"
+                        if recover:
+                            assert peer.process_key_event(IBus.KEY_BackSpace)
+                            expected = expected[:-1]
+                            wait(lambda: not watch.latest["private"] and watch.latest["seed"] == expected,
+                                 "shortened draft must restore the exact public snapshot")
+                            assert watch.latest["context"] == baseline["context"]
+                        assert peer.process_key_event(IBus.KEY_Return)
+                        wait(lambda: len(peer.commits) > before and not watch.latest["seed"],
+                             "long draft must commit through native Enter")
+                        assert peer.commits[before:] == [expected], (language, label, overflow, recover)
+                        assert watch.latest["focused"] and not watch.latest["private"]
+                        assert watch.latest["context"] != baseline["context"]
+                        type_seed(peer, "hel")
+                        wait(lambda: watch.latest["seed"] == "hel" and watch.latest["candidates"],
+                             "normal native input must recover after a long commit")
+                        assert not peer.process_key_event(IBus.KEY_x, 0, IBus.ModifierType.RELEASE_MASK)
+                        assert peer.commits[before:] == [expected]
+                        passed += 1
+        assert passed == 72
+        print("PASS: 72 native draft byte-limit cases preserve Unicode/Compose/space, reject invalid replacements, and recover/commit without truncation")
+    finally:
+        peer.close()
+        assert json.loads(command("L" + saved["language"]))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
+
+
+def check_prediction_length_boundaries(bus):
+    """Crossing the model budget cancels old results, not the editable draft."""
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    assert config == runtime / "ime.json" and not config.is_symlink()
+    original = config.read_text()
+    watch = Watch()
+    seed = "note " + "界😀é" * 82 + "z hel"
+    assert len(seed) == 256 and len(seed.encode()) > 256 and seed.endswith("hel")
+    operations = [
+        ("letter", [(IBus.KEY_x, 0)], "x"),
+        ("unicode", [(IBus.unicode_to_keyval("😀"), 0)], "😀"),
+        ("space", [(IBus.KEY_space, 0)], " "),
+        ("Compose", [(IBus.KEY_Multi_key, 0), (IBus.KEY_F11, 0), (IBus.KEY_3, 0)], "é" * 127),
+    ]
+    passed = 0
+    try:
+        for label, keys, suffix in operations:
+            for phase in ["pending", "ready"]:
+                name = f"synthetic-draft-budget-{label}-{phase}"
+                gate = {key: threading.Event() for key in ["received", "release", "finished"]}
+                if phase == "ready":
+                    gate["release"].set()
+                model_reply_gates[name] = gate
+                peer = EnginePeer(bus)
+                try:
+                    settings = dict(saved, language="en", llm_enabled=False, llm_model=name,
+                                    llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+                    config.write_text(json.dumps(settings))
+                    assert json.loads(command("R"))["ok"]
+                    peer.event("FocusIn")
+                    type_seed(peer, "thank")
+                    assert peer.process_key_event(IBus.KEY_Return)
+                    wait(lambda: peer.commits == ["thank"] and not watch.latest["seed"], "prepare budget history")
+                    assert json.loads(command("P1"))["ok"]
+                    pump()
+                    requested = len(model_requests)
+                    assert action(watch.latest, "T" + seed)
+                    wait(gate["received"].is_set, "model reached length-boundary reply gate")
+                    payload = json.loads(model_requests[requested]["messages"][1]["content"])
+                    assert payload["raw_composition"] == seed and payload["committed_context"] == "thank"
+                    if phase == "ready":
+                        wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]),
+                             "ready prediction at 256 Unicode characters")
+                    baseline = watch.latest
+                    for key, mask in keys:
+                        assert peer.process_key_event(key, 0, mask)
+                    longer = seed + suffix
+                    wait(lambda: watch.latest["seed"] == longer, "retain over-budget draft")
+                    assert watch.latest["context"] == baseline["context"] and not watch.latest["private"]
+                    assert len(watch.latest["candidates"]) == 1
+                    assert watch.latest["candidates"][0]["text"] == longer
+                    assert json.loads(command("S"))["prediction"] == "Idle"
+                    assert not action(baseline, "K0")
+                    stable = watch.latest
+                    gate["release"].set()
+                    wait(gate["finished"].is_set, "release pre-budget model result")
+                    until = time.monotonic() + 0.2
+                    while time.monotonic() < until:
+                        pump()
+                        assert watch.latest == stable and peer.commits == ["thank"]
+                        assert len(model_requests) == requested + 1
+                        time.sleep(0.01)
+                    if len(suffix) == 1:
+                        assert peer.process_key_event(IBus.KEY_BackSpace)
+                    else:
+                        assert action(watch.latest, "T" + seed)
+                    wait(lambda: watch.latest["seed"] == seed and
+                         any(c["source"] == "model" for c in watch.latest["candidates"]),
+                         "prediction must resume after shortening the same draft")
+                    assert len(model_requests) == requested + 2
+                    payload = json.loads(model_requests[-1]["messages"][1]["content"])
+                    assert payload["raw_composition"] == seed and payload["committed_context"] == "thank"
+                    word = seed + "ioseismology"
+                    index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == word)
+                    assert action(watch.latest, f"N{index}")
+                    assert peer.process_key_event(IBus.KEY_Return)
+                    wait(lambda: len(peer.commits) == 2 and not watch.latest["seed"], "commit recovered model word")
+                    assert peer.commits == ["thank", word]
+                    passed += 1
+                finally:
+                    gate["release"].set()
+                    peer.close()
+                    model_reply_gates.pop(name, None)
+        assert passed == 8
+        print("PASS: 8 pending/ready model length-boundary cases drop old predictions, keep exact Unicode drafts/history, and resume after shortening")
+    finally:
+        config.write_text(original)
+        assert json.loads(command("R"))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
+
+
 def check_commit_target_boundaries(bus):
     """N37: external commits end old work; acknowledged companion commits continue."""
     saved = json.loads(command("S"))["settings"]
@@ -399,8 +662,8 @@ def check_commit_target_boundaries(bus):
                             if typed:
                                 expected_seed += " "
                         elif operation == "number choice":
-                            assert peer.process_key_event(IBus.KEY_1)
-                            expected_seed = baseline["candidates"][0]["text"] if typed else "1"
+                            assert peer.process_key_event(IBus.KEY_1) == typed
+                            expected_seed = baseline["candidates"][0]["text"] if typed else ""
                         elif operation in ["release enter", "control enter", "alt enter"]:
                             mask = {"release enter": IBus.ModifierType.RELEASE_MASK,
                                     "control enter": IBus.ModifierType.CONTROL_MASK,
@@ -1436,6 +1699,37 @@ def observe_lookup(context):
     return lookup
 
 
+def check_draft_preview(context, watch, commits, lookup):
+    inline = os.environ.get("SUZAKU_IBUS_INLINE_PREEDIT") == "1"
+    # Drain the preceding language/focus publication before using an exact
+    # revision-bound panel action. A synchronous native no-op is a bus barrier.
+    assert not context.process_key_event(IBus.KEY_F1, 0, 0)
+    assert command("Q") == b"1"
+    pump()
+    updates = []
+    observer = context.connect("update-preedit-text", lambda _, text, _cursor, visible:
+                               updates.append((text.get_text(), visible)))
+    try:
+        for seed in ["hello ", " ", "é" * 159 + "😀", "é" * 160 + "😀", "ab日本😀" * 100]:
+            before = len(commits)
+            assert action(watch.latest, "T" + seed), ("preview replacement", len(seed), watch.latest)
+            wait(lambda: watch.latest["seed"] == seed, "complete draft remains in the host")
+            if inline:
+                wait(lambda: updates and updates[-1] == (seed, True), "opt-in inline draft remains complete")
+            else:
+                expected = "Suzaku · " + ("…" if len(seed) > 160 else "") + seed[-160:] + "\n"
+                wait(lambda: lookup["aux_visible"] and lookup["aux"].startswith(expected),
+                     "bounded Unicode draft tail remains visible in the candidate area")
+                assert all(not text and not visible for text, visible in updates)
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [seed] and not watch.latest["seed"] and
+                    not lookup["aux_visible"], "preview bounds never truncate the commit")
+        commits.clear()
+        print("PASS: 5 Unicode/space/long draft previews and exact commits; inline:", inline)
+    finally:
+        context.disconnect(observer)
+
+
 def check_candidate_presentation(watch, lookup, require_mix=True):
     frame = watch.latest
     wait(lambda: lookup["visible"] and lookup["aux_visible"] and
@@ -1763,7 +2057,7 @@ def check_unchanged_input_controls(context, watch, commits, lookup):
         wait(lambda: not watch.latest["seed"], "reset same-setting Compose check")
         type_seed(context, "caf")
         assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
-        wait(lambda: lookup["aux"].startswith("Compose"), "prepare pending accent")
+        wait(lambda: lookup["aux"].endswith("Compose… · Esc / Backspace 取消"), "prepare pending accent")
         baseline, before = watch.latest, len(commits)
         assert json.loads(command(request))["ok"]
         wait(lambda: watch.latest["revision"] > baseline["revision"], "same-setting Compose publication")
@@ -2181,7 +2475,8 @@ def check_english_key_regressions(context, watch, commits):
     cases.append(("hel", [(IBus.KEY_2, IBus.ModifierType.MOD2_MASK | IBus.ModifierType.MOD1_MASK, True)], "hel2"))
     cases.append(("hel", [(IBus.KEY_2, IBus.ModifierType.SHIFT_MASK, True)], "hel2"))
     cases.append(("hel", [(IBus.KEY_2, IBus.ModifierType.MOD5_MASK, True)], "hel2"))
-    cases.append(("", [(IBus.KEY_2, 0, True)], "2"))
+    for key in [IBus.KEY_0 + i for i in range(10)] + [IBus.KEY_KP_1, IBus.KEY_KP_9]:
+        cases.append(("", [(key, 0, False)], ""))
     cases.append(("hel", [(ord(c), IBus.ModifierType.SHIFT_MASK, True) for c in "!@#$%^&*()"], "hel!@#$%^&*()"))
     cases.append(("hel", [(IBus.unicode_to_keyval(c), 0, True) for c in ".com/path?x=y, ok;_日本。"], "hel.com/path?x=y, ok;_日本。"))
     cases.append(("hel", [(IBus.KEY_L, IBus.ModifierType.LOCK_MASK, True)], "helL"))
@@ -2218,6 +2513,11 @@ def check_english_key_regressions(context, watch, commits):
             assert handled == [accepted for _, _, accepted in keys], f"handled={handled}"
             wait(lambda: watch.latest["seed"] == expected, f"expected preedit {expected!r}", timeout=1)
             assert len(commits) == before, f"unexpected commits: {commits[before:]!r}"
+            if not expected:
+                assert not watch.latest["candidates"]
+                assert not context.process_key_event(IBus.KEY_space, 0, 0)
+                assert not context.process_key_event(IBus.KEY_Return, 0, 0)
+                continue
             assert watch.latest["candidates"][0]["text"] == expected
             assert context.process_key_event(IBus.KEY_space, 0, 0)
             wait(lambda: watch.latest["seed"] == expected + " ", "Space must stay in the same draft")
@@ -2286,7 +2586,8 @@ def check_english_compose_boundaries(context, watch, commits, lookup):
         wait(lambda: not watch.latest["seed"], "clear compose fixture")
         type_seed(context, prefix)
         assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
-        wait(lambda: lookup["aux_visible"] and lookup["aux"].startswith("Compose"), "missing compose hint")
+        wait(lambda: lookup["aux_visible"] and lookup["aux"].endswith("Compose… · Esc / Backspace 取消"),
+             "missing compose hint")
         assert not lookup["visible"] and watch.latest["seed"] == prefix
 
     for prefix in ["", "hel"]:
@@ -2473,7 +2774,10 @@ try:
     bus = IBus.Bus.new()
     assert bus.is_connected()
     check_tray_activation(bus)
+    check_post_process_preedit(bus)
     check_engine_event_boundaries(bus)
+    check_native_draft_limits(bus)
+    check_prediction_length_boundaries(bus)
     check_commit_target_boundaries(bus)
     check_cancel_target_boundaries(bus)
     check_draft_end_prediction_boundaries(bus)
@@ -2494,6 +2798,7 @@ try:
     wait(lambda: watch.latest is not None and watch.latest["focused"], "initial subscription")
     assert not watch.latest["seed"] and not watch.latest["candidates"]
     assert json.loads(command("Len"))["ok"]
+    check_draft_preview(context, watch, commits, lookup)
     check_whitespace_commit(context, watch, commits)
     check_settings_file_boundaries(context, watch, commits)
     check_nonblocking_ipc(context, watch)

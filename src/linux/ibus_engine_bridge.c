@@ -8,6 +8,8 @@
 #include <xkbcommon/xkbcommon-compose.h>
 
 #define SUZAKU_LOOKUP_PAGE_SIZE 6
+#define SUZAKU_DRAFT_PREVIEW_CHARS 160
+#define SUZAKU_DRAFT_PREVIEW_PREFIX "Suzaku · "
 /* Desktop shortcuts can arrive with physical Mod4 or virtual Super/Hyper/Meta. */
 #define SUZAKU_SYSTEM_MODIFIERS \
     (IBUS_CONTROL_MASK | IBUS_MOD4_MASK | IBUS_SUPER_MASK | IBUS_HYPER_MASK | IBUS_META_MASK)
@@ -42,6 +44,7 @@ typedef struct _SuzakuIBusEngine {
     struct xkb_compose_state *compose;
     gboolean bypass_input;
     gboolean private_input;
+    gboolean inline_preedit;
 } SuzakuIBusEngine;
 
 typedef struct _SuzakuIBusEngineClass {
@@ -83,9 +86,39 @@ static size_t suzaku_ibus_candidate_page_start(void) {
 }
 
 static void suzaku_ibus_engine_hide(IBusEngine *engine) {
-    ibus_engine_hide_preedit_text(engine);
+    /* Clear the payload as well as visibility. IBus 1.5.29's synchronous
+     * PostProcessKeyEvent client does not understand hide-only ('h') updates,
+     * leaving GTK4 with stale preedit after commit/cancel. An empty update is
+     * understood by both synchronous and asynchronous clients. */
+    if (((SuzakuIBusEngine *)engine)->inline_preedit) {
+        ibus_engine_update_preedit_text(
+            engine, ibus_text_new_from_string(""), 0, FALSE);
+    }
     ibus_engine_hide_lookup_table(engine);
     ibus_engine_hide_auxiliary_text(engine);
+}
+
+static void suzaku_ibus_engine_render_auxiliary(SuzakuIBusEngine *self, gboolean composing) {
+    guint language = suzaku_host_ime_language_kind();
+    const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
+    gchar *help = composing ? g_strdup("Compose… · Esc / Backspace 取消") : g_strdup_printf(
+        "%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | 1–6 选词续写 · Alt+数字 输入数字 · 空格连写 · %sEnter/点击提交",
+        mode, language == 2 ? "Ctrl+Backspace 删词 · " : "");
+    gchar *display = NULL;
+    if (!self->inline_preedit && self->input->len > 0) {
+        /* Keep the draft out of application-owned preedit caches: some clients
+         * commit those on focus changes even with IBUS_ENGINE_PREEDIT_CLEAR.
+         * Bound only this preview, never the actual draft or commit payload. */
+        glong length = g_utf8_strlen(self->input->str, -1);
+        gboolean shortened = length > SUZAKU_DRAFT_PREVIEW_CHARS;
+        const gchar *tail = shortened ? g_utf8_offset_to_pointer(
+            self->input->str, length - SUZAKU_DRAFT_PREVIEW_CHARS) : self->input->str;
+        display = g_strconcat(SUZAKU_DRAFT_PREVIEW_PREFIX, shortened ? "…" : "", tail, "\n", help, NULL);
+    }
+    ibus_engine_update_auxiliary_text(IBUS_ENGINE(self),
+        ibus_text_new_from_string(display != NULL ? display : help), TRUE);
+    g_free(display);
+    g_free(help);
 }
 
 static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
@@ -95,8 +128,7 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         /* Pending keysyms are not text: never put them in model requests or the
          * draft. Keep existing preedit visible, with a native composing hint. */
         ibus_engine_hide_lookup_table(engine);
-        ibus_engine_update_auxiliary_text(
-            engine, ibus_text_new_from_string("Compose… · Esc / Backspace 取消"), TRUE);
+        suzaku_ibus_engine_render_auxiliary(self, TRUE);
         return;
     }
     if (self->input->len == 0) {
@@ -104,16 +136,18 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         return;
     }
 
-    IBusText *preedit = ibus_text_new_from_string(self->input->str);
-    ibus_text_append_attribute(preedit, IBUS_ATTR_TYPE_UNDERLINE,
-                               IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
-    ibus_engine_update_preedit_text(
-        engine, preedit, (guint)g_utf8_strlen(self->input->str, -1), TRUE);
+    if (self->inline_preedit) {
+        IBusText *preedit = ibus_text_new_from_string(self->input->str);
+        ibus_text_append_attribute(preedit, IBUS_ATTR_TYPE_UNDERLINE,
+                                   IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
+        ibus_engine_update_preedit_text(
+            engine, preedit, (guint)g_utf8_strlen(self->input->str, -1), TRUE);
+    }
+    suzaku_ibus_engine_render_auxiliary(self, FALSE);
 
     size_t candidate_count = suzaku_host_ime_candidate_count();
     if (candidate_count == 0) {
         ibus_engine_hide_lookup_table(engine);
-        ibus_engine_hide_auxiliary_text(engine);
         return;
     }
 
@@ -138,13 +172,6 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         ibus_lookup_table_append_label(table, ibus_text_new_from_string(keys[index]));
     }
     ibus_engine_update_lookup_table(engine, table, TRUE);
-    guint language = suzaku_host_ime_language_kind();
-    const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
-    gchar *help = g_strdup_printf(
-        "%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | 1–6 选词续写 · Alt+数字 输入数字 · 空格连写 · %sEnter/点击提交",
-        mode, language == 2 ? "Ctrl+Backspace 删词 · " : "");
-    ibus_engine_update_auxiliary_text(engine, ibus_text_new_from_string(help), TRUE);
-    g_free(help);
 }
 
 static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
@@ -412,6 +439,10 @@ static gboolean suzaku_ibus_engine_process_key_event(
 
     guint language = suzaku_host_ime_language_kind();
     gunichar character = ibus_keyval_to_unicode(keyval);
+    /* Without a draft there is nothing to select. Passing literal digits
+     * through also supports numeric widgets whose clients omit ContentType.
+     * Alt+digits and completed Compose sequences above still explicitly draft. */
+    if (self->input->len == 0 && g_unichar_isdigit(character)) { return FALSE; }
     if ((character >= 'a' && character <= 'z') ||
         (character >= 'A' && character <= 'Z') || character == '\'' ||
         (character >= '0' && character <= '9') ||
@@ -607,6 +638,9 @@ static void suzaku_ibus_engine_init(SuzakuIBusEngine *self) {
     suzaku_host_ime_enable_ibus_candidates();
     self->input = g_string_new(NULL);
     self->compose = suzaku_ibus_compose_new();
+    /* Advanced opt-in only: inline clients can confirm text without our Enter.
+     * Default candidate-area drafts keep explicit commit/cancel semantics. */
+    self->inline_preedit = g_strcmp0(g_getenv("SUZAKU_IBUS_INLINE_PREEDIT"), "1") == 0;
 }
 
 static void suzaku_ibus_bus_disconnected(IBusBus *bus, gpointer user_data) {
@@ -894,6 +928,23 @@ static void suzaku_ibus_probe_update_preedit_text(
     probe->preedit_received = TRUE;
 }
 
+static void suzaku_ibus_probe_update_auxiliary_text(
+    IBusInputContext *context, IBusText *text, gboolean visible, gpointer user_data) {
+    (void)context;
+    const gchar *value = ibus_text_get_text(text);
+    if (value == NULL || !g_str_has_prefix(value, SUZAKU_DRAFT_PREVIEW_PREFIX)) { return; }
+    SuzakuIBusProbe *probe = (SuzakuIBusProbe *)user_data;
+    probe->preedit_visible = visible;
+    if (!visible) { return; }
+    value += strlen(SUZAKU_DRAFT_PREVIEW_PREFIX);
+    const gchar *separator = strchr(value, '\n');
+    if (separator == NULL) { return; }
+    gchar *preview = g_strndup(value, (gsize)(separator - value));
+    g_strlcpy(probe->preedit, preview, probe->preedit_capacity);
+    g_free(preview);
+    probe->preedit_received = TRUE;
+}
+
 static void suzaku_ibus_probe_update_lookup_table(
     IBusInputContext *context,
     IBusLookupTable *table,
@@ -1100,10 +1151,14 @@ int suzaku_linux_ibus_probe_roundtrip(
                      G_CALLBACK(suzaku_ibus_probe_update_lookup_table), &probe);
     g_signal_connect(context, "hide-preedit-text",
                      G_CALLBACK(suzaku_ibus_probe_hide_preedit), &probe);
+    g_signal_connect(context, "update-auxiliary-text",
+                     G_CALLBACK(suzaku_ibus_probe_update_auxiliary_text), &probe);
+    g_signal_connect(context, "hide-auxiliary-text",
+                     G_CALLBACK(suzaku_ibus_probe_hide_preedit), &probe);
     g_signal_connect(context, "hide-lookup-table",
                      G_CALLBACK(suzaku_ibus_probe_hide_lookup), &probe);
     ibus_input_context_set_capabilities(
-        context, IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_LOOKUP_TABLE);
+        context, IBUS_CAP_FOCUS | IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_LOOKUP_TABLE | IBUS_CAP_AUXILIARY_TEXT);
     ibus_input_context_focus_in(context);
     suzaku_ibus_probe_pump_events();
 
