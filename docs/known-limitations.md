@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.2 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.3 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -18,6 +18,13 @@ does not imply cross-platform stability. Keep another input method available.
   still omit numeric/privacy purposes: literal digit routing does not make the whole field
   private or reject panel injection. Use a trusted alternative for sensitive input. See the
   [compatibility fixes](bug-audit-cross-app-fixes-2026-09-23.md). A source tag does not update an installation.
+- **Stock candidate popup:** 0.6.3 bounds long auxiliary previews by display cells,
+  not just code-point count. Its compatibility fix places ordinal shortcuts
+  inside candidate text hit targets, avoiding IBus 1.5.29's broken separate label-column clicks.
+  All 46 stock GTK3 workflows, including 17 actual ordinal-glyph checks, pass on an 800x600 private
+  screen. No system files are patched; other engines using the broken column are unaffected.
+  This is not arbitrary-font/DPI or GNOME Shell/Wayland acceptance, and does not update an older
+  installation. See the [ordinal compatibility fix](bug-audit-ordinal-click-2026-09-23.md).
 - **Dead keys and Compose:** 0.5.5 can lose accents or produce literal sequence parts.
   0.5.6 adds locale/XCompose-based composition into editable drafts, with
   isolated tests for accents, symbols, cancellation and field isolation. It needs an available
@@ -46,13 +53,17 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.6.2 retains
+- **Build scope:** use `--all-features` for desktop checks. 0.6.3 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
   builds/tests are still not supported as a clean release gate.
 - **Draft durability:** input and recovery drafts are in memory. Crash, exit or a change of native
   field/context can discard unfinished text; Suzaku is not an autosaving editor.
   The opt-in inline mode allows applications to confirm cached preedit on focus changes;
   engine cleanup cannot undo text the application already accepted.
+  The 0.6.3 lifecycle tests cover 21 real GTK switching/reconnection workflows: a companion
+  restart preserves the running host's draft, whereas host exit or a stock panel selecting a
+  different engine discards it. Host recovery is explicitly launched/reactivated in this test,
+  not proof of systemd automatic recovery. See the [input lifecycle audit](bug-audit-app-lifecycle-2026-09-23.md).
 - **Unconfirmed sends:** no automatic replay. Check the target before retrying. Click the panel's
   input field to recover screen-keyboard text for local editing. Candidate/clear/submit actions
   pause while that draft is unconfirmed.

@@ -5,11 +5,13 @@ suzaku_apps_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$suzaku_apps_root"
 suzaku_apps_suite=${1:-gtk}
 case "$suzaku_apps_suite" in
-  gtk|browser|qt5|qt6|cross) ;;
-  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|qt5|qt6|cross]\n' >&2; exit 2 ;;
+  gtk|browser|qt5|qt6|cross|popup|lifecycle) ;;
+  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|qt5|qt6|cross|popup|lifecycle]\n' >&2; exit 2 ;;
 esac
 suzaku_apps_dependencies=(xvfb-run xauth dbus-run-session ibus-daemon xwininfo timeout)
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity)
+[[ $suzaku_apps_suite != popup ]] || suzaku_apps_dependencies+=(gnome-text-editor /usr/libexec/ibus-ui-gtk3)
+[[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity setxkbmap /usr/libexec/ibus-ui-gtk3)
 if [[ $suzaku_apps_suite == browser || $suzaku_apps_suite == cross ]]; then
   suzaku_apps_dependencies+=("${SUZAKU_APP_QA_BROWSER:-google-chrome}")
 fi
@@ -31,6 +33,8 @@ for suzaku_apps_qt in 5 6; do
 done
 suzaku_apps_script=scripts/test-linux-cross-apps.py
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_script=scripts/test-linux-apps.py
+[[ $suzaku_apps_suite != popup ]] || suzaku_apps_script=scripts/test-linux-candidate-window.py
+[[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_script=scripts/test-linux-input-lifecycle.py
 if [[ -z ${SUZAKU_APP_QA_BIN_DIR:-} ]]; then
   cargo build --locked --all-features --bin panel --bin linux_ime_host
   suzaku_apps_bins="$suzaku_apps_root/target/debug"
@@ -56,6 +60,8 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -m 700 "$suzaku_apps_tmp/runtime"
+suzaku_apps_screen=1920x1080x24
+[[ $suzaku_apps_suite != popup ]] || suzaku_apps_screen=800x600x24
 # shellcheck disable=SC2016 # Expand DISPLAY only after xvfb-run assigns the private display.
 timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
   -u SUZAKU_IBUS_INLINE_PREEDIT \
@@ -74,7 +80,7 @@ timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
   XDG_CURRENT_DESKTOP=SuzakuQA XDG_SESSION_TYPE=x11 WINIT_X11_SCALE_FACTOR=1 \
   SUZAKU_LINUX_PANEL_BACKEND=x11-nofocus LIBGL_ALWAYS_SOFTWARE=1 \
   LC_ALL=C.UTF-8 PYTHONUNBUFFERED=1 \
-  xvfb-run -a -s '-screen 0 1920x1080x24 -nolisten tcp' \
+  xvfb-run -a -s "-screen 0 $suzaku_apps_screen -nolisten tcp" \
   dbus-run-session -- \
   sh -c 'export SUZAKU_APP_QA_DISPLAY="$DISPLAY"; exec "$@"' sh \
   /usr/bin/python3 "$suzaku_apps_script"

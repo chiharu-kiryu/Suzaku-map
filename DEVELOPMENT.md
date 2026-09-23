@@ -3,7 +3,17 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.2 — Linux Alpha cross-application input reliability patch**.
+Current source version: **0.6.3 — Linux Alpha candidate popup compatibility patch**.
+
+### 0.6.3 — Bounded popup previews and clickable ordinals
+
+- Candidate-area draft previews keep a suffix within 48 display cells and 160 Unicode code points,
+  preventing tested unwrapped stock popups from extending beyond the screen. Drafts remain lossless.
+- Superscript shortcuts now share the candidate text's click target, avoiding IBus 1.5.29's invalid
+  separate-label indices without changing system files, candidate payloads or number-key adoption.
+- Strict popup coverage includes 46 workflows, with 17 actual ordinal-glyph checks; another 21
+  real GTK lifecycle workflows cover switching, privacy and process reconnection.
+  See the [0.6.3 release notes](docs/releases/0.6.3.md).
 
 ### 0.6.2 — Candidate-area drafts and literal numeric input
 
@@ -1138,10 +1148,17 @@ without committing. Space and punctuation continue the draft; Enter or a left cl
 Without an active draft, ordinary digits go directly to the application. Alt+digits explicitly
 enters literal numbers into the draft. Escape cancels the current draft.
 
+The 0.6.3 IBus presentation places each superscript shortcut inside the candidate's text
+hit target and leaves the separate shortcut label empty. Clicking the visible ordinal therefore
+uses the same correct row index as clicking its text, including on later pages; commit payloads
+and number-key adoption are unchanged. See the [ordinal compatibility fix](docs/bug-audit-ordinal-click-2026-09-23.md).
+
 Unconfirmed text appears in the candidate area/companion panel, not in the application's inline
 preedit buffer. This prevents clients such as Qt and Chrome from committing cached draft text
-when focus changes. The candidate-area preview shows the last 160 Unicode characters without
-truncating the draft or committed text. Advanced users may start the host with
+when focus changes. The 0.6.3 candidate-area preview keeps a suffix within 48 display cells
+(wide characters count as two, zero-width marks as zero), capped at 160 Unicode code points.
+This limits unwrapped native labels, not the draft or committed text; see the
+[native popup audit](docs/bug-audit-native-popup-2026-09-23.md). Advanced users may start the host with
 `SUZAKU_IBUS_INLINE_PREEDIT=1` to restore inline preedit, but that also restores the risk of
 client-initiated commits on focus changes. See the
 [cross-application fix audit](docs/bug-audit-cross-app-fixes-2026-09-23.md) for tested boundaries.

@@ -79,8 +79,8 @@ jobs:
             libegl1-mesa-dev libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers \
             dbus-daemon ibus gir1.2-ibus-1.0 gir1.2-pango-1.0 python3-gi \
             xvfb xauth fontconfig fonts-dejavu-core fonts-noto-cjk shellcheck \
-            dpkg-dev jq desktop-file-utils gnome-text-editor zenity x11-utils libxtst6 \
-            ibus-gtk3 ibus-gtk4 gir1.2-gtk-3.0 \
+            dpkg-dev jq desktop-file-utils gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 \
+            ibus-gtk3 ibus-gtk4 gir1.2-gtk-3.0 gir1.2-atspi-2.0 at-spi2-core \
             python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
       - name: Install Rust
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component clippy
@@ -112,6 +112,10 @@ jobs:
         run: bash scripts/test-linux-ci.sh ui
       - name: Test English typing in real GTK applications on an isolated display
         run: bash scripts/test-linux-apps.sh
+      - name: Test stock IBus ordinal and text clicks, navigation and bounded previews
+        run: bash scripts/test-linux-apps.sh popup
+      - name: Test real input switching, privacy and process reconnection
+        run: bash scripts/test-linux-apps.sh lifecycle
       - name: Test Qt workflows, focus cancellation and literal numeric fields
         run: |
           bash scripts/test-linux-apps.sh qt5

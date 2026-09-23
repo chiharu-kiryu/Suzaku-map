@@ -26,9 +26,11 @@ bash scripts/test-linux-ci.sh ui
 Real application checks additionally need GTK input modules and Qt test bindings:
 
 ```bash
-sudo apt install gnome-text-editor zenity x11-utils libxtst6 ibus-gtk3 ibus-gtk4 \
-  gir1.2-gtk-3.0 python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
+sudo apt install gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 ibus-gtk3 ibus-gtk4 \
+  gir1.2-gtk-3.0 gir1.2-atspi-2.0 at-spi2-core python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
 bash scripts/test-linux-apps.sh gtk
+bash scripts/test-linux-apps.sh popup
+bash scripts/test-linux-apps.sh lifecycle
 bash scripts/test-linux-apps.sh qt5
 bash scripts/test-linux-apps.sh qt6
 SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
@@ -38,6 +40,16 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; the documented Chrome checks are local, not a CI gate.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
+The `popup` gate uses stock IBus GTK3 on an 800x600 private display: 46 checks for text/ordinal
+glyph clicks, paging, scrolling, dismissal and bounded long previews. It is not GNOME Shell's
+candidate UI. Ordinals are rendered inside each candidate hit target to avoid stock IBus
+1.5.29's separate label-column dispatch bug. All 17 ordinal cases are mandatory; the old
+`SUZAKU_POPUP_QA_LABELS` opt-in is no longer needed. See the
+[ordinal compatibility fix](docs/bug-audit-ordinal-click-2026-09-23.md).
+The `lifecycle` gate adds 21 real GTK workflows across engine switching, declared password fields,
+stock-panel resets, companion restarts and explicit host restarts/reactivation. Its Compose key
+mapping only changes the owned Xvfb keyboard. It does not restart the desktop's IBus daemon or
+exercise systemd service recovery. See the [input lifecycle audit](docs/bug-audit-app-lifecycle-2026-09-23.md).
 
 FFI tests share process-wide state, so keep them serial. Native runners create private D-Bus/IBus/
 Xvfb sessions; never remove isolation guards or aim them at the real desktop. Regression tests

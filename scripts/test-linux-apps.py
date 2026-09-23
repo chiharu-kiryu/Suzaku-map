@@ -114,6 +114,7 @@ class X11:
                                     C.POINTER(C.c_void_p)], C.c_int),
             "XFree": ([C.c_void_p], C.c_int),
             "XRaiseWindow": ([C.c_void_p, C.c_ulong], C.c_int),
+            "XMoveWindow": ([C.c_void_p, C.c_ulong, C.c_int, C.c_int], C.c_int),
             "XSetInputFocus": ([C.c_void_p, C.c_ulong, C.c_int, C.c_ulong], C.c_int),
             "XGetInputFocus": ([C.c_void_p, C.POINTER(C.c_ulong), C.POINTER(C.c_int)], C.c_int),
             "XKeysymToKeycode": ([C.c_void_p, C.c_ulong], C.c_ubyte),
@@ -208,10 +209,10 @@ class X11:
             assert character.isascii() and (character.islower() or character in " ,.'0123456789")
             self.key(ord(character))
 
-    def click(self, x, y):
+    def click(self, x, y, button=1):
         assert self.xt.XTestFakeMotionEvent(self.display, -1, x, y, 0)
-        assert self.xt.XTestFakeButtonEvent(self.display, 1, 1, 0)
-        assert self.xt.XTestFakeButtonEvent(self.display, 1, 0, 0)
+        assert self.xt.XTestFakeButtonEvent(self.display, button, 1, 0)
+        assert self.xt.XTestFakeButtonEvent(self.display, button, 0, 0)
         self.x.XSync(self.display, 0)
         time.sleep(0.1)
         pump()

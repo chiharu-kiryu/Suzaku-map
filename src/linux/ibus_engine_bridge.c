@@ -8,7 +8,11 @@
 #include <xkbcommon/xkbcommon-compose.h>
 
 #define SUZAKU_LOOKUP_PAGE_SIZE 6
+static const gchar *const SUZAKU_LOOKUP_KEYS[SUZAKU_LOOKUP_PAGE_SIZE] = {
+    "¹", "²", "³", "⁴", "⁵", "⁶"
+};
 #define SUZAKU_DRAFT_PREVIEW_CHARS 160
+#define SUZAKU_DRAFT_PREVIEW_COLUMNS 48
 #define SUZAKU_DRAFT_PREVIEW_PREFIX "Suzaku · "
 /* Desktop shortcuts can arrive with physical Mod4 or virtual Super/Hyper/Meta. */
 #define SUZAKU_SYSTEM_MODIFIERS \
@@ -98,6 +102,27 @@ static void suzaku_ibus_engine_hide(IBusEngine *engine) {
     ibus_engine_hide_auxiliary_text(engine);
 }
 
+static const gchar *suzaku_ibus_draft_preview_start(const gchar *input) {
+    const gchar *tail = input + strlen(input);
+    guint characters = 0;
+    guint columns = 0;
+    while (tail > input && characters < SUZAKU_DRAFT_PREVIEW_CHARS) {
+        const gchar *previous = g_utf8_find_prev_char(input, tail);
+        gunichar character = g_utf8_get_char(previous);
+        guint width = g_unichar_iszerowidth(character) ? 0 : g_unichar_iswide(character) ? 2 : 1;
+        if (columns + width > SUZAKU_DRAFT_PREVIEW_COLUMNS) { break; }
+        tail = previous;
+        columns += width;
+        characters++;
+    }
+    /* Do not display combining/format marks without the omitted base character.
+     * Both bounds apply only to the preview; input and commit stay lossless. */
+    while (tail > input && *tail != '\0' && g_unichar_iszerowidth(g_utf8_get_char(tail))) {
+        tail = g_utf8_next_char(tail);
+    }
+    return tail;
+}
+
 static void suzaku_ibus_engine_render_auxiliary(SuzakuIBusEngine *self, gboolean composing) {
     guint language = suzaku_host_ime_language_kind();
     const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
@@ -108,11 +133,10 @@ static void suzaku_ibus_engine_render_auxiliary(SuzakuIBusEngine *self, gboolean
     if (!self->inline_preedit && self->input->len > 0) {
         /* Keep the draft out of application-owned preedit caches: some clients
          * commit those on focus changes even with IBUS_ENGINE_PREEDIT_CLEAR.
-         * Bound only this preview, never the actual draft or commit payload. */
-        glong length = g_utf8_strlen(self->input->str, -1);
-        gboolean shortened = length > SUZAKU_DRAFT_PREVIEW_CHARS;
-        const gchar *tail = shortened ? g_utf8_offset_to_pointer(
-            self->input->str, length - SUZAKU_DRAFT_PREVIEW_CHARS) : self->input->str;
+         * Native panels need not wrap auxiliary labels: a 160-character line
+         * can exceed even a full HD screen. Bound its visual columns as well. */
+        const gchar *tail = suzaku_ibus_draft_preview_start(self->input->str);
+        gboolean shortened = tail != self->input->str;
         display = g_strconcat(SUZAKU_DRAFT_PREVIEW_PREFIX, shortened ? "…" : "", tail, "\n", help, NULL);
     }
     ibus_engine_update_auxiliary_text(IBUS_ENGINE(self),
@@ -163,13 +187,17 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         if (label == NULL) {
             continue;
         }
-        ibus_lookup_table_append_candidate(
-            table, ibus_text_new_from_string(label));
+        /* GTK3 IBus 1.5.29 dispatches clicks on its separate label column
+         * with an invalid index. Keep the visible shortcut in the candidate's
+         * own hit target; only presentation changes, never its commit text. */
+        gchar *row = g_strconcat(SUZAKU_LOOKUP_KEYS[index % SUZAKU_LOOKUP_PAGE_SIZE], " ", label, NULL);
+        ibus_lookup_table_append_candidate(table, ibus_text_new_from_string(row));
+        g_free(row);
         suzaku_host_ime_free_utf8(label);
     }
-    const gchar *keys[] = {"¹", "²", "³", "⁴", "⁵", "⁶"};
     for (guint index = 0; index < SUZAKU_LOOKUP_PAGE_SIZE; index++) {
-        ibus_lookup_table_append_label(table, ibus_text_new_from_string(keys[index]));
+        /* Explicit empty labels suppress the panel's default ordinal text. */
+        ibus_lookup_table_append_label(table, ibus_text_new_from_string(""));
     }
     ibus_engine_update_lookup_table(engine, table, TRUE);
 }
@@ -972,6 +1000,17 @@ static void suzaku_ibus_probe_update_lookup_table(
     if (value == NULL || value[0] == '\0') {
         return;
     }
+
+    /* The diagnostic report/completion expectation excludes the row shortcut.
+     * Check the empty shortcut label too, so older hosts remain probeable. */
+    guint slot = selected_index % SUZAKU_LOOKUP_PAGE_SIZE;
+    IBusText *shortcut = ibus_lookup_table_get_label(table, slot);
+    gchar *prefix = g_strconcat(SUZAKU_LOOKUP_KEYS[slot], " ", NULL);
+    if (shortcut != NULL && g_strcmp0(ibus_text_get_text(shortcut), "") == 0 &&
+        g_str_has_prefix(value, prefix)) {
+        value += strlen(prefix);
+    }
+    g_free(prefix);
 
     g_strlcpy(
         probe->primary_candidate,

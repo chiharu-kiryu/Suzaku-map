@@ -1621,6 +1621,16 @@ def check_engine_event_boundaries(bus):
 
         # Non-primary and application-modified clicks must never select/commit.
         for page in [0, 1]:
+            for invalid_index in [16, 32, 0xffffffff]:
+                start(b, "hel")
+                if page:
+                    b.event("PageDown")
+                    pump()
+                baseline, before = watch.latest, len(b.commits)
+                b.click(invalid_index)
+                pump()
+                assert watch.latest == baseline and len(b.commits) == before, \
+                    "invalid system-panel indices must not be guessed or clamped"
             for button, mask in [(0, 0), (2, 0), (3, 0), (4, 0), (5, 0),
                                  (1, IBus.ModifierType.CONTROL_MASK),
                                  (1, IBus.ModifierType.MOD1_MASK),
@@ -1710,14 +1720,28 @@ def check_draft_preview(context, watch, commits, lookup):
     observer = context.connect("update-preedit-text", lambda _, text, _cursor, visible:
                                updates.append((text.get_text(), visible)))
     try:
-        for seed in ["hello ", " ", "é" * 159 + "😀", "é" * 160 + "😀", "ab日本😀" * 100]:
+        # The native label has a visual-column budget as well as a code-point
+        # cap; full-width characters and combining marks are not ASCII cells.
+        accent_cluster = "e" + "\u0301" * 8
+        cases = [
+            ("hello ", "hello "), (" ", " "),
+            ("W" * 48, "W" * 48), ("W" * 49, "…" + "W" * 48),
+            ("界" * 24, "界" * 24), ("界" * 25, "…" + "界" * 24),
+            ("😀" * 24, "😀" * 24), ("😀" * 25, "…" + "😀" * 24),
+            ("é" * 159 + "😀", "…" + "é" * 46 + "😀"),
+            ("é" * 160 + "😀", "…" + "é" * 46 + "😀"),
+            ("e\u0301" * 49, "…" + "e\u0301" * 48),
+            (accent_cluster * 20, "…" + accent_cluster * 17),
+            ("ab日本😀" * 100, "…" + "ab日本😀" * 6),
+        ]
+        for seed, preview in cases:
             before = len(commits)
             assert action(watch.latest, "T" + seed), ("preview replacement", len(seed), watch.latest)
             wait(lambda: watch.latest["seed"] == seed, "complete draft remains in the host")
             if inline:
                 wait(lambda: updates and updates[-1] == (seed, True), "opt-in inline draft remains complete")
             else:
-                expected = "Suzaku · " + ("…" if len(seed) > 160 else "") + seed[-160:] + "\n"
+                expected = "Suzaku · " + preview + "\n"
                 wait(lambda: lookup["aux_visible"] and lookup["aux"].startswith(expected),
                      "bounded Unicode draft tail remains visible in the candidate area")
                 assert all(not text and not visible for text, visible in updates)
@@ -1725,17 +1749,19 @@ def check_draft_preview(context, watch, commits, lookup):
             wait(lambda: commits[before:] == [seed] and not watch.latest["seed"] and
                     not lookup["aux_visible"], "preview bounds never truncate the commit")
         commits.clear()
-        print("PASS: 5 Unicode/space/long draft previews and exact commits; inline:", inline)
+        print(f"PASS: {len(cases)} Unicode/space/column-bounded draft previews and exact commits; inline:", inline)
     finally:
         context.disconnect(observer)
 
 
 def check_candidate_presentation(watch, lookup, require_mix=True):
     frame = watch.latest
+    keys = "¹²³⁴⁵⁶"
     wait(lambda: lookup["visible"] and lookup["aux_visible"] and
-         lookup.get("text") == [c["ibus_label"] for c in frame["candidates"]], "IBus candidate metadata/labels")
+         lookup.get("text") == [keys[i % 6] + " " + c["ibus_label"]
+                                for i, c in enumerate(frame["candidates"])], "IBus candidate metadata/labels")
     assert lookup["page_size"] == 6
-    assert lookup["keys"] == ["¹", "²", "³", "⁴", "⁵", "⁶"]
+    assert lookup["keys"] == [""] * 6, "separate ordinal labels must stay empty"
     assert "1–6 选词续写" in lookup["aux"]
     assert "Alt+数字" in lookup["aux"] and "空格连写" in lookup["aux"]
     assert "Enter/点击提交" in lookup["aux"]
