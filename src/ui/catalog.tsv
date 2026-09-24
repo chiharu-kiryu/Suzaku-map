@@ -10,6 +10,24 @@ Panel settings	面板设置	パネル設定	패널 설정	Ajustes del panel	Rég
 Appearance	外观	外観	모양	Apariencia	Apparence	Darstellung	Aparência
 Input	输入	入力	입력	Entrada	Saisie	Eingabe	Entrada
 Model	模型	モデル	모델	Modelo	Modèle	Modell	Modelo
+Shortcuts	快捷键	ショートカット	단축키	Atajos	Raccourcis	Tastenkürzel	Atalhos
+Key layout	按键方案	キー配列	키 구성	Esquema	Disposition	Tastenprofil	Esquema
+Standard keys	标准按键	標準キー	기본 키	Estándar	Standard	Standard	Padrão
+Home row (Alt)	主键区 (Alt)	ホーム段 (Alt)	홈 행 (Alt)	Fila base (Alt)	Rangée (Alt)	Grundreihe (Alt)	Fila base (Alt)
+IBus draft shortcuts only. Standard keeps Alt keys for the app.	仅用于 IBus 输入草稿。标准方案不拦截应用的 Alt 按键。	IBus の入力中のみ有効。標準では Alt キーをアプリに渡します。	IBus 입력 중에만 적용됩니다. 기본 구성은 Alt 키를 앱에 전달합니다.	Solo al escribir con IBus. El modo estándar deja Alt a la aplicación.	Pendant la saisie IBus uniquement. Le mode standard réserve Alt à l’application.	Nur beim Schreiben mit IBus. Standard lässt Alt-Tasten bei der App.	Somente durante a escrita no IBus. O modo padrão mantém Alt para o aplicativo.
+Scope	作用范围	適用範囲	적용 범위	Ámbito	Portée	Bereich	Escopo
+Active draft	输入进行中	入力中のみ	입력 중	Al escribir	Saisie active	Beim Tippen	Durante a escrita
+Previous	上一候选	前の候補	이전 후보	Anterior	Précédent	Zurück	Anterior
+Next choice	下一候选	次の候補	다음 후보	Siguiente	Suivant	Weiter	Seguinte
+Page back	上一页	前のページ	이전 페이지	Página anterior	Page précédente	Seite zurück	Página anterior
+Page forward	下一页	次のページ	다음 페이지	Página siguiente	Page suivante	Seite vor	Próxima página
+Adopt	采纳续写	採用して続行	선택 후 계속	Adoptar	Adopter	Übernehmen	Adotar
+Undo choice	撤回选词	選択を戻す	선택 취소	Deshacer	Annuler le choix	Auswahl zurück	Desfazer
+Continue	继续输入	入力を続行	계속 입력	Continuar	Continuer	Weiterschreiben	Continuar
+Submit	提交文本	確定	텍스트 확정	Confirmar	Valider	Bestätigen	Confirmar
+Literal digits	输入数字	数字入力	숫자 입력	Dígitos	Chiffres	Ziffern	Dígitos
+Numpad	数字小键盘	テンキー	숫자 패드	Teclado num.	Pavé num.	Ziffernblock	Teclado num.
+Panel help	面板内帮助	パネル内ヘルプ	패널 내 도움말	Ayuda del panel	Aide du panneau	Panel-Hilfe	Ajuda do painel
 Search settings	搜索设置	設定を検索	설정 검색	Buscar ajustes	Rechercher un réglage	Einstellungen suchen	Buscar configurações
 No matching settings	没有匹配的设置	該当する設定なし	일치하는 설정 없음	Sin coincidencias	Aucun réglage trouvé	Keine Treffer	Nenhuma configuração encontrada
 Text	文字大小	文字サイズ	글자 크기	Texto	Texte	Textgröße	Texto

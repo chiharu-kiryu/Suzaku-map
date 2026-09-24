@@ -59,21 +59,19 @@ impl PinyinEntry {
     }
 
     fn match_input(&self, input: &str) -> Option<ReadingMatch> {
-        let input = input.as_bytes();
         let mut consumed = 0;
         for expected in self.reading.bytes() {
             if consumed == input.len() {
                 return Some(ReadingMatch::Prefix);
             }
             if expected == b'\'' {
-                if input[consumed] == b'\'' {
-                    while input.get(consumed) == Some(&b'\'') {
-                        consumed += 1;
-                    }
+                let separators = separator_bytes(&input[consumed..]);
+                if separators > 0 {
+                    consumed += separators;
                 } else if self.require_separators {
                     return None;
                 }
-            } else if input[consumed] == expected {
+            } else if input.as_bytes()[consumed] == expected {
                 consumed += 1;
             } else {
                 return None;
@@ -192,8 +190,28 @@ const PINYIN: &[PinyinEntry] = &[
     PinyinEntry::new("an", "安"),
 ];
 
+fn is_pinyin_spacing(ch: char) -> bool {
+    // Horizontal separators can join syllables; line/paragraph boundaries are
+    // literal text, even when both neighbouring runs happen to be Pinyin.
+    ch == '\t' || (ch.is_whitespace() && !ch.is_control() && !matches!(ch, '\u{2028}' | '\u{2029}'))
+}
+
+fn is_pinyin_separator(ch: char) -> bool {
+    ch == '\'' || is_pinyin_spacing(ch)
+}
+
+fn separator_bytes(text: &str) -> usize {
+    text.len() - text.trim_start_matches(is_pinyin_separator).len()
+}
+
 fn normalize_pinyin(seed: &str) -> String {
-    let lowered = seed.to_lowercase().replace("u:", "v").replace('ü', "v");
+    // Normalize only letters used by this reading system. Unicode lowercasing
+    // the entire draft corrupts literal Greek/Cyrillic/accented text. Preserve
+    // separators here so the decoder can distinguish readings from literal spans.
+    let lowered = seed
+        .to_ascii_lowercase()
+        .replace("u:", "v")
+        .replace(['ü', 'Ü'], "v");
     let chars: Vec<_> = lowered.chars().collect();
     chars
         .iter()
@@ -205,7 +223,7 @@ fn normalize_pinyin(seed: &str) -> String {
                 && chars.get(index + 1).is_none_or(|next| {
                     next.is_ascii_alphabetic() || next.is_whitespace() || *next == '\''
                 });
-            (!tone).then_some(if ch.is_whitespace() { '\'' } else { ch })
+            (!tone).then_some(ch)
         })
         .collect()
 }
@@ -261,13 +279,17 @@ pub(crate) fn mixed_candidates(
         }
     }
     if let Some(primary) = pinyin_candidates(seed).first()
-        && let Some((_, values)) = CONTINUATIONS.iter().find(|(word, _)| *word == primary)
+        && let phrase = primary.trim_matches(is_pinyin_spacing)
+        && let Some((_, values)) = CONTINUATIONS.iter().find(|(word, _)| *word == phrase)
     {
-        output.extend(
-            values
-                .iter()
-                .map(|text| ((*text).into(), CandidateKind::Sentence)),
-        );
+        output.extend(values.iter().map(|text| {
+            // Keep literal padding around adopted Han text, including a
+            // newly typed Space. Only the authored continuation is appended.
+            (
+                format!("{primary}{}", &text[phrase.len()..]),
+                CandidateKind::Sentence,
+            )
+        }));
     }
     output
 }
@@ -299,8 +321,24 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
                 finished.push((text, segments));
                 continue;
             }
-            if rest.starts_with('\'') {
-                next.push((offset + 1, text, segments));
+            let separators = separator_bytes(rest);
+            if separators > 0 {
+                // Only separators within a decoded phonetic span may disappear.
+                // A trailing space can still end a reading; a closing quote or
+                // spacing before literal Han text must not disappear with it.
+                let after_reading = normalized[..offset]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|ch| ch.is_ascii_lowercase());
+                let tail = &rest[separators..];
+                let within_readings = tail.starts_with(|ch: char| ch.is_ascii_lowercase());
+                let trailing_spacing = tail.is_empty() && rest.chars().all(is_pinyin_spacing);
+                let text = if after_reading && (within_readings || trailing_spacing) {
+                    text
+                } else {
+                    format!("{text}{}", &rest[..separators])
+                };
+                next.push((offset + separators, text, segments));
                 continue;
             }
             if let Some(ch) = rest.chars().next().filter(|ch| !ch.is_ascii_alphabetic()) {
@@ -351,7 +389,7 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
         .map(|(text, _)| {
             let kind = if text == seed {
                 CandidateKind::Literal
-            } else if is_dictionary_word(&text) {
+            } else if is_dictionary_word(text.trim_matches(is_pinyin_spacing)) {
                 CandidateKind::Word
             } else {
                 CandidateKind::Sentence
@@ -375,6 +413,30 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reading_separators_use_utf8_boundaries_without_consuming_newlines() {
+        let entry = PinyinEntry::new("shu'ru'fa", "输入法");
+        for input in [
+            "shu ru fa",
+            "shu\tru\tfa",
+            "shu\u{3000}ru\u{a0}fa",
+            "shu''ru'fa",
+        ] {
+            assert!(entry.match_input(input) == Some(ReadingMatch::Exact(input.len())));
+        }
+        for input in [
+            "shu\nru fa",
+            "shu\r\nru fa",
+            "shu\u{2028}ru fa",
+            "sh u ru fa",
+        ] {
+            assert!(entry.match_input(input).is_none(), "{input:?}");
+        }
+        assert_eq!(pinyin_candidates("ni hao ")[0], "你好");
+        assert_eq!(pinyin_candidates("nÜ")[0], "女");
+        assert_eq!(pinyin_candidates("NU:")[0], "女");
+    }
 
     #[test]
     fn authored_syllables_match_joined_and_separated_readings_without_inferred_splits() {

@@ -661,6 +661,9 @@ impl PanelState {
             || self.chrome.llm_model != other.llm_model
             || self.chrome.llm_temperature != other.llm_temperature;
         self.chrome.prediction_edit_generation = other.prediction_edit_generation;
+        let shortcuts_changed = self.chrome.shortcut_profile != other.shortcut_profile;
+        self.chrome.shortcut_profile = other.shortcut_profile;
+        self.chrome.shortcut_edit_generation = other.shortcut_edit_generation;
 
         if settings_changed {
             apply_display_settings(&mut self.chrome, &incoming_settings);
@@ -679,7 +682,7 @@ impl PanelState {
         if settings_changed && self.kind == PanelWindowKind::Main && needs_llm_reconfigure {
             self.reconfigure_model_provider();
         }
-        settings_changed
+        settings_changed || shortcuts_changed
     }
 
     pub(super) fn resize(&mut self, width: u32, height: u32) {
@@ -1313,6 +1316,15 @@ impl PanelState {
                         self.rebuild_font_atlas();
                     }
                     self.persist_display_settings();
+                }
+                InteractionKind::ShortcutReference(_) => {}
+                InteractionKind::SetShortcutProfile(profile) => {
+                    self.chrome.shortcut_profile = profile;
+                    self.chrome.shortcut_edit_generation =
+                        self.chrome.shortcut_edit_generation.wrapping_add(1);
+                    // Saved through the acknowledged native patch, not appearance preferences.
+                    self.interaction.settings_option_text_scroll_target = None;
+                    self.interaction.settings_option_text_scroll_started_at = None;
                 }
                 InteractionKind::SetLlmEnabled(enabled) => {
                     let action = InteractionKind::SetLlmEnabled(enabled);

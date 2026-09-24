@@ -141,7 +141,7 @@ enum PanelUserEvent {
     ResetPanelPosition,
     InputMethodSettingsChanged(suzaku_map::ime::settings::ImeSettings),
     InputMethodError(String),
-    PredictionSettingsApplied(Option<suzaku_map::ime::settings::ImeSettings>),
+    PanelImeSettingsApplied(Option<suzaku_map::ime::settings::ImeSettings>),
     NativeCompositionReady,
     NativeActionFinished {
         host: String,
@@ -303,7 +303,7 @@ struct PanelApp {
     instance: Option<SingleInstanceGuard>,
     tray: Option<SystemTray>,
     panel_visible: bool,
-    prediction_settings_sync: prediction_settings::PredictionSettingsSync,
+    ime_settings_sync: prediction_settings::PanelImeSettingsSync,
     last_native_ime_settings: Option<suzaku_map::ime::settings::ImeSettings>,
     native_sync: Option<native_sync::NativeSync>,
     native_auto_shown: bool,
@@ -329,7 +329,7 @@ impl PanelApp {
             instance,
             tray: None,
             panel_visible: false,
-            prediction_settings_sync: Default::default(),
+            ime_settings_sync: Default::default(),
             last_native_ime_settings: None,
             native_sync: None,
             native_auto_shown: false,
@@ -380,7 +380,14 @@ impl PanelApp {
         write_finished: bool,
     ) {
         let language = ime_settings.language;
-        let configuration_changed = self.last_native_ime_settings.as_ref() != Some(&ime_settings);
+        let configuration_changed = self
+            .last_native_ime_settings
+            .as_ref()
+            .is_none_or(|previous| {
+                previous.language != language
+                    || previous.llm_enabled != ime_settings.llm_enabled
+                    || previous.provider != ime_settings.provider
+            });
         let context_changed = self
             .last_native_ime_settings
             .as_ref()
@@ -393,16 +400,17 @@ impl PanelApp {
             // Use this acknowledged snapshot, never a separately reread disk configuration.
             panel.confirmed_model_config = Some(ime_settings.provider.clone());
             let previous = (panel.chrome.llm_enabled, panel.chrome.llm_temperature);
+            let previous_shortcuts = panel.chrome.shortcut_profile;
             if configuration_changed {
                 panel.cancel_translation();
             }
             panel.chrome.translation.cloud =
                 ime_settings.provider.scope == suzaku_map::languages::model::ModelScope::Cloud;
             if write_finished {
-                self.prediction_settings_sync
+                self.ime_settings_sync
                     .finish(Some(&ime_settings), &mut panel.chrome);
             } else {
-                self.prediction_settings_sync
+                self.ime_settings_sync
                     .observe(&ime_settings, &mut panel.chrome);
             }
             if configuration_changed
@@ -422,18 +430,23 @@ impl PanelApp {
                     panel.window.request_redraw();
                 }
             }
+            if previous_shortcuts != panel.chrome.shortcut_profile {
+                panel.window.request_redraw();
+            }
             if let Some(settings) = self.settings.as_mut() {
                 settings.chrome.llm_enabled = panel.chrome.llm_enabled;
                 settings.chrome.llm_temperature = panel.chrome.llm_temperature;
                 settings.chrome.prediction_edit_generation =
                     panel.chrome.prediction_edit_generation;
+                settings.chrome.shortcut_profile = panel.chrome.shortcut_profile;
+                settings.chrome.shortcut_edit_generation = panel.chrome.shortcut_edit_generation;
                 settings.chrome.settings_save_failed = panel.chrome.settings_save_failed;
                 settings.window.request_redraw();
             }
         }
     }
 
-    fn finish_prediction_settings(
+    fn finish_panel_ime_settings(
         &mut self,
         settings: Option<suzaku_map::ime::settings::ImeSettings>,
     ) {
@@ -442,12 +455,12 @@ impl PanelApp {
         }
     }
 
-    fn push_prediction_settings(&mut self) {
+    fn push_panel_ime_settings(&mut self) {
         if let (Some(panel), Some(tray)) = (&self.panel, &self.tray)
-            && let Some(patch) = self.prediction_settings_sync.next_patch(&panel.chrome)
-            && !tray.set_prediction_settings(patch)
+            && let Some(patch) = self.ime_settings_sync.next_patch(&panel.chrome)
+            && !tray.set_panel_ime_settings(patch)
         {
-            self.finish_prediction_settings(None);
+            self.finish_panel_ime_settings(None);
         }
     }
 
@@ -709,8 +722,8 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                 }
                 self.set_panel_visible(true);
             }
-            PanelUserEvent::PredictionSettingsApplied(settings) => {
-                self.finish_prediction_settings(settings)
+            PanelUserEvent::PanelImeSettingsApplied(settings) => {
+                self.finish_panel_ime_settings(settings)
             }
             PanelUserEvent::NativeCompositionReady => {
                 if let Some(update) = self
@@ -772,7 +785,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
-        self.push_prediction_settings();
+        self.push_panel_ime_settings();
         if let (Some(tray), Some(panel)) = (self.tray.as_mut(), self.panel.as_ref()) {
             tray.set_theme(panel.chrome.theme_preset);
             tray.set_ui_language(panel.chrome.ui_language);
@@ -1130,6 +1143,8 @@ impl PanelState {
             llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             prediction_edit_generation: [0; 2],
+            shortcut_profile: Default::default(),
+            shortcut_edit_generation: 0,
             settings_save_failed: false,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,

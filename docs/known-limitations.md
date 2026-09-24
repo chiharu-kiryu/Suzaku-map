@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.6 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.7 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -45,6 +45,15 @@ does not imply cross-platform stability. Keep another input method available.
   XKB lock/indicator state and keymap preservation on a private Xvfb server, not actual keyboard
   LEDs, firmware, arbitrary remappings, native Wayland or all application shortcuts. No new
   product defect was reproduced. See the [keyboard audit](bug-audit-keyboard-layouts-2026-09-24.md).
+- **Shortcut presets (0.6.7):** opt-in Alt home-row aliases apply only to public, nonempty
+  Linux IBus drafts; direct panel editing keeps editor semantics. Defaults preserve application
+  Alt keys. Desktop-reserved chords, arbitrary remapping, non-QWERTY ergonomics and native Wayland
+  need separate validation. These are not global activation hotkeys. See [shortcut scope](shortcuts.md).
+- **Held adoption keys (0.6.7):** N49 prevents physical number/Shift+Enter/Alt+semicolon
+  repeats from chaining new candidates or losing immediate undo. Physical key identity and release
+  events are required; zero-keycode synthetic events retain discrete semantics. Real GTK/Xvfb and
+  private IBus checks do not qualify arbitrary remappers or native Wayland. See the
+  [repeat audit](bug-audit-shortcut-repeat-2026-09-24.md).
 - **Small dictionaries:** English collocations and Chinese/Japanese conversion are bounded. There
   is no complete Japanese morphological analyzer, personal learning dictionary or arbitrary
   long-sentence offline conversion. Unknown text remains available literally.
@@ -53,6 +62,10 @@ does not imply cross-platform stability. Keep another input method available.
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,
   typo correction, arbitrary Chinese/English mixed conversion or a general quality score.
   See the [bilingual core audit](bug-audit-bilingual-core-2026-09-24.md).
+  N48 in 0.6.7 preserves literal spacing/quotes and non-Pinyin Unicode case around converted
+  text; line boundaries are no longer syllable joins in the core converter. This does not add
+  native multiline input or relax companion control-character checks. See the
+  [literal-boundary audit](bug-audit-chinese-literal-boundaries-2026-09-24.md).
 - **Long native drafts:** automatic predictions stop beyond 256 Unicode code points; IBus keeps
   the complete literal draft. Companion text is limited to 8192 UTF-8 bytes, so longer native
   drafts are hidden from the floating panel, not truncated or automatically committed. Native
@@ -105,7 +118,7 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.6.6 retains
+- **Build scope:** use `--all-features` for desktop checks. 0.6.7 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
   builds/tests are still not supported as a clean release gate. Development/test profiles now
   omit debug symbols and incremental caches; edits may rebuild more slowly. Release settings

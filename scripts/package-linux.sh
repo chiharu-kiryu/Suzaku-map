@@ -65,7 +65,7 @@ install -m 644 -- README.md LICENSE Cargo.lock "$suzaku_package_tree/share/doc/s
 install -m 644 -- SECURITY.md CONTRIBUTING.md DEVELOPMENT.md "$suzaku_package_tree/share/doc/suzaku/"
 mkdir -p -- "$suzaku_package_tree/share/doc/suzaku/docs/releases"
 install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus-candidates.md \
-  docs/translation.md docs/interface-languages.md docs/known-limitations.md docs/privacy.md \
+  docs/translation.md docs/interface-languages.md docs/known-limitations.md docs/privacy.md docs/shortcuts.md \
   docs/functional-network.md docs/functional-network.mmd docs/bug-audit-2026-09-13.md \
   docs/bug-audit-tools-2026-09-13.md docs/bug-audit-settings-2026-09-13.md \
   docs/bug-audit-data-2026-09-13.md docs/bug-audit-packaging-2026-09-13.md \
@@ -90,6 +90,9 @@ install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus
   docs/bug-audit-model-latency-2026-09-24.md \
   docs/bug-audit-model-cancellation-2026-09-24.md \
   docs/bug-audit-bilingual-core-2026-09-24.md \
+  docs/bug-audit-chinese-literal-boundaries-2026-09-24.md \
+  docs/bug-audit-shortcut-repeat-2026-09-24.md \
+  docs/bug-audit-shortcut-focus-2026-09-24.md \
   "$suzaku_package_tree/share/doc/suzaku/docs/"
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"

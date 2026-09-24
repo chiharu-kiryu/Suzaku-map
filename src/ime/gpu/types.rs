@@ -272,16 +272,18 @@ pub enum SettingsCategory {
     Appearance,
     Input,
     Model,
+    Shortcuts,
 }
 
 impl SettingsCategory {
-    pub const ALL: [Self; 3] = [Self::Appearance, Self::Input, Self::Model];
+    pub const ALL: [Self; 4] = [Self::Appearance, Self::Input, Self::Model, Self::Shortcuts];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
             Self::Input => "Input",
             Self::Model => "Model",
+            Self::Shortcuts => "Shortcuts",
         }
     }
 }
@@ -322,6 +324,9 @@ pub struct PanelChromeState {
     pub llm_temperature: LlmTemperaturePreset,
     /// Runtime-only explicit control edits; loading/mirroring preferences is not an edit.
     pub prediction_edit_generation: [u64; 2],
+    /// Canonical persistence lives in ImeSettings, not the panel appearance file.
+    pub shortcut_profile: crate::ime::shortcuts::ShortcutProfile,
+    pub shortcut_edit_generation: u64,
     pub settings_save_failed: bool,
     pub pointer_tap_slop_tenths: u16,
     pub pointer_tap_max_ms: u16,
@@ -376,6 +381,8 @@ impl Default for PanelChromeState {
             llm_model: LlmModelPreset::Configured,
             llm_temperature: LlmTemperaturePreset::Balanced,
             prediction_edit_generation: [0; 2],
+            shortcut_profile: Default::default(),
+            shortcut_edit_generation: 0,
             settings_save_failed: false,
             pointer_tap_slop_tenths: 100,
             pointer_tap_max_ms: 420,
@@ -502,6 +509,9 @@ pub enum InteractionKind {
     SettingsToggle,
     RetrySaveSettings,
     SetSettingsCategory(SettingsCategory),
+    SetShortcutProfile(crate::ime::shortcuts::ShortcutProfile),
+    /// Read-only reference identity; never inserted into interactive targets.
+    ShortcutReference(usize),
     SetTextScale(DisplayTextScale),
     SetCandidateDensity(CandidateDensity),
     SetPreviewStyle(PreviewStyle),

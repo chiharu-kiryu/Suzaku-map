@@ -99,7 +99,7 @@ fn audit_first_status_must_preserve_a_startup_ui_edit() {
             LlmTemperaturePreset::Focused,
             LlmTemperaturePreset::Expressive,
         ] {
-            app.prediction_settings_sync = Default::default();
+            app.ime_settings_sync = Default::default();
             app.last_native_ime_settings = None;
             app.panel.as_mut().unwrap().chrome.llm_temperature = LlmTemperaturePreset::Balanced;
             app.settings.as_mut().unwrap().chrome.llm_temperature = LlmTemperaturePreset::Balanced;
@@ -112,7 +112,7 @@ fn audit_first_status_must_preserve_a_startup_ui_edit() {
             assert_eq!(app.panel.as_ref().unwrap().chrome.llm_temperature, selected);
             assert_eq!(load_display_settings().unwrap().llm_temperature, selected);
             assert!(
-                app.prediction_settings_sync
+                app.ime_settings_sync
                     .next_patch(&app.panel.as_ref().unwrap().chrome)
                     .is_none()
             );
@@ -122,7 +122,7 @@ fn audit_first_status_must_preserve_a_startup_ui_edit() {
             );
             let actual = app.panel.as_ref().unwrap().chrome.llm_temperature;
             let pending = app
-                .prediction_settings_sync
+                .ime_settings_sync
                 .next_patch(&app.panel.as_ref().unwrap().chrome);
             if actual != selected
                 || pending.and_then(|patch| patch.temperature_tenths) != Some(selected.tenths())
@@ -131,7 +131,7 @@ fn audit_first_status_must_preserve_a_startup_ui_edit() {
                     app.settings.as_ref().unwrap().chrome.llm_temperature, load_display_settings().unwrap().llm_temperature));
             }
             // The same click survives once an initial status has been observed.
-            app.prediction_settings_sync = Default::default();
+            app.ime_settings_sync = Default::default();
             app.apply_native_settings(native.clone(), false);
             click_setting(
                 app,
@@ -141,16 +141,16 @@ fn audit_first_status_must_preserve_a_startup_ui_edit() {
             );
             app.apply_native_settings(native.clone(), false);
             let patch = app
-                .prediction_settings_sync
+                .ime_settings_sync
                 .next_patch(&app.panel.as_ref().unwrap().chrome)
                 .unwrap();
             assert_eq!(patch.temperature_tenths, Some(selected.tenths()));
             let mut acknowledged = native.clone();
             patch.apply(&mut acknowledged).unwrap();
-            app.finish_prediction_settings(Some(acknowledged));
+            app.finish_panel_ime_settings(Some(acknowledged));
             assert_eq!(app.panel.as_ref().unwrap().chrome.llm_temperature, selected);
             assert!(
-                app.prediction_settings_sync
+                app.ime_settings_sync
                     .next_patch(&app.panel.as_ref().unwrap().chrome)
                     .is_none()
             );

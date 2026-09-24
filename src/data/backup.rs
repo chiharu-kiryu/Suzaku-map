@@ -19,6 +19,7 @@ const IME_KEYS: &[&str] = &[
     "llm_model",
     "llm_timeout_ms",
     "llm_temperature_tenths",
+    "shortcut_profile",
     "llm_scope",
     "llm_protocol",
     "llm_api_key_env",

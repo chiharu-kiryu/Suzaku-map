@@ -34,7 +34,10 @@ cargo test --locked --all-features --test english_completion_quality --test chin
 The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
 cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
 commit checks. These are project-authored regressions, not independent corpus accuracy. The native
-`ibus` gate adds 12 bilingual numeric-adoption/undo/continuation/explicit-commit workflows.
+`ibus` gate adds 12 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
+32 literal-boundary workflows using owned-prefix key continuation and companion replacement.
+Chinese literal padding, non-Pinyin case and line boundaries also have direct-engine regressions.
+Core multiline tests do not relax the native protocol's control-character restrictions.
 
 Real application checks additionally need GTK input modules and Qt test bindings:
 
@@ -111,12 +114,16 @@ or make a slow/filtered response pass; use `suzaku_tool model probe` for that ga
 `diagnose_synthetic_translation_holdouts` prints results/rejections without claiming semantic success.
 Run these probes sequentially, without simultaneous inference or builds, to avoid skewing latency.
 
-The `keyboard` gate adds 26 physical-keycode workflows in real GTK: Caps/Shift/NumLock, numeric
+The `keyboard` gate has 44 physical-keycode workflows in real GTK: Caps/Shift/NumLock, numeric
 adoption versus keypad literals, US/UK/German/French/US-international layouts, AltGr, dead keys,
-Compose and mid-draft layout/lock changes. It reads back XKB lock indicators and the keymap;
-all mapping/lock changes affect only its owned Xvfb. This is not physical-device LED, native
+Compose, mid-draft layout/lock changes, bilingual adoption holds, modifier release order, quick
+separate taps, repeating navigation and releasing adoption keys after switching between two
+owned editor windows. It reads back XKB lock indicators and the keymap;
+all mapping/lock/repeat-rate changes affect only its owned Xvfb. This is not physical-device LED, native
 Wayland or arbitrary-keyboard-remapping acceptance. See the
-[keyboard layout audit](docs/bug-audit-keyboard-layouts-2026-09-24.md).
+[keyboard layout audit](docs/bug-audit-keyboard-layouts-2026-09-24.md),
+[shortcut repeat audit](docs/bug-audit-shortcut-repeat-2026-09-24.md) and
+[focus follow-up](docs/bug-audit-shortcut-focus-2026-09-24.md).
 The `popup` gate uses stock IBus GTK3 on an 800x600 private display: 46 checks for text/ordinal
 glyph clicks, paging, scrolling, dismissal and bounded long previews. It is not GNOME Shell's
 candidate UI. Ordinals are rendered inside each candidate hit target to avoid stock IBus

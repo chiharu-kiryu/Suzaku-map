@@ -200,3 +200,110 @@ fn selected_chinese_completion_remains_editable_until_explicit_commit() {
     );
     assert!(engine.candidates().is_empty());
 }
+
+#[test]
+fn chinese_mode_does_not_rewrite_non_pinyin_text() {
+    for seed in [
+        " 你好 ",
+        "你好  世界",
+        "你好\t世界",
+        "你好\n世界",
+        "你好\r\n世界",
+        "'你好'",
+        "你好\u{a0}世界",
+        "你好\u{3000}世界",
+        "ΩΣ",
+        "É",
+        "ПРИВЕТ",
+        "👩‍💻 2026",
+    ] {
+        let mut engine = engine(seed);
+        assert_eq!(engine.candidates()[0].text, seed, "{seed:?}");
+        assert_eq!(
+            engine.commit(CommitOptions { force: true }).text.as_deref(),
+            Some(seed),
+            "literal commit: {seed:?}"
+        );
+    }
+}
+
+#[test]
+fn pinyin_conversion_preserves_literal_prefixes_and_line_boundaries() {
+    let cases = [
+        ("  shu ru fa", "  输入法"),
+        ("你好  bei jing", "你好  北京"),
+        ("你好\tbei jing", "你好\t北京"),
+        ("你好\u{a0}bei jing", "你好\u{a0}北京"),
+        ("你好\u{3000}bei jing", "你好\u{3000}北京"),
+        ("你好'bei jing", "你好'北京"),
+        ("'nihao'", "'你好'"),
+        ("nihao 世界", "你好 世界"),
+        ("nihao'世界", "你好'世界"),
+        ("ΩΣ bei jing", "ΩΣ 北京"),
+        ("ПРИВЕТ shurufa", "ПРИВЕТ 输入法"),
+        ("nihao\nshijie", "你好\n世界"),
+        ("nihao\r\nshijie", "你好\r\n世界"),
+        ("nihao\u{2028}shijie", "你好\u{2028}世界"),
+        ("你好\nbei j", "你好\n北京"),
+    ];
+    let mut hits = 0;
+    let mut misses = Vec::new();
+    for (seed, expected) in cases {
+        let engine = engine(seed);
+        if engine.candidates()[0].text == expected {
+            hits += 1;
+        } else {
+            misses.push(format!("{seed:?}: {:?}", engine.candidates()));
+        }
+        assert!(engine.candidates().iter().any(|c| c.text == seed));
+    }
+    println!(
+        "Chinese literal-boundary conversions: {hits}/{}",
+        cases.len()
+    );
+    assert!(misses.is_empty(), "{}", misses.join("\n"));
+}
+
+#[test]
+fn literal_spacing_keeps_chinese_word_and_sentence_continuations_available() {
+    for (seed, word, sentence) in [
+        ("  shu ru fa", "  输入法", "  输入法支持多种语言。"),
+        (
+            "\u{3000}ji xu",
+            "\u{3000}继续",
+            "\u{3000}继续完善这个功能。",
+        ),
+    ] {
+        let engine = engine(seed);
+        for (text, kind) in [
+            (word, CandidateKind::Word),
+            (sentence, CandidateKind::Sentence),
+        ] {
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .take(PAGE_SIZE)
+                    .any(|c| c.text == text && c.kind == kind),
+                "{seed:?}: {:?}",
+                engine.candidates()
+            );
+        }
+    }
+    for (seed, sentence) in [
+        ("输入法 ", "输入法 支持多种语言。"),
+        ("  你好  ", "  你好  ，很高兴认识你。"),
+        ("\t继续\u{a0}", "\t继续\u{a0}完善这个功能。"),
+    ] {
+        let engine = engine(seed);
+        assert_eq!(engine.candidates()[0].text, seed);
+        assert!(
+            engine
+                .candidates()
+                .iter()
+                .take(PAGE_SIZE)
+                .any(|c| c.text == sentence)
+        );
+        assert!(engine.candidates().iter().all(|c| c.text.starts_with(seed)));
+    }
+}

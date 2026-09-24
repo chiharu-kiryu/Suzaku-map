@@ -1,5 +1,6 @@
 //! User settings contain configuration only, never typed text or prediction history.
 
+use super::shortcuts::ShortcutProfile;
 use crate::languages::{
     BuiltinLanguage,
     model::{ModelProtocol, ModelProviderConfig, ModelScope},
@@ -11,26 +12,32 @@ use std::{fs, io::Read, path::PathBuf};
 pub struct ImeSettings {
     pub language: BuiltinLanguage,
     pub llm_enabled: bool,
+    pub shortcut_profile: ShortcutProfile,
     pub provider: ModelProviderConfig,
 }
 
 /// A narrow, atomic update: panel controls cannot overwrite language/model configuration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PredictionSettingsPatch {
+pub struct PanelImeSettingsPatch {
     pub enabled: Option<bool>,
     pub temperature_tenths: Option<u32>,
+    pub shortcut_profile: Option<ShortcutProfile>,
 }
 
-impl PredictionSettingsPatch {
+impl PanelImeSettingsPatch {
     pub fn from_json(raw: &str) -> Result<Self, String> {
-        let value: Value = serde_json::from_str(raw).map_err(|_| "联想设置不是有效的 JSON")?;
-        let fields = value.as_object().ok_or("联想设置必须是 JSON 对象")?;
+        let value: Value =
+            serde_json::from_str(raw).map_err(|_| "面板输入法设置不是有效的 JSON")?;
+        let fields = value.as_object().ok_or("面板输入法设置必须是 JSON 对象")?;
         if fields.is_empty()
-            || fields
-                .keys()
-                .any(|key| !matches!(key.as_str(), "llm_enabled" | "llm_temperature_tenths"))
+            || fields.keys().any(|key| {
+                !matches!(
+                    key.as_str(),
+                    "llm_enabled" | "llm_temperature_tenths" | "shortcut_profile"
+                )
+            })
         {
-            return Err("不支持的联想设置字段".into());
+            return Err("不支持的面板输入法设置字段".into());
         }
         let checked = ImeSettings::from_json(raw)?;
         Ok(Self {
@@ -40,6 +47,9 @@ impl PredictionSettingsPatch {
             temperature_tenths: fields
                 .contains_key("llm_temperature_tenths")
                 .then_some(checked.provider.temperature_tenths),
+            shortcut_profile: fields
+                .contains_key("shortcut_profile")
+                .then_some(checked.shortcut_profile),
         })
     }
 
@@ -51,17 +61,23 @@ impl PredictionSettingsPatch {
         if let Some(temperature) = self.temperature_tenths {
             value["llm_temperature_tenths"] = temperature.into();
         }
+        if let Some(profile) = self.shortcut_profile {
+            value["shortcut_profile"] = profile.id().into();
+        }
         value
     }
 
     pub fn apply(self, settings: &mut ImeSettings) -> Result<(), String> {
-        // Validate before changing either field, including patches constructed in Rust.
+        // Validate before changing any field, including patches constructed in Rust.
         let checked = Self::from_json(&self.to_json().to_string())?;
         if let Some(enabled) = checked.enabled {
             settings.llm_enabled = enabled;
         }
         if let Some(temperature) = checked.temperature_tenths {
             settings.provider.temperature_tenths = temperature;
+        }
+        if let Some(profile) = checked.shortcut_profile {
+            settings.shortcut_profile = profile;
         }
         Ok(())
     }
@@ -72,6 +88,7 @@ impl Default for ImeSettings {
         Self {
             language: BuiltinLanguage::English,
             llm_enabled: false,
+            shortcut_profile: ShortcutProfile::default(),
             provider: ModelProviderConfig::default(),
         }
     }
@@ -84,6 +101,12 @@ impl ImeSettings {
             return Err("输入法设置必须是 JSON 对象".into());
         }
         let mut settings = Self::default();
+        if let Some(profile) = value.get("shortcut_profile") {
+            settings.shortcut_profile = profile
+                .as_str()
+                .and_then(ShortcutProfile::from_id)
+                .ok_or("shortcut_profile 必须为 standard 或 home-row")?;
+        }
         if let Some(language) = value.get("language") {
             settings.language = language
                 .as_str()
@@ -147,6 +170,7 @@ impl ImeSettings {
 
     pub fn to_json(&self) -> Value {
         json!({"language": self.language.id(), "llm_enabled": self.llm_enabled,
+            "shortcut_profile": self.shortcut_profile.id(),
             "llm_scope": self.provider.scope.id(), "llm_protocol": self.provider.protocol.id(),
             "llm_cloud_consent": self.provider.cloud_consent, "llm_api_key_env": self.provider.api_key_env,
             "llm_endpoint": self.provider.endpoint, "llm_model": self.provider.model,
@@ -229,6 +253,36 @@ pub fn settings_path() -> Option<PathBuf> {
 mod tests {
     use super::*;
     #[test]
+    fn shortcut_profiles_migrate_validate_and_patch_without_changing_models() {
+        assert_eq!(
+            ImeSettings::from_json("{}").unwrap().shortcut_profile,
+            ShortcutProfile::Standard
+        );
+        let mut settings =
+            ImeSettings::from_json(r#"{"language":"zh-Hans","llm_model":"fixture"}"#).unwrap();
+        let mut expected = settings.clone();
+        expected.shortcut_profile = ShortcutProfile::HomeRow;
+        let patch = PanelImeSettingsPatch::from_json(r#"{"shortcut_profile":"home-row"}"#).unwrap();
+        assert_eq!(patch.to_json(), json!({"shortcut_profile":"home-row"}));
+        patch.apply(&mut settings).unwrap();
+        assert_eq!(settings, expected);
+        assert_eq!(
+            ImeSettings::from_json(&settings.to_json().to_string()).unwrap(),
+            settings
+        );
+        for raw in [
+            r#"{"shortcut_profile":null}"#,
+            r#"{"shortcut_profile":true}"#,
+            r#"{"shortcut_profile":"unknown"}"#,
+            r#"{"llm_enabled":true,"shortcut_profile":"custom"}"#,
+        ] {
+            assert!(ImeSettings::from_json(raw).is_err(), "{raw}");
+            assert!(PanelImeSettingsPatch::from_json(raw).is_err(), "{raw}");
+        }
+        assert_eq!(settings, expected);
+    }
+
+    #[test]
     fn defaults_are_local_auto_but_legacy_model_and_language_are_preserved() {
         let defaults = ImeSettings::from_json("{}").unwrap();
         assert_eq!(defaults.provider.model, "auto");
@@ -282,7 +336,7 @@ mod tests {
         };
         settings.provider.model = "llama3.2:1b".into();
         let before = settings.clone();
-        PredictionSettingsPatch::from_json(r#"{"llm_temperature_tenths":7}"#)
+        PanelImeSettingsPatch::from_json(r#"{"llm_temperature_tenths":7}"#)
             .unwrap()
             .apply(&mut settings)
             .unwrap();
@@ -298,12 +352,13 @@ mod tests {
             r#"{"llm_temperature_tenths":-1}"#,
             r#"{"llm_temperature_tenths":"7"}"#,
         ] {
-            assert!(PredictionSettingsPatch::from_json(raw).is_err(), "{raw}");
+            assert!(PanelImeSettingsPatch::from_json(raw).is_err(), "{raw}");
         }
         assert!(
-            PredictionSettingsPatch {
+            PanelImeSettingsPatch {
                 enabled: Some(true),
-                temperature_tenths: Some(11)
+                temperature_tenths: Some(11),
+                shortcut_profile: None,
             }
             .apply(&mut settings)
             .is_err()

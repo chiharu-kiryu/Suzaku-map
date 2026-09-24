@@ -124,6 +124,23 @@ pub(super) fn handle_panel_window_event(
                 if state.text_input.composing() {
                     return;
                 }
+                if let Some(show_reference) = super::keyboard::settings_shortcut(
+                    &event.logical_key,
+                    state.modifiers,
+                    event.repeat,
+                ) {
+                    state.chrome.settings_open = true;
+                    if show_reference {
+                        state.chrome.settings_category =
+                            suzaku_map::ime::gpu::SettingsCategory::Shortcuts;
+                        state.chrome.settings_search_query.clear();
+                        state.chrome.settings_scroll_offset = 0.0;
+                        state.chrome.settings_collapsed_sections.clear();
+                    }
+                    state.last_scene = None;
+                    state.window.request_redraw();
+                    return;
+                }
                 let scale_modifier = super::keyboard::primary_shortcut_modifier(state.modifiers);
                 let scale_shortcut_handled = if scale_modifier {
                     match event.physical_key {

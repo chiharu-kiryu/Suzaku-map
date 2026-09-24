@@ -43,7 +43,7 @@ fn native_keyboard_editing_and_focus_return() {
         key_events: 0,
     };
     event_loop.run_app(&mut probe).unwrap();
-    assert_eq!(probe.step, 9);
+    assert_eq!(probe.step, 11);
     assert!(
         probe.key_events >= 28,
         "test must traverse real winit key events"
@@ -320,6 +320,24 @@ impl ApplicationHandler for KeyboardProbe {
                         .contains("target app")
                 );
                 click_input(state);
+                self.send_keys(&[0xffbe]); // Focus-local F1 opens the shortcut reference.
+                self.step = 9;
+            }
+            9 if self.state.as_ref().unwrap().chrome.settings_open => {
+                let state = self.state.as_ref().unwrap();
+                assert_eq!(
+                    state.chrome.settings_category,
+                    suzaku_map::ime::gpu::SettingsCategory::Shortcuts
+                );
+                assert_eq!(state.chrome.seed_text, "v123 n i 日本語中文é");
+                self.send_keys(&[0xff1b]); // Esc closes the reference, not the draft.
+                self.step = 10;
+            }
+            10 if !self.state.as_ref().unwrap().chrome.settings_open => {
+                assert_eq!(
+                    self.state.as_ref().unwrap().chrome.seed_text,
+                    "v123 n i 日本語中文é"
+                );
                 let other = xid(self.other.as_ref().unwrap());
                 self.focus(other);
                 self.state.as_mut().unwrap().finish_text_editing();
@@ -328,7 +346,7 @@ impl ApplicationHandler for KeyboardProbe {
                     other,
                     "a later user app switch wins over restoration"
                 );
-                self.step = 9;
+                self.step = 11;
                 event_loop.exit();
             }
             _ => {}

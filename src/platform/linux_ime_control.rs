@@ -19,13 +19,17 @@ pub fn set_language(language: BuiltinLanguage) -> Result<NativeImeStatus, String
 pub fn set_llm_enabled(enabled: bool) -> Result<NativeImeStatus, String> {
     request(if enabled { "P1" } else { "P0" })
 }
-pub fn set_prediction_settings(
-    patch: crate::ime::settings::PredictionSettingsPatch,
+pub fn set_panel_ime_settings(
+    patch: crate::ime::settings::PanelImeSettingsPatch,
 ) -> Result<NativeImeStatus, String> {
     let raw = patch.to_json().to_string();
-    crate::ime::settings::PredictionSettingsPatch::from_json(&raw)?;
+    crate::ime::settings::PanelImeSettingsPatch::from_json(&raw)?;
     // Keep the existing on/off control usable while an older host is still running.
-    if let (Some(enabled), None) = (patch.enabled, patch.temperature_tenths) {
+    if let (Some(enabled), None, None) = (
+        patch.enabled,
+        patch.temperature_tenths,
+        patch.shortcut_profile,
+    ) {
         return set_llm_enabled(enabled);
     }
     request(&format!("U{raw}"))

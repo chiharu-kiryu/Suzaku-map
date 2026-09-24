@@ -68,14 +68,72 @@ fn assert_ui_language_preferences(app: &mut PanelApp, event_loop: &ActiveEventLo
         assert_eq!(panel.chrome.seed_text, draft);
         assert_eq!(panel.chrome.translation, translation);
         assert_eq!(load_display_settings().unwrap().ui_language, language);
+        assert!(app.ime_settings_sync.next_patch(&panel.chrome).is_none());
+    }
+    println!(
+        "PASS: eight UI languages switch live, persist, synchronize windows and leave draft, translation and model settings unchanged"
+    );
+}
+
+fn assert_shortcut_preferences(
+    app: &mut PanelApp,
+    event_loop: &ActiveEventLoop,
+    native: &mut ImeSettings,
+) {
+    use suzaku_map::ime::shortcuts::ShortcutProfile;
+    let draft = app.panel.as_ref().unwrap().chrome.seed_text.clone();
+    let translation = app.panel.as_ref().unwrap().chrome.translation.clone();
+    for (profile, succeeds) in [
+        (ShortcutProfile::HomeRow, true),
+        (ShortcutProfile::Standard, false),
+        (ShortcutProfile::Standard, true),
+    ] {
+        let settings = app.settings.as_mut().unwrap();
+        settings.chrome.settings_search_query = "Key layout".into();
+        settings.chrome.settings_scroll_offset = 0.0;
+        let target = InteractionKind::SetShortcutProfile(profile);
+        let scene = settings.current_scene();
+        let rect = scene
+            .interactive_targets
+            .iter()
+            .find(|item| item.kind == target)
+            .unwrap()
+            .rect;
+        settings.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+        settings.last_scene = Some(scene);
+        settings.begin_primary_press(false);
+        settings.complete_primary_release(false);
+        assert_eq!(settings.chrome.shortcut_profile, profile);
+        let id = settings.window.id();
+        app.window_event(event_loop, id, WindowEvent::RedrawRequested);
+        let patch = app
+            .ime_settings_sync
+            .next_patch(&app.panel.as_ref().unwrap().chrome)
+            .unwrap();
+        assert_eq!(
+            patch.to_json(),
+            serde_json::json!({"shortcut_profile": profile.id()})
+        );
+        if succeeds {
+            patch.apply(native).unwrap();
+        }
+        app.user_event(
+            event_loop,
+            PanelUserEvent::PanelImeSettingsApplied(Some(native.clone())),
+        );
+        for state in [app.panel.as_ref().unwrap(), app.settings.as_ref().unwrap()] {
+            assert_eq!(state.chrome.shortcut_profile, native.shortcut_profile);
+            assert_eq!(state.chrome.seed_text, draft);
+            assert_eq!(state.chrome.translation, translation);
+        }
         assert!(
-            app.prediction_settings_sync
-                .next_patch(&panel.chrome)
+            app.ime_settings_sync
+                .next_patch(&app.panel.as_ref().unwrap().chrome)
                 .is_none()
         );
     }
     println!(
-        "PASS: eight UI languages switch live, persist, synchronize windows and leave draft, translation and model settings unchanged"
+        "PASS: shortcut profile clicks synchronize both windows, acknowledge success and roll back failure without touching drafts or translations"
     );
 }
 
@@ -129,7 +187,7 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             assert_eq!(load_display_settings().unwrap().theme_preset, theme);
             // A style choice must not enqueue model configuration or alter the draft.
             assert!(
-                app.prediction_settings_sync
+                app.ime_settings_sync
                     .next_patch(&app.panel.as_ref().unwrap().chrome)
                     .is_none()
             );
@@ -139,6 +197,7 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
         );
         assert_native_titlebar_preference(&mut app, event_loop);
         assert_ui_language_preferences(&mut app, event_loop);
+        assert_shortcut_preferences(&mut app, event_loop, &mut native);
 
         for (selected, succeeds) in [
             (LlmTemperaturePreset::Focused, true),
@@ -168,7 +227,7 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             app.window_event(event_loop, settings_id, WindowEvent::RedrawRequested);
             assert_controls(&app, selected);
             let patch = app
-                .prediction_settings_sync
+                .ime_settings_sync
                 .next_patch(&app.panel.as_ref().unwrap().chrome)
                 .unwrap();
             assert_eq!(patch.temperature_tenths, Some(selected.tenths()));
@@ -178,14 +237,14 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             }
             app.user_event(
                 event_loop,
-                PanelUserEvent::PredictionSettingsApplied(Some(native.clone())),
+                PanelUserEvent::PanelImeSettingsApplied(Some(native.clone())),
             );
             assert_controls(
                 &app,
                 LlmTemperaturePreset::from_tenths(native.provider.temperature_tenths),
             );
             assert!(
-                app.prediction_settings_sync
+                app.ime_settings_sync
                     .next_patch(&app.panel.as_ref().unwrap().chrome)
                     .is_none()
             );
@@ -221,6 +280,7 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             SettingsCategory::Appearance,
             SettingsCategory::Input,
             SettingsCategory::Model,
+            SettingsCategory::Shortcuts,
             SettingsCategory::Appearance,
         ];
         if self.layout_step == categories.len() {
@@ -266,7 +326,7 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             }
             assert_eq!(load_display_settings().unwrap(), saved_settings);
             assert!(
-                app.prediction_settings_sync
+                app.ime_settings_sync
                     .next_patch(&app.panel.as_ref().unwrap().chrome)
                     .is_none()
             );
@@ -362,7 +422,7 @@ fn assert_native_titlebar_preference(app: &mut PanelApp, event_loop: &ActiveEven
             !hide
         );
         assert!(
-            app.prediction_settings_sync
+            app.ime_settings_sync
                 .next_patch(&app.panel.as_ref().unwrap().chrome)
                 .is_none()
         );

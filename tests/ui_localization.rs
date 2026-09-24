@@ -27,6 +27,69 @@ fn assert_hit(scene: &RenderScene, kind: InteractionKind) {
 }
 
 #[test]
+fn shortcut_reference_reflows_translates_and_never_exposes_fake_buttons() {
+    use suzaku_map::ime::shortcuts::{HOME_ROW_BINDINGS, ShortcutProfile};
+    for ui_language in UiLanguage::ALL {
+        for width in [420.0, 620.0, 960.0] {
+            for text_scale in [DisplayTextScale::Medium, DisplayTextScale::Large] {
+                for shortcut_profile in ShortcutProfile::ALL {
+                    let mut chrome = PanelChromeState {
+                        ui_language,
+                        text_scale,
+                        shortcut_profile,
+                        settings_category: SettingsCategory::Shortcuts,
+                        ..Default::default()
+                    };
+                    let scene = settings(width, &chrome);
+                    for category in SettingsCategory::ALL {
+                        assert_hit(&scene, InteractionKind::SetSettingsCategory(category));
+                    }
+                    for profile in ShortcutProfile::ALL {
+                        assert_hit(&scene, InteractionKind::SetShortcutProfile(profile));
+                    }
+                    assert!(scene.interactive_targets.iter().all(|target| !matches!(
+                        target.kind,
+                        InteractionKind::ShortcutReference(_)
+                    )));
+                    assert!(
+                        scene.settings_option_truncated.is_empty(),
+                        "{ui_language:?}/{width}/{text_scale:?}: {:?}",
+                        scene.settings_option_truncated
+                    );
+                    let lines: Vec<_> = scene
+                        .text_sections
+                        .iter()
+                        .flat_map(|section| &section.layouts)
+                        .flat_map(|layout| &layout.lines)
+                        .collect();
+                    for (_, _, key) in HOME_ROW_BINDINGS {
+                        assert_eq!(
+                            lines.iter().any(|line| line.as_str() == key),
+                            shortcut_profile == ShortcutProfile::HomeRow
+                        );
+                    }
+                    for label in ["Shortcuts", "Space", "Enter", "F1", "Ctrl+,"] {
+                        assert!(
+                            lines
+                                .iter()
+                                .any(|line| line.as_str() == ui_language.tr(label)),
+                            "{ui_language:?}/{width}/{text_scale:?}/{label}"
+                        );
+                    }
+                    chrome.settings_category = SettingsCategory::Appearance;
+                    chrome.settings_search_query = ui_language.tr("Key layout").into();
+                    let scene = settings(width, &chrome);
+                    assert_hit(
+                        &scene,
+                        InteractionKind::SetShortcutProfile(ShortcutProfile::HomeRow),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn eight_interfaces_reflow_and_search_in_both_localized_and_original_labels() {
     for ui_language in UiLanguage::ALL {
         for width in [420.0, 620.0, 960.0] {

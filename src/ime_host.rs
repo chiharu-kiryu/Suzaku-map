@@ -387,6 +387,19 @@ pub extern "C" fn suzaku_host_ime_language_kind() -> u32 {
     })
 }
 
+/// The native adapter must first check exact modifiers, a public active draft and Compose.
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_alt_shortcut(key: u32) -> u32 {
+    with_shared_host_ime_session(|session| {
+        if !session.active || session.private {
+            return 0;
+        }
+        char::from_u32(key)
+            .and_then(|key| session.settings.shortcut_profile.alt_action(key))
+            .map_or(0, |action| action as u32)
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_control_utf8(
     raw: *const std::os::raw::c_char,
@@ -414,7 +427,7 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
                 Ok(true)
             }
             patch if patch.starts_with('U') => {
-                crate::ime::settings::PredictionSettingsPatch::from_json(&patch[1..])
+                crate::ime::settings::PanelImeSettingsPatch::from_json(&patch[1..])
                     .and_then(|patch| patch.apply(&mut settings))
                     .map(|()| true)
             }
@@ -441,8 +454,16 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
                 // Repeating a narrow setting must not rebuild candidates or
                 // unlock the user's selection. Still validate/persist above;
                 // an explicit reload must reconfigure even if values match.
-                if command == "R" || settings != session.settings {
+                if command == "R"
+                    || settings.language != session.settings.language
+                    || settings.llm_enabled != session.settings.llm_enabled
+                    || settings.provider != session.settings.provider
+                {
                     session.apply_settings(settings);
+                } else {
+                    // Shortcut changes must not cancel prediction, unlock the current
+                    // choice, clear context or replace a one-step completion undo.
+                    session.settings = settings;
                 }
             }
             Ok(())

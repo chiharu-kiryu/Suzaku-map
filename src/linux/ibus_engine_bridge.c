@@ -37,6 +37,7 @@ extern bool suzaku_host_ime_poll_prediction(void);
 extern bool suzaku_host_ime_prediction_pending(void);
 extern void suzaku_host_ime_set_private(bool private_input);
 extern unsigned int suzaku_host_ime_language_kind(void);
+extern unsigned int suzaku_host_ime_alt_shortcut(uint32_t key);
 extern char *suzaku_host_ime_control_utf8(const char *command);
 extern char *suzaku_host_ime_companion_snapshot_utf8(
     const char *host, uint64_t context, uint64_t revision, bool focused, bool private_input);
@@ -45,6 +46,7 @@ typedef struct _SuzakuIBusEngine {
     IBusEngine parent_instance;
     GString *input;
     gchar *completion_undo;
+    GHashTable *held_adoption_keys;
     struct xkb_compose_state *compose;
     gboolean bypass_input;
     gboolean private_input;
@@ -245,6 +247,7 @@ static void suzaku_ibus_engine_clear_local(SuzakuIBusEngine *self) {
     suzaku_ibus_engine_reset_compose(self);
     g_string_truncate(self->input, 0);
     g_clear_pointer(&self->completion_undo, g_free);
+    g_hash_table_remove_all(self->held_adoption_keys);
 }
 
 static void suzaku_ibus_engine_clear(SuzakuIBusEngine *self) {
@@ -346,14 +349,27 @@ static void suzaku_ibus_engine_move_selection(
     suzaku_ibus_engine_render(self);
 }
 
+static void suzaku_ibus_engine_hold_adoption(SuzakuIBusEngine *self, guint keycode) {
+    /* A physical selection gesture must not walk through newly generated
+     * candidates on autorepeat. Zero means no physical key identity (e.g. a
+     * synthetic client): preserve its discrete events, which may omit releases. */
+    if (keycode != 0) { g_hash_table_add(self->held_adoption_keys, GUINT_TO_POINTER(keycode)); }
+}
+
 static gboolean suzaku_ibus_engine_process_key_event(
     IBusEngine *engine, guint keyval, guint keycode, guint state) {
-    (void)keycode;
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
 
     if (!suzaku_ibus_engine_is_focused(engine) || self->bypass_input) { return FALSE; }
 
-    if ((state & IBUS_RELEASE_MASK) != 0) { return FALSE; }
+    if ((state & IBUS_RELEASE_MASK) != 0) {
+        g_hash_table_remove(self->held_adoption_keys, GUINT_TO_POINTER(keycode));
+        return FALSE;
+    }
+    /* Match by physical identity, not keysym/modifiers: releasing Shift before
+     * a held Shift+Enter must not turn the repeat into a bare Enter commit.
+     * Other held keys are independent; normal typing/navigation still repeats. */
+    if (g_hash_table_contains(self->held_adoption_keys, GUINT_TO_POINTER(keycode))) { return TRUE; }
     if (keyval == IBUS_KEY_BackSpace && self->input->len > 0 &&
         suzaku_host_ime_language_kind() == 2 && (state & IBUS_CONTROL_MASK) != 0 &&
         (state & ((SUZAKU_SYSTEM_MODIFIERS & ~IBUS_CONTROL_MASK) |
@@ -364,6 +380,24 @@ static gboolean suzaku_ibus_engine_process_key_event(
     if ((state & SUZAKU_SYSTEM_MODIFIERS) != 0) {
         suzaku_ibus_engine_cancel_compose(self);
         return FALSE;
+    }
+    /* Optional home-row aliases only own exact Alt chords in a public draft.
+     * Locks are harmless; Shift, AltGr, system modifiers and Compose are not.
+     * No aliases commit text, switch language or register global key grabs. */
+    if (self->input->len > 0 && !self->private_input &&
+        !suzaku_ibus_engine_is_composing(self) &&
+        (state & ~(IBUS_LOCK_MASK | IBUS_MOD2_MASK)) == IBUS_MOD1_MASK) {
+        switch (suzaku_host_ime_alt_shortcut(ibus_keyval_to_unicode(keyval))) {
+        case 1: suzaku_ibus_engine_move_selection(self, -1); return TRUE;
+        case 2: suzaku_ibus_engine_move_selection(self, 1); return TRUE;
+        case 3: suzaku_ibus_engine_move_selection(self, -SUZAKU_LOOKUP_PAGE_SIZE); return TRUE;
+        case 4: suzaku_ibus_engine_move_selection(self, SUZAKU_LOOKUP_PAGE_SIZE); return TRUE;
+        case 5:
+            suzaku_ibus_engine_hold_adoption(self, keycode);
+            suzaku_ibus_engine_complete(self, FALSE);
+            return TRUE;
+        default: break;
+        }
     }
     /* Alt+digits enter literal numbers. Leave Shift's layout-resolved symbols
      * intact, and never interpret AltGr or desktop shortcuts as number choices. */
@@ -443,7 +477,9 @@ static gboolean suzaku_ibus_engine_process_key_event(
     }
     if ((keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter) &&
         (state & IBUS_SHIFT_MASK) != 0 && self->input->len > 0) {
-        return suzaku_ibus_engine_complete(self, FALSE);
+        gboolean handled = suzaku_ibus_engine_complete(self, FALSE);
+        if (handled) { suzaku_ibus_engine_hold_adoption(self, keycode); }
+        return handled;
     }
     if (keyval == IBUS_KEY_Return || keyval == IBUS_KEY_KP_Enter) {
         return suzaku_ibus_engine_commit(self, FALSE);
@@ -452,6 +488,7 @@ static gboolean suzaku_ibus_engine_process_key_event(
     if (self->input->len > 0 && suzaku_host_ime_candidate_count() > 0 &&
         (state & (IBUS_SHIFT_MASK | IBUS_MOD5_MASK)) == 0 &&
         keyval >= IBUS_KEY_0 && keyval <= IBUS_KEY_9) {
+        suzaku_ibus_engine_hold_adoption(self, keycode);
         if (keyval >= IBUS_KEY_1 && keyval < IBUS_KEY_1 + SUZAKU_LOOKUP_PAGE_SIZE) {
             size_t index = suzaku_ibus_candidate_page_start() +
                            (size_t)(keyval - IBUS_KEY_1);
@@ -635,6 +672,7 @@ static void suzaku_ibus_engine_finalize(GObject *object) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
     g_clear_pointer(&self->compose, xkb_compose_state_unref);
     g_clear_pointer(&self->completion_undo, g_free);
+    g_clear_pointer(&self->held_adoption_keys, g_hash_table_unref);
     if (self->input != NULL) {
         g_string_free(self->input, TRUE);
         self->input = NULL;
@@ -665,6 +703,7 @@ static void suzaku_ibus_engine_class_init(SuzakuIBusEngineClass *class) {
 static void suzaku_ibus_engine_init(SuzakuIBusEngine *self) {
     suzaku_host_ime_enable_ibus_candidates();
     self->input = g_string_new(NULL);
+    self->held_adoption_keys = g_hash_table_new(g_direct_hash, g_direct_equal);
     self->compose = suzaku_ibus_compose_new();
     /* Advanced opt-in only: inline clients can confirm text without our Enter.
      * Default candidate-area drafts keep explicit commit/cancel semantics. */

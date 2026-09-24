@@ -503,8 +503,14 @@ mod tests {
         let frame = build_frame_vertices(&scene, &[overlay], 520.0, 340.0, |glyph| {
             (glyph.rect, [0.0, 0.0, 1.0, 1.0])
         });
+        let base = build_frame_vertices(&scene, &[], 520.0, 340.0, |glyph| {
+            (glyph.rect, [0.0, 0.0, 1.0, 1.0])
+        });
         assert_eq!(frame.layers.len(), 2);
-        assert_eq!(frame.layers[0].shapes, 0..scene.quads.len() as u32 * 6);
+        // Reflow can leave fully clipped settings quads; they must not acquire
+        // vertices just because a tooltip is present.
+        assert_eq!(frame.layers[0].shapes, 0..base.shapes.len() as u32);
+        assert_eq!(frame.layers[0].text, 0..base.text.len() as u32);
         assert_eq!(frame.layers[1].shapes.start, frame.layers[0].shapes.end);
         assert_eq!(frame.layers[1].shapes.len(), 6);
         assert_eq!(frame.layers[1].text.start, frame.layers[0].text.end);

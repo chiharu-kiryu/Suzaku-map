@@ -87,7 +87,12 @@ fn audit_native_patch_must_not_clobber_a_newer_saved_configuration() {
     ];
     let mut findings = Vec::new();
     for (case, base, arguments) in cases {
-        for command in ["U{\"llm_temperature_tenths\":7}", "P0", "Lja"] {
+        for command in [
+            "U{\"llm_temperature_tenths\":7}",
+            "P0",
+            "Lja",
+            "U{\"shortcut_profile\":\"home-row\"}",
+        ] {
             assert!(!base.llm_enabled);
             base.save().unwrap();
             assert_eq!(control("R")["ok"], true);
@@ -107,6 +112,9 @@ fn audit_native_patch_must_not_clobber_a_newer_saved_configuration() {
             match command {
                 "P0" => expected.llm_enabled = false,
                 "Lja" => expected.language = suzaku_map::languages::BuiltinLanguage::Japanese,
+                "U{\"shortcut_profile\":\"home-row\"}" => {
+                    expected.shortcut_profile = suzaku_map::ime::shortcuts::ShortcutProfile::HomeRow
+                }
                 _ => expected.provider.temperature_tenths = 7,
             }
             let response = control(command);

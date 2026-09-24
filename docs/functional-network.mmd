@@ -1,4 +1,4 @@
-%% Suzaku functional network: 2026-09-24 source snapshot for 0.6.6 including rounds 32-36 improvements/tests, not the installed build.
+%% Suzaku functional network: 2026-09-24 source snapshot for 0.6.7 including rounds 37-39 fixes/tests, not the installed build.
 %% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); N01-N04 in 0.5.6, N05-N18 in 0.5.7, N19-N23 in 0.5.8, N24-N28 in 0.5.9, N29-N32 in 0.6.0, N33-N37 in 0.6.1, N38-N40 in 0.6.2, N41-N42 in 0.6.3, N43-N45 in 0.6.5, N46-N47 in 0.6.6.
 %% 0.6.4 changes build/test maintenance only; the logical input graph is unchanged.
 %% 0.6.5 includes round 30 N43 registered-service retries and round 31 N44/N45 recovery fixes.
@@ -9,6 +9,10 @@
 %% Round 34 reduces candidate overhead, rejects request-field echoes/lost question marks and validates real model adoption; quality is still model-dependent.
 %% Round 35 N46 cancels obsolete connected local candidate/discovery I/O; cloud/legacy calls remain deadline-bound.
 %% Round 36 prioritizes English/Chinese and repairs N47 separated Pinyin without erasing syllable boundaries.
+%% 0.6.7 round 37 N48 preserves literal padding, quotes, line boundaries and non-Pinyin case in Chinese drafts.
+%% 0.6.7 shortcut presets reuse F10-F13 actions and F42/F44 confirmed settings; no global input hook.
+%% 0.6.7 round 38 N49 filters physical adoption repeats until release; navigation/editing still repeat; 38 GTK keyboard workflows.
+%% 0.6.7 round 39 extends to 44 keyboard workflows with key-up across two real windows; no new confirmed product defect.
 %% Solid edges: implemented logical routes. Dotted edges: optional model requests.
 %% Reused engine/provider code does not mean shared state across processes.
 flowchart TB

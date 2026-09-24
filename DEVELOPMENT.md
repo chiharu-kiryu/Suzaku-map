@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.6 — Linux Alpha bilingual input and model responsiveness patch**.
+Current source version: **0.6.7 — Linux Alpha shortcuts and lossless Chinese drafts patch**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,30 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.6.7 — Context-local shortcuts and literal boundaries in Chinese drafts
+
+- A searchable Shortcuts settings page preserves the standard layout and offers opt-in QWERTY
+  home-row IBus aliases: Alt+J/K navigate, Alt+H/L page, Alt+semicolon adopts without submitting.
+  Focus-local F1 opens the reference; Ctrl+comma opens panel settings. No global key grabs.
+- Shortcut preferences use acknowledged narrow native patches and configuration backups, with
+  failure/conflict protection. Changing only the layout preserves input, selection, undo, Compose
+  and prediction. Modifier/privacy/idle guards preserve application keys. See [shortcuts](docs/shortcuts.md).
+- N49 makes physical candidate-adoption holds one-shot until release, retaining exact undo and
+  immediate separate taps. Releasing a modifier first cannot turn held adoption into submission;
+  navigation/text editing still repeat. See the [repeat audit](docs/bug-audit-shortcut-repeat-2026-09-24.md).
+- Physical keyboard coverage now includes releasing selection keys in another real editor window,
+  reusing the same key, exact undo and returning focus without replaying the old draft. The gate
+  has 44 workflows; see the [focus follow-up](docs/bug-audit-shortcut-focus-2026-09-24.md).
+
+- N48 keeps literal whitespace, quotes and non-Pinyin Unicode case around converted/adopted text.
+  Only actual phonetic separators are consumed; line/paragraph boundaries are never syllable joins.
+  Existing `ü`/`u:` and tone forms, `xi'an` disambiguation and literal fallback remain available.
+- Word/sentence continuations retain literal horizontal padding. New paired native checks cover
+  owned-prefix keyboard continuation and companion replacement, adoption/undo and exact submission.
+  English input is a regression control; its algorithm and dictionary are unchanged.
+  See the [literal-boundary audit](docs/bug-audit-chinese-literal-boundaries-2026-09-24.md).
+  See the [0.6.7 release notes](docs/releases/0.6.7.md) for validation and upgrade boundaries.
 
 ### 0.6.6 — Bilingual input and model responsiveness
 

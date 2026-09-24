@@ -46,7 +46,7 @@ impl Fixture {
         }
     }
     fn write_settings(&self) {
-        files::atomic_write(&self.paths.ime, br#"{"language":"ja","llm_model":"llama3.2:1b","llm_temperature_tenths":3,"history":"synthetic-never-export"}"#).unwrap();
+        files::atomic_write(&self.paths.ime, br#"{"language":"ja","llm_model":"llama3.2:1b","llm_temperature_tenths":3,"shortcut_profile":"home-row","history":"synthetic-never-export"}"#).unwrap();
         files::atomic_write(
             &self.paths.panel,
             b"theme_preset=solarized\nllm_temperature=custom:3\nwindow_scale=1.2\n",
@@ -115,6 +115,7 @@ fn snapshot_contains_configuration_only_and_round_trips_custom_values() {
     let parsed = Backup::parse(&raw).unwrap();
     assert_eq!(parsed.ime.as_ref().unwrap()["language"], "ja");
     assert_eq!(parsed.ime.as_ref().unwrap()["llm_temperature_tenths"], 3);
+    assert_eq!(parsed.ime.as_ref().unwrap()["shortcut_profile"], "home-row");
     assert_eq!(parsed.panel.unwrap()["llm_temperature"], "custom:3");
 }
 

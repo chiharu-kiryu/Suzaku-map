@@ -11,7 +11,7 @@ mod platform {
     use std::sync::mpsc::{self, Sender};
     use std::thread::{self, JoinHandle};
     use suzaku_map::ime::gpu::ThemePreset;
-    use suzaku_map::ime::settings::PredictionSettingsPatch;
+    use suzaku_map::ime::settings::PanelImeSettingsPatch;
     use suzaku_map::languages::BuiltinLanguage;
     use suzaku_map::languages::model::{ModelProviderConfig, ModelScope, runtime as model_runtime};
     #[cfg(feature = "linux-ibus")]
@@ -40,7 +40,7 @@ mod platform {
         ReleaseInputMethod,
         SetLanguage(BuiltinLanguage),
         SetPredictionEnabled(bool),
-        SetPredictionSettings(PredictionSettingsPatch),
+        SetPanelImeSettings(PanelImeSettingsPatch),
         ReloadImeSettings,
         CheckModel(ModelProviderConfig),
         WarmModel(ModelProviderConfig),
@@ -168,9 +168,9 @@ mod platform {
             self.control_tx.send(TrayControl::Quit).is_ok()
         }
 
-        pub(crate) fn set_prediction_settings(&self, patch: PredictionSettingsPatch) -> bool {
+        pub(crate) fn set_panel_ime_settings(&self, patch: PanelImeSettingsPatch) -> bool {
             self.control_tx
-                .send(TrayControl::SetPredictionSettings(patch))
+                .send(TrayControl::SetPanelImeSettings(patch))
                 .is_ok()
         }
         pub(crate) fn set_panel_visible(&self, visible: bool) {
@@ -756,10 +756,10 @@ mod platform {
                                 linux_ime_control::set_llm_enabled(enabled),
                             );
                         }
-                        TrayControl::SetPredictionSettings(patch) => {
+                        TrayControl::SetPanelImeSettings(patch) => {
                             publish_settings_result(
                                 &handle,
-                                linux_ime_control::set_prediction_settings(patch),
+                                linux_ime_control::set_panel_ime_settings(patch),
                                 true,
                             );
                         }
@@ -969,7 +969,7 @@ mod platform {
                 tray.input_method.native_error = error.clone();
             }
             if panel_write_finished {
-                tray.send(PanelUserEvent::PredictionSettingsApplied(
+                tray.send(PanelUserEvent::PanelImeSettingsApplied(
                     tray.input_method
                         .native
                         .as_ref()
@@ -1261,9 +1261,9 @@ mod platform {
         pub(crate) fn set_panel_visible(&self, _visible: bool) {}
         pub(crate) fn set_theme(&mut self, _theme: suzaku_map::ime::gpu::ThemePreset) {}
         pub(crate) fn set_ui_language(&mut self, _language: suzaku_map::ui::UiLanguage) {}
-        pub(crate) fn set_prediction_settings(
+        pub(crate) fn set_panel_ime_settings(
             &self,
-            _patch: suzaku_map::ime::settings::PredictionSettingsPatch,
+            _patch: suzaku_map::ime::settings::PanelImeSettingsPatch,
         ) -> bool {
             false
         }

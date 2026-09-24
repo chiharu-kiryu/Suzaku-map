@@ -76,6 +76,28 @@ pub(super) fn primary_shortcut_modifier(modifiers: ModifiersState) -> bool {
     !modifiers.alt_key() && (modifiers.control_key() || modifiers.super_key())
 }
 
+/// Focus-local commands only; never run while an IME owns a preedit.
+pub(super) fn settings_shortcut(
+    key: &Key,
+    modifiers: ModifiersState,
+    repeat: bool,
+) -> Option<bool> {
+    if repeat {
+        return None;
+    }
+    match key {
+        Key::Named(NamedKey::F1) if modifiers.is_empty() => Some(true),
+        Key::Character(text)
+            if text == ","
+                && (modifiers == ModifiersState::CONTROL
+                    || (cfg!(target_os = "macos") && modifiers == ModifiersState::SUPER)) =>
+        {
+            Some(false)
+        }
+        _ => None,
+    }
+}
+
 fn edit_action<'a>(
     key: &Key,
     text: Option<&'a str>,
@@ -236,6 +258,40 @@ impl PanelState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn help_and_settings_chords_are_exact_and_do_not_repeat_or_steal_altgr() {
+        let help = Key::Named(NamedKey::F1);
+        let comma = Key::Character(",".into());
+        assert_eq!(
+            settings_shortcut(&help, ModifiersState::empty(), false),
+            Some(true)
+        );
+        assert_eq!(
+            settings_shortcut(&comma, ModifiersState::CONTROL, false),
+            Some(false)
+        );
+        assert_eq!(
+            settings_shortcut(&help, ModifiersState::empty(), true),
+            None
+        );
+        assert_eq!(
+            settings_shortcut(&comma, ModifiersState::CONTROL, true),
+            None
+        );
+        for modifiers in [
+            ModifiersState::ALT,
+            ModifiersState::SHIFT,
+            ModifiersState::CONTROL | ModifiersState::ALT,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        ] {
+            assert_eq!(settings_shortcut(&help, modifiers, false), None);
+            assert_eq!(settings_shortcut(&comma, modifiers, false), None);
+        }
+        assert_eq!(
+            settings_shortcut(&comma, ModifiersState::empty(), false),
+            None
+        );
+    }
 
     #[test]
     fn ordinary_characters_digits_and_repeats_are_always_text_in_an_editor() {

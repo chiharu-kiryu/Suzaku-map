@@ -646,7 +646,7 @@ def check_prediction_cancellation(bus):
     watch = Watch()
     timings = {}
     try:
-        for boundary in ["edit", "escape", "commit", "language", "password", "disable", "reload", "destroy"]:
+        for boundary in ["edit", "escape", "commit", "language", "password", "disable", "reload", "destroy", "shortcut"]:
             name = f"synthetic-cancellation-{boundary}"
             gate = {key: threading.Event() for key in ["received", "release", "finished"]}
             model_reply_gates[name] = gate
@@ -663,6 +663,21 @@ def check_prediction_cancellation(bus):
                 assert action(watch.latest, "Thel")
                 wait(gate["received"].is_set, "cancellable request is actually in flight")
                 assert json.loads(command("S"))["prediction"] == "Pending"
+                if boundary == "shortcut":
+                    baseline = watch.latest
+                    result = json.loads(command('U{"shortcut_profile":"home-row"}'))
+                    assert result["ok"] and result["prediction"] == "Pending"
+                    wait(lambda: watch.latest["revision"] > baseline["revision"], "pending prediction profile change")
+                    for field in ["context", "seed", "selected", "candidates"]:
+                        assert watch.latest[field] == baseline[field]
+                    gate["release"].set()
+                    wait(lambda: json.loads(command("S"))["prediction"] == "Ready" and
+                         any(c["source"] == "model" for c in watch.latest["candidates"]),
+                         "profile change must retain the in-flight result")
+                    assert "cancelled_at" not in gate and len(model_requests) == requested + 1
+                    assert not peer.commits
+                    print("PASS: changing shortcut profile preserves an in-flight model request without restarting it")
+                    continue
                 changed = time.monotonic()
                 if boundary == "edit":
                     assert action(watch.latest, "Tplease rec")
@@ -2254,6 +2269,283 @@ def check_editable_completions(context, watch, commits, lookup):
     print("PASS: CJK unfinished-tail completion, Shift+Enter/Shift+Space editable choices, one-step spelling undo, exact phrase commits and reset/privacy/focus isolation")
 
 
+def check_home_row_shortcuts(context, watch, commits, lookup):
+    """Real native aliases, live settings, stream semantics and modifier boundaries."""
+    alt = IBus.ModifierType.MOD1_MASK
+    original_profile = json.loads(command("S"))["settings"]["shortcut_profile"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+
+    def setting(request):
+        revision = watch.latest["revision"]
+        result = json.loads(command(request))
+        assert result["ok"], result
+        wait(lambda: watch.latest["revision"] > revision, "shortcut setting publication")
+        return result["settings"]
+
+    def profile(value):
+        before = watch.latest
+        previous = json.loads(command("S"))["settings"]
+        saved = setting("U" + json.dumps({"shortcut_profile": value}))
+        assert saved == dict(previous, shortcut_profile=value), "profile overwrote model/language settings"
+        assert json.loads(config.read_text())["shortcut_profile"] == value
+        for field in ["context", "seed", "selected", "candidates"]:
+            assert watch.latest[field] == before[field], f"profile changed {field}"
+
+    def start(seed):
+        revision = watch.latest["revision"]
+        assert action(watch.latest, "X")
+        wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"], "clear shortcut fixture")
+        type_seed(context, seed)
+
+    for language, seed, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好"),
+                                  ("ja", "nihongo", "日本語")]:
+        setting("L" + language)
+        start(seed)
+        before = len(commits)
+        profile("standard")
+        baseline = watch.latest
+        for key in [IBus.KEY_h, IBus.KEY_j, IBus.KEY_k, IBus.KEY_l, IBus.KEY_semicolon]:
+            assert not context.process_key_event(key, 0, alt)
+        pump()
+        assert watch.latest == baseline, "standard profile stole application Alt keys"
+        profile("home-row")
+        # Repeated navigation clamps at ends; locks do not disable aliases.
+        for key, delta, mask in [(IBus.KEY_j, 1, alt), (IBus.KEY_k, -1, alt),
+                                 (IBus.KEY_l, 6, alt), (IBus.KEY_h, -6, alt),
+                                 (IBus.KEY_J, 1, alt | IBus.ModifierType.LOCK_MASK),
+                                 (IBus.KEY_k, -1, alt | IBus.ModifierType.MOD2_MASK)]:
+            expected = max(0, min(len(watch.latest["candidates"]) - 1, watch.latest["selected"] + delta))
+            revision = watch.latest["revision"]
+            assert context.process_key_event(key, 0, mask)
+            wait(lambda: watch.latest["revision"] > revision and watch.latest["selected"] == expected
+                 and lookup["selected"] == expected, "home-row navigation")
+            assert watch.latest["seed"] == seed and len(commits) == before
+        baseline = watch.latest
+        for extra in [IBus.ModifierType.SHIFT_MASK, IBus.ModifierType.CONTROL_MASK,
+                      IBus.ModifierType.SUPER_MASK, IBus.ModifierType.MOD4_MASK,
+                      IBus.ModifierType.MOD5_MASK, IBus.ModifierType.RELEASE_MASK]:
+            for key in [IBus.KEY_j, IBus.KEY_semicolon]:
+                assert not context.process_key_event(key, 0, alt | extra)
+        pump()
+        assert watch.latest == baseline and len(commits) == before
+        index = next(i for i, candidate in enumerate(watch.latest["candidates"]) if candidate["text"] == word)
+        assert action(watch.latest, f"N{index}")
+        wait(lambda: watch.latest["selected"] == index, "select home-row completion")
+        assert context.process_key_event(IBus.KEY_semicolon, 0, alt)
+        wait(lambda: watch.latest["seed"] == word, "Alt+semicolon adopts without submission")
+        assert len(commits) == before
+        # A live profile switch must preserve the one-step exact spelling undo.
+        profile("standard")
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == seed, "profile switch erased completion undo")
+        profile("home-row")
+        assert action(watch.latest, f"N{index}")
+        wait(lambda: watch.latest["selected"] == index, "reselect home-row completion")
+        assert context.process_key_event(IBus.KEY_semicolon, 0, alt)
+        wait(lambda: watch.latest["seed"] == word, "readopt home-row completion")
+        assert context.process_key_event(IBus.KEY_space, 0, 0)
+        wait(lambda: watch.latest["seed"] == word + " ", "Space continues home-row choice")
+        assert context.process_key_event(IBus.KEY_7, 0, alt)
+        wait(lambda: watch.latest["seed"] == word + " 7", "Alt digits remain literal")
+        assert len(commits) == before
+        # Enter submits the selected payload, not necessarily the raw draft.
+        # Japanese still consumes romaji separators, so explicitly choose the
+        # literal row here; this is a shortcut/commit test, not a converter change.
+        literal = next(i for i, candidate in enumerate(watch.latest["candidates"]) if candidate["text"] == word + " 7")
+        revision = watch.latest["revision"]
+        assert action(watch.latest, f"N{literal}")
+        wait(lambda: watch.latest["revision"] > revision and watch.latest["selected"] == literal, "literal before explicit submission")
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: len(commits) > before and not watch.latest["seed"], "explicit Enter only")
+        assert commits[before:] == [word + " 7"], (language, commits[before:], word + " 7")
+        for key in [IBus.KEY_j, IBus.KEY_semicolon]:
+            assert not context.process_key_event(key, 0, alt), "idle alias stole an application shortcut"
+
+    setting("Len")
+    start("caf")
+    assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+    wait(lambda: lookup["aux"].endswith("Compose… · Esc / Backspace 取消"), "pending accent before profile change")
+    profile("standard")
+    profile("home-row")
+    assert context.process_key_event(IBus.KEY_e, 0, 0)
+    wait(lambda: watch.latest["seed"] == "café", "profile changes lost Compose")
+    assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+    wait(lambda: lookup["aux"].endswith("Compose… · Esc / Backspace 取消"), "accent before shortcut")
+    baseline = watch.latest
+    assert not context.process_key_event(IBus.KEY_j, 0, alt), "alias stole a Compose sequence"
+    pump()
+    assert watch.latest["seed"] == baseline["seed"] and watch.latest["selected"] == baseline["selected"]
+
+    # AltGr text must remain text, never navigation.
+    start("hel")
+    assert context.process_key_event(IBus.KEY_j, 0, IBus.ModifierType.MOD5_MASK)
+    wait(lambda: watch.latest["seed"] == "helj", "AltGr text intercepted by alias")
+    before = len(commits)
+    for purpose, hints in [(IBus.InputPurpose.PASSWORD, 0), (IBus.InputPurpose.NUMBER, 0),
+                           (IBus.InputPurpose.FREE_FORM, 1 << 11)]:
+        context.set_content_type(purpose, hints)
+        wait(lambda: watch.latest["private"], "private shortcut guard")
+        if hints:
+            type_seed(context, "hel")  # Local typing is allowed; optional aliases are not.
+        for key in [IBus.KEY_j, IBus.KEY_semicolon]:
+            assert not context.process_key_event(key, 0, alt)
+        context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+        wait(lambda: not watch.latest["private"], "leave private shortcut guard")
+    assert len(commits) == before
+    start("hel")
+    revision = watch.latest["revision"]
+    context.focus_out()
+    wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"], "shortcut focus-out")
+    assert not context.process_key_event(IBus.KEY_j, 0, alt)
+    context.focus_in()
+    wait(lambda: watch.latest["focused"], "restore shortcut focus")
+    # Reload confirms the saved profile through the actual host settings loader.
+    assert setting("R")["shortcut_profile"] == "home-row"
+    profile(original_profile)
+    print("PASS: shortcut profiles, EN/ZH/JA home-row navigation/adoption, exact undo, Space continuation, literal digits, persistence, lock/AltGr/Compose/privacy/focus boundaries")
+
+
+def check_adoption_key_repeats(context, watch, commits):
+    """Physical identities, releases and context boundaries, without debounce timers."""
+    alt, shift, release = (IBus.ModifierType.MOD1_MASK, IBus.ModifierType.SHIFT_MASK,
+                           IBus.ModifierType.RELEASE_MASK)
+    original = json.loads(command("S"))["settings"]
+    before = len(commits)
+
+    def setting(request):
+        revision = watch.latest["revision"]
+        assert json.loads(command(request))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "repeat fixture settings")
+
+    def start(seed):
+        revision = watch.latest["revision"]
+        assert action(watch.latest, "X")
+        wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"], "clear repeat fixture")
+        type_seed(context, seed)
+        wait(lambda: watch.latest["seed"] == seed, "repeat fixture spelling")
+
+    def choose(word):
+        index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == word)
+        revision = watch.latest["revision"]
+        assert action(watch.latest, f"N{index}")
+        wait(lambda: watch.latest["revision"] > revision, "select repeat fixture word")
+        return index
+
+    setting('U{"shortcut_profile":"home-row"}')
+    for language, seed, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+        setting("L" + language)
+        for method in ["number", "shift-enter", "shift-keypad", "home-row"]:
+            start(seed)
+            index = choose(word)
+            key, code, modifiers = {
+                "number": (IBus.KEY_1 + index, 2 + index, 0),
+                "shift-enter": (IBus.KEY_Return, 28, shift),
+                "shift-keypad": (IBus.KEY_KP_Enter, 96, shift),
+                "home-row": (IBus.KEY_semicolon, 39, alt),
+            }[method]
+            assert context.process_key_event(key, code, modifiers)
+            wait(lambda: watch.latest["seed"] == word, "first press adopts word")
+            baseline = watch.latest
+            # Releasing a modifier or another key must not release the held
+            # adoption key. A changed keysym/modifier must not submit/insert.
+            assert not context.process_key_event(IBus.KEY_Shift_L, 42, release)
+            for mask in [modifiers, 0, shift, alt, modifiers]:
+                assert context.process_key_event(key, code, mask)
+            assert context.process_key_event(IBus.KEY_colon, code, shift)
+            pump()
+            assert watch.latest == baseline and len(commits) == before, (language, method)
+            assert context.process_key_event(IBus.KEY_BackSpace, 14, 0)
+            wait(lambda: watch.latest["seed"] == seed, "repeat must preserve exact undo")
+            assert context.process_key_event(key, code, modifiers)
+            pump()
+            assert watch.latest["seed"] == seed, "another key unlatched a held selection"
+            # Release identity still matches after modifiers/layout change.
+            assert not context.process_key_event(IBus.KEY_a, code, release)
+            choose(word)
+            assert context.process_key_event(key, code, modifiers)
+            assert not context.process_key_event(key, code, release)
+            wait(lambda: watch.latest["seed"] == word, "release permits immediate next adoption")
+            assert context.process_key_event(IBus.KEY_BackSpace, 14, 0)
+            wait(lambda: watch.latest["seed"] == seed, "second gesture has its own undo")
+
+    setting("Len")
+    start("hel")
+    assert context.process_key_event(IBus.KEY_2, 3, 0)
+    wait(lambda: watch.latest["seed"] == "hello", "rapid first choice")
+    assert not context.process_key_event(IBus.KEY_2, 3, release)
+    next_word = watch.latest["candidates"][1]["text"]
+    assert next_word != "hello"
+    assert context.process_key_event(IBus.KEY_2, 3, 0)
+    wait(lambda: watch.latest["seed"] == next_word, "rapid second tap is not debounced")
+    assert not context.process_key_event(IBus.KEY_2, 3, release)
+    assert context.process_key_event(IBus.KEY_BackSpace, 14, 0)
+    wait(lambda: watch.latest["seed"] == "hello", "rapid second tap undo")
+
+    start("hel")
+    assert context.process_key_event(IBus.KEY_2, 3, 0)
+    wait(lambda: watch.latest["seed"] == "hello", "overlapping keys first choice")
+    assert context.process_key_event(IBus.KEY_1, 2, 0)
+    for _ in range(3):
+        assert context.process_key_event(IBus.KEY_2, 3, 0)
+    pump()
+    assert watch.latest["seed"] == "hello", "another held choice forgot the first key"
+    for key, code in [(IBus.KEY_1, 2), (IBus.KEY_2, 3)]:
+        assert not context.process_key_event(key, code, release)
+
+    start("hel")
+    count = len(watch.latest["candidates"])
+    for _ in range(3):
+        assert context.process_key_event(IBus.KEY_j, 36, alt)
+    wait(lambda: watch.latest["selected"] == min(3, count - 1), "navigation still repeats")
+    start("v")
+    for key, code, mask, expected in [(IBus.KEY_space, 57, 0, "v   "),
+                                      (IBus.KEY_2, 3, alt, "v   222"),
+                                      (IBus.KEY_BackSpace, 14, 0, "v   ")]:
+        for _ in range(3):
+            assert context.process_key_event(key, code, mask)
+        wait(lambda: watch.latest["seed"] == expected, "literal editing still repeats")
+
+    for boundary in ["reset", "escape", "focus", "privacy", "language"]:
+        start("hel")
+        assert context.process_key_event(IBus.KEY_2, 3, 0)
+        wait(lambda: watch.latest["seed"] == "hello", "held key before boundary")
+        if boundary == "reset":
+            context.reset()
+        elif boundary == "escape":
+            assert context.process_key_event(IBus.KEY_Escape, 1, 0)
+        elif boundary == "focus":
+            previous_context = watch.latest["context"]
+            context.focus_out()
+            # IBus may focus its fallback engine immediately; observe the
+            # retired target, not a transient globally unfocused frame.
+            wait(lambda: watch.latest["context"] != previous_context and not watch.latest["seed"],
+                 "held-key focus out")
+            assert not context.process_key_event(IBus.KEY_2, 3, 0)
+            previous_context = watch.latest["context"]
+            context.focus_in()
+            wait(lambda: watch.latest["context"] != previous_context and watch.latest["focused"],
+                 "held-key refocus")
+        elif boundary == "privacy":
+            context.set_content_type(IBus.InputPurpose.PASSWORD, 0)
+            wait(lambda: watch.latest["private"], "held-key privacy boundary")
+            assert not context.process_key_event(IBus.KEY_2, 3, 0)
+            context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+            wait(lambda: not watch.latest["private"], "held-key public field")
+        else:
+            setting("Lzh-Hans")
+            setting("Len")
+        wait(lambda: not watch.latest["seed"], "boundary cleared draft")
+        type_seed(context, "hel")  # Do not use start(): the boundary must clear the old key itself.
+        assert context.process_key_event(IBus.KEY_2, 3, 0)
+        wait(lambda: watch.latest["seed"] == "hello", "old held key stuck after " + boundary)
+        assert not context.process_key_event(IBus.KEY_2, 3, release)
+    assert len(commits) == before
+    start("")
+    setting("U" + json.dumps({"shortcut_profile": original["shortcut_profile"]}))
+    setting("L" + original["language"])
+    print("PASS: EN/ZH held adoption, exact undo, release/modifier identity, rapid taps, overlapping keys, repeatable navigation/editing and focus/reset/privacy/language isolation")
+
+
 def check_bilingual_core_completion(context, watch, commits):
     """Prioritize English/Pinyin word + sentence adoption without a model."""
     assert not json.loads(command("S"))["settings"]["llm_enabled"]
@@ -2301,6 +2593,68 @@ def check_bilingual_core_completion(context, watch, commits):
             wait(lambda: commits[before:] == [selected] and not watch.latest["seed"], "bilingual exact single commit")
     assert json.loads(command("Len"))["ok"]
     print("PASS: N47 12 English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
+
+
+def check_bilingual_literal_boundaries(context, watch, commits):
+    """N48: decoded Pinyin must not erase literal text around adopted words."""
+    assert not json.loads(command("S"))["settings"]["llm_enabled"]
+    cases = [
+        ("你好  世界", "你好  世界"),
+        ("'你好'", "'你好'"),
+        ("ΩΣ", "ΩΣ"),
+        ("É", "É"),
+        ("  shu ru fa", "  输入法"),
+        ("你好  bei jing", "你好  北京"),
+        ("你好\u00a0bei j", "你好\u00a0北京"),
+        ("'nihao'", "'你好'"),
+    ]
+    checked = 0
+    for language in ["en", "zh-Hans"]:
+        revision = watch.latest["revision"]
+        assert json.loads(command("L" + language))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "published literal-boundary language setting")
+        for route in ["key-continuation", "companion"]:
+            for seed, converted in cases:
+                expected = converted if language == "zh-Hans" else seed
+                # Reset is asynchronous on a separate D-Bus connection; use an
+                # acknowledged clear before writing over an already empty draft.
+                revision = watch.latest["revision"]
+                assert action(watch.latest, "X")
+                wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"],
+                     "acknowledged literal boundary clear")
+                before = len(commits)
+                if route == "key-continuation":
+                    # An empty engine deliberately passes Han/Greek/Space to
+                    # the app. Seed an owned prefix first, like tool adoption,
+                    # then exercise real IBus character events in that draft.
+                    assert action(watch.latest, "T" + seed[:1])
+                    wait(lambda: watch.latest["seed"] == seed[:1],
+                         f"prepare literal prefix: {language}, {seed!r}")
+                    type_seed(context, seed[1:])
+                else:
+                    assert action(watch.latest, "T" + seed)
+                wait(lambda: watch.latest["seed"] == seed, "unchanged source spelling")
+                assert watch.latest["candidates"][0]["text"] == expected, (language, route, seed, watch.latest)
+                assert any(c["text"] == seed for c in watch.latest["candidates"])
+                assert context.process_key_event(IBus.KEY_1, 0, 0)
+                wait(lambda: watch.latest["seed"] == expected, "adopt lossless primary")
+                if expected != seed:
+                    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                    wait(lambda: watch.latest["seed"] == seed, "restore exact reading and literal prefix")
+                    assert context.process_key_event(IBus.KEY_1, 0, 0)
+                    wait(lambda: watch.latest["seed"] == expected, "re-adopt primary")
+                type_seed(context, " shi")
+                wait(lambda: watch.latest["seed"] == expected + " shi", "Space keeps the adopted draft open")
+                completed = expected + (" 是" if language == "zh-Hans" else " shi")
+                assert watch.latest["candidates"][0]["text"] == completed, (language, route, watch.latest)
+                assert context.process_key_event(IBus.KEY_1, 0, 0)
+                wait(lambda: watch.latest["seed"] == completed, "continuation preserves adopted spacing")
+                assert len(commits) == before
+                assert context.process_key_event(IBus.KEY_Return, 0, 0)
+                wait(lambda: commits[before:] == [completed] and not watch.latest["seed"], "exact literal-boundary commit")
+                checked += 1
+    assert json.loads(command("Len"))["ok"]
+    print(f"PASS: N48 {checked} English/Chinese key/companion literal-boundary adoption, undo, Space continuation and exact commits")
 
 
 def check_literal_choice_publication(context, watch, commits, lookup):
@@ -2488,7 +2842,8 @@ def check_unchanged_model_controls(context, watch, commits, lookup):
     assert settings["llm_enabled"] and settings["language"] == "en"
     requests = ["Len", "Len_US", "P1",
                 "U" + json.dumps({"llm_temperature_tenths": settings["llm_temperature_tenths"]}),
-                "U" + json.dumps({"llm_enabled": True, "llm_temperature_tenths": settings["llm_temperature_tenths"]})]
+                "U" + json.dumps({"llm_enabled": True, "llm_temperature_tenths": settings["llm_temperature_tenths"]}),
+                'U{"shortcut_profile":"home-row"}', 'U{"shortcut_profile":"standard"}']
     for request in requests:
         context.reset()
         wait(lambda: not watch.latest["seed"], "reset unchanged model control")
@@ -2518,7 +2873,7 @@ def check_unchanged_model_controls(context, watch, commits, lookup):
     wait(lambda: not watch.latest["seed"], "finish unchanged model controls")
     type_seed(context, "hel")
     wait(lambda: any(c["source"] == "model" for c in watch.latest["candidates"]), "restore model reload fixture")
-    print("PASS: N30 5 unchanged controls preserve locked model candidates without new requests")
+    print("PASS: N30 5 unchanged controls and 2 shortcut profile changes preserve locked model candidates without new requests")
 
 
 def check_lossless_commit_chunks(context, watch, commits):
@@ -3143,6 +3498,19 @@ try:
         check_password_probe_cleanup(bus)
         check_engine_recovery(bus)
         raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_SHORTCUTS_ONLY") == "1":
+        context = create_context(bus, "suzaku-shortcuts-qa")
+        commits = []
+        lookup = observe_lookup(context)
+        context.connect("commit-text", lambda _, text: commits.append(text.get_text()))
+        context.focus_in()
+        assert bus.set_global_engine("dev.suzaku.linux.ime")
+        assert json.loads(command("P0"))["ok"]
+        watch = Watch()
+        wait(lambda: watch.latest is not None and watch.latest["focused"], "shortcut-only context")
+        check_home_row_shortcuts(context, watch, commits, lookup)
+        check_adoption_key_repeats(context, watch, commits)
+        raise SystemExit(0)
     check_tray_activation(bus)
     check_post_process_preedit(bus)
     check_engine_event_boundaries(bus)
@@ -3227,6 +3595,9 @@ try:
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
     check_bilingual_core_completion(other, watch, other_commits)
+    check_bilingual_literal_boundaries(other, watch, other_commits)
+    check_home_row_shortcuts(other, watch, other_commits, other_lookup)
+    check_adoption_key_repeats(other, watch, other_commits)
     check_literal_choice_publication(other, watch, other_commits, other_lookup)
     check_unchanged_input_controls(other, watch, other_commits, other_lookup)
     check_unchanged_control_failures(other, watch, other_commits, other_lookup)

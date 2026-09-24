@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Physical XTest keys, XKB locks/layouts and real GTK input in an owned display."""
 import ctypes as C
+from contextlib import contextmanager
 import importlib.util
 from pathlib import Path
 import sys
@@ -38,6 +39,7 @@ class Keyboard:
             ("XkbGetState", [C.c_void_p, C.c_uint, C.POINTER(State)], C.c_int),
             ("XkbGetIndicatorState", [C.c_void_p, C.c_uint, C.POINTER(C.c_uint)], C.c_int),
             ("XkbKeysymToModifiers", [C.c_void_p, C.c_ulong], C.c_uint),
+            ("XkbSetAutoRepeatRate", [C.c_void_p, C.c_uint, C.c_uint, C.c_uint], C.c_int),
             ("XkbGetNamedIndicator", [C.c_void_p, C.c_ulong, C.POINTER(C.c_int),
                                      C.POINTER(C.c_int), C.c_void_p, C.POINTER(C.c_int)], C.c_int),
         ]:
@@ -59,6 +61,9 @@ class Keyboard:
         self.caps = x.x.XkbKeysymToModifiers(x.display, IBus.KEY_Caps_Lock)
         self.num = x.x.XkbKeysymToModifiers(x.display, IBus.KEY_Num_Lock)
         assert self.caps and self.num and not (self.caps & self.num)
+        # Only this owned Xvfb display: make real server-generated repeats
+        # deterministic, without injecting repeated IBus method calls.
+        assert x.x.XkbSetAutoRepeatRate(x.display, 0x100, 250, 40)
 
     def state(self):
         state, leds = State(), C.c_uint()
@@ -75,7 +80,9 @@ class Keyboard:
             assert bool(lit.value) == bool(state.locked_mods & mask), "XKB lock/indicator mismatch"
         return state.locked_mods, leds.value, state.group
 
-    def press(self, name, *modifiers):
+    @contextmanager
+    def held(self, name, *modifiers):
+        """Release owned keys even when a focus/typing assertion fails."""
         pressed = []
         try:
             for key in [*modifiers, name]:
@@ -83,13 +90,27 @@ class Keyboard:
                 assert self.x.xt.XTestFakeKeyEvent(self.x.display, code, 1, 0)
                 pressed.append(code)
             self.x.x.XSync(self.x.display, 0)
-            qa.time.sleep(.015)
+            yield pressed
         finally:
             for code in reversed(pressed):
                 assert self.x.xt.XTestFakeKeyEvent(self.x.display, code, 0, 0)
             self.x.x.XSync(self.x.display, 0)
         qa.time.sleep(.025)
         qa.pump()
+
+    def press(self, name, *modifiers, duration=.015, release_modifiers_after=None):
+        with self.held(name, *modifiers) as pressed:
+            started = qa.time.monotonic()
+            until = started + duration
+            while qa.time.monotonic() < until:
+                if (release_modifiers_after is not None and len(pressed) > 1 and
+                        qa.time.monotonic() - started >= release_modifiers_after):
+                    for code in reversed(pressed[:-1]):
+                        assert self.x.xt.XTestFakeKeyEvent(self.x.display, code, 0, 0)
+                    del pressed[:-1]
+                    self.x.x.XSync(self.x.display, 0)
+                qa.time.sleep(.01)
+                qa.pump()
 
     def type(self, text, *modifiers):
         for name in text:
@@ -148,6 +169,76 @@ try:
     assert bus.set_global_engine("dev.suzaku.linux.ime")
     qa.settle_input(bus, x, window)
     qa.prepare_editor(x, document)
+
+    # First prove that the private server actually generates autorepeat.
+    keyboard.press("q", duration=.65)
+    qa.wait(lambda: qa.watch.latest["seed"].count("q") >= 3, "physical autorepeat enabled")
+    assert set(qa.watch.latest["seed"]) == {"q"}
+    clean()
+    assert qa.json.loads(qa.command('U{"shortcut_profile":"home-row"}'))["ok"]
+    for language, original, adopted in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+        for method, release_early in [("number", False), ("shift-enter", False), ("home-row", False),
+                                      ("shift-enter", True), ("home-row", True)]:
+            clean()
+            revision = qa.watch.latest["revision"]
+            assert qa.json.loads(qa.command("L" + language))["ok"]
+            qa.wait(lambda: qa.watch.latest["revision"] > revision, "keyboard QA language")
+            initial, keymap = keyboard.state(), keyboard.map()
+            keyboard.type(original)
+            expect(original)
+            index = next(i for i, candidate in enumerate(qa.watch.latest["candidates"][:6])
+                         if candidate["text"] == adopted)
+            if method == "number":
+                key, modifiers = str(index + 1), ()
+            else:
+                for _ in range(index):
+                    keyboard.press("j", "Alt_L")
+                qa.wait(lambda: qa.watch.latest["selected"] == index, "physical home-row selection")
+                key, modifiers = ("Return", ("Shift_L",)) if method == "shift-enter" else (";", ("Alt_L",))
+            keyboard.press(key, *modifiers, duration=.65,
+                           release_modifiers_after=.1 if release_early else None)
+            expect(adopted)
+            qa.save_document(x, document, "")
+            keyboard.press("BackSpace")
+            expect(original)
+            # A real release permits immediate reuse, without a time debounce.
+            qa.choose_number(x, adopted)
+            keyboard.press("BackSpace")
+            expect(original)
+            qa.choose_number(x, adopted)
+            keyboard.press(" ")
+            finish(adopted + " ", f"{language} {method}, early modifier release={release_early}: hold/undo/reuse",
+                   initial, keymap)
+    clean()
+    revision = qa.watch.latest["revision"]
+    assert qa.json.loads(qa.command("Len"))["ok"]
+    qa.wait(lambda: qa.watch.latest["revision"] > revision, "restore English keyboard QA")
+    initial, keymap = keyboard.state(), keyboard.map()
+    keyboard.type("hel")
+    expect("hel")
+    count = len(qa.watch.latest["candidates"])
+    assert count >= 3, "repeat fixture needs several local candidates"
+    navigation_hold = .4 + count * .06
+    keyboard.press("j", "Alt_L", duration=navigation_hold)
+    qa.wait(lambda: qa.watch.latest["selected"] == count - 1, "home-row navigation still repeats")
+    keyboard.press("k", "Alt_L", duration=navigation_hold)
+    qa.wait(lambda: qa.watch.latest["selected"] == 0, "reverse navigation still repeats")
+    finish("hel", "held Alt+J/K navigate continuously without changing the draft", initial, keymap)
+    clean()
+    initial, keymap = keyboard.state(), keyboard.map()
+    keyboard.type("hel")
+    expect("hel")
+    keyboard.press("2")
+    expect("hello")
+    next_word = qa.watch.latest["candidates"][1]["text"]
+    assert next_word != "hello"
+    keyboard.press("2")
+    expect(next_word)
+    keyboard.press("BackSpace")
+    finish("hello", "rapid separate numeric taps each adopt, undo reverses only the last", initial, keymap)
+    clean()
+    assert qa.json.loads(qa.command('U{"shortcut_profile":"standard"}'))["ok"]
+    assert qa.json.loads(qa.command("Len"))["ok"]
 
     for caps in [False, True]:
         for shift in [None, "Shift_L", "Shift_R"]:
@@ -300,11 +391,91 @@ try:
     keyboard.press("1")
     finish("v two words", "private custom Compose text stays in the editable draft", initial, keymap)
 
-    assert passed == 26, passed
-    print("RESULT: 26 strict physical-keyboard workflow groups passed", flush=True)
+    # Real focus migration before key-up. Both editors and every observed file
+    # belong to this private fixture, never to the user's desktop session.
+    clean()
+    other_document = qa.root / "suzaku-keyboard-target-qa.txt"
+    other_document.write_text("")
+    other_editor = qa.spawn(["gnome-text-editor", "--standalone", str(other_document)])
+    qa.wait(lambda: x.window(other_document.name), "second keyboard QA editor")
+    other_window = x.window(other_document.name)
+    x.focus(other_window)
+    x.click(200, 100)
+    qa.settle_input(bus, x, other_window)
+    qa.prepare_editor(x, other_document)
+    assert qa.json.loads(qa.command('U{"shortcut_profile":"home-row"}'))["ok"]
+
+    def prepare_choice(seed, word, method):
+        keyboard.type(seed)
+        expect(seed)
+        index = next(i for i, candidate in enumerate(qa.watch.latest["candidates"][:6])
+                     if candidate["text"] == word)
+        if method == "number":
+            return str(index + 1), ()
+        for _ in range(index):
+            keyboard.press("Tab")
+        qa.wait(lambda: qa.watch.latest["selected"] == index, "focus fixture selected word")
+        return ("Return", ("Shift_L",)) if method == "shift-enter" else (";", ("Alt_L",))
+
+    for language, original, adopted in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+        for method in ["number", "shift-enter", "home-row"]:
+            x.focus(window)
+            qa.settle_input(bus, x, window)
+            clean()
+            revision = qa.watch.latest["revision"]
+            assert qa.json.loads(qa.command("L" + language))["ok"]
+            qa.wait(lambda: qa.watch.latest["revision"] > revision, "focus fixture language")
+            initial, keymap = keyboard.state(), keyboard.map()
+            key, modifiers = prepare_choice(original, adopted, method)
+            with keyboard.held(key, *modifiers):
+                expect(adopted)
+                old = qa.watch.latest.copy()
+                x.focus(other_window)
+            qa.settle_input(bus, x, other_window)
+            expect("")
+            assert qa.watch.latest["context"] != old["context"]
+            assert qa.command(f'A{old["host"]} {old["revision"]} K0') == b"0"
+            qa.save_document(x, other_document, "")
+            # The same physical key is immediately usable in the new context;
+            # undo belongs only to that context, then Space/Enter finish once.
+            key, modifiers = prepare_choice(original, adopted, method)
+            keyboard.press(key, *modifiers)
+            expect(adopted)
+            keyboard.press("BackSpace")
+            expect(original)
+            qa.choose_number(x, adopted)
+            keyboard.press(" ")
+            expect(adopted + " ")
+            keyboard.press("Return")
+            expect("")
+            qa.save_document(x, other_document, adopted + " \n")
+            qa.clear_document(x, other_document)
+            x.focus(window)
+            qa.settle_input(bus, x, window)
+            expect("")
+            qa.save_document(x, document, "")
+            key, modifiers = prepare_choice(original, adopted, method)
+            keyboard.press(key, *modifiers)
+            expect(adopted)
+            keyboard.press("BackSpace")
+            expect(original)
+            keyboard.press("Escape")
+            expect("")
+            qa.save_document(x, document, "")
+            assert keyboard.state() == initial and keyboard.map() == keymap
+            assert x.focused() == window and other_editor.poll() is None and editor.poll() is None
+            passed += 1
+            print("PASS:", language, method, "key-up in another window, fresh adoption/undo and focus return", flush=True)
+
+    assert passed == 44, passed
+    print("RESULT: 44 strict physical-keyboard workflow groups passed", flush=True)
 except Exception:
     if "keyboard" in globals():
         print("QA keyboard state:", keyboard.state())
+    if "document" in globals():
+        print("QA synthetic document:", repr(document.read_text()))
+    if "other_document" in globals():
+        print("QA second synthetic document:", repr(other_document.read_text()))
     qa.diagnose()
     raise
 finally:

@@ -69,6 +69,20 @@ impl WgpuCandidateRenderer {
             "Provider",
             "Tone",
             "Interface",
+            "Key layout",
+            "Scope",
+            "Previous",
+            "Next choice",
+            "Page back",
+            "Page forward",
+            "Adopt",
+            "Undo choice",
+            "Continue",
+            "Submit",
+            "Cancel",
+            "Literal digits",
+            "Panel help",
+            "Panel settings",
         ]
         .into_iter()
         .map(|label| {
@@ -449,6 +463,33 @@ impl WgpuCandidateRenderer {
                 })
                 .collect(),
         ));
+        sections.push((
+            SettingsCategory::Shortcuts,
+            "Key layout",
+            crate::ime::shortcuts::ShortcutProfile::ALL
+                .into_iter()
+                .map(|profile| {
+                    (
+                        InteractionKind::SetShortcutProfile(profile),
+                        profile.label(),
+                        chrome.shortcut_profile == profile,
+                    )
+                })
+                .collect(),
+        ));
+        let mut reference_id = 0;
+        for (label, keys) in chrome.shortcut_profile.reference() {
+            sections.push((
+                SettingsCategory::Shortcuts,
+                label,
+                keys.into_iter()
+                    .map(|key| {
+                        reference_id += 1;
+                        (InteractionKind::ShortcutReference(reference_id), key, false)
+                    })
+                    .collect(),
+            ));
+        }
         let original_sections = sections.clone();
         for (_, label, options) in &mut sections {
             *label = ui.tr(label);
@@ -595,7 +636,29 @@ impl WgpuCandidateRenderer {
 
         let title_section_h = title_px * 7.0 + 12.0 * ui_scale;
         let search_bar_h = (24.0 * ui_scale).max(section_px * 7.0 + 8.0 * ui_scale);
-        let tabs_h = row_height + 6.0 * ui_scale;
+        let tab_gap = 5.0 * ui_scale;
+        let tab_area_width = panel_width - 36.0 * ui_scale;
+        let tab_label_widths = SettingsCategory::ALL.map(|category| {
+            measure_text_prefix_width(
+                ui.tr(category.label()),
+                ui.tr(category.label()).chars().count(),
+                chip_px,
+                ui_tracking,
+            )
+            .ceil()
+                + 16.0 * ui_scale
+                + 1.0
+        });
+        // Wrap whole tabs when larger fonts/localized labels need more room.
+        let tabs_per_row = if tab_label_widths.iter().sum::<f32>() + tab_gap * 3.0 > tab_area_width
+        {
+            2
+        } else {
+            4
+        };
+        let tab_rows = SettingsCategory::ALL.len().div_ceil(tabs_per_row);
+        let tab_row_h = row_height + 6.0 * ui_scale;
+        let tabs_h = tab_row_h * tab_rows as f32 + tab_gap * (tab_rows - 1) as f32;
         let header_h = title_section_h + tabs_h + 6.0 * ui_scale + search_bar_h + 8.0;
         // Native windows use whole pixels. Round outward so fractional layout
         // arithmetic cannot create a scrollbar for an otherwise fully fitted page.
@@ -991,23 +1054,19 @@ impl WgpuCandidateRenderer {
 
         let tabs_x = search_bar_x;
         let tabs_y = panel_y + title_section_h;
-        let tab_gap = 5.0 * ui_scale;
-        let tab_content_width = (search_bar_w - 2.0 * tab_gap).max(0.0);
-        let tab_label_widths = SettingsCategory::ALL.map(|category| {
-            measure_text_prefix_width(
-                ui.tr(category.label()),
-                ui.tr(category.label()).chars().count(),
-                chip_px,
-                ui_tracking,
-            )
-            .ceil()
-                + 16.0 * ui_scale
-        });
-        let tab_labels_width: f32 = tab_label_widths.iter().sum();
-        let tab_extra_width = ((tab_content_width - tab_labels_width) / 3.0).max(0.0);
+        let tab_content_width = (search_bar_w - (tabs_per_row - 1) as f32 * tab_gap).max(0.0);
         let mut tab_x = tabs_x;
         let mut tab_layouts = Vec::new();
         for (index, category) in SettingsCategory::ALL.into_iter().enumerate() {
+            let row_start = index / tabs_per_row * tabs_per_row;
+            let tab_labels_width: f32 = tab_label_widths[row_start..row_start + tabs_per_row]
+                .iter()
+                .sum();
+            let tab_extra_width =
+                ((tab_content_width - tab_labels_width) / tabs_per_row as f32).max(0.0);
+            if index % tabs_per_row == 0 {
+                tab_x = tabs_x;
+            }
             // Give longer labels their actual text width before distributing
             // spare space; large text must not truncate the first tab at 400px.
             let tab_width = if tab_labels_width <= tab_content_width {
@@ -1015,7 +1074,12 @@ impl WgpuCandidateRenderer {
             } else {
                 tab_label_widths[index] * tab_content_width / tab_labels_width
             };
-            let rect = [tab_x, tabs_y, tab_width, tabs_h];
+            let rect = [
+                tab_x,
+                tabs_y + (index / tabs_per_row) as f32 * (tab_row_h + tab_gap),
+                tab_width,
+                tab_row_h,
+            ];
             tab_x += tab_width + tab_gap;
             let selected = !is_searching && chrome.settings_category == category;
             let kind = InteractionKind::SetSettingsCategory(category);
@@ -1277,7 +1341,12 @@ impl WgpuCandidateRenderer {
                 };
             if !section_effectively_collapsed {
                 for (kind, chip_label, selected) in options {
-                    let (hovered, pressed) = interaction_state(*kind);
+                    let read_only = matches!(kind, InteractionKind::ShortcutReference(_));
+                    let (hovered, pressed) = if read_only {
+                        (false, false)
+                    } else {
+                        interaction_state(*kind)
+                    };
                     let chip_w = estimated_chip_width(chip_label);
                     if chip_x > chip_start_x && chip_x + chip_w > chip_max_x {
                         chip_x = chip_start_x;
@@ -1346,10 +1415,12 @@ impl WgpuCandidateRenderer {
                             shell,
                             settings_chip_radius,
                         );
-                        interactive_targets.push(InteractiveTarget {
-                            kind: *kind,
-                            rect: interaction_hit_rect(rect),
-                        });
+                        if !read_only {
+                            interactive_targets.push(InteractiveTarget {
+                                kind: *kind,
+                                rect: interaction_hit_rect(rect),
+                            });
+                        }
 
                         let mut option_layout = TextBlock {
                             text: option_text,
