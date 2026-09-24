@@ -31,6 +31,7 @@ sudo apt install gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 ibus-
 bash scripts/test-linux-apps.sh gtk
 bash scripts/test-linux-apps.sh popup
 bash scripts/test-linux-apps.sh lifecycle
+bash scripts/test-linux-apps.sh bus-restart
 bash scripts/test-linux-apps.sh qt5
 bash scripts/test-linux-apps.sh qt6
 SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
@@ -50,6 +51,30 @@ The `lifecycle` gate adds 21 real GTK workflows across engine switching, declare
 stock-panel resets, companion restarts and explicit host restarts/reactivation. Its Compose key
 mapping only changes the owned Xvfb keyboard. It does not restart the desktop's IBus daemon or
 exercise systemd service recovery. See the [input lifecycle audit](docs/bug-audit-app-lifecycle-2026-09-23.md).
+The `bus-restart` gate adds 13 startup/daemon-loss checks: three languages across drafts, adopted
+completions and unfinished Compose, plus English forced exits. It preserves the running GTK app
+and companion, verifies literal fallback, then explicitly relaunches only its owned daemon/host/
+stock panel and reactivates Suzaku. Old requests cannot replay into the replacement host; keyboard
+and actual ordinal clicks commit fresh text. It does not test desktop systemd recovery or restore
+unfinished text. See the [private IBus restart audit](docs/bug-audit-bus-restart-2026-09-24.md).
+
+`bash scripts/test-linux-service.sh` additionally needs Docker. It tests the generated service
+with a real systemd user manager in a disposable Ubuntu 24.04 container: legacy retry exhaustion,
+long-outage recovery, fresh input, explicit stop and cancelling scheduled retries. Package
+dependencies are downloaded in the container; its network is disconnected before the checks.
+The runner grants SYS_ADMIN and disables AppArmor only for that container to remount its private
+cgroup subtree, then drops to uid 1000 with no effective/permitted capabilities. It does not use
+privileged mode, host PID/cgroup namespaces, writable host mounts, desktop sockets or devices.
+Container-local packages and data are removed afterwards; no test image is built. A pre-prepared
+compatible image can be selected with `SUZAKU_SERVICE_QA_IMAGE`. See the
+[service recovery audit](docs/bug-audit-service-recovery-2026-09-24.md); this is not login/logout or
+personal-desktop recovery acceptance.
+
+The native `ibus` gate also tests the production engine-recovery observer on its private bus
+and models asynchronous password-purpose switching with an owned panel. For a focused rerun,
+use `SUZAKU_NATIVE_RECOVERY_ONLY=1 bash scripts/test-linux-ci.sh ibus`. Production observers are
+disabled for custom/private host endpoints; the guarded test explicitly owns its observer.
+See the [N44/N45 recovery audit](docs/bug-audit-engine-recovery-2026-09-24.md).
 
 FFI tests share process-wide state, so keep them serial. Native runners create private D-Bus/IBus/
 Xvfb sessions; never remove isolation guards or aim them at the real desktop. Regression tests

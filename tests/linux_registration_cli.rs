@@ -203,6 +203,25 @@ fn install_upgrade_verify_and_uninstall_preserve_user_data_and_input_sources() {
 }
 
 #[test]
+fn registered_host_retry_policy_survives_an_extended_ibus_outage() {
+    let f = Fixture::new();
+    success(f.run(&["linux-register", "install"]));
+    let unit = fs::read_to_string(f.unit()).unwrap();
+    let unit_section = unit.split("[Service]").next().unwrap();
+    // IBus can be absent for much longer than systemd's default five starts in
+    // ten seconds. Restart=always alone gives up permanently after that limit.
+    assert!(
+        unit_section
+            .lines()
+            .any(|line| line == "StartLimitIntervalSec=0"),
+        "registered host may exhaust systemd's start limit before IBus returns"
+    );
+    assert!(unit.lines().any(|line| line == "Restart=always"));
+    assert!(unit.lines().any(|line| line == "RestartSec=2"));
+    assert!(unit.lines().any(|line| line == "TimeoutStopSec=5"));
+}
+
+#[test]
 fn component_and_service_quote_special_install_paths() {
     let f = Fixture::new();
     success(f.run(&["linux-register", "install"]));

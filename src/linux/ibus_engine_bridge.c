@@ -1065,17 +1065,66 @@ static gboolean suzaku_ibus_probe_wait_for_engine(
     return FALSE;
 }
 
-static IBusEngineDesc *suzaku_ibus_probe_wait_for_current_engine(
-    IBusInputContext *context) {
-    for (guint attempt = 0; attempt < 200; attempt++) {
+static gchar *suzaku_ibus_probe_global_engine(IBusBus *bus, gint timeout_ms) {
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_sync(
+        ibus_bus_get_connection(bus), IBUS_SERVICE_IBUS, IBUS_PATH_IBUS,
+        "org.freedesktop.DBus.Properties", "Get",
+        g_variant_new("(ss)", IBUS_INTERFACE_IBUS, "GlobalEngine"),
+        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, timeout_ms, NULL, &error);
+    g_clear_error(&error);
+    if (reply == NULL) { return NULL; }
+    GVariant *property = NULL;
+    g_variant_get(reply, "(v)", &property);
+    IBusSerializable *description = ibus_serializable_deserialize(property);
+    gchar *name = IBUS_IS_ENGINE_DESC(description)
+        ? g_strdup(ibus_engine_desc_get_name(IBUS_ENGINE_DESC(description))) : NULL;
+    g_clear_object(&description);
+    g_variant_unref(property);
+    g_variant_unref(reply);
+    if (name != NULL && (name[0] == '\0' || g_strcmp0(name, "dummy") == 0)) {
+        g_clear_pointer(&name, g_free);
+    }
+    return name;
+}
+
+static gboolean suzaku_ibus_probe_set_global_engine(
+    IBusBus *bus, const gchar *name, gint timeout_ms) {
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_sync(
+        ibus_bus_get_connection(bus), IBUS_SERVICE_IBUS, IBUS_PATH_IBUS,
+        IBUS_INTERFACE_IBUS, "SetGlobalEngine", g_variant_new("(s)", name),
+        G_VARIANT_TYPE("()"), G_DBUS_CALL_FLAGS_NONE, timeout_ms, NULL, &error);
+    gboolean succeeded = reply != NULL;
+    g_clear_pointer(&reply, g_variant_unref);
+    g_clear_error(&error);
+    return succeeded;
+}
+
+static gboolean suzaku_ibus_probe_restore_engine(IBusBus *bus, const gchar *name) {
+    /* A desktop can switch engines asynchronously after leaving PASSWORD mode.
+     * An ACK alone is insufficient: require a quiet, verified restoration. */
+    gint64 end = g_get_monotonic_time() + 2 * G_TIME_SPAN_SECOND;
+    gint64 stable_since = 0;
+    while (g_get_monotonic_time() < end && ibus_bus_is_connected(bus)) {
         suzaku_ibus_probe_pump_events();
-        IBusEngineDesc *description = ibus_input_context_get_engine(context);
-        if (description != NULL) {
-            return description;
+        gint timeout = (gint)MIN(200, MAX(1, (end - g_get_monotonic_time()) / 1000));
+        gchar *current = suzaku_ibus_probe_global_engine(bus, timeout);
+        gboolean matches = g_strcmp0(current, name) == 0;
+        g_free(current);
+        gint64 now = g_get_monotonic_time();
+        if (now >= end) { break; }
+        if (matches) {
+            if (stable_since == 0) { stable_since = now; }
+            if (now - stable_since >= 350 * G_TIME_SPAN_MILLISECOND) { return TRUE; }
+        } else {
+            stable_since = 0;
+            timeout = (gint)MIN(200, MAX(1, (end - now) / 1000));
+            suzaku_ibus_probe_set_global_engine(bus, name, timeout);
         }
         g_usleep(10000);
     }
-    return NULL;
+    return FALSE;
 }
 
 static gboolean suzaku_ibus_probe_send_ipc_commit(const gchar *text) {
@@ -1160,9 +1209,21 @@ int suzaku_linux_ibus_probe_roundtrip(
         return 2;
     }
 
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gboolean use_global_engine = ibus_bus_get_use_global_engine(bus);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    /* Snapshot before the probe takes focus; focus itself can change engines. */
+    gchar *previous_engine = use_global_engine
+        ? suzaku_ibus_probe_global_engine(bus, 400) : NULL;
+    if (use_global_engine && previous_engine == NULL) {
+        g_object_unref(bus);
+        return 4;
+    }
+
     IBusInputContext *context = ibus_bus_create_input_context(
         bus, "suzaku-native-roundtrip-probe");
     if (context == NULL) {
+        g_free(previous_engine);
         g_object_unref(bus);
         return 3;
     }
@@ -1204,28 +1265,14 @@ int suzaku_linux_ibus_probe_roundtrip(
     int result = 0;
     gchar *completion_expected = NULL;
     gboolean engine_switched = FALSE;
-    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-    gboolean use_global_engine = ibus_bus_get_use_global_engine(bus);
-    G_GNUC_END_IGNORE_DEPRECATIONS
-    IBusEngineDesc *previous_description = use_global_engine
-        ? suzaku_ibus_probe_wait_for_current_engine(context)
-        : NULL;
-    gchar *previous_engine = previous_description == NULL
-        ? NULL
-        : g_strdup(ibus_engine_desc_get_name(previous_description));
-    g_clear_object(&previous_description);
-    if (use_global_engine &&
-        (previous_engine == NULL || g_strcmp0(previous_engine, "dummy") == 0)) {
-        result = 4;
-        goto cleanup;
-    }
 
     if (use_global_engine) {
-        if (!ibus_bus_set_global_engine(bus, engine_name)) {
+        /* A timed-out acknowledgement may still have changed the engine. */
+        engine_switched = TRUE;
+        if (!suzaku_ibus_probe_set_global_engine(bus, engine_name, 2000)) {
             result = 5;
             goto cleanup;
         }
-        engine_switched = TRUE;
     } else {
         ibus_input_context_set_engine(context, engine_name);
     }
@@ -1365,13 +1412,22 @@ int suzaku_linux_ibus_probe_roundtrip(
 
 cleanup:
     g_free(completion_expected);
+    /* Reset only our synthetic context before requesting desktop restoration.
+     * Never leave the desktop panel believing its focused context is a password. */
+    ibus_input_context_set_content_type(context, IBUS_INPUT_PURPOSE_FREE_FORM, 0);
+    gint64 settle = g_get_monotonic_time() + 180 * G_TIME_SPAN_MILLISECOND;
+    while (g_get_monotonic_time() < settle) {
+        suzaku_ibus_probe_pump_events();
+        g_usleep(10000);
+    }
+    ibus_input_context_focus_out(context);
+    ibus_proxy_destroy(IBUS_PROXY(context));
+    suzaku_ibus_probe_pump_events();
     if (use_global_engine && engine_switched && previous_engine != NULL) {
-        if (!ibus_bus_set_global_engine(bus, previous_engine) && result == 0) {
+        if (!suzaku_ibus_probe_restore_engine(bus, previous_engine) && result == 0) {
             result = 10;
         }
     }
-    ibus_input_context_focus_out(context);
-    suzaku_ibus_probe_pump_events();
     g_free(previous_engine);
     g_object_unref(context);
     g_object_unref(bus);

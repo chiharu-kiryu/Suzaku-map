@@ -76,6 +76,8 @@ pub mod linux;
 pub mod linux_command;
 #[cfg(all(target_os = "linux", feature = "linux-ibus"))]
 pub mod linux_ibus_host;
+#[cfg(all(target_os = "linux", feature = "linux-ibus"))]
+pub mod linux_ibus_recovery;
 pub mod linux_ime;
 #[cfg(target_os = "linux")]
 pub mod linux_ime_control;

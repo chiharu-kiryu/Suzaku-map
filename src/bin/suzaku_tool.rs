@@ -1222,8 +1222,12 @@ fn install_ibus_user_service(home: &Path, host_binary: &Path) -> Result<(), Stri
     // systemd rejects literal quotes/backslashes in ExecStart's executable even
     // when quoted correctly. env directly execs the absolute host path as an
     // argument, without a shell or PATH lookup, and $$ survives as a literal $.
+    // A desktop IBus restart can outlast the manager's default five starts in
+    // ten seconds. Keep retrying at a bounded cadence instead of exhausting
+    // that quota and staying failed after the bus returns. An explicit stop
+    // still cancels Restart=always; this does not enable a disabled service.
     let unit = format!(
-        "[Unit]\nDescription=Suzaku native IBus engine host\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/env -- {} --ibus\nRestart=always\nRestartSec=1\nTimeoutStopSec=5\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription=Suzaku native IBus engine host\nAfter=graphical-session.target\nStartLimitIntervalSec=0\n\n[Service]\nType=simple\nExecStart=/usr/bin/env -- {} --ibus\nRestart=always\nRestartSec=2\nTimeoutStopSec=5\n\n[Install]\nWantedBy=default.target\n",
         systemd_quote(executable)
     );
     let staged_unit = if autostart_pending {

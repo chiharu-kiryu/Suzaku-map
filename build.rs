@@ -59,6 +59,7 @@ fn main() {
 fn build_linux_ibus_bridge() {
     let mut build = cc::Build::new();
     build.file("src/linux/ibus_engine_bridge.c");
+    build.file("src/linux/ibus_recovery_bridge.c");
 
     let ibus_include = locate_ibus_include().unwrap_or_else(|| {
         panic!(
@@ -79,6 +80,7 @@ fn build_linux_ibus_bridge() {
     println!("cargo:rustc-link-lib=xkbcommon");
     println!("cargo:rerun-if-env-changed=SUZAKU_IBUS_INCLUDE_DIR");
     println!("cargo:rerun-if-changed=src/linux/ibus_engine_bridge.c");
+    println!("cargo:rerun-if-changed=src/linux/ibus_recovery_bridge.c");
     println!("cargo:rerun-if-changed=src/linux/ibus_companion.inc.c");
     println!("cargo:rerun-if-changed=src/linux/ibus_compose.inc.c");
     println!("cargo:rerun-if-changed=src/linux/ibus_ipc.inc.c");

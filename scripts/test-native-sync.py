@@ -245,6 +245,208 @@ def check_post_process_preedit(bus):
     print("PASS: 12 synchronous post-process draft clear/commit/cancel/reset/focus cases; inline:", inline)
 
 
+def check_password_probe_cleanup(bus):
+    """A private panel models GNOME's asynchronous password-source protection."""
+    previous, temporary = "xkb:gb::eng", "xkb:us::eng"
+    assert {previous, temporary} <= {engine.get_name() for engine in bus.list_engines()}
+    assert bus.request_name("org.freedesktop.IBus.Panel", 0) == 1
+    panel = IBus.PanelService.new(bus.get_connection())
+    purposes = []
+    switches = []
+
+    def switch_later(target):
+        def switch():
+            switches.append((target, bus.set_global_engine(target)))
+            return GLib.SOURCE_REMOVE
+        GLib.timeout_add(90, switch)
+
+    def content_type(_panel, purpose, _hints):
+        purposes.append(purpose)
+        if purpose == IBus.InputPurpose.PASSWORD:
+            switch_later(temporary)
+        elif IBus.InputPurpose.PASSWORD in purposes:
+            switch_later(previous)
+
+    panel.connect("set-content-type", content_type)
+    try:
+        assert bus.set_global_engine(previous)
+        probe = subprocess.Popen([str(host_path.with_name("linux_ime_probe")), "--password", "synthetic"],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        processes.append(probe)
+        wait(lambda: probe.poll() is not None, "password probe cleanup completed", timeout=12)
+        stdout, stderr = probe.communicate(timeout=1)
+        assert probe.returncode == 0, stdout + stderr
+        assert IBus.InputPurpose.PASSWORD in purposes, purposes
+        last_password = len(purposes) - 1 - purposes[::-1].index(IBus.InputPurpose.PASSWORD)
+        assert IBus.InputPurpose.FREE_FORM in purposes[last_password + 1:], \
+            "N45: password probe exited without resetting its owned context's purpose"
+        assert (temporary, True) in switches and (previous, True) in switches, switches
+        assert all(succeeded for _, succeeded in switches), switches
+        # Check after deferred panel changes too, not merely a SetGlobalEngine ACK.
+        until = time.monotonic() + .35
+        while time.monotonic() < until:
+            pump()
+            current = bus.get_global_engine()
+            assert current is not None and current.get_name() == previous, \
+                "N45: successful probe did not preserve the original global engine"
+            time.sleep(.01)
+        assert 'committed=""' in stdout and 'candidates=0' in stdout, stdout
+        print("PASS: password probe clears its purpose and restores the pre-probe engine after delayed panel changes")
+    finally:
+        # Finish scheduled callbacks before removing this fixture-only panel.
+        until = time.monotonic() + .12
+        while time.monotonic() < until:
+            pump()
+            time.sleep(.01)
+        panel.destroy()
+        assert bus.release_name("org.freedesktop.IBus.Panel")
+
+
+def check_engine_recovery(bus):
+    """Exercise the production observer on this fixture's real IBus/host only."""
+    executable = os.environ["SUZAKU_NATIVE_ACTIVATION_TEST"]
+    test = "input_method::tests::native_engine_recovery_monitor"
+    listing = subprocess.run([executable, "--list"], capture_output=True, text=True, timeout=5)
+    assert listing.returncode == 0 and f"{test}: test" in listing.stdout.splitlines()
+    arguments = [executable, test, "--exact", "--ignored", "--nocapture", "--test-threads=1"]
+    unmarked = dict(os.environ)
+    unmarked.pop("SUZAKU_NATIVE_SYNC_QA")
+    guarded = subprocess.run(arguments, env=unmarked, capture_output=True, text=True, timeout=5)
+    assert guarded.returncode != 0 and "private IBus fixture required" in guarded.stderr
+    assert json.loads(command("P0"))["ok"]
+    previous, alternate = "xkb:gb::eng", "xkb:us::eng"
+    assert bus.set_global_engine(alternate)
+    monitor = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    processes.append(monitor)
+    events_file = runtime / "engine-monitor.events"
+
+    def events():
+        assert monitor.poll() is None, monitor.communicate(timeout=1)
+        return events_file.read_text().splitlines() if events_file.exists() else []
+
+    def selected():
+        try:
+            reply = bus.get_connection().call_sync(
+                "org.freedesktop.IBus", "/org/freedesktop/IBus",
+                "org.freedesktop.DBus.Properties", "Get",
+                GLib.Variant("(ss)", ("org.freedesktop.IBus", "GlobalEngine")),
+                GLib.VariantType.new("(v)"), Gio.DBusCallFlags.NONE, 400, None)
+        except GLib.Error as error:
+            assert "No global engine." in str(error), str(error)
+            return None
+        return reply.unpack()[0][2]
+
+    def stop_host(kill=False):
+        host = next(process for process in reversed(processes)
+                    if process.args[0] == str(host_path) and process.poll() is None)
+        host.kill() if kill else host.terminate()
+        host.wait(timeout=3)
+        wait(lambda: selected() is None, "host loss should reproduce the missing engine")
+
+    def start_host():
+        processes.append(subprocess.Popen([str(host_path)], stdout=subprocess.DEVNULL))
+        def ready():
+            try:
+                return command("Q") == b"1"
+            except OSError:
+                return False
+        wait(ready, "replacement host ready")
+
+    def stable(target, duration=.4):
+        until = time.monotonic() + duration
+        while time.monotonic() < until:
+            pump()
+            assert selected() == target, (target, selected(), events())
+            time.sleep(.01)
+
+    context = create_context(bus, "suzaku-engine-recovery-qa")
+    context.focus_in()
+    try:
+        wait(lambda: "Ready" in events(), "engine observer subscribed")
+        # The latest manual selection, not the startup engine, is the recovery target.
+        changes = events().count("EngineChanged")
+        assert bus.set_global_engine(previous)
+        wait(lambda: events().count("EngineChanged") > changes, "observer saw latest manual source")
+        stop_host()
+        stable(None, .2)  # an observer must not restart the host itself
+        start_host()
+        wait(lambda: selected() == previous, "N44: restart must restore a missing global engine")
+        wait(lambda: "Recovered" in events(), "recovery read-back acknowledged")
+        stable(previous)
+
+        context.focus_out()
+        stable(previous, .15)
+        stop_host()
+        start_host()
+        wait(lambda: selected() == previous, "missing engine restored without a focused field")
+        stable(previous)
+        context.focus_in()
+
+        # A new manual choice during downtime wins, even if registering the host
+        # subsequently clears it again: do not resurrect the older fallback.
+        stop_host(kill=True)
+        changes = events().count("EngineChanged")
+        assert bus.set_global_engine(alternate)
+        wait(lambda: events().count("EngineChanged") > changes, "manual override during outage")
+        recovered = events().count("Recovered")
+        start_host()
+        assert bus.set_global_engine(alternate)
+        stable(alternate)
+        assert events().count("Recovered") == recovered
+
+        # Respect a valid desktop fallback in password/PIN/private fields too.
+        # IBus 1.5 ContentType is write-only: do not pretend to read other apps'
+        # purpose or bypass their own/native-engine privacy enforcement.
+        for purpose, hints in [(IBus.InputPurpose.PASSWORD, 0), (IBus.InputPurpose.PIN, 0),
+                               (IBus.InputPurpose.FREE_FORM, 1 << 11)]:
+            context.set_content_type(purpose, hints)
+            pump()
+            assert bus.set_global_engine(previous)
+            changes = events().count("EngineChanged")
+            wait(lambda: events().count("EngineChanged") > changes or selected() == previous,
+                 "private context prepared")
+            stable(previous, .15)
+            stop_host()
+            changes = events().count("EngineChanged")
+            assert bus.set_global_engine(alternate)
+            wait(lambda: events().count("EngineChanged") > changes,
+                 "desktop privacy fallback observed before replacement")
+            start_host()
+            assert bus.set_global_engine(alternate)
+            stable(alternate)
+            assert events().count("Recovered") == recovered
+            context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+            assert bus.set_global_engine(alternate)
+            stable(alternate, .15)
+
+        # Stopping the owner of the monitor is an explicit quit, not a crash.
+        (runtime / "engine-monitor.stop").touch()
+        stdout, stderr = monitor.communicate(timeout=3)
+        assert monitor.returncode == 0, stdout + stderr
+        stop_host()
+        start_host()
+        until = time.monotonic() + .4
+        while time.monotonic() < until:
+            pump()
+            assert selected() is None
+            time.sleep(.01)
+        guarded_probe = subprocess.run([str(host_path.with_name("linux_ime_probe")), "--password", "synthetic"],
+                                       capture_output=True, text=True, timeout=4)
+        assert guarded_probe.returncode != 0 and "stage 4" in guarded_probe.stderr
+        assert selected() is None, "a probe without a restorable source must not activate an arbitrary engine"
+        assert bus.set_global_engine(previous)
+        print("PASS: N44 observed host replacement restores the latest engine; manual/desktop privacy fallbacks and explicit monitor shutdown are preserved")
+    finally:
+        (runtime / "engine-monitor.stop").touch()
+        context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+        context.focus_out()
+        context.destroy()
+        if monitor.poll() is None:
+            stdout, stderr = monitor.communicate(timeout=3)
+            if stderr:
+                print(stderr)
+
+
 def check_tray_activation(bus):
     executable = os.environ["SUZAKU_NATIVE_ACTIVATION_TEST"]
     test = "input_method::tests::native_activation_input_and_release_roundtrip"
@@ -2799,6 +3001,10 @@ try:
     IBus.init()
     bus = IBus.Bus.new()
     assert bus.is_connected()
+    if os.environ.get("SUZAKU_NATIVE_RECOVERY_ONLY") == "1":
+        check_password_probe_cleanup(bus)
+        check_engine_recovery(bus)
+        raise SystemExit(0)
     check_tray_activation(bus)
     check_post_process_preedit(bus)
     check_engine_event_boundaries(bus)
@@ -3052,6 +3258,8 @@ try:
         assert probe.returncode == 0, probe.stderr
         assert f"committed={json.dumps(expected)}" in probe.stdout, probe.stdout
         print(probe.stdout.strip())
+    check_password_probe_cleanup(bus)
+    check_engine_recovery(bus)
     print("PASS: push, late subscriber, exact candidates, selection, replacement, commit, stale revisions, context switches, English digits/modifiers/punctuation, CJK number keys, later-page AI selection, model reload draft/context boundaries, Tone requests/persistence/write failure, private/password, Escape/focus-out and host restart")
 finally:
     model.shutdown()

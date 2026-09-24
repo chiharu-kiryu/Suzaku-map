@@ -96,7 +96,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-linux-ci-v1-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
       - name: Lint the native test runner
-        run: shellcheck scripts/test-linux-ci.sh scripts/test-linux-apps.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
+        run: shellcheck scripts/test-linux-ci.sh scripts/test-linux-apps.sh scripts/test-linux-service.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
       - name: Lint Rust code and test targets without warnings
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
       - name: Run the feature-enabled regression suite
@@ -116,6 +116,10 @@ jobs:
         run: bash scripts/test-linux-apps.sh popup
       - name: Test real input switching, privacy and process reconnection
         run: bash scripts/test-linux-apps.sh lifecycle
+      - name: Test private IBus daemon loss and explicit application recovery
+        run: bash scripts/test-linux-apps.sh bus-restart
+      - name: Test actual systemd retries and explicit stop in an owned container
+        run: bash scripts/test-linux-service.sh
       - name: Test Qt workflows, focus cancellation and literal numeric fields
         run: |
           bash scripts/test-linux-apps.sh qt5

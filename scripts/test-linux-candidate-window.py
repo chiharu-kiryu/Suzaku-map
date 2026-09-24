@@ -14,7 +14,7 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("suzaku_app_qa", Path(__file__).with_name("test-linux-apps.py"))
 qa = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(qa)  # Validate isolation before importing accessibility.
-assert os.environ["SUZAKU_APP_QA_SUITE"] in {"popup", "lifecycle"}
+assert os.environ["SUZAKU_APP_QA_SUITE"] in {"popup", "lifecycle", "bus-restart"}
 os.environ["NO_AT_BRIDGE"] = "0"
 os.environ.pop("GTK_A11Y", None)
 os.environ["GTK_MODULES"] = "atk-bridge"

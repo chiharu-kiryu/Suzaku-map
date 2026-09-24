@@ -188,6 +188,13 @@ pub(super) struct IBusBackend {
     host: service::HostService,
 }
 
+#[cfg(feature = "linux-ibus")]
+impl InputMethodController<IBusBackend> {
+    pub fn can_recover_engine(&self) -> bool {
+        self.backend.host.can_recover_engine()
+    }
+}
+
 impl InputMethodBackend for IBusBackend {
     fn current_engine(&mut self) -> Result<String, String> {
         run_ibus(&[]).and_then(validate_engine)
@@ -679,9 +686,7 @@ mod tests {
     }
 
     #[cfg(feature = "linux-ibus")]
-    #[test]
-    #[ignore = "requires the private D-Bus/IBus fixture in scripts/test-linux-ci.sh ibus"]
-    fn native_activation_input_and_release_roundtrip() {
+    fn private_native_fixture() -> std::path::PathBuf {
         // Check all isolation markers before invoking any backend operation.
         assert_eq!(
             std::env::var("SUZAKU_NATIVE_SYNC_QA").as_deref(),
@@ -718,6 +723,47 @@ mod tests {
                 Some(path)
             );
         }
+        runtime
+    }
+
+    #[cfg(feature = "linux-ibus")]
+    #[test]
+    #[ignore = "requires the private D-Bus/IBus fixture in scripts/test-linux-ci.sh ibus"]
+    fn native_engine_recovery_monitor() {
+        let runtime = private_native_fixture();
+        use std::io::Write;
+        use suzaku_map::platform::linux_ibus_recovery::Monitor;
+        let events = std::sync::Mutex::new(
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(runtime.join("engine-monitor.events"))
+                .unwrap(),
+        );
+        // The production controller must NOT adopt this fixture's custom host.
+        let mut control = InputMethodController::new(IBusBackend::default());
+        control.backend.ensure_suzaku_available().unwrap();
+        assert!(!control.can_recover_engine());
+        let monitor = Monitor::start(runtime.join("suzaku-ime/host.sock"), move |event| {
+            writeln!(events.lock().unwrap(), "{event:?}").unwrap();
+        })
+        .unwrap();
+        let end = Instant::now() + Duration::from_secs(45);
+        while !runtime.join("engine-monitor.stop").exists() {
+            assert!(
+                Instant::now() < end,
+                "private engine recovery fixture timed out"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        drop(monitor);
+    }
+
+    #[cfg(feature = "linux-ibus")]
+    #[test]
+    #[ignore = "requires the private D-Bus/IBus fixture in scripts/test-linux-ci.sh ibus"]
+    fn native_activation_input_and_release_roundtrip() {
+        private_native_fixture();
         use suzaku_map::{languages::BuiltinLanguage, platform::linux_ime_control};
         let original = linux_ime_control::status().unwrap().settings;
         assert!(

@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.4 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.5 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -49,11 +49,29 @@ does not imply cross-platform stability. Keep another input method available.
   positioning and output permissions are not fully validated. Fcitx is not a complete native backend.
 - **Desktop integration:** GNOME tray visibility requires desktop support. Container install checks
   do not prove login/logout behavior or compatibility with every GNOME extension.
+  The 0.6.5 N43 fix keeps the registered host retrying every two seconds across a long
+  IBus outage, without exhausting systemd's start quota. A real, isolated systemd user manager
+  verifies recovery and explicit-stop behavior; it does not validate personal desktop startup or
+  automatically restore the chosen engine/unfinished draft. Existing service files need explicit
+  re-registration with the new tool; changing source alone does not update installations. See the
+  [service recovery audit](bug-audit-service-recovery-2026-09-24.md).
+  The first GNOME user-install check exposed missing input sources after host recovery and a
+  password-probe cleanup race. N44/N45 now add same-bus, observed-host replacement recovery and
+  reset the probe's own purpose before bounded, verified restoration. A subsequent explicitly
+  authorized GNOME 46/X11 installation passes TERM/KILL recovery in roughly 2.1 seconds,
+  recovery during an owned composition without replay, two password probes with stable Rime
+  restoration, and tray activation/release/quit/reopen. These fixes are included in 0.6.5; the
+  installed build was tested before the version bump. Prefer isolated sessions for routine
+  password QA; this is not blanket desktop automation permission or login/logout/Wayland qualification.
+  Recovery only runs while the panel owns the registered desktop service, preserves a valid
+  current engine on read-back, and drops its history when IBus itself disconnects. It does not
+  inspect application text/purpose or replace the existing native privacy checks. See the
+  [input-source recovery audit](bug-audit-engine-recovery-2026-09-24.md).
 - **Speech/handwriting:** Linux speech currently uses a simulated bridge, not production microphone
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.6.4 retains
+- **Build scope:** use `--all-features` for desktop checks. 0.6.5 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
   builds/tests are still not supported as a clean release gate. Development/test profiles now
   omit debug symbols and incremental caches; edits may rebuild more slowly. Release settings
@@ -67,6 +85,10 @@ does not imply cross-platform stability. Keep another input method available.
   restart preserves the running host's draft, whereas host exit or a stock panel selecting a
   different engine discards it. Host recovery is explicitly launched/reactivated in this test,
   not proof of systemd automatic recovery. See the [input lifecycle audit](bug-audit-app-lifecycle-2026-09-23.md).
+  The 0.6.5 source-tree tests cover 13 private IBus startup/daemon-loss cases, including forced
+  exits and explicit recovery with the same GTK app/companion. Discarded drafts are not replayed;
+  these tests still do not validate desktop systemd restart policy, login/logout or native Wayland.
+  See the [private IBus restart audit](bug-audit-bus-restart-2026-09-24.md).
 - **Unconfirmed sends:** no automatic replay. Check the target before retrying. Click the panel's
   input field to recover screen-keyboard text for local editing. Candidate/clear/submit actions
   pause while that draft is unconfirmed.

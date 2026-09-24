@@ -3,7 +3,20 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.4 — Linux Alpha build and test maintenance patch**.
+Current source version: **0.6.5 — Linux Alpha service and input-source recovery patch**.
+
+### 0.6.5 — Service retries and verified input-source recovery
+
+- Newly registered host units retry every two seconds without exhausting systemd's start quota.
+  Explicit stop still cancels retries; existing units need explicit re-registration to update.
+- A panel owning the registered desktop host observes same-bus host replacement and can restore
+  only a confirmed missing global engine. Newer valid choices win; IBus disconnection discards
+  observation history. No application text is monitored and no old draft is replayed.
+- Password diagnostics reset their own input purpose and destroy their synthetic context before
+  bounded, read-back-verified restoration. Missing fallback input sources fail before switching.
+- Added private daemon-loss, real isolated systemd and input-source recovery regressions. Explicitly
+  authorized GNOME 46/X11 installation checks also pass with the same fixes before the version bump.
+  See the [0.6.5 release notes](docs/releases/0.6.5.md) for validation and upgrade boundaries.
 
 ### 0.6.4 — Smaller build caches and test fixture cleanup
 

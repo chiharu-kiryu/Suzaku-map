@@ -41,6 +41,11 @@ impl Default for HostService {
 }
 
 impl<T: Transport> HostService<T> {
+    #[cfg(feature = "linux-ibus")]
+    pub fn can_recover_engine(&self) -> bool {
+        self.managed && self.transport.can_manage()
+    }
+
     pub fn ensure_ready(&mut self) -> Result<(), String> {
         self.ensure_with_timeout(START_TIMEOUT)
     }
@@ -339,9 +344,15 @@ mod tests {
             (UnitState::Missing, false),
         ] {
             let mut host = fixture(state, true);
+            #[cfg(feature = "linux-ibus")]
+            assert!(!host.can_recover_engine());
             host.ensure_ready().unwrap();
             assert_eq!(host.needs_stop().unwrap(), managed);
+            #[cfg(feature = "linux-ibus")]
+            assert_eq!(host.can_recover_engine(), managed);
             host.stop().unwrap();
+            #[cfg(feature = "linux-ibus")]
+            assert!(!host.can_recover_engine());
             assert!(!host.transport.calls.contains(&"start".into()));
             assert_eq!(host.transport.calls.contains(&"stop".into()), managed);
         }
@@ -353,6 +364,8 @@ mod tests {
             let mut host = fixture(UnitState::Running, ready);
             host.transport.custom = true;
             assert_eq!(host.ensure_ready().is_ok(), ready);
+            #[cfg(feature = "linux-ibus")]
+            assert!(!host.can_recover_engine());
             host.stop().unwrap();
             assert!(host.transport.calls.is_empty());
         }

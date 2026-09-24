@@ -1,6 +1,8 @@
-%% Suzaku functional network: 2026-09-24 source snapshot for 0.6.4, not the installed build.
-%% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); N01-N04 in 0.5.6, N05-N18 in 0.5.7, N19-N23 in 0.5.8, N24-N28 in 0.5.9, N29-N32 in 0.6.0, N33-N37 in 0.6.1, N38-N40 in 0.6.2, N41-N42 in 0.6.3.
+%% Suzaku functional network: 2026-09-24 source snapshot for 0.6.5, not the installed build.
+%% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); N01-N04 in 0.5.6, N05-N18 in 0.5.7, N19-N23 in 0.5.8, N24-N28 in 0.5.9, N29-N32 in 0.6.0, N33-N37 in 0.6.1, N38-N40 in 0.6.2, N41-N42 in 0.6.3, N43-N45 in 0.6.5.
 %% 0.6.4 changes build/test maintenance only; the logical input graph is unchanged.
+%% 0.6.5 includes round 30 N43 registered-service retries and round 31 N44/N45 recovery fixes.
+%% N44 repairs only a missing engine after observed same-bus host replacement.
 %% Solid edges: implemented logical routes. Dotted edges: optional model requests.
 %% Reused engine/provider code does not mean shared state across processes.
 flowchart TB
@@ -39,6 +41,7 @@ flowchart TB
     PANEL -->|启动与退出事件| TRAY
     TRAY -->|启动就绪 / 安全停止| SERVICE
     SERVICE -->|运行宿主| INPUT
+    TRAY -->|同总线宿主替换后仅修复空输入源| INPUT
     TRAY -->|语言或联想设置| IMESET
     IMESET -->|加载与重载| CORE
     IMESET -->|模型配置| MODEL

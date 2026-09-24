@@ -14,6 +14,8 @@ mod platform {
     use suzaku_map::ime::settings::PredictionSettingsPatch;
     use suzaku_map::languages::BuiltinLanguage;
     use suzaku_map::languages::model::{ModelProviderConfig, ModelScope, runtime as model_runtime};
+    #[cfg(feature = "linux-ibus")]
+    use suzaku_map::platform::linux_ibus_recovery::{Event as RecoveryEvent, Monitor};
     use suzaku_map::platform::linux_ime_control::{self, NativeImeStatus};
     use suzaku_map::ui::UiLanguage;
 
@@ -32,6 +34,8 @@ mod platform {
         SetTheme(ThemePreset),
         SetUiLanguage(UiLanguage),
         RefreshInputMethod,
+        #[cfg(feature = "linux-ibus")]
+        EngineRecovery(RecoveryEvent),
         ActivateInputMethod,
         ReleaseInputMethod,
         SetLanguage(BuiltinLanguage),
@@ -701,6 +705,8 @@ mod platform {
             .spawn(move || {
                 let mut input_method = InputMethodController::new(IBusBackend::default());
                 let startup = input_method.start();
+                #[cfg(feature = "linux-ibus")]
+                let mut recovery = start_engine_recovery(&input_method, &model_report_tx);
                 refresh_input_method(&handle, &mut input_method);
                 let _ = handle.update(|tray| {
                     tray.input_method.busy = false;
@@ -726,6 +732,17 @@ mod platform {
                         }
                         TrayControl::RefreshInputMethod => {
                             refresh_input_method(&handle, &mut input_method);
+                        }
+                        #[cfg(feature = "linux-ibus")]
+                        TrayControl::EngineRecovery(event) => {
+                            refresh_input_method(&handle, &mut input_method);
+                            if event == RecoveryEvent::Failed {
+                                let _ = handle.update(|tray| {
+                                    tray.input_method.operation_error = Some(
+                                        "输入法服务已恢复，但输入源恢复失败；请从系统菜单重新选择输入法".into(),
+                                    );
+                                });
+                            }
                         }
                         TrayControl::SetLanguage(language) => {
                             publish_native_settings(
@@ -814,6 +831,10 @@ mod platform {
                         | TrayControl::Quit => {
                             let activating = matches!(command, TrayControl::ActivateInputMethod);
                             let quitting = matches!(command, TrayControl::Quit);
+                            // Explicit activation/release/quit owns the switch. No recovery
+                            // observer may race a user action or an intentional service stop.
+                            #[cfg(feature = "linux-ibus")]
+                            drop(recovery.take());
                             let _ = handle.update(|tray| tray.input_method.busy = true);
                             let result = if activating {
                                 input_method.activate()
@@ -823,6 +844,10 @@ mod platform {
                                 input_method.release()
                             };
                             let succeeded = result.is_ok();
+                            #[cfg(feature = "linux-ibus")]
+                            if !quitting || !succeeded {
+                                recovery = start_engine_recovery(&input_method, &model_report_tx);
+                            }
                             if !quitting || !succeeded {
                                 refresh_input_method(&handle, &mut input_method);
                             }
@@ -846,6 +871,8 @@ mod platform {
                             });
                         }
                         TrayControl::Shutdown => {
+                            #[cfg(feature = "linux-ibus")]
+                            drop(recovery.take());
                             if let Err(error) = input_method.shutdown() {
                                 eprintln!(
                                     "Suzaku could not safely finish input-service shutdown: {error}"
@@ -872,6 +899,21 @@ mod platform {
         })
     }
 
+    #[cfg(feature = "linux-ibus")]
+    fn start_engine_recovery(
+        input_method: &InputMethodController<IBusBackend>,
+        control_tx: &Sender<TrayControl>,
+    ) -> Option<Monitor> {
+        if !input_method.can_recover_engine() {
+            return None;
+        }
+        let socket = suzaku_map::platform::linux_ime_sync::socket_path()?;
+        let control_tx = control_tx.clone();
+        Monitor::start(socket, move |event| {
+            let _ = control_tx.send(TrayControl::EngineRecovery(event));
+        })
+    }
+
     fn refresh_input_method(
         handle: &TrayHandle,
         input_method: &mut InputMethodController<IBusBackend>,
@@ -881,7 +923,8 @@ mod platform {
             tray.input_method.system = input_method.state().clone();
             tray.input_method.status_error = result.err();
         });
-        // This query runs only at startup/menu-open; it never polls input events.
+        // Startup, menu actions and engine/host recovery notifications only;
+        // this never polls key events or composition text.
         let native = linux_ime_control::status();
         let _ = handle.update(|tray| {
             match native {

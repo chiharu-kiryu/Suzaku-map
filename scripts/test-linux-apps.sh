@@ -5,13 +5,14 @@ suzaku_apps_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$suzaku_apps_root"
 suzaku_apps_suite=${1:-gtk}
 case "$suzaku_apps_suite" in
-  gtk|browser|qt5|qt6|cross|popup|lifecycle) ;;
-  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|qt5|qt6|cross|popup|lifecycle]\n' >&2; exit 2 ;;
+  gtk|browser|qt5|qt6|cross|popup|lifecycle|bus-restart) ;;
+  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|qt5|qt6|cross|popup|lifecycle|bus-restart]\n' >&2; exit 2 ;;
 esac
 suzaku_apps_dependencies=(xvfb-run xauth dbus-run-session ibus-daemon xwininfo timeout)
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity)
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_dependencies+=(gnome-text-editor /usr/libexec/ibus-ui-gtk3)
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity setxkbmap /usr/libexec/ibus-ui-gtk3)
+[[ $suzaku_apps_suite != bus-restart ]] || suzaku_apps_dependencies+=(gnome-text-editor setxkbmap /usr/libexec/ibus-ui-gtk3)
 if [[ $suzaku_apps_suite == browser || $suzaku_apps_suite == cross ]]; then
   suzaku_apps_dependencies+=("${SUZAKU_APP_QA_BROWSER:-google-chrome}")
 fi
@@ -35,6 +36,7 @@ suzaku_apps_script=scripts/test-linux-cross-apps.py
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_script=scripts/test-linux-apps.py
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_script=scripts/test-linux-candidate-window.py
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_script=scripts/test-linux-input-lifecycle.py
+[[ $suzaku_apps_suite != bus-restart ]] || suzaku_apps_script=scripts/test-linux-bus-restart.py
 if [[ -z ${SUZAKU_APP_QA_BIN_DIR:-} ]]; then
   cargo build --locked --all-features --bin panel --bin linux_ime_host
   suzaku_apps_bins="$suzaku_apps_root/target/debug"
