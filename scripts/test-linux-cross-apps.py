@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Physical X11 events -> Chrome/Qt fields -> application-observed text, on Xvfb."""
+"""Physical X11 events -> browser/Qt fields -> application-observed text, on Xvfb."""
 import importlib.util
 import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -133,6 +134,15 @@ class Bridge:
 
 
 def start_app(kind, bridge, sync_mode):
+    if kind == "firefox":
+        profile = qa.root / "firefox-profile"
+        profile.mkdir()
+        shutil.copyfile(fixtures / "firefox-user.js", profile / "user.js")
+        return qa.spawn([
+            os.environ.get("SUZAKU_APP_QA_FIREFOX", "firefox"),
+            "--no-remote", "--new-instance", "--profile", str(profile),
+            "--width", "1000", "--height", "900", bridge.base + "/case/" + bridge.token,
+        ], env=dict(os.environ, MOZ_ENABLE_WAYLAND="0", MOZ_CRASHREPORTER_DISABLE="1"))
     if kind == "browser":
         profile = qa.root / "browser-profile"
         return qa.spawn([
@@ -168,13 +178,13 @@ def check_fields(kind, bridge, bus, x, sync_mode, commits):
         x.key(IBus.KEY_BackSpace)
         bridge.expect(field, "")
 
-    title = "Suzaku Browser QA" if kind == "browser" else "Suzaku Qt" + kind[-1] + " QA"
+    title = "Suzaku Browser QA" if kind in ("browser", "firefox") else "Suzaku Qt" + kind[-1] + " QA"
     qa.wait(lambda: bridge.state and x.window(title), kind + " application ready", timeout=20)
     window = x.window(title)
     x.focus(window)
     assert bus.set_global_engine("dev.suzaku.linux.ime")
     focus("editor")
-    print("READY:", kind, bridge.state.get("qt_version", "Chrome X11 local page"),
+    print("READY:", kind, bridge.state.get("qt_version", bridge.state.get("userAgent")),
           "IBus key sync mode:", sync_mode)
     for field in ["editor", "rich", "entry"]:
         clear(field)
@@ -301,35 +311,40 @@ def check_fields(kind, bridge, bus, x, sync_mode, commits):
     assert not commits.preedit_updates
 
 
-bridge = None
-commits = None
-try:
-    bus, x = qa.start()
-    suite = os.environ["SUZAKU_APP_QA_SUITE"]
-    kinds = ["browser", "qt5", "qt6"] if suite == "cross" else [suite]
-    for kind in kinds:
-        for sync_mode in ([0, 1] if kind.startswith("qt") else [1]):
-            bridge = Bridge()
-            commits = EngineCommits(bus)
-            app = start_app(kind, bridge, sync_mode)
-            check_fields(kind, bridge, bus, x, sync_mode, commits)
+def main():
+    bridge = None
+    commits = None
+    try:
+        bus, x = qa.start()
+        suite = os.environ["SUZAKU_APP_QA_SUITE"]
+        kinds = ["browser", "qt5", "qt6"] if suite == "cross" else [suite]
+        for kind in kinds:
+            for sync_mode in ([0, 1] if kind.startswith("qt") else [1]):
+                bridge = Bridge()
+                commits = EngineCommits(bus)
+                app = start_app(kind, bridge, sync_mode)
+                check_fields(kind, bridge, bus, x, sync_mode, commits)
+                commits.close()
+                commits = None
+                app.terminate()
+                app.wait(timeout=5)
+                bridge.close()
+                bridge = None
+        print(f"RESULT: {passed} workflow checks passed; strict focus and literal-number regressions passed")
+    except Exception:
+        state = None if bridge is None or bridge.state is None else dict(bridge.state)
+        if state is not None:
+            state["events"] = state["events"][-15:]
+        print("Application state:", state)
+        qa.diagnose()
+        raise
+    finally:
+        if commits is not None:
             commits.close()
-            commits = None
-            app.terminate()
-            app.wait(timeout=5)
+        qa.close()
+        if bridge is not None:
             bridge.close()
-            bridge = None
-    print(f"RESULT: {passed} workflow checks passed; strict focus and literal-number regressions passed")
-except Exception:
-    state = None if bridge is None or bridge.state is None else dict(bridge.state)
-    if state is not None:
-        state["events"] = state["events"][-15:]
-    print("Application state:", state)
-    qa.diagnose()
-    raise
-finally:
-    if commits is not None:
-        commits.close()
-    qa.close()
-    if bridge is not None:
-        bridge.close()
+
+
+if __name__ == "__main__":
+    main()

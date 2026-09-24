@@ -1,9 +1,9 @@
 //! Bounded metadata-only local discovery and explicit empty-request warmup.
 use super::{
     DEFAULT_LOCAL_ENDPOINT, DEFAULT_MODEL, LlamaProviderConfig, ModelProtocol, ModelProviderConfig,
-    ModelScope, http_request, parse_http_endpoint,
+    ModelScope, check_cancellation, http_request, http_request_with_cancel, parse_http_endpoint,
 };
-use crate::languages::llm::LlmProviderError;
+use crate::languages::llm::{LlmCancellation, LlmProviderError};
 use serde_json::{Value, json};
 use std::{
     sync::Mutex,
@@ -28,6 +28,16 @@ pub(super) fn resolve_cached(
     cache: &Mutex<Option<CachedResolution>>,
     deadline: Instant,
 ) -> Result<ModelProviderConfig, LlmProviderError> {
+    resolve_cached_with_cancel(config, cache, deadline, None)
+}
+
+pub(super) fn resolve_cached_with_cancel(
+    config: &ModelProviderConfig,
+    cache: &Mutex<Option<CachedResolution>>,
+    deadline: Instant,
+    cancellation: Option<&LlmCancellation>,
+) -> Result<ModelProviderConfig, LlmProviderError> {
+    check_cancellation(cancellation)?;
     if config.scope == ModelScope::Cloud
         || (config.model != DEFAULT_MODEL && !config.uses_ollama_api())
     {
@@ -35,16 +45,20 @@ pub(super) fn resolve_cached(
     }
     // This lock belongs only to the provider worker, never to the engine or UI.
     let mut cache = cache.lock().unwrap_or_else(|error| error.into_inner());
+    check_cancellation(cancellation)?;
     if let Some(cached) = cache
         .as_ref()
         .filter(|cached| Instant::now() < cached.expires)
     {
         return cached.result.clone();
     }
-    let result = resolve_local(
+    let result = resolve_local_with_cancel(
         config,
         deadline.min(Instant::now() + Duration::from_millis(800)),
+        cancellation,
     );
+    // Cancellation is not a missing model; never poison the negative cache.
+    check_cancellation(cancellation)?;
     let ttl = if result.is_ok() {
         Duration::from_secs(60)
     } else {
@@ -106,12 +120,21 @@ fn resolve_local(
     config: &ModelProviderConfig,
     deadline: Instant,
 ) -> Result<ModelProviderConfig, LlmProviderError> {
+    resolve_local_with_cancel(config, deadline, None)
+}
+
+fn resolve_local_with_cancel(
+    config: &ModelProviderConfig,
+    deadline: Instant,
+    cancellation: Option<&LlmCancellation>,
+) -> Result<ModelProviderConfig, LlmProviderError> {
     if config.scope != ModelScope::Local {
         return Err(LlmProviderError::InvalidEndpoint);
     }
     let mut fallback = None;
     let mut last_error = LlmProviderError::NoLocalModel;
     for endpoint in endpoints(config) {
+        check_cancellation(cancellation)?;
         let candidate = ModelProviderConfig {
             endpoint: endpoint.into(),
             ..config.clone()
@@ -119,7 +142,11 @@ fn resolve_local(
         let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
             break;
         };
-        let models = match inventory(&candidate, remaining.min(Duration::from_millis(250))) {
+        let models = match inventory_with_cancel(
+            &candidate,
+            remaining.min(Duration::from_millis(250)),
+            cancellation,
+        ) {
             Ok(models) => models,
             Err(error) => {
                 last_error = error;
@@ -144,6 +171,7 @@ fn resolve_local(
             }
         }
     }
+    check_cancellation(cancellation)?;
     fallback.ok_or(if config.model == DEFAULT_MODEL {
         LlmProviderError::NoLocalModel
     } else {
@@ -235,6 +263,14 @@ fn inventory(
     config: &ModelProviderConfig,
     timeout: Duration,
 ) -> Result<Vec<LocalModel>, LlmProviderError> {
+    inventory_with_cancel(config, timeout, None)
+}
+
+fn inventory_with_cancel(
+    config: &ModelProviderConfig,
+    timeout: Duration,
+    cancellation: Option<&LlmCancellation>,
+) -> Result<Vec<LocalModel>, LlmProviderError> {
     config.validate()?;
     if config.scope != ModelScope::Local {
         return Err(LlmProviderError::InvalidEndpoint);
@@ -253,7 +289,8 @@ fn inventory(
                 .ok_or(LlmProviderError::InvalidEndpoint)?
         )
     };
-    let response = http_request(&route(config, &path)?, "GET", None, timeout)?;
+    let response =
+        http_request_with_cancel(&route(config, &path)?, "GET", None, timeout, cancellation)?;
     let json: Value =
         serde_json::from_str(&response).map_err(|_| LlmProviderError::InvalidResponse)?;
     parse_models(&json, ollama)

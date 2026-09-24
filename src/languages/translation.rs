@@ -125,6 +125,18 @@ impl TranslationRequest {
         }
         Ok(())
     }
+
+    /// A narrow output-contract check, NOT a semantic translation-quality score.
+    /// The prompt explicitly preserves question marks, including for languages
+    /// that can normally express a question without them. Never fabricate a '?'
+    /// on an answer: reject it and leave the user's source untouched instead.
+    pub fn validate_question_form(&self, text: &str) -> Result<(), TranslationError> {
+        let count = |value: &str| value.chars().filter(|ch| matches!(ch, '?' | '？')).count();
+        if count(text) < count(&self.text) {
+            return Err(TranslationError::LostQuestionForm);
+        }
+        Ok(())
+    }
 }
 
 pub(crate) fn invalid_text_character(ch: char) -> bool {
@@ -146,6 +158,7 @@ pub enum TranslationError {
     InvalidText,
     InputTooLong,
     WrongLanguage,
+    LostQuestionForm,
     Provider(LlmProviderError),
 }
 
@@ -166,6 +179,7 @@ impl std::fmt::Display for TranslationError {
                 "Translate up to 1,000 characters at a time; your draft is unchanged."
             }
             Self::WrongLanguage => "The model did not use the target language. Try a model with stronger multilingual support.",
+            Self::LostQuestionForm => "The model did not preserve the question form. Your draft is unchanged; try another model.",
             Self::Provider(Timeout) => {
                 "Translation timed out. Retry explicitly when the model is ready."
             }
@@ -194,6 +208,45 @@ pub trait TranslationProvider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn missing_question_marks_are_rejected_without_repairing_an_answer() {
+        for target in TranslationLanguage::ALL {
+            let request = TranslationRequest {
+                text: "Can you help? Where is the station？".into(),
+                source: None,
+                target,
+            };
+            for invalid in [
+                "我可以。车站在左边。",
+                "帮忙。车站在哪里？",
+                "はい。駅は左です。",
+            ] {
+                assert_eq!(
+                    request.validate_question_form(invalid),
+                    Err(TranslationError::LostQuestionForm)
+                );
+            }
+            for valid in [
+                "你能帮忙吗？车站在哪里？",
+                "¿Puedes ayudar? ¿Dónde está la estación?",
+                "Help? Station?",
+            ] {
+                assert!(request.validate_question_form(valid).is_ok());
+            }
+            // A punctuation check is deliberately not a semantic quality score.
+            assert!(
+                request
+                    .validate_question_form("Wrong meaning? Still wrong?")
+                    .is_ok()
+            );
+        }
+        let statement = TranslationRequest {
+            text: "A statement.".into(),
+            source: None,
+            target: TranslationLanguage::English,
+        };
+        assert!(statement.validate_question_form("A statement.").is_ok());
+    }
     #[test]
     fn script_guard_rejects_untranslated_latin_sentences_but_is_not_a_quality_score() {
         for (target, valid) in [

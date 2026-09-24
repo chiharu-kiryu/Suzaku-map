@@ -2,7 +2,7 @@
 //! Editing, committing or changing language invalidates every older response.
 
 use crate::languages::llm::{
-    LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmProviderError,
+    LlmCancellation, LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmProviderError,
 };
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -29,6 +29,7 @@ struct Mailbox {
     revision: u64,
     stopped: bool,
     pending: Option<Job>,
+    inflight: Option<LlmCancellation>,
     result: Option<(u64, Result<Vec<LlmCompletion>, LlmProviderError>)>,
 }
 
@@ -46,7 +47,7 @@ impl PredictionWorker {
             .spawn(move || {
                 let (lock, wake) = &*worker_mailbox;
                 loop {
-                    let job = {
+                    let (job, cancellation) = {
                         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
                         loop {
                             if state.stopped {
@@ -55,7 +56,9 @@ impl PredictionWorker {
                             if let Some(job) = state.pending.as_ref() {
                                 let delay = job.ready_at.saturating_duration_since(Instant::now());
                                 if delay.is_zero() {
-                                    break state.pending.take().unwrap();
+                                    let cancellation = LlmCancellation::default();
+                                    state.inflight = Some(cancellation.clone());
+                                    break (state.pending.take().unwrap(), cancellation);
                                 }
                                 state = wake
                                     .wait_timeout(state, delay)
@@ -69,10 +72,11 @@ impl PredictionWorker {
                     // No engine/session lock is held while a model is running.
                     let completions =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            provider.generate_checked(&job.request)
+                            provider.generate_cancellable(&job.request, &cancellation)
                         }))
                         .unwrap_or(Err(LlmProviderError::Unavailable));
                     let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
+                    state.inflight = None;
                     if !state.stopped && state.revision == job.revision {
                         state.result = Some((job.revision, completions));
                     }
@@ -91,6 +95,9 @@ impl PredictionWorker {
             return false;
         }
         state.revision = state.revision.wrapping_add(1);
+        if let Some(inflight) = &state.inflight {
+            inflight.cancel();
+        }
         state.result = None;
         state.pending = Some(Job {
             revision: state.revision,
@@ -105,6 +112,9 @@ impl PredictionWorker {
         let (lock, wake) = &*self.mailbox;
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         state.revision = state.revision.wrapping_add(1);
+        if let Some(inflight) = &state.inflight {
+            inflight.cancel();
+        }
         state.pending = None;
         state.result = None;
         wake.notify_one();
@@ -129,6 +139,9 @@ impl Drop for PredictionWorker {
         let (lock, wake) = &*self.mailbox;
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         state.stopped = true;
+        if let Some(inflight) = &state.inflight {
+            inflight.cancel();
+        }
         state.pending = None;
         state.result = None;
         wake.notify_one();

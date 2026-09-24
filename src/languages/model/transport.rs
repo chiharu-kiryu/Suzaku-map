@@ -1,7 +1,10 @@
 //! Local requests never resolve DNS or use proxies. Remote requests require HTTPS
 //! and separate consent; credentials, URLs and response bodies never enter errors.
-use super::{MAX_RESPONSE_BYTES, ModelProviderConfig, ModelScope, http_request};
-use crate::languages::llm::LlmProviderError;
+use super::{
+    MAX_RESPONSE_BYTES, ModelProviderConfig, ModelScope, check_cancellation,
+    http_request_with_cancel,
+};
+use crate::languages::llm::{LlmCancellation, LlmProviderError};
 use reqwest::{
     blocking::{Client, ClientBuilder},
     header::{AUTHORIZATION, HeaderValue},
@@ -62,9 +65,20 @@ pub(super) fn request(
     body: Option<&str>,
     timeout: Duration,
 ) -> Result<String, LlmProviderError> {
+    request_with_cancel(config, method, body, timeout, None)
+}
+
+pub(super) fn request_with_cancel(
+    config: &ModelProviderConfig,
+    method: &str,
+    body: Option<&str>,
+    timeout: Duration,
+    cancellation: Option<&LlmCancellation>,
+) -> Result<String, LlmProviderError> {
     config.validate()?;
+    check_cancellation(cancellation)?;
     if config.scope == ModelScope::Local {
-        return http_request(&config.endpoint, method, body, timeout);
+        return http_request_with_cancel(&config.endpoint, method, body, timeout, cancellation);
     }
     if !config.cloud_consent {
         return Err(LlmProviderError::CloudConsentRequired);
@@ -72,7 +86,9 @@ pub(super) fn request(
     let authorization = authorization(config.api_key_env.as_deref(), |name| {
         std::env::var(name).ok()
     })?;
-    CLIENT.with(|slot| {
+    // The blocking HTTPS client remains deadline-bound, not interruptible in
+    // flight. Do not spawn detached per-keystroke requests to emulate cancel.
+    let result = CLIENT.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
             *slot = Some(client_builder().build().map_err(map_error)?);
@@ -85,7 +101,9 @@ pub(super) fn request(
             authorization,
             timeout,
         )
-    })
+    });
+    check_cancellation(cancellation)?;
+    result
 }
 
 fn authorization(

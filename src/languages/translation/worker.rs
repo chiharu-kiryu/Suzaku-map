@@ -45,6 +45,10 @@ impl Default for TranslationWorker {
                         job.provider
                             .translate(&job.request)
                             .and_then(super::validate_translation_output)
+                            .and_then(|text| {
+                                job.request.validate_question_form(&text)?;
+                                Ok(text)
+                            })
                     }))
                     .unwrap_or(Err(TranslationError::Provider(
                         LlmProviderError::Unavailable,
@@ -134,6 +138,33 @@ mod tests {
                 .unwrap();
             Ok(format!("translated {}", request.text))
         }
+    }
+    #[test]
+    fn custom_provider_cannot_publish_an_answer_as_a_question_translation() {
+        struct Answer;
+        impl TranslationProvider for Answer {
+            fn translate(&self, _: &TranslationRequest) -> Result<String, TranslationError> {
+                Ok("我很好，谢谢。".into())
+            }
+        }
+        let worker = TranslationWorker::default();
+        let request = TranslationRequest {
+            text: "How are you?".into(),
+            source: Some(super::super::TranslationLanguage::English),
+            target: super::super::TranslationLanguage::ChineseSimplified,
+        };
+        assert!(worker.request(Arc::new(Answer), request.clone()));
+        let start = Instant::now();
+        let result = loop {
+            if let Some(result) = worker.take_result() {
+                break result;
+            }
+            assert!(start.elapsed() < Duration::from_secs(3));
+            std::thread::yield_now();
+        };
+        assert_eq!(result, Err(TranslationError::LostQuestionForm));
+        assert_eq!(request.text, "How are you?");
+        assert!(worker.take_result().is_none());
     }
     #[test]
     fn explicit_latest_request_wins_and_cancel_never_replays_or_blocks() {

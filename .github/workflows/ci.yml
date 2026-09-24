@@ -112,6 +112,8 @@ jobs:
         run: bash scripts/test-linux-ci.sh ui
       - name: Test English typing in real GTK applications on an isolated display
         run: bash scripts/test-linux-apps.sh
+      - name: Test physical keyboard layouts, locks and Compose in real GTK input
+        run: bash scripts/test-linux-apps.sh keyboard
       - name: Test stock IBus ordinal and text clicks, navigation and bounded previews
         run: bash scripts/test-linux-apps.sh popup
       - name: Test real input switching, privacy and process reconnection

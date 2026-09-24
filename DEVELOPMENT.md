@@ -3,7 +3,40 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.5 — Linux Alpha service and input-source recovery patch**.
+Current source version: **0.6.6 — Linux Alpha bilingual input and model responsiveness patch**.
+
+## Current priority: Chinese and English input on Linux
+
+Polish these two input languages before expanding language coverage or visual features.
+English focuses on word endings, context-sensitive next words and short-sentence continuation.
+Simplified Chinese focuses on continuous/separated Pinyin, unfinished readings, useful word/sentence
+choices and continued typing after conversion. Both must retain literal input, deliberate adoption,
+one-step completion undo, Space continuity and exact explicit submission, with or without a model.
+
+Keep Japanese and the existing interface/translation languages compatible; do not remove them or
+equate eight interface languages with eight complete native input systems. Mixed Chinese/English,
+broader vocabulary and real-model latency/quality still need work. Treat input-state correctness,
+authored offline examples and real-model quality as separate acceptance gates.
+
+The paired [English](tests/english_completion_quality.rs) and
+[Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
+not a general language-quality score. The first follow-up fixes separated Pinyin within existing
+dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.6.6 — Bilingual input and model responsiveness
+
+- Existing Chinese entries now match joined or correctly separated Pinyin, including unfinished
+  readings, while preserving syllable boundaries and literal fallback. Paired Chinese/English
+  quality suites and native word/sentence adoption, undo and continuation checks guard the core flow.
+- Newer drafts cooperatively cancel obsolete connected local HTTP candidate/discovery requests;
+  a single worker and the original total deadline remain. Blocking cloud/legacy calls still
+  finish or time out before discarding results. Translation cancellation is unchanged.
+- Compact, model-independent candidate prompts request two complete strings and reject request-field
+  echoes. Translation restates its task and rejects lost question marks without changing the draft.
+  Real CPU LLaMA still has default-budget timeouts and semantic limitations.
+- Added isolated physical-keyboard/layout checks to CI and Firefox, VS Code and opt-in real-model
+  workflows. These do not qualify hardware LEDs, native Wayland or every browser/editor.
+  See the [0.6.6 release notes](docs/releases/0.6.6.md) for validation and release boundaries.
 
 ### 0.6.5 — Service retries and verified input-source recovery
 

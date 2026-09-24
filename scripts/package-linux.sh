@@ -85,6 +85,11 @@ install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus
   docs/bug-audit-bus-restart-2026-09-24.md \
   docs/bug-audit-service-recovery-2026-09-24.md \
   docs/bug-audit-engine-recovery-2026-09-24.md \
+  docs/bug-audit-keyboard-layouts-2026-09-24.md \
+  docs/bug-audit-browser-model-2026-09-24.md \
+  docs/bug-audit-model-latency-2026-09-24.md \
+  docs/bug-audit-model-cancellation-2026-09-24.md \
+  docs/bug-audit-bilingual-core-2026-09-24.md \
   "$suzaku_package_tree/share/doc/suzaku/docs/"
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"

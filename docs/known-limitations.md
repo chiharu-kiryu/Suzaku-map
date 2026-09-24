@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.5 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.6 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -10,6 +10,11 @@ does not imply cross-platform stability. Keep another input method available.
   purpose and can expose its synthetic test input to candidates; use a trusted alternative input
   method for credentials. This is distinct from the tested `--password` dialog. See the
   [GTK application audit](bug-audit-gtk-apps-2026-09-23.md).
+  Tests included in 0.6.6 also pass 23 Firefox 156.0 and 14 VS Code 1.138.0 / Electron 42.10.0
+  workflows on private X11 sessions, including focus cancellation and declared password fields.
+  The Firefox executable was launched directly from its installed Snap files; Snap launcher,
+  native Wayland, arbitrary Electron apps, terminal and webview editors remain unqualified.
+  See the [browser/model audit](bug-audit-browser-model-2026-09-24.md).
 - **Draft presentation and numeric fields:** 0.6.2 moves the default Linux draft
   preview to the candidate area/companion, preventing tested Chrome/Qt clients from confirming
   cached inline preedit on focus changes. Empty-draft digits now pass literally; digits still
@@ -34,9 +39,20 @@ does not imply cross-platform stability. Keep another input method available.
   interpreted as application shortcuts. A sequence absent from the compiled table keeps its final
   printable key literally.
   Eight interface/translation languages do not imply eight complete native input systems.
+- **Keyboard layouts and locks:** additional 0.6.6 source-tree tests cover 26 real GTK
+  workflows using physical XTest keycodes: US/UK/German/French/US-international layouts, Caps,
+  both Shift keys, NumLock, AltGr, keypad literals and mid-draft layout/lock changes. They verify
+  XKB lock/indicator state and keymap preservation on a private Xvfb server, not actual keyboard
+  LEDs, firmware, arbitrary remappings, native Wayland or all application shortcuts. No new
+  product defect was reproduced. See the [keyboard audit](bug-audit-keyboard-layouts-2026-09-24.md).
 - **Small dictionaries:** English collocations and Chinese/Japanese conversion are bounded. There
   is no complete Japanese morphological analyzer, personal learning dictionary or arbitrary
   long-sentence offline conversion. Unknown text remains available literally.
+  Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
+  Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
+  English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,
+  typo correction, arbitrary Chinese/English mixed conversion or a general quality score.
+  See the [bilingual core audit](bug-audit-bilingual-core-2026-09-24.md).
 - **Long native drafts:** automatic predictions stop beyond 256 Unicode code points; IBus keeps
   the complete literal draft. Companion text is limited to 8192 UTF-8 bytes, so longer native
   drafts are hidden from the floating panel, not truncated or automatically committed. Native
@@ -45,6 +61,24 @@ does not imply cross-platform stability. Keep another input method available.
   [length-boundary audit](bug-audit-draft-limits-2026-09-23.md).
 - **External model quality:** offline fallback needs no model, but translation needs a configured
   provider. Language quality depends on that provider/model. Not every proprietary API is compatible.
+  Local `llama3.2:3b` Q4_K_M runs on CPU on this machine (`size_vram: 0`). The round-33 baseline
+  exceeded even 5 seconds in all seven candidate probes. The compact requests in 0.6.6 improve the
+  final 5-second-budget run to seven valid responses in 0.763–1.700 seconds, and a strict model-only
+  candidate adoption/undo/continuation/commit workflow passes alongside six safety checks.
+  This is not reliable default-budget acceptance: a final 1200 ms English run still times out in
+  two of five cases; output and timing vary. Offline input remains independent.
+  Translation now restates the task and rejects missing source question marks without changing the
+  draft, but semantic omissions/changes and mixed-language output still occur in Japanese/Korean.
+  Transport/script/punctuation checks are not language-quality acceptance; no automatic model
+  switch or longer foreground wait was added. See the [baseline](bug-audit-browser-model-2026-09-24.md)
+  and [latency/output follow-up](bug-audit-model-latency-2026-09-24.md).
+- **In-flight model cancellation:** 0.6.6 local HTTP candidate requests now stop obsolete
+  connected I/O cooperatively (50 ms polling), including discovery; latest drafts no longer wait
+  for the old generation's full deadline. This does not speed up a single inference or guarantee
+  server-side compute cancellation. Connection setup/shared discovery-lock waits remain bounded
+  by the existing operations; blocking cloud HTTPS and legacy custom providers still finish or
+  time out before discarding results. Translation cancellation is unchanged. See the
+  [cancellation audit](bug-audit-model-cancellation-2026-09-24.md).
 - **Wayland/Fcitx:** the Linux no-focus companion currently uses X11/XWayland. Native Wayland focus,
   positioning and output permissions are not fully validated. Fcitx is not a complete native backend.
 - **Desktop integration:** GNOME tray visibility requires desktop support. Container install checks
@@ -71,7 +105,7 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.6.5 retains
+- **Build scope:** use `--all-features` for desktop checks. 0.6.6 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
   builds/tests are still not supported as a clean release gate. Development/test profiles now
   omit debug symbols and incremental caches; edits may rebuild more slowly. Release settings

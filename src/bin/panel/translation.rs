@@ -241,6 +241,27 @@ mod tests {
                 // Give the synthetic window a full fitted frame before hit testing its drawer.
                 let height = state.renderer.preferred_input_panel_height(&state.chrome) as u32;
                 state.resize(state.size.width, height);
+                state.chrome.set_seed_text("How are you?".into());
+                state.refresh_seed();
+                state.start_translation_with(Arc::new(Fixed("我很好，谢谢。")));
+                let started = std::time::Instant::now();
+                while state.chrome.translation.phase == TranslationPhase::Pending {
+                    state.poll_translation();
+                    assert!(started.elapsed() < std::time::Duration::from_secs(3));
+                    std::thread::yield_now();
+                }
+                assert_eq!(state.chrome.translation.phase, TranslationPhase::Failed);
+                assert_eq!(
+                    state.chrome.translation.message,
+                    TranslationError::LostQuestionForm.to_string()
+                );
+                assert!(state.chrome.translation.text.is_empty());
+                state.apply_translation();
+                assert_eq!(state.chrome.seed_text, "How are you?");
+                assert!(state.engine.snapshot().committed_text.is_empty());
+                state.cancel_translation();
+                state.chrome.set_seed_text("Hello world".into());
+                state.refresh_seed();
                 let original = state.chrome.seed_text.clone();
                 for target in TranslationLanguage::ALL {
                     click(&mut state, InteractionKind::SetTranslationTarget(target));

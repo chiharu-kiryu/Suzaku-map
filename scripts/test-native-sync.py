@@ -8,6 +8,7 @@ No desktop capture, global input events or desktop engine changes.
 import json
 import os
 from pathlib import Path
+import select
 import socket
 import subprocess
 import time
@@ -43,7 +44,14 @@ class ModelFixture(BaseHTTPRequestHandler):
         gate = model_reply_gates.get(request["model"])
         if gate is not None:
             gate["received"].set()
-            assert gate["release"].wait(timeout=5), "synthetic model reply gate timed out"
+            deadline = time.monotonic() + 5
+            while not gate["release"].wait(timeout=0.01):
+                assert time.monotonic() < deadline, "synthetic model reply gate timed out"
+                if select.select([self.connection], [], [], 0)[0]:
+                    assert not self.connection.recv(1, socket.MSG_PEEK), "unexpected second fixture request"
+                    gate["cancelled_at"] = time.monotonic()
+                    gate["finished"].set()
+                    return
         time.sleep(0.08)
         candidates = [
             {"text": text, "kind": kind} for text, kind in [
@@ -63,13 +71,19 @@ class ModelFixture(BaseHTTPRequestHandler):
                 {"text": composition + "x" * 161, "kind": "word"},
             ]
         body = json.dumps({"choices": [{"message": {"content": json.dumps({"candidates": candidates})}}]}).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-        if gate is not None:
-            gate["finished"].set()
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # Editing may close an obsolete call after its reply gate opens.
+            # Ready-phase tests separately require a published model candidate.
+            pass
+        finally:
+            if gate is not None:
+                gate["finished"].set()
 
 
 model = HTTPServer(("127.0.0.1", 0), ModelFixture)
@@ -621,6 +635,81 @@ class EnginePeer:
             self.event("FocusOut")
             self.destroy()
         self.connection.signal_unsubscribe(self.subscription)
+
+
+def check_prediction_cancellation(bus):
+    """Observe socket closure before replying, not only revision invalidation."""
+    saved = json.loads(command("S"))["settings"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    assert config == runtime / "ime.json" and not config.is_symlink()
+    original = config.read_text()
+    watch = Watch()
+    timings = {}
+    try:
+        for boundary in ["edit", "escape", "commit", "language", "password", "disable", "reload", "destroy"]:
+            name = f"synthetic-cancellation-{boundary}"
+            gate = {key: threading.Event() for key in ["received", "release", "finished"]}
+            model_reply_gates[name] = gate
+            peer = EnginePeer(bus)
+            try:
+                settings = dict(saved, language="en", llm_enabled=False, llm_model=name, llm_timeout_ms=2000,
+                                llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+                config.write_text(json.dumps(settings))
+                assert json.loads(command("R"))["ok"]
+                peer.event("FocusIn")
+                assert json.loads(command("P1"))["ok"]
+                pump()
+                requested = len(model_requests)
+                assert action(watch.latest, "Thel")
+                wait(gate["received"].is_set, "cancellable request is actually in flight")
+                assert json.loads(command("S"))["prediction"] == "Pending"
+                changed = time.monotonic()
+                if boundary == "edit":
+                    assert action(watch.latest, "Tplease rec")
+                elif boundary == "escape":
+                    assert peer.process_key_event(IBus.KEY_Escape)
+                elif boundary == "commit":
+                    assert peer.process_key_event(IBus.KEY_Return)
+                elif boundary == "language":
+                    assert json.loads(command("Lja"))["ok"]
+                elif boundary == "password":
+                    peer.set_content_type(IBus.InputPurpose.PASSWORD)
+                elif boundary == "disable":
+                    assert json.loads(command("P0"))["ok"]
+                elif boundary == "reload":
+                    config.write_text(json.dumps(dict(settings, llm_enabled=True, llm_model="synthetic-reloaded")))
+                    assert json.loads(command("R"))["ok"]
+                elif boundary == "destroy":
+                    peer.destroy()
+                wait(lambda: "cancelled_at" in gate, "old local socket must close without a reply", timeout=0.7)
+                elapsed = gate["cancelled_at"] - changed
+                assert 0 <= elapsed < 0.5, (boundary, elapsed)
+                timings[boundary] = round(elapsed * 1000, 1)
+                gate["release"].set()
+                if boundary in ("edit", "reload"):
+                    wait(lambda: json.loads(command("S"))["prediction"] == "Ready" and
+                         any(c["source"] == "model" for c in watch.latest["candidates"]),
+                         "new draft/provider must recover without the old timeout")
+                    payload = json.loads(model_requests[requested + 1]["messages"][1]["content"])
+                    assert payload["raw_composition"] == ("please rec" if boundary == "edit" else "hel")
+                elif boundary == "disable":
+                    assert json.loads(command("S"))["prediction"] == "Disabled"
+                    assert watch.latest["seed"] == "hel"
+                else:
+                    wait(lambda: not watch.latest["seed"] and not watch.latest["candidates"], "cancelled draft stays cleared")
+                pump()
+                assert peer.commits == (["hel"] if boundary == "commit" else [])
+            finally:
+                gate["release"].set()
+                peer.close()
+                assert json.loads(command("P0"))["ok"]
+                model_reply_gates.pop(name, None)
+        print("PASS: N46 8 native boundaries close obsolete model sockets before replying; cancellation ms:", timings)
+    finally:
+        config.write_text(original)
+        assert json.loads(command("R"))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
 
 
 def check_native_draft_limits(bus):
@@ -2165,6 +2254,55 @@ def check_editable_completions(context, watch, commits, lookup):
     print("PASS: CJK unfinished-tail completion, Shift+Enter/Shift+Space editable choices, one-step spelling undo, exact phrase commits and reset/privacy/focus isolation")
 
 
+def check_bilingual_core_completion(context, watch, commits):
+    """Prioritize English/Pinyin word + sentence adoption without a model."""
+    assert not json.loads(command("S"))["settings"]["llm_enabled"]
+    cases = [
+        ("en", "hel", "hello", "hello, how are you?"),
+        ("en", "please sen", "please send", "please send me the details."),
+        ("en", "thank you ", "thank you for", "thank you for your help."),
+        ("zh-Hans", "shu ru fa", "输入法", "输入法支持多种语言。"),
+        ("zh-Hans", "ji xu", "继续", "继续完善这个功能。"),
+        ("zh-Hans", "wo xi huan bei j", "我喜欢北京", "我喜欢北京的文化。"),
+    ]
+
+    def adopt(text):
+        index = next(i for i, candidate in enumerate(watch.latest["candidates"][:6]) if candidate["text"] == text)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == text, "numeric choice remains editable")
+
+    for language, seed, word, sentence in cases:
+        for kind, selected in [("word", word), ("sentence", sentence)]:
+            context.reset()
+            assert json.loads(command("L" + language))["ok"]
+            wait(lambda: not watch.latest["seed"], "clear bilingual test draft")
+            before = len(commits)
+            type_seed(context, seed)
+            wait(lambda: watch.latest["seed"] == seed, "spaces/apostrophes do not end the draft")
+            assert len(commits) == before
+            assert any(c["text"] == selected and c["kind"] == kind and c["source"] == "local"
+                       for c in watch.latest["candidates"][:6]), (seed, watch.latest)
+            adopt(selected)
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == seed, "undo restores exact Pinyin/English spelling")
+            assert len(commits) == before
+            adopt(selected)
+            if kind == "word":
+                if language == "en":
+                    type_seed(context, " today")
+                    selected += " today"
+                else:
+                    type_seed(context, "de")
+                    selected += "的"
+                    adopt(selected)
+                wait(lambda: watch.latest["seed"] == selected, "continue from an adopted word")
+            assert len(commits) == before
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [selected] and not watch.latest["seed"], "bilingual exact single commit")
+    assert json.loads(command("Len"))["ok"]
+    print("PASS: N47 12 English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
+
+
 def check_literal_choice_publication(context, watch, commits, lookup):
     """N28: adopting unchanged spelling still changes the selected candidate."""
     failures = []
@@ -3008,6 +3146,7 @@ try:
     check_tray_activation(bus)
     check_post_process_preedit(bus)
     check_engine_event_boundaries(bus)
+    check_prediction_cancellation(bus)
     check_native_draft_limits(bus)
     check_prediction_length_boundaries(bus)
     check_commit_target_boundaries(bus)
@@ -3087,6 +3226,7 @@ try:
     check_lossless_commit_chunks(other, watch, other_commits)
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)
+    check_bilingual_core_completion(other, watch, other_commits)
     check_literal_choice_publication(other, watch, other_commits, other_lookup)
     check_unchanged_input_controls(other, watch, other_commits, other_lookup)
     check_unchanged_control_failures(other, watch, other_commits, other_lookup)

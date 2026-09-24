@@ -403,6 +403,17 @@ fn translation_requests_reject_stale_press_targets() {
                     }
                     let allowed = matches!(case, "unchanged" | "metadata" | "local unchanged");
                     let current_draft = panel.chrome.seed_text.clone();
+                    let expected_user = format!(
+                        "Translate this {} text into {}:\n\n{}",
+                        panel
+                            .chrome
+                            .translation
+                            .source
+                            .map(|language| language.name())
+                            .unwrap_or("auto-detected"),
+                        panel.chrome.translation.target.name(),
+                        current_draft
+                    );
                     if !allowed && panel.interaction.pressed_interaction.is_some() {
                         findings.push(format!(
                             "N24 touch={touch}, {case}: old Translate press survived"
@@ -411,7 +422,7 @@ fn translation_requests_reject_stale_press_targets() {
                     panel.complete_primary_release(touch);
                     if panel.chrome.translation.phase == TranslationPhase::Pending {
                         let (_, request) = self.server.request();
-                        assert_eq!(request["messages"][1]["content"], current_draft);
+                        assert_eq!(request["messages"][1]["content"], expected_user);
                         if !allowed {
                             findings.push(format!("N24 touch={touch}, {case}: stale release sent {:?} to the synthetic model", current_draft));
                         }
@@ -443,7 +454,7 @@ fn translation_requests_reject_stale_press_targets() {
                     panel.complete_primary_release(touch);
                     assert_eq!(
                         self.server.request().1["messages"][1]["content"],
-                        current_draft
+                        expected_user
                     );
                     settle_translation(&mut panel);
                     assert_eq!(panel.chrome.seed_text, current_draft);

@@ -1,0 +1,8 @@
+{
+  "name": "suzaku-isolated-input-qa",
+  "version": "0.0.1",
+  "publisher": "suzaku-qa",
+  "engines": {"vscode": "^1.90.0"},
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js"
+}

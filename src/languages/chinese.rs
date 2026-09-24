@@ -33,106 +33,163 @@ impl LanguagePlugin for ChineseLanguagePlugin {
     }
 }
 
-// Original, deliberately small seed vocabulary. Longer phrases rank before syllable paths.
-const PINYIN: &[(&str, &str)] = &[
-    ("nihao", "你好"),
-    ("nihaoma", "你好吗"),
-    ("xiexie", "谢谢"),
-    ("zaijian", "再见"),
-    ("zaoshanghao", "早上好"),
-    ("wanshanghao", "晚上好"),
-    ("meiguanxi", "没关系"),
-    ("duibuqi", "对不起"),
-    ("qingwen", "请问"),
-    ("keyi", "可以"),
-    ("bukeyi", "不可以"),
-    ("women", "我们"),
-    ("nimen", "你们"),
-    ("tamen", "他们"),
-    ("zhongwen", "中文"),
-    ("yingwen", "英文"),
-    ("riwen", "日文"),
-    ("zhongguo", "中国"),
-    ("shijie", "世界"),
-    ("shurufa", "输入法"),
-    ("shuru", "输入"),
-    ("houxuan", "候选"),
-    ("lianxiang", "联想"),
-    ("moxing", "模型"),
-    ("yuyan", "语言"),
-    ("zhichi", "支持"),
-    ("gongneng", "功能"),
-    ("jixu", "继续"),
-    ("kaifa", "开发"),
-    ("ceshi", "测试"),
-    ("shezhi", "设置"),
-    ("jintian", "今天"),
-    ("mingtian", "明天"),
-    ("zuotian", "昨天"),
-    ("xianzai", "现在"),
-    ("tianqi", "天气"),
-    ("gongzuo", "工作"),
-    ("xuexi", "学习"),
-    ("xihuan", "喜欢"),
-    ("pengyou", "朋友"),
-    ("shijian", "时间"),
-    ("wenti", "问题"),
-    ("bangzhu", "帮助"),
-    ("diannao", "电脑"),
-    ("shouji", "手机"),
-    ("beijing", "北京"),
-    ("shanghai", "上海"),
-    ("shenzhen", "深圳"),
-    ("guangzhou", "广州"),
-    ("xi'an", "西安"),
-    ("wo", "我"),
-    ("ni", "你"),
-    ("ni", "呢"),
-    ("ta", "他"),
-    ("ta", "她"),
-    ("men", "们"),
-    ("hao", "好"),
-    ("hao", "号"),
-    ("shi", "是"),
-    ("shi", "时"),
-    ("de", "的"),
-    ("le", "了"),
-    ("ma", "吗"),
-    ("ne", "呢"),
-    ("bu", "不"),
-    ("you", "有"),
-    ("you", "又"),
-    ("zai", "在"),
-    ("ai", "爱"),
-    ("hen", "很"),
-    ("xiang", "想"),
-    ("yao", "要"),
-    ("qu", "去"),
-    ("lai", "来"),
-    ("kan", "看"),
-    ("ting", "听"),
-    ("shuo", "说"),
-    ("qing", "请"),
-    ("he", "和"),
-    ("ye", "也"),
-    ("dou", "都"),
-    ("ke", "可"),
-    ("yi", "以"),
-    ("zhong", "中"),
-    ("guo", "国"),
-    ("ren", "人"),
-    ("tian", "天"),
-    ("qi", "气"),
-    ("xin", "新"),
-    ("da", "大"),
-    ("xiao", "小"),
-    ("duo", "多"),
-    ("shao", "少"),
-    ("lv", "绿"),
-    ("nv", "女"),
-    ("xian", "先"),
-    ("xi", "西"),
-    ("an", "安"),
+// Authored bootstrap vocabulary, with explicit syllables rather than inferred
+// splits. Optional typed separators may join these syllables, never split one.
+struct PinyinEntry {
+    reading: &'static str,
+    text: &'static str,
+    require_separators: bool,
+}
+
+impl PinyinEntry {
+    const fn new(reading: &'static str, text: &'static str) -> Self {
+        Self {
+            reading,
+            text,
+            require_separators: false,
+        }
+    }
+
+    const fn separated(reading: &'static str, text: &'static str) -> Self {
+        Self {
+            reading,
+            text,
+            require_separators: true,
+        }
+    }
+
+    fn match_input(&self, input: &str) -> Option<ReadingMatch> {
+        let input = input.as_bytes();
+        let mut consumed = 0;
+        for expected in self.reading.bytes() {
+            if consumed == input.len() {
+                return Some(ReadingMatch::Prefix);
+            }
+            if expected == b'\'' {
+                if input[consumed] == b'\'' {
+                    while input.get(consumed) == Some(&b'\'') {
+                        consumed += 1;
+                    }
+                } else if self.require_separators {
+                    return None;
+                }
+            } else if input[consumed] == expected {
+                consumed += 1;
+            } else {
+                return None;
+            }
+        }
+        Some(ReadingMatch::Exact(consumed))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReadingMatch {
+    Exact(usize),
+    Prefix,
+}
+
+// Longer phrases rank before syllable paths. Xi'an retains a mandatory boundary,
+// so the joined reading xian still prefers 先 rather than treating it as xi + an.
+const PINYIN: &[PinyinEntry] = &[
+    PinyinEntry::new("ni'hao", "你好"),
+    PinyinEntry::new("ni'hao'ma", "你好吗"),
+    PinyinEntry::new("xie'xie", "谢谢"),
+    PinyinEntry::new("zai'jian", "再见"),
+    PinyinEntry::new("zao'shang'hao", "早上好"),
+    PinyinEntry::new("wan'shang'hao", "晚上好"),
+    PinyinEntry::new("mei'guan'xi", "没关系"),
+    PinyinEntry::new("dui'bu'qi", "对不起"),
+    PinyinEntry::new("qing'wen", "请问"),
+    PinyinEntry::new("ke'yi", "可以"),
+    PinyinEntry::new("bu'ke'yi", "不可以"),
+    PinyinEntry::new("wo'men", "我们"),
+    PinyinEntry::new("ni'men", "你们"),
+    PinyinEntry::new("ta'men", "他们"),
+    PinyinEntry::new("zhong'wen", "中文"),
+    PinyinEntry::new("ying'wen", "英文"),
+    PinyinEntry::new("ri'wen", "日文"),
+    PinyinEntry::new("zhong'guo", "中国"),
+    PinyinEntry::new("shi'jie", "世界"),
+    PinyinEntry::new("shu'ru'fa", "输入法"),
+    PinyinEntry::new("shu'ru", "输入"),
+    PinyinEntry::new("hou'xuan", "候选"),
+    PinyinEntry::new("lian'xiang", "联想"),
+    PinyinEntry::new("mo'xing", "模型"),
+    PinyinEntry::new("yu'yan", "语言"),
+    PinyinEntry::new("zhi'chi", "支持"),
+    PinyinEntry::new("gong'neng", "功能"),
+    PinyinEntry::new("ji'xu", "继续"),
+    PinyinEntry::new("kai'fa", "开发"),
+    PinyinEntry::new("ce'shi", "测试"),
+    PinyinEntry::new("she'zhi", "设置"),
+    PinyinEntry::new("jin'tian", "今天"),
+    PinyinEntry::new("ming'tian", "明天"),
+    PinyinEntry::new("zuo'tian", "昨天"),
+    PinyinEntry::new("xian'zai", "现在"),
+    PinyinEntry::new("tian'qi", "天气"),
+    PinyinEntry::new("gong'zuo", "工作"),
+    PinyinEntry::new("xue'xi", "学习"),
+    PinyinEntry::new("xi'huan", "喜欢"),
+    PinyinEntry::new("peng'you", "朋友"),
+    PinyinEntry::new("shi'jian", "时间"),
+    PinyinEntry::new("wen'ti", "问题"),
+    PinyinEntry::new("bang'zhu", "帮助"),
+    PinyinEntry::new("dian'nao", "电脑"),
+    PinyinEntry::new("shou'ji", "手机"),
+    PinyinEntry::new("bei'jing", "北京"),
+    PinyinEntry::new("shang'hai", "上海"),
+    PinyinEntry::new("shen'zhen", "深圳"),
+    PinyinEntry::new("guang'zhou", "广州"),
+    PinyinEntry::separated("xi'an", "西安"),
+    PinyinEntry::new("wo", "我"),
+    PinyinEntry::new("ni", "你"),
+    PinyinEntry::new("ni", "呢"),
+    PinyinEntry::new("ta", "他"),
+    PinyinEntry::new("ta", "她"),
+    PinyinEntry::new("men", "们"),
+    PinyinEntry::new("hao", "好"),
+    PinyinEntry::new("hao", "号"),
+    PinyinEntry::new("shi", "是"),
+    PinyinEntry::new("shi", "时"),
+    PinyinEntry::new("de", "的"),
+    PinyinEntry::new("le", "了"),
+    PinyinEntry::new("ma", "吗"),
+    PinyinEntry::new("ne", "呢"),
+    PinyinEntry::new("bu", "不"),
+    PinyinEntry::new("you", "有"),
+    PinyinEntry::new("you", "又"),
+    PinyinEntry::new("zai", "在"),
+    PinyinEntry::new("ai", "爱"),
+    PinyinEntry::new("hen", "很"),
+    PinyinEntry::new("xiang", "想"),
+    PinyinEntry::new("yao", "要"),
+    PinyinEntry::new("qu", "去"),
+    PinyinEntry::new("lai", "来"),
+    PinyinEntry::new("kan", "看"),
+    PinyinEntry::new("ting", "听"),
+    PinyinEntry::new("shuo", "说"),
+    PinyinEntry::new("qing", "请"),
+    PinyinEntry::new("he", "和"),
+    PinyinEntry::new("ye", "也"),
+    PinyinEntry::new("dou", "都"),
+    PinyinEntry::new("ke", "可"),
+    PinyinEntry::new("yi", "以"),
+    PinyinEntry::new("zhong", "中"),
+    PinyinEntry::new("guo", "国"),
+    PinyinEntry::new("ren", "人"),
+    PinyinEntry::new("tian", "天"),
+    PinyinEntry::new("qi", "气"),
+    PinyinEntry::new("xin", "新"),
+    PinyinEntry::new("da", "大"),
+    PinyinEntry::new("xiao", "小"),
+    PinyinEntry::new("duo", "多"),
+    PinyinEntry::new("shao", "少"),
+    PinyinEntry::new("lv", "绿"),
+    PinyinEntry::new("nv", "女"),
+    PinyinEntry::new("xian", "先"),
+    PinyinEntry::new("xi", "西"),
+    PinyinEntry::new("an", "安"),
 ];
 
 fn normalize_pinyin(seed: &str) -> String {
@@ -154,7 +211,7 @@ fn normalize_pinyin(seed: &str) -> String {
 }
 
 pub(crate) fn is_dictionary_word(text: &str) -> bool {
-    PINYIN.iter().any(|(_, word)| *word == text) && text != "你好吗"
+    PINYIN.iter().any(|word| word.text == text) && text != "你好吗"
 }
 
 pub(crate) fn mixed_candidates(
@@ -187,15 +244,15 @@ pub(crate) fn mixed_candidates(
     ];
     let code = normalize_pinyin(seed);
     let mut output = Vec::new();
-    if code.len() >= 2 && code.bytes().all(|ch| ch.is_ascii_lowercase()) {
-        for (_, word) in PINYIN
+    if code.bytes().filter(u8::is_ascii_lowercase).count() >= 2 {
+        for word in PINYIN
             .iter()
-            .filter(|(key, _)| key.starts_with(&code) && *key != code)
+            .filter(|word| word.match_input(&code) == Some(ReadingMatch::Prefix))
             .take(5)
         {
             output.push((
-                (*word).to_owned(),
-                if is_dictionary_word(word) {
+                word.text.to_owned(),
+                if is_dictionary_word(word.text) {
                     CandidateKind::Word
                 } else {
                     CandidateKind::Sentence
@@ -250,32 +307,29 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
                 next.push((offset + ch.len_utf8(), format!("{text}{ch}"), segments));
                 continue;
             }
-            // Finish only the final unfinished spelling, keeping the already converted prefix.
-            // Unknown Latin prefixes never reach this state through a dictionary path.
-            if rest.len() >= 2 && rest.bytes().all(|ch| ch.is_ascii_lowercase()) {
-                for (_, word) in PINYIN
-                    .iter()
-                    .filter(|(key, _)| key.starts_with(rest) && *key != rest)
-                    .take(4)
-                {
-                    completions.push((
-                        format!("{text}{word}"),
-                        segments + 1,
-                        if is_dictionary_word(word) {
-                            CandidateKind::Word
-                        } else {
-                            CandidateKind::Sentence
-                        },
-                    ));
-                }
-            }
-            for (pinyin, hanzi) in PINYIN {
-                if rest.starts_with(pinyin) {
-                    next.push((
-                        offset + pinyin.len(),
-                        format!("{text}{hanzi}"),
-                        segments + 1,
-                    ));
+            let can_complete = rest.bytes().filter(u8::is_ascii_lowercase).count() >= 2;
+            let mut completed = 0;
+            for word in PINYIN {
+                match word.match_input(rest) {
+                    Some(ReadingMatch::Exact(bytes)) => {
+                        next.push((offset + bytes, format!("{text}{}", word.text), segments + 1))
+                    }
+                    // Complete only the final reading, including explicitly
+                    // separated syllables. A separator inside a syllable fails
+                    // the match; it is never blindly stripped to make a word.
+                    Some(ReadingMatch::Prefix) if can_complete && completed < 4 => {
+                        completed += 1;
+                        completions.push((
+                            format!("{text}{}", word.text),
+                            segments + 1,
+                            if is_dictionary_word(word.text) {
+                                CandidateKind::Word
+                            } else {
+                                CandidateKind::Sentence
+                            },
+                        ));
+                    }
+                    _ => {}
                 }
             }
         }
@@ -321,6 +375,43 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn authored_syllables_match_joined_and_separated_readings_without_inferred_splits() {
+        for entry in PINYIN {
+            assert_eq!(
+                entry.reading.split('\'').count(),
+                entry.text.chars().count()
+            );
+            assert!(
+                entry
+                    .reading
+                    .split('\'')
+                    .all(|part| !part.is_empty() && part.bytes().all(|ch| ch.is_ascii_lowercase()))
+            );
+            assert!(
+                entry.match_input(entry.reading) == Some(ReadingMatch::Exact(entry.reading.len()))
+            );
+            if !entry.require_separators {
+                let joined = entry.reading.replace('\'', "");
+                assert!(entry.match_input(&joined) == Some(ReadingMatch::Exact(joined.len())));
+            }
+            let repeated = entry.reading.replace('\'', "''");
+            assert!(entry.match_input(&repeated) == Some(ReadingMatch::Exact(repeated.len())));
+        }
+        for (seed, expected) in [
+            ("shu1 ru4 fa3", "输入法"),
+            ("shu1ru4fa3", "输入法"),
+            ("WO3  XI3  HUAN1  BEI3  JING1", "我喜欢北京"),
+            ("我想xue2 xi2 zhong1 wen2", "我想学习中文"),
+            ("xi'an zai", "西安在"),
+            ("xian zai", "现在"),
+        ] {
+            assert_eq!(pinyin_candidates(seed)[0], expected, "{seed}");
+            assert!(pinyin_candidates(seed).iter().any(|value| value == seed));
+        }
+    }
+
     #[test]
     fn converts_common_pinyin_and_tone_numbers() {
         for seed in ["nihao", "ni hao", "ni3 hao3", "NIHAO"] {

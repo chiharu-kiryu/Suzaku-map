@@ -3,6 +3,8 @@
 Linux / IBus on Ubuntu 24.04 amd64 is the current target. Read the
 [input rules](docs/ibus-candidates.md) and [limitations](docs/known-limitations.md) first.
 Focused fixes with regression tests are especially useful during Alpha.
+Current input-quality work prioritizes **English and Simplified Chinese**; Japanese stays compatible
+without expanding its scope. See the [development priorities](DEVELOPMENT.md).
 
 ## Build and test
 
@@ -23,12 +25,24 @@ bash scripts/test-linux-ci.sh ibus
 bash scripts/test-linux-ci.sh ui
 ```
 
+Run the paired offline input-quality gates without a model:
+
+```bash
+cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality
+```
+
+The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
+cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
+commit checks. These are project-authored regressions, not independent corpus accuracy. The native
+`ibus` gate adds 12 bilingual numeric-adoption/undo/continuation/explicit-commit workflows.
+
 Real application checks additionally need GTK input modules and Qt test bindings:
 
 ```bash
 sudo apt install gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 ibus-gtk3 ibus-gtk4 \
   gir1.2-gtk-3.0 gir1.2-atspi-2.0 at-spi2-core python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
 bash scripts/test-linux-apps.sh gtk
+bash scripts/test-linux-apps.sh keyboard
 bash scripts/test-linux-apps.sh popup
 bash scripts/test-linux-apps.sh lifecycle
 bash scripts/test-linux-apps.sh bus-restart
@@ -39,8 +53,70 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 
 `bash scripts/test-linux-apps.sh cross` also tests an already installed `google-chrome`, or the
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
-not personal browser tabs. CI runs GTK/Qt; the documented Chrome checks are local, not a CI gate.
+not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
+
+Additional installed-application gates:
+
+```bash
+bash scripts/test-linux-apps.sh firefox
+bash scripts/test-linux-apps.sh vscode
+```
+
+Use `SUZAKU_APP_QA_FIREFOX` / `SUZAKU_APP_QA_CODE` to select an installed executable.
+Firefox uses an owned profile with external traffic directed to a closed loopback proxy.
+On Ubuntu Snap, the `/usr/bin/firefox` migration wrapper and Snap mount namespace are separate
+from application compatibility: this machine was tested with
+`SUZAKU_APP_QA_FIREFOX=/snap/firefox/current/usr/lib/firefox/firefox`, with the browser sandbox
+left enabled. That does not qualify the Snap launcher. VS Code uses an owned profile, empty
+extension directory, and the repository's development-only observer; no extension is installed
+into the personal editor. The observer focuses fields/sets selections and reads documents;
+all text comes from physical XTest events, with exact Ctrl+S disk read-back too. Fixtures disable
+updates and online suggestions; VS Code uses a private basic password store to avoid a
+first-run keyring prompt. Existing VS Code IPC/portable variables are cleared by the runner.
+
+Live model input-safety checks are **opt-in** and use only synthetic text and the already running
+Ollama at `127.0.0.1:11434`, through an owned observation relay. No downloads, service restarts,
+personal configuration changes or cloud fallback:
+
+```bash
+SUZAKU_MODEL_LOCAL_QA=1 SUZAKU_MODEL_QA_MODEL=YOUR_INSTALLED_LOCAL_MODEL \
+  bash scripts/test-linux-apps.sh model
+```
+
+This needs the Chrome dependency above and a model with an observable in-flight request. It checks
+foreground input, actual request dispatch, cancellation/privacy and offline fallback, not whether
+the model meets the latency budget or produces good language. `Unavailable` remains explicitly
+reported; it is not successful model-candidate acceptance. See the
+[Firefox/Electron and live-model audit](docs/bug-audit-browser-model-2026-09-24.md).
+
+Add `SUZAKU_MODEL_QA_REQUIRE_CANDIDATE=1` for a seventh, strict positive workflow: the owned host
+uses a 5000 ms background budget and must show a **model-only** candidate, adopt it by number,
+undo, re-adopt, continue and commit exactly once. Offline fallback/`Unavailable` fails that check;
+the original six safety workflows still use 1200 ms. Neither gate measures general language quality.
+The edit/Escape/password/disable checks now require observable upstream socket closure within
+500 ms of the boundary, triggered within 250 ms of dispatch; a completed reply or eventual host
+timeout is not cancellation acceptance. This opt-in timing gate needs an observable pending call.
+Deterministic loopback regressions cover quiet polling, partial/chunked responses, total deadlines,
+discovery-cache recovery and input boundaries; the normal native `ibus` gate also covers eight
+in-flight cancellation boundaries without using a real model. See the
+[N46 cancellation audit](docs/bug-audit-model-cancellation-2026-09-24.md).
+
+For model-side timing counters, the ignored
+`languages::model::live::profile_synthetic_candidate_request` library test requires
+`SUZAKU_MODEL_LOCAL_QA=1` and an explicit `SUZAKU_IME_CONFIG` under the temporary directory.
+It checks local/non-remote Ollama routing, warms the installed model and prints only fixed synthetic
+samples. Its 30-second diagnostic completion deadline does **not** replace the production budget
+or make a slow/filtered response pass; use `suzaku_tool model probe` for that gate. The companion
+`diagnose_synthetic_translation_holdouts` prints results/rejections without claiming semantic success.
+Run these probes sequentially, without simultaneous inference or builds, to avoid skewing latency.
+
+The `keyboard` gate adds 26 physical-keycode workflows in real GTK: Caps/Shift/NumLock, numeric
+adoption versus keypad literals, US/UK/German/French/US-international layouts, AltGr, dead keys,
+Compose and mid-draft layout/lock changes. It reads back XKB lock indicators and the keymap;
+all mapping/lock changes affect only its owned Xvfb. This is not physical-device LED, native
+Wayland or arbitrary-keyboard-remapping acceptance. See the
+[keyboard layout audit](docs/bug-audit-keyboard-layouts-2026-09-24.md).
 The `popup` gate uses stock IBus GTK3 on an 800x600 private display: 46 checks for text/ordinal
 glyph clicks, paging, scrolling, dismissal and bounded long previews. It is not GNOME Shell's
 candidate UI. Ordinals are rendered inside each candidate hit target to avoid stock IBus

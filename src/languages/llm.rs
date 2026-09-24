@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ime::{Candidate, LanguagePlugin, build_sentence_candidates_for_variants};
 
@@ -49,6 +52,7 @@ pub(crate) fn normalize_completion_text<'a>(text: &'a str, prefix: Option<&str>)
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LlmProviderError {
+    Cancelled,
     InvalidEndpoint,
     Unavailable,
     Timeout,
@@ -64,6 +68,7 @@ pub enum LlmProviderError {
 impl std::fmt::Display for LlmProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            Self::Cancelled => "模型请求已取消，本地输入不受影响",
             Self::InvalidEndpoint => "模型配置无效：本地需回环 HTTP，云端需 HTTPS 和明确模型",
             Self::Unavailable => "模型服务不可用或安全连接失败，本地候选仍可使用",
             Self::Timeout => "模型请求超时，本地候选仍可使用",
@@ -81,6 +86,29 @@ impl std::fmt::Display for LlmProviderError {
 }
 impl std::error::Error for LlmProviderError {}
 
+/// One-way, per-request cancellation. Signalling only sets an atomic flag; it
+/// never waits for network I/O or runs provider code on the input/UI thread.
+#[derive(Clone, Debug, Default)]
+pub struct LlmCancellation(Arc<AtomicBool>);
+
+impl LlmCancellation {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    pub fn check(&self) -> Result<(), LlmProviderError> {
+        if self.is_cancelled() {
+            Err(LlmProviderError::Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub trait LlmCompletionProvider: Send + Sync {
     fn provider_id(&self) -> &str;
 
@@ -91,6 +119,19 @@ pub trait LlmCompletionProvider: Send + Sync {
         request: &LlmCompletionRequest,
     ) -> Result<Vec<LlmCompletion>, LlmProviderError> {
         Ok(self.generate(request))
+    }
+
+    /// Existing providers remain source compatible. Override to interrupt an
+    /// in-flight call cooperatively; the default only guards entry and return.
+    fn generate_cancellable(
+        &self,
+        request: &LlmCompletionRequest,
+        cancellation: &LlmCancellation,
+    ) -> Result<Vec<LlmCompletion>, LlmProviderError> {
+        cancellation.check()?;
+        let result = self.generate_checked(request);
+        cancellation.check()?;
+        result
     }
 }
 
