@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.3 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.4 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -53,9 +53,12 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.6.3 retains
+- **Build scope:** use `--all-features` for desktop checks. 0.6.4 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
-  builds/tests are still not supported as a clean release gate.
+  builds/tests are still not supported as a clean release gate. Development/test profiles now
+  omit debug symbols and incremental caches; edits may rebuild more slowly. Release settings
+  are unchanged. Debugger overrides and scoped cleanup are documented in
+  [contributing](../CONTRIBUTING.md#keeping-local-disk-use-bounded).
 - **Draft durability:** input and recovery drafts are in memory. Crash, exit or a change of native
   field/context can discard unfinished text; Suzaku is not an autosaving editor.
   The opt-in inline mode allows applications to confirm cached preedit on focus changes;

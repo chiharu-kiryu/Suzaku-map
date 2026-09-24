@@ -1,9 +1,19 @@
 [package]
 name = "suzaku-map"
-version = "0.6.3"
+version = "0.6.4"
 edition = "2024"
 license = "MIT"
 description = "TDD-driven XR and tablet IME engine prototype in Rust"
+
+# Match the disk-efficient CI profile for everyday local builds. Full debugger
+# information can be enabled explicitly without changing release artifacts.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false
 
 [features]
 default = []

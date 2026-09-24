@@ -257,7 +257,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     use std::fs;
     #[cfg(target_os = "linux")]
-    use std::path::Path;
+    use std::path::PathBuf;
     #[cfg(target_os = "linux")]
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -381,7 +381,8 @@ mod tests {
     fn all_guardian_themes_load_into_native_companion_colors() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
             for preset in ThemePreset::ALL.into_iter().filter(|p| p.is_guardian()) {
-                write_theme_setting_file(&format!("theme_preset={}\n", preset.id()), env);
+                let _settings =
+                    write_theme_setting_file(&format!("theme_preset={}\n", preset.id()), env);
                 assert_eq!(current_companion_theme_preset(), preset);
                 let style = detached_candidate_companion_style();
                 assert_eq!(style, detached_candidate_companion_style_for_preset(preset));
@@ -402,7 +403,7 @@ mod tests {
     #[test]
     fn current_companion_theme_preset_reads_device_dark_setting() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
-            write_theme_setting_file("theme_preset=device_dark", env);
+            let _settings = write_theme_setting_file("theme_preset=device_dark", env);
             assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
         });
     }
@@ -411,7 +412,10 @@ mod tests {
     #[test]
     fn current_companion_theme_preset_falls_back_for_unknown_lines() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
-            write_theme_setting_file("something else\nnot_a_key=42\ntheme_preset=starlight", env);
+            let _settings = write_theme_setting_file(
+                "something else\nnot_a_key=42\ntheme_preset=starlight",
+                env,
+            );
             assert_eq!(current_companion_theme_preset(), ThemePreset::Suzaku);
         });
     }
@@ -420,7 +424,7 @@ mod tests {
     #[test]
     fn current_companion_theme_preset_ignores_whitespace_around_key_value() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
-            write_theme_setting_file(" theme_preset = device_dark \n", env);
+            let _settings = write_theme_setting_file(" theme_preset = device_dark \n", env);
             assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
         });
     }
@@ -429,7 +433,7 @@ mod tests {
     #[test]
     fn current_companion_theme_preset_defaults_on_empty_or_missing_value() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
-            write_theme_setting_file("theme_preset=\n", env);
+            let _settings = write_theme_setting_file("theme_preset=\n", env);
             assert_eq!(current_companion_theme_preset(), ThemePreset::Suzaku);
         });
     }
@@ -438,13 +442,27 @@ mod tests {
     #[test]
     fn current_companion_theme_preset_uses_first_matching_entry_when_duplicated() {
         test_env::with_test_env(|env: &mut ScopedEnv| {
-            write_theme_setting_file("theme_preset=device_dark\ntheme_preset=daylight", env);
+            let _settings =
+                write_theme_setting_file("theme_preset=device_dark\ntheme_preset=daylight", env);
             assert_eq!(current_companion_theme_preset(), ThemePreset::DeviceDark);
         });
     }
 
     #[cfg(target_os = "linux")]
-    fn write_theme_setting_file(contents: &str, env: &mut ScopedEnv) {
+    #[must_use]
+    struct ThemeSettingsFixture(PathBuf);
+
+    #[cfg(target_os = "linux")]
+    impl Drop for ThemeSettingsFixture {
+        fn drop(&mut self) {
+            // Only the freshly created fixture is owned by this guard. Clean up
+            // during unwinding too, without masking an earlier assertion failure.
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn write_theme_setting_file(contents: &str, env: &mut ScopedEnv) -> ThemeSettingsFixture {
         let now_nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -455,12 +473,28 @@ mod tests {
             std::process::id(),
             now_nanos
         ));
-        env.set_var("XDG_CONFIG_HOME", temp_root.to_str().expect("temp path"));
+        fs::create_dir(&temp_root).expect("create owned settings fixture");
+        let fixture = ThemeSettingsFixture(temp_root);
+        env.set_var("XDG_CONFIG_HOME", fixture.0.to_str().expect("temp path"));
 
         let settings_path = super::super::settings_host::display_settings_path();
-        let parent = settings_path.parent().unwrap_or_else(|| Path::new("."));
+        assert!(settings_path.starts_with(&fixture.0));
+        let parent = settings_path.parent().expect("settings parent");
         fs::create_dir_all(parent).expect("create settings directory");
         fs::write(settings_path, contents).expect("write settings file");
+        fixture
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn theme_setting_fixture_removes_its_directory_on_drop() {
+        test_env::with_test_env(|env| {
+            let fixture = write_theme_setting_file("theme_preset=suzaku", env);
+            let root = fixture.0.clone();
+            assert!(root.is_dir());
+            drop(fixture);
+            assert!(!root.exists());
+        });
     }
 
     fn c_string_to_owned(ptr: *mut c_char) -> Option<String> {

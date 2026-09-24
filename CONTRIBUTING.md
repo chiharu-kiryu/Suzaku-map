@@ -70,6 +70,27 @@ bash scripts/test-linux-install.sh dist
 Use a new output directory for rebuilds; existing packages are not overwritten. Container checks
 do not install on the host. All CI gates are in [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
+## Keeping local disk use bounded
+
+Development and test profiles omit debug symbols and disable incremental compilation, matching
+CI. Ordinary dependency caching and debug assertions remain enabled; release builds are unchanged.
+Edits may take longer to compile, but repeated feature/profile combinations no longer retain
+large incremental trees. For an interactive debugger, temporarily use
+`CARGO_PROFILE_DEV_DEBUG=2` (or `CARGO_PROFILE_TEST_DEBUG=2` for tests). Return to the defaults
+afterwards; `CARGO_INCREMENTAL=1` explicitly opts back into the larger incremental cache.
+
+After stopping builds and test processes, `cargo clean --profile dev` and
+`cargo clean --profile release` remove only those Rust build profiles. Prefer these scoped
+commands to deleting all of `target/`: local IBus headers and extracted Qt/lint dependencies
+may be stored there. Android cross-target caches, `android/app/build/` and generated
+`android/app/src/main/jniLibs/` can be rebuilt when Android work resumes; do not remove shared
+SDKs, signing files or `android/local.properties` as build waste.
+
+Keep only package versions needed for distribution/rollback in `dist/`. Test runners normally
+remove their isolated temporary directories; use `SUZAKU_APP_QA_KEEP=1` only while investigating
+a failure, then remove that specific, inactive synthetic fixture. Never blanket-delete `/tmp`,
+user settings, model files, the Git history or global Cargo/Gradle caches.
+
 ## Changes and reports
 
 - Preserve continuous drafts: Space/punctuation and number-based candidate adoption must not submit.

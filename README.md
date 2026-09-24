@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.6.3 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.6.4 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -28,11 +28,11 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.6.3 bounds long candidate-area draft previews and makes visible superscript numbers share each
-candidate's clickable row, avoiding the stock IBus GTK3 label-column bug without changing system
-files. Full drafts, commit text and continuous-writing keys are unchanged. Real popup and input
-switching/reconnection workflows now have regression coverage.
-See the [release notes](docs/releases/0.6.3.md) for the fixes and validation scope.
+0.6.4 is a maintenance patch: everyday development/test builds use less disk space, and theme
+tests clean up their owned temporary settings. Input behavior and release build settings remain
+unchanged, including 0.6.3's bounded popup previews and clickable superscript candidate numbers.
+No user files or caches are automatically removed on startup or upgrade.
+See the [release notes](docs/releases/0.6.4.md) for the changes and validation scope.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -41,11 +41,11 @@ speech and application compatibility. This is not a replacement for a full Chine
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
 Source tags can precede downloadable packages; use a release with attached packages or build from
-source. For the 0.6.3 package, in the download directory on Ubuntu 24.04 amd64:
+source. For the 0.6.4 package, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.6.3_amd64.deb.sha256
-sudo apt install ./suzaku_0.6.3_amd64.deb
+sha256sum -c suzaku_0.6.4_amd64.deb.sha256
+sudo apt install ./suzaku_0.6.4_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -126,11 +126,11 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.6.3 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.6.4 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.6.3 release notes](docs/releases/0.6.3.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.6.4 release notes](docs/releases/0.6.4.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

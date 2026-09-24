@@ -3,7 +3,17 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.3 — Linux Alpha candidate popup compatibility patch**.
+Current source version: **0.6.4 — Linux Alpha build and test maintenance patch**.
+
+### 0.6.4 — Smaller build caches and test fixture cleanup
+
+- Development/test profiles omit debug symbols and disable incremental compilation, matching CI.
+  Ordinary dependency caching, assertions and overflow checks remain; release settings are unchanged.
+- Theme-setting tests remove their freshly owned temporary directories when the fixture drops,
+  including during unwinding. A regression verifies cleanup; personal settings are never targeted.
+- Kotlin's local cache is ignored, and the contribution guide documents scoped cleanup and debugger
+  overrides. No automatic user-cache deletion or input-rule change is introduced.
+  See the [0.6.4 release notes](docs/releases/0.6.4.md).
 
 ### 0.6.3 — Bounded popup previews and clickable ordinals
 
@@ -966,9 +976,9 @@ cargo android-enable-ime
 cargo linux-register install
 ```
 
-APK output:
+APK output (generated locally after an Android build, not tracked in the repository):
 
-- [android/app/build/outputs/apk/debug/app-debug.apk](android/app/build/outputs/apk/debug/app-debug.apk)
+`android/app/build/outputs/apk/debug/app-debug.apk`
 
 ## Current Platform Status
 
