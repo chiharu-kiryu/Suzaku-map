@@ -77,12 +77,15 @@ pub fn classify(language: &str, seed: &str, text: &str) -> CandidateKind {
         Some(BuiltinLanguage::English) => {
             let left = english::english_word_prefix(seed)
                 .map_or(seed, |prefix| &seed[..seed.len() - prefix.len()]);
-            if text.strip_prefix(left).is_some_and(|tail| {
+            let single_word = |tail: &str| {
                 !tail.is_empty()
                     && tail
                         .chars()
                         .all(|c| c.is_ascii_alphabetic() || matches!(c, '\'' | '’'))
-            }) {
+            };
+            if text.strip_prefix(left).is_some_and(single_word)
+                || english::known_word_continuation(seed, text).is_some_and(single_word)
+            {
                 CandidateKind::Word
             } else {
                 CandidateKind::Sentence
@@ -193,10 +196,12 @@ pub fn merge_model(
     let pinned = pinned_count(language, &local);
     // This is also the normalized prefix that request_prediction sends.
     let prefix = local.first().map(|candidate| candidate.text.clone());
+    // An exact local CJK conversion may include literal indentation or spacing.
+    // Preserve it through this second normalization after provider parsing.
+    let normalization_prefix = (language == "en").then_some(seed).or(prefix.as_deref());
     let mut accepted = false;
     for completion in completions.into_iter().take(6) {
-        let text = normalize_completion_text(&completion.text, (language == "en").then_some(seed))
-            .to_owned();
+        let text = normalize_completion_text(&completion.text, normalization_prefix).to_owned();
         if text.is_empty()
             || text == seed
             || !completion_fits_budget(&text, prefix.as_deref())
@@ -526,6 +531,44 @@ mod tests {
             CandidateKind::Unspecified
         );
         assert_eq!(classify("ja", "nihongo", "にほんご"), CandidateKind::Word);
+    }
+
+    #[test]
+    fn english_one_word_extensions_are_not_whole_sentence_extensions() {
+        for (seed, text) in [
+            ("hel", "hello"),
+            ("hello ", "hello world"),
+            ("hello", "hello world"),
+            ("HELLO", "HELLO WORLD"),
+            ("how can I", "how can I help"),
+            ("thank you", "thank you  for"),
+            ("(hello", "(hello world"),
+        ] {
+            assert_eq!(
+                classify("en", seed, text),
+                CandidateKind::Word,
+                "{seed} -> {text}"
+            );
+        }
+        for (seed, text) in [
+            ("hello", "hello world again"),
+            ("hello", "hello world."),
+            ("hello", "hello-world"),
+            ("hello", "hello world-wide"),
+            ("hello", "hello world123"),
+            ("hello", "hello example.com"),
+            ("hello", "hello user_name"),
+            ("hello", "hello 世界"),
+            ("hel", "hel world"),
+            ("user_nam", "user_nam word"),
+            ("iPh", "iPh word"),
+        ] {
+            assert_eq!(
+                classify("en", seed, text),
+                CandidateKind::Sentence,
+                "{seed} -> {text}"
+            );
+        }
     }
 
     #[test]

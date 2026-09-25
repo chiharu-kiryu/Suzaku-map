@@ -93,6 +93,11 @@ install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus
   docs/bug-audit-chinese-literal-boundaries-2026-09-24.md \
   docs/bug-audit-shortcut-repeat-2026-09-24.md \
   docs/bug-audit-shortcut-focus-2026-09-24.md \
+  docs/bug-audit-editor-save-2026-09-24.md \
+  docs/bug-audit-english-next-word-2026-09-24.md \
+  docs/bug-audit-pinyin-tone-punctuation-2026-09-24.md \
+  docs/bug-audit-model-prefix-spacing-2026-09-25.md \
+  docs/bug-audit-long-pinyin-continuation-2026-09-25.md \
   "$suzaku_package_tree/share/doc/suzaku/docs/"
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"

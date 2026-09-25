@@ -238,6 +238,65 @@ fn model_candidates_preserve_typed_indentation_through_merge_and_commit() {
 }
 
 #[test]
+fn chinese_model_continuations_preserve_the_exact_local_prefix() {
+    for mixed in [false, true] {
+        for (seed, local) in [
+            ("  nihao".to_owned(), "  你好".to_owned()),
+            ("  你好  ".to_owned(), "  你好  ".to_owned()),
+            (
+                "\u{3000}你好\u{a0}".to_owned(),
+                "\u{3000}你好\u{a0}".to_owned(),
+            ),
+            ("1、 你好 ".to_owned(), "1、 你好 ".to_owned()),
+            (
+                format!("  {}", "你".repeat(160)),
+                format!("  {}", "你".repeat(160)),
+            ),
+            (
+                format!("{}nihao", "你".repeat(160)),
+                format!("{}你好", "你".repeat(160)),
+            ),
+        ] {
+            let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
+                default_language: "zh-Hans".into(),
+                ..Default::default()
+            });
+            if mixed {
+                engine.enable_ibus_candidate_mix();
+            }
+            engine.seed(&seed);
+            let request = requests.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert_eq!(request.seed_text, seed);
+            assert_eq!(request.normalized_phrase, local);
+            let expected = format!("{local}新的朋友。");
+            replies.send(answer(&format!("{expected}  "))).unwrap();
+            settle(&mut engine);
+            assert_eq!(engine.candidates()[0].text, local);
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .any(|candidate| candidate.text == seed)
+            );
+            let index = engine
+                .candidates()
+                .iter()
+                .position(|candidate| candidate.text == expected)
+                .unwrap_or_else(|| panic!("mixed={mixed}, {seed:?}: {:?}", engine.candidates()));
+            engine.select_candidate(index);
+            assert_eq!(
+                engine.selected_completion_text(true),
+                Some(expected.as_str())
+            );
+            assert_eq!(
+                engine.commit(CommitOptions { force: true }).text.as_deref(),
+                Some(expected.as_str())
+            );
+        }
+    }
+}
+
+#[test]
 fn language_profiles_convert_input_and_use_script_appropriate_commit_spacing() {
     for (language, first, second, expected) in [
         ("zh-CN", "nihao", "shijie", "你好世界"),

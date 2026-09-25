@@ -202,6 +202,61 @@ fn longer_context_beats_generic_next_words_without_repeating_committed_text() {
 }
 
 #[test]
+fn one_word_continuations_keep_their_type_before_and_after_typing_space() {
+    for (seed, word, sentence, spaced_sentence) in [
+        (
+            "hello",
+            "hello world",
+            "hello, how are you?",
+            "hello world, nice to meet you.",
+        ),
+        (
+            "how can I",
+            "how can I help",
+            "how can I help you?",
+            "how can I help you?",
+        ),
+        (
+            "please send",
+            "please send me",
+            "please send me the details.",
+            "please send me the details.",
+        ),
+        (
+            "thank you",
+            "thank you for",
+            "thank you for your help",
+            "thank you for your help.",
+        ),
+    ] {
+        for (draft, sentence) in [
+            (seed.to_owned(), sentence),
+            (format!("{seed} "), spaced_sentence),
+        ] {
+            let engine = engine(&draft);
+            let page: Vec<_> = engine.candidates().iter().take(PAGE_SIZE).collect();
+            assert!(
+                page.iter()
+                    .any(|c| c.text == word && c.kind == CandidateKind::Word),
+                "word continuation of {draft:?}: {page:?}"
+            );
+            assert!(
+                page.iter()
+                    .any(|c| c.text == sentence && c.kind == CandidateKind::Sentence),
+                "sentence continuation of {draft:?}: {page:?}"
+            );
+            assert_eq!(engine.candidates()[0].text, draft);
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .all(|c| c.text.starts_with(&draft))
+            );
+        }
+    }
+}
+
+#[test]
 fn incomplete_identifiers_and_finished_sentences_are_not_fabricated_into_phrases() {
     for seed in [
         "https://exa",
@@ -237,6 +292,12 @@ fn sentence_only_model_replies_also_offer_one_word_without_losing_the_sentence()
             "please reconsider",
         ),
         ("we need ", "we need reliable backups.", "we need reliable"),
+        ("hello", "hello sunshine today.", "hello sunshine"),
+        (
+            "please send",
+            "please send reliable backups.",
+            "please send reliable",
+        ),
         (
             "  I’ll rec",
             "  I’ll reconsider the proposal.",

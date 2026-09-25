@@ -97,6 +97,8 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-linux-ci-v1-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
       - name: Lint the native test runner
         run: shellcheck scripts/test-linux-ci.sh scripts/test-linux-apps.sh scripts/test-linux-service.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh
+      - name: Test strict editor observation and save barriers
+        run: python3 scripts/test-editor-observer.py
       - name: Lint Rust code and test targets without warnings
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
       - name: Run the feature-enabled regression suite
@@ -110,8 +112,10 @@ jobs:
         run: bash scripts/test-linux-ci.sh ibus
       - name: Test isolated windows, keyboard input and multilingual GPU rendering
         run: bash scripts/test-linux-ci.sh ui
-      - name: Test English typing in real GTK applications on an isolated display
+      - name: Test English and Chinese typing in real GTK applications on an isolated display
         run: bash scripts/test-linux-apps.sh
+      - name: Test owned editor observation across two real windows
+        run: bash scripts/test-linux-apps.sh editor
       - name: Test physical keyboard layouts, locks and Compose in real GTK input
         run: bash scripts/test-linux-apps.sh keyboard
       - name: Test stock IBus ordinal and text clicks, navigation and bounded previews

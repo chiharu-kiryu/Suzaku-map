@@ -60,16 +60,33 @@ class ModelFixture(BaseHTTPRequestHandler):
                 ("hello internationalization compatibility verification works", "sentence"),
             ]
         ]
-        composition = json.loads(request["messages"][1]["content"])["raw_composition"]
+        input_data = json.loads(request["messages"][1]["content"])
+        composition = input_data["raw_composition"]
         if composition.startswith("please rec"):
             candidates = [{"text": text, "kind": "sentence"} for text in [
                 "please reconsider the proposal.", "please reconsider the schedule."]]
+        if composition == "hello":
+            candidates = [{"text": "hello sunshine today.", "kind": "sentence"}]
         if composition.startswith("note ") and composition.endswith("hel"):
             candidates = [
                 {"text": composition + "ioseismology", "kind": "word"},
                 {"text": composition + "ioseismology is interesting.", "kind": "sentence"},
                 {"text": composition + "x" * 161, "kind": "word"},
             ]
+        prefix_fixtures = {
+            ("en", "  hello  "): ("  hello  ", "friends are welcome."),
+            ("zh-Hans", "  nihao"): ("  你好", "新的朋友。"),
+            ("zh-Hans", "  你好  "): ("  你好  ", "新的朋友。"),
+            ("zh-Hans", "\u3000你好\u00a0"): ("\u3000你好\u00a0", "新的朋友。"),
+            ("zh-Hans", "1、 你好 "): ("1、 你好 ", "新的朋友。"),
+            ("zh-Hans", "  " + "你" * 160): ("  " + "你" * 160, "新的朋友。"),
+        }
+        fixture = prefix_fixtures.get((input_data["language"], composition))
+        if fixture is not None:
+            local, suffix = fixture
+            candidates = [{"text": text, "kind": "sentence"} for text in [
+                local, local.strip() + suffix, local + suffix + "  ", local + "新" * 161,
+            ]]
         body = json.dumps({"choices": [{"message": {"content": json.dumps({"candidates": candidates})}}]}).encode()
         try:
             self.send_response(200)
@@ -2553,6 +2570,10 @@ def check_bilingual_core_completion(context, watch, commits):
         ("en", "hel", "hello", "hello, how are you?"),
         ("en", "please sen", "please send", "please send me the details."),
         ("en", "thank you ", "thank you for", "thank you for your help."),
+        ("en", "hello", "hello world", "hello, how are you?"),
+        ("en", "how can I", "how can I help", "how can I help you?"),
+        ("en", "please send", "please send me", "please send me the details."),
+        ("en", "thank you", "thank you for", "thank you for your help"),
         ("zh-Hans", "shu ru fa", "输入法", "输入法支持多种语言。"),
         ("zh-Hans", "ji xu", "继续", "继续完善这个功能。"),
         ("zh-Hans", "wo xi huan bei j", "我喜欢北京", "我喜欢北京的文化。"),
@@ -2592,11 +2613,11 @@ def check_bilingual_core_completion(context, watch, commits):
             assert context.process_key_event(IBus.KEY_Return, 0, 0)
             wait(lambda: commits[before:] == [selected] and not watch.latest["seed"], "bilingual exact single commit")
     assert json.loads(command("Len"))["ok"]
-    print("PASS: N47 12 English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
+    print(f"PASS: N47/N50 {len(cases) * 2} English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
 
 
 def check_bilingual_literal_boundaries(context, watch, commits):
-    """N48: decoded Pinyin must not erase literal text around adopted words."""
+    """N48/N51: preserve literal text, numbers and punctuation around Pinyin."""
     assert not json.loads(command("S"))["settings"]["llm_enabled"]
     cases = [
         ("你好  世界", "你好  世界"),
@@ -2607,6 +2628,14 @@ def check_bilingual_literal_boundaries(context, watch, commits):
         ("你好  bei jing", "你好  北京"),
         ("你好\u00a0bei j", "你好\u00a0北京"),
         ("'nihao'", "'你好'"),
+        ("ni3hao3，shi4jie4！", "你好，世界！"),
+        ('"ni3hao3"', '"你好"'),
+        ("ni3hao3: shi4jie4", "你好: 世界"),
+        ("hao3.5", "好3.5"),
+        ("hao3:30", "好3:30"),
+        ("hao3,000", "好3,000"),
+        ("hao30!", "好30!"),
+        ("hao3/4", "好3/4"),
     ]
     checked = 0
     for language in ["en", "zh-Hans"]:
@@ -2654,7 +2683,88 @@ def check_bilingual_literal_boundaries(context, watch, commits):
                 wait(lambda: commits[before:] == [completed] and not watch.latest["seed"], "exact literal-boundary commit")
                 checked += 1
     assert json.loads(command("Len"))["ok"]
-    print(f"PASS: N48 {checked} English/Chinese key/companion literal-boundary adoption, undo, Space continuation and exact commits")
+    print(f"PASS: N48/N51 {checked} English/Chinese key/companion literal-boundary adoption, undo, Space continuation and exact commits")
+
+
+def check_long_local_continuations(context, watch, commits, lookup):
+    """N53: bounded local decoding must reach the tail of an owned long draft."""
+    assert not json.loads(command("S"))["settings"]["llm_enabled"]
+    cases = [("zh-Hans", "你" * length, "nihao", "你" * length + "你好")
+             for length in [126, 127, 128, 160, 251]]
+    prefix = "\u3000" + "👩‍💻" * 43 + "  "
+    cases += [
+        ("zh-Hans", prefix, "bei j", prefix + "北京"),
+        ("zh-Hans", "ni" * 126, "nini", "你" * 128),
+        ("zh-Hans", "ni," * 80, "hao", "你," * 80 + "好"),
+        ("en", "note " * 25, "hel", "note " * 25 + "hello"),
+        ("en", "note " * 49, "hel", "note " * 49 + "hello"),
+    ]
+
+    def setting(language):
+        revision = watch.latest["revision"]
+        assert json.loads(command("L" + language))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "long-local language acknowledgement")
+
+    def clear():
+        revision = watch.latest["revision"]
+        assert action(watch.latest, "X")
+        wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"],
+             "long-local acknowledged clear")
+
+    def adopt(text):
+        index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == text)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == text, "long-local numeric adoption")
+
+    checked = 0
+    for language, prefix, tail, expected in cases:
+        setting(language)
+        for route in ["key-continuation", "companion"]:
+            clear()
+            before = len(commits)
+            seed = prefix + tail
+            assert len(seed) <= 256
+            if route == "key-continuation":
+                assert action(watch.latest, "T" + prefix)
+                wait(lambda: watch.latest["seed"] == prefix, "owned long-local prefix")
+                type_seed(context, tail)
+            else:
+                assert action(watch.latest, "T" + seed)
+            wait(lambda: watch.latest["seed"] == seed, "exact long-local raw spelling")
+            assert any(c["text"] == seed for c in watch.latest["candidates"])
+            assert all(c["source"] == "local" for c in watch.latest["candidates"])
+            if language == "zh-Hans":
+                assert watch.latest["candidates"][0]["text"] == expected
+            check_candidate_presentation(watch, lookup, require_mix=False)
+            adopt(expected)
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == seed, "long-local exact spelling undo")
+            adopt(expected)
+            suffix, converted = (" de", " 的") if language == "zh-Hans" else (" wo", " world")
+            type_seed(context, suffix)
+            wait(lambda: watch.latest["seed"] == expected + suffix, "long-local Space and tail continuation")
+            adopt(expected + converted)
+            assert len(commits) == before
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [expected + converted] and not watch.latest["seed"],
+                 "long-local complete single commit")
+            checked += 1
+
+    setting("zh-Hans")
+    clear()
+    seed = "你" * 251 + "nihao!"
+    before = len(commits)
+    assert len(seed) == 257 and action(watch.latest, "T" + seed)
+    wait(lambda: watch.latest["seed"] == seed, "over-limit local draft")
+    assert [c["text"] for c in watch.latest["candidates"]] == [seed]
+    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+    wait(lambda: watch.latest["seed"] == seed[:-1], "shorten to existing 256-character limit")
+    expected = "你" * 251 + "你好"
+    assert watch.latest["candidates"][0]["text"] == expected
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == [expected] and not watch.latest["seed"], "commit recovered conversion")
+    setting("en")
+    print(f"PASS: N53 {checked} long Chinese/English key/companion workflows preserve conversion, undo and continuation; 257-to-256 recovery remains bounded")
 
 
 def check_literal_choice_publication(context, watch, commits, lookup):
@@ -3002,40 +3112,114 @@ def check_long_model_completions(context, watch, commits):
 
 
 def check_sentence_only_prediction(context, watch, commits, lookup):
-    context.reset()
-    wait(lambda: not watch.latest["seed"], "clear sentence-only fixture")
-    type_seed(context, "please rec")
-    word, sentence = "please reconsider", "please reconsider the proposal."
+    for seed, word, sentence in [
+        ("please rec", "please reconsider", "please reconsider the proposal."),
+        ("hello", "hello sunshine", "hello sunshine today."),
+    ]:
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "clear sentence-only fixture")
+        type_seed(context, seed)
 
-    def ready():
-        return any(c["text"] == word and c["kind"] == "word" and c["source"] == "model"
-                   for c in watch.latest["candidates"][:6])
+        def ready():
+            return any(c["text"] == word and c["kind"] == "word" and c["source"] == "model"
+                       for c in watch.latest["candidates"][:6])
 
-    wait(ready, "sentence-only reply did not expose its first completed word")
-    check_candidate_presentation(watch, lookup)
-    assert any(c["text"] == sentence and c["kind"] == "sentence" for c in watch.latest["candidates"][:6])
-    before = len(commits)
-    for undo in [True, False]:
-        wait(ready, "word completion disappeared after undo")
-        index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == word)
-        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
-        wait(lambda: watch.latest["seed"] == word, "choose the projected word, not the full sentence")
+        wait(ready, "sentence-only reply did not expose its first completed word")
+        check_candidate_presentation(watch, lookup)
+        assert any(c["text"] == sentence and c["kind"] == "sentence" for c in watch.latest["candidates"][:6])
+        before = len(commits)
+        for undo in [True, False]:
+            wait(ready, "word completion disappeared after undo")
+            index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == word)
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+            wait(lambda: watch.latest["seed"] == word, "choose the projected word, not the full sentence")
+            assert len(commits) == before
+            if undo:
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == seed, "restore spelling after model-word adoption")
+        type_seed(context, " again")
+        continued = word + " again"
+        wait(lambda: watch.latest["seed"] == continued, "model word must stay editable")
         assert len(commits) == before
-        if undo:
-            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
-            wait(lambda: watch.latest["seed"] == "please rec", "restore spelling after model-word adoption")
-    type_seed(context, " again")
-    wait(lambda: watch.latest["seed"] == "please reconsider again", "model word must stay editable")
-    assert len(commits) == before
-    assert context.process_key_event(IBus.KEY_Return, 0, 0)
-    wait(lambda: commits[before:] == ["please reconsider again"] and not watch.latest["seed"], "submit continued model word")
-    type_seed(context, "please rec")
-    wait(ready, "restore sentence-only candidates")
-    index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == sentence)
-    before = len(commits)
-    assert action(watch.latest, f"K{index}")
-    wait(lambda: commits[before:] == [sentence] and not watch.latest["seed"], "full sentence must remain independently selectable")
-    print("PASS: sentence-only model replies provide distinct word/sentence choices, numeric adoption/undo, continued drafting and exact commits")
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: commits[before:] == [continued] and not watch.latest["seed"], "submit continued model word")
+        type_seed(context, seed)
+        wait(ready, "restore sentence-only candidates")
+        index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == sentence)
+        before = len(commits)
+        assert action(watch.latest, f"K{index}")
+        wait(lambda: commits[before:] == [sentence] and not watch.latest["seed"], "full sentence must remain independently selectable")
+    print("PASS: sentence-only model replies offer partial/complete-word continuations, numeric adoption/undo, continued drafting and exact word/sentence commits")
+
+
+def check_model_literal_prefixes(context, watch, commits, lookup):
+    """N52: HTTP parsing, native merging and adoption preserve converted padding."""
+    cases = [
+        ("en", "  hello  ", "  hello  ", "  hello  friends are welcome."),
+        ("zh-Hans", "  nihao", "  你好", "  你好新的朋友。"),
+        ("zh-Hans", "  你好  ", "  你好  ", "  你好  新的朋友。"),
+        ("zh-Hans", "\u3000你好\u00a0", "\u3000你好\u00a0", "\u3000你好\u00a0新的朋友。"),
+        ("zh-Hans", "1、 你好 ", "1、 你好 ", "1、 你好 新的朋友。"),
+        ("zh-Hans", "  " + "你" * 160, "  " + "你" * 160, "  " + "你" * 160 + "新的朋友。"),
+    ]
+    checked = 0
+    for language, seed, local, expected in cases:
+        revision = watch.latest["revision"]
+        assert json.loads(command("L" + language))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "model-prefix language acknowledgement")
+        for route in ["key-continuation", "companion"]:
+            revision = watch.latest["revision"]
+            assert action(watch.latest, "X")
+            wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"],
+                 "model-prefix acknowledged clear")
+            before, requests_before = len(commits), len(model_requests)
+            if route == "key-continuation":
+                assert action(watch.latest, "T" + seed[:1])
+                wait(lambda: watch.latest["seed"] == seed[:1], "owned model-prefix start")
+                # Drain notifications while generating the long synthetic draft.
+                # A stalled subscriber is intentionally disconnected by the host;
+                # sending the whole burst before reading would test backpressure,
+                # not candidate preservation. Each key is still sent exactly once.
+                for char in seed[1:]:
+                    type_seed(context, char)
+            else:
+                assert action(watch.latest, "T" + seed)
+            wait(lambda: watch.latest["seed"] == seed,
+                 f"raw model-prefix draft: {language}, {route}, want={seed!r}")
+
+            def ready():
+                return any(c["text"] == expected and c["source"] == "model"
+                           for c in watch.latest["candidates"][:6])
+
+            for undo in [True, False]:
+                wait(ready, f"model-prefix candidate missing: {language}, {route}, {seed!r}")
+                assert watch.latest["candidates"][0]["text"] == local
+                assert any(c["text"] == seed for c in watch.latest["candidates"])
+                assert all(c["text"].startswith(local) for c in watch.latest["candidates"]
+                           if c["source"] == "model")
+                check_candidate_presentation(watch, lookup, require_mix=False)
+                index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == expected)
+                assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+                wait(lambda: watch.latest["seed"] == expected, "model-prefix numeric adoption")
+                assert len(commits) == before
+                if undo:
+                    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                    wait(lambda: watch.latest["seed"] == seed, "restore original spaces and spelling")
+            matching = [json.loads(req["messages"][1]["content"]) for req in model_requests[requests_before:]
+                        if json.loads(req["messages"][1]["content"])["raw_composition"] == seed]
+            assert matching and all(req["local_conversion"] == local for req in matching)
+            type_seed(context, " !")
+            continued = expected + " !"
+            wait(lambda: watch.latest["seed"] == continued, "Space continues padded model draft")
+            assert len(commits) == before
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [continued] and not watch.latest["seed"],
+                 "model-prefix exact single commit")
+            checked += 1
+    revision = watch.latest["revision"]
+    assert json.loads(command("Len"))["ok"]
+    wait(lambda: watch.latest["revision"] > revision, "restore English after model-prefix checks")
+    print(f"PASS: N52 {checked} model-prefix key/companion workflows preserve spacing, long candidates, undo and exact commits")
 
 
 def check_nonblocking_ipc(context, watch):
@@ -3596,6 +3780,7 @@ try:
     check_editable_completions(other, watch, other_commits, other_lookup)
     check_bilingual_core_completion(other, watch, other_commits)
     check_bilingual_literal_boundaries(other, watch, other_commits)
+    check_long_local_continuations(other, watch, other_commits, other_lookup)
     check_home_row_shortcuts(other, watch, other_commits, other_lookup)
     check_adoption_key_repeats(other, watch, other_commits)
     check_literal_choice_publication(other, watch, other_commits, other_lookup)
@@ -3633,6 +3818,7 @@ try:
         assert other.process_key_event(IBus.KEY_BackSpace, 0, 0)
         wait(lambda: watch.latest["seed"] == "hel", "native editing broke after reload")
     check_sentence_only_prediction(other, watch, other_commits, other_lookup)
+    check_model_literal_prefixes(other, watch, other_commits, other_lookup)
     check_writing_stream_prediction(other, watch, other_commits)
     check_long_model_completions(other, watch, other_commits)
     # Loading a different language still clears the incompatible composition.

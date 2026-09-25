@@ -204,6 +204,26 @@ fn separator_bytes(text: &str) -> usize {
     text.len() - text.trim_start_matches(is_pinyin_separator).len()
 }
 
+fn is_tone_terminator(tail: &[char]) -> bool {
+    let Some((&next, rest)) = tail.split_first() else {
+        return true;
+    };
+    if next.is_ascii_alphabetic() || next.is_whitespace() || next == '\'' {
+        return true;
+    }
+    match next {
+        // A decimal, clock value, dotted identifier or path is not a sentence
+        // boundary. Commas immediately before digits may be numeric grouping.
+        '.' | ':' => rest
+            .first()
+            .is_none_or(|ch| !ch.is_alphanumeric() && !matches!(ch, '/' | '\\' | '_' | '-')),
+        ',' => !rest.first().is_some_and(|ch| ch.is_numeric()),
+        '!' | '?' | ';' | ')' | ']' | '}' | '"' | '”' | '’' | '，' | '。' | '！' | '？' | '；'
+        | '：' | '、' | '…' | '）' | '】' | '》' | '」' | '』' => true,
+        _ => false,
+    }
+}
+
 fn normalize_pinyin(seed: &str) -> String {
     // Normalize only letters used by this reading system. Unicode lowercasing
     // the entire draft corrupts literal Greek/Cyrillic/accented text. Preserve
@@ -220,9 +240,7 @@ fn normalize_pinyin(seed: &str) -> String {
             let tone = matches!(ch, '1'..='5')
                 && index > 0
                 && chars[index - 1].is_ascii_alphabetic()
-                && chars.get(index + 1).is_none_or(|next| {
-                    next.is_ascii_alphabetic() || next.is_whitespace() || *next == '\''
-                });
+                && is_tone_terminator(&chars[index + 1..]);
             (!tone).then_some(ch)
         })
         .collect()
@@ -305,7 +323,8 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
     if seed.trim().is_empty() {
         return Vec::new();
     }
-    if seed.chars().count() > 256 {
+    let input_chars = seed.chars().count();
+    if input_chars > 256 {
         return vec![(seed.into(), CandidateKind::Literal)];
     }
     let normalized = normalize_pinyin(seed);
@@ -313,7 +332,12 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
     // Bounded beam search: never exponential in the number of ambiguous syllables.
     let mut finished = Vec::new();
     let mut completions = Vec::new();
-    for _ in 0..128 {
+    // Every live path consumes at least one Unicode scalar per round. Allow
+    // the already bounded input to finish, plus one round to collect its end;
+    // a fixed 128 rounds loses Pinyin after long adopted/literal prefixes.
+    // Normalization never increases the input's scalar count, and the beam
+    // width remains capped below, independently of the number of syllables.
+    for _ in 0..=input_chars {
         let mut next = Vec::new();
         for (offset, text, segments) in paths {
             let rest = &normalized[offset..];
@@ -480,6 +504,41 @@ mod tests {
             assert_eq!(pinyin_candidates(seed)[0], "你好");
         }
         assert_eq!(pinyin_candidates("woaizhongguo")[0], "我爱中国");
+    }
+
+    #[test]
+    fn tone_terminators_preserve_punctuation_and_numeric_literal_boundaries() {
+        for punctuation in [
+            ".", ":", ",", "!", "?", ";", ")", "]", "}", "\"", "”", "’", "，", "。", "！", "？",
+            "；", "：", "、", "…", "）", "】", "》", "」", "』", "?!", "...", ".)",
+        ] {
+            let seed = format!("ni3hao3{punctuation}");
+            assert_eq!(normalize_pinyin(&seed), format!("nihao{punctuation}"));
+            assert_eq!(pinyin_candidates(&seed)[0], format!("你好{punctuation}"));
+            assert!(pinyin_candidates(&seed).contains(&seed));
+        }
+        for suffix in [
+            "3.5",
+            "3:30",
+            "3,000",
+            "3,４００",
+            "30",
+            "36",
+            "0!",
+            "6!",
+            "3/4",
+            "3-4",
+            "3_4",
+            "3.rs",
+            "3://",
+            "3@home",
+            "3%",
+            "3+4",
+            "3=4",
+        ] {
+            let seed = format!("hao{suffix}");
+            assert_eq!(normalize_pinyin(&seed), seed, "{seed:?}");
+        }
     }
     #[test]
     fn apostrophe_keeps_syllable_boundaries_and_unknown_input_is_lossless() {

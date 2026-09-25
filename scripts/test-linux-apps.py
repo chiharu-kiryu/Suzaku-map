@@ -9,8 +9,11 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import time
 import gi
+
+sys.dont_write_bytecode = True
 
 root = Path(os.environ["SUZAKU_APP_QA_ROOT"])
 runtime = root / "runtime"
@@ -29,9 +32,28 @@ bins = Path(os.environ["SUZAKU_APP_QA_BIN_DIR"])
 host_socket = runtime / "suzaku-ime/host.sock"
 processes, logs = [], []
 watch = None
+editor_observers = {}
 
 
 def spawn(args, output=None, **kwargs):
+    if args[0] == "gnome-text-editor":
+        # Enable read-only buffer/save observation only in the owned editor.
+        # The runner already created private display, bus and accessibility state.
+        from fixtures.editor_observer import editor_environment
+        kwargs["env"] = editor_environment(kwargs.pop("env", os.environ), root, subprocess.run)
+        editor_config = root / "editor-config" / "gtk-4.0"
+        editor_config.mkdir(parents=True, exist_ok=True)
+        # Observe save completion without paying for a one-second progress-bar
+        # fade on every assertion. This editor-only config never reaches the IME
+        # panel, other applications or the user's normal desktop.
+        (editor_config / "settings.ini").write_text("[Settings]\ngtk-enable-animations=false\n")
+    elif args[0] == "/usr/libexec/ibus-ui-gtk3":
+        # The controller observes accessibility; it must not export its own
+        # GTK bridge onto that same bus. Enable the bridge only in the target.
+        env = dict(kwargs.pop("env", os.environ))
+        env.update(NO_AT_BRIDGE="0", GTK_MODULES="atk-bridge")
+        env.pop("GTK_A11Y", None)
+        kwargs["env"] = env
     log = (root / f"process-{len(processes)}.log").open("w")
     logs.append(log)
     process = subprocess.Popen(args, stdout=log if output is None else output, stderr=log, **kwargs)
@@ -241,11 +263,23 @@ def settle_input(bus, x, window):
 
 
 def save_document(x, path, expected):
-    x.key(IBus.KEY_s, IBus.KEY_Control_L)
-    wait(lambda: path.read_text() == expected, f"saved document differs: expected {expected!r}")
+    from fixtures.editor_observer import save_observed_document
+    assert path in editor_observers, "only prepared, owned editor documents may be observed"
+    save_observed_document(editor_observers[path], path, expected,
+                           lambda: x.key(IBus.KEY_s, IBus.KEY_Control_L), wait)
 
 
 def prepare_editor(x, path):
+    from fixtures.editor_observer import GtkEditorObserver
+    gi.require_version("Atspi", "2.0")
+    from gi.repository import Atspi
+    assert path.parent == root and not path.is_symlink(), "not an owned QA document"
+    editors = [process for process in processes if process.poll() is None and
+               process.args[0] == "gnome-text-editor" and process.args[-1] == str(path)]
+    assert len(editors) == 1, "one owned editor must be registered for this document"
+    observer = GtkEditorObserver(Atspi, editors[0], path)
+    wait(lambda: observer.state() is not None, "owned editor accessibility ready")
+    editor_observers[path] = observer
     # GTK can focus the window before asynchronous file loading has finished.
     # Use only this fixture's empty file for a readiness probe; workflow assertions
     # begin AFTER the probe is discarded. This is not a startup-keystroke test.
@@ -340,6 +374,100 @@ def check_gtk(bus, x):
     commit(x)
     save_document(x, document, "hello world\n")
     print("PASS: word/sentence candidates, number adoption, spelling undo and continuation")
+
+    for seed, word in [("hello", "hello world"), ("please send", "please send me")]:
+        clear_document(x, document)
+        x.type(seed)
+        wait(lambda: seed_is(seed), "whole-word prefix before Space")
+        assert any(c["text"] == word and c["kind"] == "word" and "ᵂ" in c["ibus_label"]
+                   for c in watch.latest["candidates"][:6])
+        assert any(c["kind"] == "sentence" for c in watch.latest["candidates"][:6])
+        choose_number(x, word)
+        save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(seed), "next-word undo restores the prefix without an extra space")
+        choose_number(x, word)
+        x.type(" today")
+        wait(lambda: seed_is(word + " today"), "continue from one-word suggestion")
+        save_document(x, document, "")
+        commit(x)
+        save_document(x, document, word + " today\n")
+    print("PASS: N50 complete-word prefixes retain word/sentence labels, adoption, exact undo and continuation")
+
+    revision = watch.latest["revision"]
+    assert json.loads(command("Lzh-Hans"))["ok"]
+    wait(lambda: watch.latest["revision"] > revision, "Chinese tone-boundary language")
+    for seed, converted in [
+        ("ni3hao3!", "你好!"),
+        ('"ni3hao3"', '"你好"'),
+        ("hao3.5", "好3.5"),
+        ("hao3:30", "好3:30"),
+        ("hao3,000", "好3,000"),
+    ]:
+        clear_document(x, document)
+        # An opening quote outside a draft belongs to the application. Start
+        # that case from an owned companion draft, then use physical keys.
+        start = 0
+        if seed.startswith('"'):
+            assert command(f'A{watch.latest["host"]} {watch.latest["revision"]} T"') == b"1"
+            wait(lambda: seed_is('"'), "owned opening quote")
+            start = 1
+        for char in seed[start:]:
+            if char.isdigit():
+                x.key(ord(char), IBus.KEY_Alt_L)
+            elif char in {'!', '"', ':'}:
+                x.key({'!': IBus.KEY_1, '"': IBus.KEY_apostrophe, ':': IBus.KEY_semicolon}[char],
+                      IBus.KEY_Shift_L)
+            else:
+                x.type(char)
+        wait(lambda: seed_is(seed), "literal tone digits and punctuation stay in draft")
+        assert watch.latest["candidates"][0]["text"] == converted, (seed, watch.latest)
+        choose_number(x, converted)
+        save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(seed), "tone-boundary undo restores exact digits and punctuation")
+        choose_number(x, converted)
+        x.type(" shi")
+        wait(lambda: seed_is(converted + " shi"), "continue after punctuated Chinese choice")
+        choose_number(x, converted + " 是")
+        save_document(x, document, "")
+        commit(x)
+        save_document(x, document, converted + " 是\n")
+    revision = watch.latest["revision"]
+    assert json.loads(command("Len"))["ok"]
+    wait(lambda: watch.latest["revision"] > revision, "English restored after tone-boundary check")
+    print("PASS: N51 physical tone/number input preserves punctuation, numeric literals, undo and continuation")
+
+    for language, prefix, tail, expected, suffix, continued in [
+        ("zh-Hans", "你" * 127, "nihao", "你" * 127 + "你好", " de", " 的"),
+        ("zh-Hans", "你" * 160, "bei j", "你" * 160 + "北京", " de", " 的"),
+        ("zh-Hans", "你" * 251, "nihao", "你" * 251 + "你好", " de", " 的"),
+        ("en", "note " * 49, "hel", "note " * 49 + "hello", " wo", " world"),
+    ]:
+        clear_document(x, document)
+        revision = watch.latest["revision"]
+        assert json.loads(command("L" + language))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "long-tail language setting")
+        assert command(f'A{watch.latest["host"]} {watch.latest["revision"]} T{prefix}') == b"1"
+        wait(lambda: seed_is(prefix), "owned long prefix in real editor")
+        # Only the prefix is supplied by the companion. Conversion, adoption,
+        # undo, continuation and commit all use physical XTest key events.
+        x.type(tail)
+        wait(lambda: seed_is(prefix + tail), "long-prefix physical phonetic tail")
+        if language == "zh-Hans":
+            assert watch.latest["candidates"][0]["text"] == expected
+        choose_number(x, expected)
+        save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(prefix + tail), "restore complete long spelling")
+        choose_number(x, expected)
+        x.type(suffix)
+        wait(lambda: seed_is(expected + suffix), "Space continues the long adopted draft")
+        choose_number(x, expected + continued)
+        save_document(x, document, "")
+        commit(x)
+        save_document(x, document, expected + continued + "\n")
+    print("PASS: N53 long Chinese/English tails preserve numeric adoption, exact undo, continued typing and saved text")
 
     clear_document(x, document)
     x.type("version ")

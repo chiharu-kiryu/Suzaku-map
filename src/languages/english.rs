@@ -423,6 +423,18 @@ pub(crate) fn mixed_candidates(
     output
 }
 
+/// A known, complete last word may continue before the user types Space.
+/// Return only the new word's tail; keep every separator in the full payload.
+pub(crate) fn known_word_continuation<'a>(seed: &str, text: &'a str) -> Option<&'a str> {
+    let prefix = english_word_prefix(seed)?;
+    if !is_known_english_word(prefix) {
+        return None;
+    }
+    text.strip_prefix(seed)?
+        .strip_prefix(' ')
+        .map(|tail| tail.trim_start_matches(' '))
+}
+
 /// Extract only a complete next word actually present in a valid continuation.
 /// This never rewrites the typed prefix or splits URLs, hyphenations/identifiers.
 pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'a str> {
@@ -434,12 +446,18 @@ pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'
         english_word_prefix(seed)?;
     }
     // Before a separator, complete the current word; after one, finish the next.
-    // Do not turn "hel there" into a purported word completion.
+    // A model may supply the separator after a known complete word. An unknown
+    // spelling such as "hel there" still cannot become a word completion.
+    let suffix = if suffix.starts_with(' ') {
+        known_word_continuation(seed, text)?
+    } else {
+        suffix
+    };
     let split = suffix.find(|ch: char| !ch.is_ascii_alphabetic() && !matches!(ch, '\'' | '’'))?;
     if split == 0 {
         return None;
     }
-    let end = seed.len() + split;
+    let end = text.len() - suffix.len() + split;
     let word = &text[..end];
     let prefix = english_word_prefix(word)?;
     if !prefix.ends_with(|ch: char| ch.is_ascii_alphabetic()) {
@@ -511,6 +529,16 @@ mod tests {
             ("hel", "hello, how are you?", "hello"),
             ("appre", "appreciate.", "appreciate"),
             ("Please RE", "Please REVIEW the changes.", "Please REVIEW"),
+            ("hello", "hello sunshine today.", "hello sunshine"),
+            ("hello", "hello  sunshine today.", "hello  sunshine"),
+            ("Hello", "Hello don't worry.", "Hello don't"),
+            ("你好 hello", "你好 hello don't worry.", "你好 hello don't"),
+            ("I’m", "I’m ready for it.", "I’m ready"),
+            (
+                "please send",
+                "please send reliable backups.",
+                "please send reliable",
+            ),
         ] {
             assert_eq!(word_from_continuation(seed, text), Some(expected));
         }
@@ -526,6 +554,11 @@ mod tests {
             ("hel", "hello' word"),
             ("hel", "goodbye, hello"),
             ("hel", "hello"),
+            ("hello", "hello world-wide event"),
+            ("hello", "hello example.com site"),
+            ("hello", "hello user_name today"),
+            ("hello", "hello 世界 today"),
+            ("iPh", "iPh model today"),
         ] {
             assert_eq!(word_from_continuation(seed, text), None, "{seed} -> {text}");
         }

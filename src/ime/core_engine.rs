@@ -620,7 +620,9 @@ impl XRTabletImeEngine {
         for completion in completions.into_iter().take(3) {
             let text = normalize_completion_text(
                 &completion.text,
-                (self.state.active_language == "en").then_some(self.state.seed_text.as_str()),
+                (self.state.active_language == "en")
+                    .then_some(self.state.seed_text.as_str())
+                    .or(prefix),
             )
             .to_string();
             if text.is_empty()

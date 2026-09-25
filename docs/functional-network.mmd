@@ -1,4 +1,9 @@
-%% Suzaku functional network: 2026-09-24 source snapshot for 0.6.7 including rounds 37-39 fixes/tests, not the installed build.
+%% Suzaku functional network: 2026-09-25 source snapshot for 0.6.8 including rounds 40-44, not the installed build.
+%% Round 40 observes owned GTK buffers/save completion; no input route or product behavior change.
+%% Round 41 N50 aligns English single-next-word classification and model projection before Space; existing routes are unchanged.
+%% Round 42 N51 handles Pinyin tone digits before punctuation, preserving literal numbers and existing adoption/commit routes.
+%% Round 43 N52 preserves exact local CJK prefixes through model parsing and standalone/native merging; budgets and routes stay unchanged.
+%% Round 44 N53 completes Pinyin search after long literal prefixes within the existing 256-code-point limit and unchanged beam width.
 %% Audit base: a0c8dbf20fec8cf974cffddaf8026f902387ac04 (0.5.5); N01-N04 in 0.5.6, N05-N18 in 0.5.7, N19-N23 in 0.5.8, N24-N28 in 0.5.9, N29-N32 in 0.6.0, N33-N37 in 0.6.1, N38-N40 in 0.6.2, N41-N42 in 0.6.3, N43-N45 in 0.6.5, N46-N47 in 0.6.6.
 %% 0.6.4 changes build/test maintenance only; the logical input graph is unchanged.
 %% 0.6.5 includes round 30 N43 registered-service retries and round 31 N44/N45 recovery fixes.

@@ -34,16 +34,30 @@ cargo test --locked --all-features --test english_completion_quality --test chin
 The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
 cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
 commit checks. These are project-authored regressions, not independent corpus accuracy. The native
-`ibus` gate adds 12 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
-32 literal-boundary workflows using owned-prefix key continuation and companion replacement.
+`ibus` gate adds 20 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
+64 literal-boundary workflows using owned-prefix key continuation and companion replacement.
 Chinese literal padding, non-Pinyin case and line boundaries also have direct-engine regressions.
+Tone-number checks cover sentence punctuation/closing quotes without stripping decimal, time,
+grouped-number or fraction digits; see the [tone-boundary audit](docs/bug-audit-pinyin-tone-punctuation-2026-09-24.md).
 Core multiline tests do not relax the native protocol's control-character restrictions.
+English checks pair complete-word continuations before/after Space and project one actual next
+word from sentence-only model replies. Complete sentences remain selectable, and URLs/identifiers
+are not split. See the [next-word audit](docs/bug-audit-english-next-word-2026-09-24.md).
+Twelve additional native workflows use a synthetic HTTP provider to verify exact model prefixes,
+long Chinese candidates, adoption, undo and Space/Enter continuation. The standalone engine and
+both provider protocols have matching [prefix-spacing checks](docs/bug-audit-model-prefix-spacing-2026-09-25.md).
+Twenty additional offline native workflows check long Chinese/English tails, exact adoption/undo
+and continued input, plus a 257-to-256-character recovery check. The corresponding four real-editor
+scenarios and bounded search regressions are described in the
+[long-Pinyin audit](docs/bug-audit-long-pinyin-continuation-2026-09-25.md).
 
 Real application checks additionally need GTK input modules and Qt test bindings:
 
 ```bash
 sudo apt install gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 ibus-gtk3 ibus-gtk4 \
   gir1.2-gtk-3.0 gir1.2-atspi-2.0 at-spi2-core python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
+python3 scripts/test-editor-observer.py
+bash scripts/test-linux-apps.sh editor
 bash scripts/test-linux-apps.sh gtk
 bash scripts/test-linux-apps.sh keyboard
 bash scripts/test-linux-apps.sh popup
@@ -58,6 +72,19 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
+Owned GNOME Text Editor windows enable read-only accessibility observation: saving requires the
+exact application buffer and a finished load/save indicator before and after one physical Ctrl+S.
+File contents alone are not a completion barrier. Missing observation, stale files or wrong text
+fail the test; no input or save is retried. The fourteen display-free observer checks and a real
+two-editor observation gate also run in CI. Only owned editors use disposable keyfile settings with
+`auto-save-delay=300`, beyond the runner's unchanged 240-second limit: the editor's periodic draft
+backup must not disable the Save action during a verification chord. Manual saving is unchanged.
+The editor-only configuration also disables decorative GTK animations so each check observes save
+completion without waiting for the progress indicator's fade. Other test apps and personal settings
+are unchanged; this does not qualify default editor autosave timing or animation behavior.
+The private IBus discovery directory is shared unchanged so running editors can reconnect after
+daemon restarts. Accessibility is enabled only in the owned editor and stock-panel processes.
+See the [save synchronization audit](docs/bug-audit-editor-save-2026-09-24.md).
 
 Additional installed-application gates:
 

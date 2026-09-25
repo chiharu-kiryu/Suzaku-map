@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.7 — Linux Alpha shortcuts and lossless Chinese drafts patch**.
+Current source version: **0.6.8 — Linux Alpha bilingual candidate continuity patch**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,67 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.6.8 — Bilingual candidate continuity and Linux QA
+
+Includes audit rounds 40–44 and N50–N53. See the [0.6.8 release notes](docs/releases/0.6.8.md)
+for validation and upgrade scope; a source tag does not update the installed application.
+
+#### Strict real-editor save synchronization
+
+- The 0.6.7 Linux CI stopped at a popup saved-document assertion. Local repetition also exposed
+  a cleared editor buffer with old file contents. File bytes can change before the asynchronous
+  editor save has finished; a following Ctrl+S may encounter a disabled Save action.
+- Real GTK checks now observe only their owned editor PID/document and require exact buffer text,
+  an idle save indicator and exact file contents. Only disposable editor preferences postpone its
+  periodic draft autosave beyond the unchanged 240-second gate, avoiding a disabled Save action.
+  Editor-only GTK animations are disabled so readiness checks do not wait for decorative fades.
+  Each save still uses one real key chord, with no repeated input or relaxed text assertions.
+  Fourteen deterministic barrier/scope checks and a real two-editor observation gate are in CI.
+- This changes test synchronization, not Suzaku input routing, save behavior in personal applications
+  or keyboard mappings. See the [round-40 audit](docs/bug-audit-editor-save-2026-09-24.md).
+
+#### One-word English continuations before Space
+
+- N50 classifies a single next word after a known complete English word consistently with the
+  same continuation after a typed Space. `hello → hello world` is a word continuation, while
+  longer phrases and punctuated sentences remain sentence candidates. Literal anchors stay put.
+- Sentence-only model replies can now also supply that next-word choice before Space, using an
+  exact prefix of the returned text and retaining the full sentence. Unknown/incomplete readings,
+  identifiers, URLs and hyphenated tails are not split into invented word choices.
+- The change is provider-independent and does not add vocabulary, auto-correction, automatic
+  submission or new keyboard bindings. Chinese/Japanese algorithms remain unchanged. See the
+  [round-41 audit](docs/bug-audit-english-next-word-2026-09-24.md).
+
+#### Pinyin tone numbers at punctuation boundaries
+
+- N51 consumes an optional Pinyin tone number before sentence punctuation or a closing quote/bracket,
+  so `ni3hao3，shi4jie4！` converts to `你好，世界！` without leaking tone digits into the text.
+  Punctuation and the exact raw-spelling candidate remain available; no automatic commit is added.
+- Decimal/time separators followed by alphanumerics and numeric grouping commas remain literal,
+  as do multi-digit numbers, fractions, operators and digits outside the existing 1–5 tone range.
+  The current vocabulary and English/Japanese algorithms are unchanged. See the
+  [round-42 audit](docs/bug-audit-pinyin-tone-punctuation-2026-09-24.md).
+
+#### Exact local prefixes in model continuations
+
+- N52 preserves the whole known CJK local-conversion prefix in provider validation and in both
+  standalone/native candidate merging. Indentation, repeated spaces and Unicode horizontal spaces
+  no longer disappear from a correctly prefixed Chinese model reply or break its bounded length check.
+- Built-in HTTP providers reject prefix-losing replies instead of silently accepting trimmed text.
+  English behavior, unconverted phonetic input, candidate budgets, model permissions and cancellation
+  stay unchanged. Both protocols and synthetic native adoption/undo/Space/Enter flows are covered.
+  See the [round-43 audit](docs/bug-audit-model-prefix-spacing-2026-09-25.md).
+
+#### Pinyin continuation after long adopted drafts
+
+- N53 fixes the offline decoder's 128-round cutoff within its existing 256-code-point input
+  limit. Long literal prefixes and repeated syllables no longer hide the exact conversion or
+  promote a guessed extension ahead of it. The bounded input determines the search rounds;
+  beam width, vocabulary, ranking and maximum input length stay unchanged.
+- Long Chinese/English adoption, exact undo, Space continuation and commit checks now cover
+  both native entry routes and real GTK editor output. Shortening a 257-character draft restores
+  conversion at 256; see the [round-44 audit](docs/bug-audit-long-pinyin-continuation-2026-09-25.md).
 
 ### 0.6.7 — Context-local shortcuts and literal boundaries in Chinese drafts
 

@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.7 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.8 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -15,6 +15,10 @@ does not imply cross-platform stability. Keep another input method available.
   The Firefox executable was launched directly from its installed Snap files; Snap launcher,
   native Wayland, arbitrary Electron apps, terminal and webview editors remain unqualified.
   See the [browser/model audit](bug-audit-browser-model-2026-09-24.md).
+  The 0.6.7 source-tag CI stopped at a GTK popup saved-document assertion; later package steps did
+  not run. The 0.6.8 [editor-save follow-up](bug-audit-editor-save-2026-09-24.md) strengthens
+  owned-buffer observation and isolates the editor's background draft saves. It does not patch
+  personal applications or establish remote CI success; default editor autosave timing is not qualified.
 - **Draft presentation and numeric fields:** 0.6.2 moves the default Linux draft
   preview to the candidate area/companion, preventing tested Chrome/Qt clients from confirming
   cached inline preedit on focus changes. Empty-draft digits now pass literally; digits still
@@ -66,12 +70,27 @@ does not imply cross-platform stability. Keep another input method available.
   text; line boundaries are no longer syllable joins in the core converter. This does not add
   native multiline input or relax companion control-character checks. See the
   [literal-boundary audit](bug-audit-chinese-literal-boundaries-2026-09-24.md).
+  N50 in 0.6.8 fixes English one-word classification and model-derived next-word choices before
+  a typed Space. This uses the existing known-word guard, not arbitrary grammar or vocabulary
+  inference; see the [next-word audit](bug-audit-english-next-word-2026-09-24.md).
+  N51 in 0.6.8 fixes optional Pinyin tone digits before sentence punctuation/closing delimiters,
+  with guards for decimals, time and grouped numeric forms. It does not add tone-sensitive ranking,
+  accented-vowel Pinyin, broader vocabulary or a general mixed-text parser; see the
+  [tone-boundary audit](bug-audit-pinyin-tone-punctuation-2026-09-24.md).
+  N52 in 0.6.8 also preserves the exact known local-conversion prefix through model parsing and
+  candidate merging, including literal padding. This does not make unknown mixed text lossless,
+  change Japanese offline segmentation or improve real-model semantics; see the
+  [model-prefix audit](bug-audit-model-prefix-spacing-2026-09-25.md).
 - **Long native drafts:** automatic predictions stop beyond 256 Unicode code points; IBus keeps
   the complete literal draft. Companion text is limited to 8192 UTF-8 bytes, so longer native
   drafts are hidden from the floating panel, not truncated or automatically committed. Native
   editing/Enter still work, and shortening the draft restores its mirror. Oversized panel
   replacements are rejected without changing the existing draft. See the
   [length-boundary audit](bug-audit-draft-limits-2026-09-23.md).
+  N53 in 0.6.8 fixes an earlier internal 128-round Pinyin cutoff below that public limit;
+  exact conversions after long literal prefixes now finish within the same bounded search.
+  This does not increase the maximum draft length for predictions or qualify arbitrary long-sentence
+  conversion; see the [long-Pinyin audit](bug-audit-long-pinyin-continuation-2026-09-25.md).
 - **External model quality:** offline fallback needs no model, but translation needs a configured
   provider. Language quality depends on that provider/model. Not every proprietary API is compatible.
   Local `llama3.2:3b` Q4_K_M runs on CPU on this machine (`size_vram: 0`). The round-33 baseline
@@ -118,7 +137,7 @@ does not imply cross-platform stability. Keep another input method available.
   transcription. Handwriting recognition is limited; the input tabs do not have equal maturity.
 - **Other platforms:** macOS/Windows have compile checks, not equivalent native IME acceptance.
   Android, ARM64, other distributions and older glibc are not release-qualified here.
-- **Build scope:** use `--all-features` for desktop checks. 0.6.7 retains
+- **Build scope:** use `--all-features` for desktop checks. 0.6.8 retains
   strict Clippy for all feature-enabled targets and enforces it in Linux CI. Default no-GPU
   builds/tests are still not supported as a clean release gate. Development/test profiles now
   omit debug symbols and incremental caches; edits may rebuild more slowly. Release settings

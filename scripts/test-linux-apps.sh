@@ -5,19 +5,23 @@ suzaku_apps_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$suzaku_apps_root"
 suzaku_apps_suite=${1:-gtk}
 case "$suzaku_apps_suite" in
-  gtk|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard) ;;
-  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard]\n' >&2; exit 2 ;;
+  gtk|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor) ;;
+  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor]\n' >&2; exit 2 ;;
 esac
 if [[ $suzaku_apps_suite == model && ( ${SUZAKU_MODEL_LOCAL_QA:-0} != 1 || -z ${SUZAKU_MODEL_QA_MODEL:-} ) ]]; then
   printf 'Live QA needs explicit SUZAKU_MODEL_LOCAL_QA=1 and SUZAKU_MODEL_QA_MODEL (installed local Ollama model).\n' >&2
   exit 2
 fi
 suzaku_apps_dependencies=(xvfb-run xauth dbus-run-session ibus-daemon xwininfo timeout)
+case "$suzaku_apps_suite" in
+  gtk|popup|lifecycle|bus-restart|keyboard|editor) suzaku_apps_dependencies+=(gsettings) ;;
+esac
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity)
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_dependencies+=(gnome-text-editor /usr/libexec/ibus-ui-gtk3)
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity setxkbmap /usr/libexec/ibus-ui-gtk3)
 [[ $suzaku_apps_suite != bus-restart ]] || suzaku_apps_dependencies+=(gnome-text-editor setxkbmap /usr/libexec/ibus-ui-gtk3)
 [[ $suzaku_apps_suite != keyboard ]] || suzaku_apps_dependencies+=(gnome-text-editor setxkbmap xkbcomp)
+[[ $suzaku_apps_suite != editor ]] || suzaku_apps_dependencies+=(gnome-text-editor)
 if [[ $suzaku_apps_suite == browser || $suzaku_apps_suite == cross || $suzaku_apps_suite == model ]]; then
   suzaku_apps_dependencies+=("${SUZAKU_APP_QA_BROWSER:-google-chrome}")
 fi
@@ -45,6 +49,7 @@ suzaku_apps_script=scripts/test-linux-cross-apps.py
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_script=scripts/test-linux-input-lifecycle.py
 [[ $suzaku_apps_suite != bus-restart ]] || suzaku_apps_script=scripts/test-linux-bus-restart.py
 [[ $suzaku_apps_suite != keyboard ]] || suzaku_apps_script=scripts/test-linux-keyboard.py
+[[ $suzaku_apps_suite != editor ]] || suzaku_apps_script=scripts/test-linux-editor-observer.py
 [[ $suzaku_apps_suite != vscode ]] || suzaku_apps_script=scripts/test-linux-vscode.py
 [[ $suzaku_apps_suite != model ]] || suzaku_apps_script=scripts/test-linux-model-live.py
 if [[ -z ${SUZAKU_APP_QA_BIN_DIR:-} ]]; then

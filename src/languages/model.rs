@@ -339,12 +339,14 @@ fn contains_japanese_script(text: &str) -> bool {
 }
 
 fn completion_prefix(request: &LlmCompletionRequest) -> Option<&str> {
-    let phrase = request.normalized_phrase.trim();
-    if phrase.is_empty() {
+    // Local conversion already distinguishes phonetic separators from literal
+    // padding. Its spacing belongs to the replacement just as English input does.
+    let phrase = request.normalized_phrase.as_str();
+    if phrase.trim().is_empty() {
         return None;
     }
     match BuiltinLanguage::resolve(&request.language_id) {
-        Some(BuiltinLanguage::English) => Some(&request.normalized_phrase),
+        Some(BuiltinLanguage::English) => Some(phrase),
         Some(BuiltinLanguage::ChineseSimplified) if contains_han(phrase) => Some(phrase),
         Some(BuiltinLanguage::Japanese) if contains_japanese_script(phrase) => Some(phrase),
         _ => None,
@@ -1129,72 +1131,86 @@ mod tests {
     fn indented_model_completions_survive_http_parsing_and_usefulness_checks() {
         use crate::ime::candidate_mix::CandidateKind;
         for ollama in [false, true] {
-            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            let address = listener.local_addr().unwrap();
-            let server = thread::spawn(move || {
-                if ollama {
-                    let (mut stream, _) = test_server::accept(&listener);
-                    assert!(
-                        test_server::read_request(&mut stream)
-                            .unwrap()
-                            .starts_with("GET /api/tags ")
-                    );
-                    test_server::respond(
-                        &mut stream,
-                        "200 OK",
-                        r#"{"models":[{"name":"synthetic-model"}]}"#,
-                    )
-                    .unwrap();
-                }
-                let (mut stream, _) = test_server::accept(&listener);
-                let wire = test_server::read_request(&mut stream).unwrap();
-                assert!(wire.starts_with("POST "));
-                let body: Value =
-                    serde_json::from_str(wire.split_once("\r\n\r\n").unwrap().1).unwrap();
-                let input: Value =
-                    serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
-                assert_eq!(input["raw_composition"], "  hello  ");
-                assert_eq!(input["local_conversion"], "  hello  ");
-                let content = json!({"candidates":[
-                    {"text":"  hello  ","kind":"word"},
-                    {"text":"hello  world","kind":"sentence"},
-                    {"text":"  hello  world  ","kind":"sentence"}
-                ]})
-                .to_string();
-                let response = if ollama {
-                    json!({"message":{"content":content},"done":true})
-                } else {
-                    json!({"choices":[{"message":{"content":content}}]})
-                };
-                test_server::respond(&mut stream, "200 OK", &response.to_string()).unwrap();
-            });
-            let provider = HttpModelProvider::new(ModelProviderConfig {
-                endpoint: format!(
-                    "http://{address}/{}",
-                    if ollama {
-                        "api/chat"
-                    } else {
-                        "v1/chat/completions"
-                    }
+            for (language, seed, local, suffix) in [
+                ("en", "  hello  ", "  hello  ", "world"),
+                ("zh-Hans", "  nihao", "  你好", "，合成测试。"),
+                ("zh-Hans", "你好  ", "你好  ", "新的朋友。"),
+                (
+                    "zh-Hans",
+                    "\u{3000}你好\u{a0}",
+                    "\u{3000}你好\u{a0}",
+                    "世界。",
                 ),
-                model: "synthetic-model".into(),
-                ..Default::default()
-            });
-            let result = provider
-                .generate_checked(&LlmCompletionRequest {
-                    seed_text: "  hello  ".into(),
-                    normalized_phrase: "  hello  ".into(),
-                    ..request("en")
-                })
-                .unwrap();
-            assert_eq!(
-                result.len(),
-                1,
-                "unchanged or prefix-losing candidates must be rejected"
-            );
-            assert_eq!(result[0].text, "  hello  world");
-            assert_eq!(result[0].kind, Some(CandidateKind::Sentence));
-            server.join().unwrap();
+                ("ja", "nihongo", "  日本語  ", "を勉強します。"),
+            ] {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                let address = listener.local_addr().unwrap();
+                let server = thread::spawn(move || {
+                    if ollama {
+                        let (mut stream, _) = test_server::accept(&listener);
+                        assert!(
+                            test_server::read_request(&mut stream)
+                                .unwrap()
+                                .starts_with("GET /api/tags ")
+                        );
+                        test_server::respond(
+                            &mut stream,
+                            "200 OK",
+                            r#"{"models":[{"name":"synthetic-model"}]}"#,
+                        )
+                        .unwrap();
+                    }
+                    let (mut stream, _) = test_server::accept(&listener);
+                    let wire = test_server::read_request(&mut stream).unwrap();
+                    assert!(wire.starts_with("POST "));
+                    let body: Value =
+                        serde_json::from_str(wire.split_once("\r\n\r\n").unwrap().1).unwrap();
+                    let input: Value =
+                        serde_json::from_str(body["messages"][1]["content"].as_str().unwrap())
+                            .unwrap();
+                    assert_eq!(input["raw_composition"], seed);
+                    assert_eq!(input["local_conversion"], local);
+                    let content = json!({"candidates":[
+                        {"text":local,"kind":"word"},
+                        {"text":format!("{}{suffix}", local.trim()),"kind":"sentence"},
+                        {"text":format!("{local}{suffix}  "),"kind":"sentence"}
+                    ]})
+                    .to_string();
+                    let response = if ollama {
+                        json!({"message":{"content":content},"done":true})
+                    } else {
+                        json!({"choices":[{"message":{"content":content}}]})
+                    };
+                    test_server::respond(&mut stream, "200 OK", &response.to_string()).unwrap();
+                });
+                let provider = HttpModelProvider::new(ModelProviderConfig {
+                    endpoint: format!(
+                        "http://{address}/{}",
+                        if ollama {
+                            "api/chat"
+                        } else {
+                            "v1/chat/completions"
+                        }
+                    ),
+                    model: "synthetic-model".into(),
+                    ..Default::default()
+                });
+                let result = provider
+                    .generate_checked(&LlmCompletionRequest {
+                        seed_text: seed.into(),
+                        normalized_phrase: local.into(),
+                        ..request(language)
+                    })
+                    .unwrap();
+                assert_eq!(
+                    result.len(),
+                    1,
+                    "unchanged or prefix-losing candidates must be rejected"
+                );
+                assert_eq!(result[0].text, format!("{local}{suffix}"));
+                assert_eq!(result[0].kind, Some(CandidateKind::Sentence));
+                server.join().unwrap();
+            }
         }
     }
 
@@ -1377,6 +1393,34 @@ mod tests {
                 ..request(language)
             };
             assert!(useful_candidate("Rust programming", &request));
+        }
+    }
+
+    #[test]
+    fn cjk_model_prefix_keeps_local_spacing_instead_of_accepting_a_trimmed_rewrite() {
+        for (language, raw, local, suffix) in [
+            ("zh-Hans", "  nihao", "  你好", "，合成测试。"),
+            ("zh-Hans", "  你好  ", "  你好  ", "新的朋友。"),
+            (
+                "zh-Hans",
+                "\u{3000}你好\u{a0}",
+                "\u{3000}你好\u{a0}",
+                "世界。",
+            ),
+            ("ja", "日本語", "  日本語  ", "を勉強します。"),
+        ] {
+            let request = LlmCompletionRequest {
+                seed_text: raw.into(),
+                normalized_phrase: local.into(),
+                ..request(language)
+            };
+            assert_eq!(completion_prefix(&request), Some(local), "{raw:?}");
+            assert!(useful_candidate(&format!("{local}{suffix}"), &request));
+            assert!(!useful_candidate(
+                &format!("{}{suffix}", local.trim()),
+                &request
+            ));
+            assert!(!useful_candidate(local, &request));
         }
     }
 

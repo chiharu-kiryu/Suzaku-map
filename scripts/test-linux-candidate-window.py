@@ -15,12 +15,10 @@ spec = importlib.util.spec_from_file_location("suzaku_app_qa", Path(__file__).wi
 qa = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(qa)  # Validate isolation before importing accessibility.
 assert os.environ["SUZAKU_APP_QA_SUITE"] in {"popup", "lifecycle", "bus-restart"}
-os.environ["NO_AT_BRIDGE"] = "0"
-os.environ.pop("GTK_A11Y", None)
-os.environ["GTK_MODULES"] = "atk-bridge"
 qa.gi.require_version("Atspi", "2.0")
 qa.gi.require_version("Gdk", "3.0")
 from gi.repository import Atspi, Gdk, Gio
+from fixtures.editor_observer import visible_nodes
 
 passed = 0
 ORDINALS = "¹²³⁴⁵⁶"
@@ -34,22 +32,6 @@ def passed_case(*parts):
     global passed
     passed += 1
     print("PASS:", *parts)
-
-
-def nodes(node):
-    pending = [node]
-    seen = 0
-    while pending:
-        current = pending.pop()
-        # A GTK child may disappear between GetChildCount and GetChildAtIndex
-        # while the popup hides/rebuilds. Do not turn that null child into a
-        # test crash; expected visible controls still have to appear in time.
-        if current is None:
-            continue
-        seen += 1
-        assert seen < 1000, "unexpectedly large fixture accessibility tree"
-        yield current
-        pending.extend(current.get_child_at_index(i) for i in range(current.get_child_count()))
 
 
 def panel_app(pid):
@@ -79,8 +61,7 @@ class Popup:
 
     def visible(self):
         assert self.panel.poll() is None, "stock candidate panel exited unexpectedly"
-        return [node for node in nodes(self.app)
-                if node.get_state_set().contains(Atspi.StateType.SHOWING)]
+        return visible_nodes(self.app, Atspi.StateType.SHOWING)
 
     def named(self, name):
         return [node for node in self.visible() if node.get_name() == name]
@@ -108,7 +89,11 @@ class Popup:
         frame = qa.watch.latest
         page = frame["selected"] // 6 * 6
         expected = [row_text(frame, i) for i in range(page, min(page + 6, len(frame["candidates"])))]
-        qa.wait(lambda: all(self.named(name) for name in expected), "actual popup candidate page")
+        try:
+            qa.wait(lambda: all(self.named(name) for name in expected), "actual popup candidate page")
+        except AssertionError as error:
+            raise AssertionError(f"{error}: expected={expected!r}, "
+                                 f"visible={[node.get_name() for node in self.visible()]!r}") from error
         assert expected
         assert not any(self.named(key) for key in ORDINALS), "duplicate standalone ordinal column"
         self.expect_bounds()

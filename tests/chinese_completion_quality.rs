@@ -307,3 +307,136 @@ fn literal_spacing_keeps_chinese_word_and_sentence_continuations_available() {
         assert!(engine.candidates().iter().all(|c| c.text.starts_with(seed)));
     }
 }
+
+#[test]
+fn tone_numbers_end_at_sentence_punctuation_without_leaking_into_candidates() {
+    let cases = [
+        ("ni3 hao3!", "你好!"),
+        ("ni3hao3，shi4jie4！", "你好，世界！"),
+        ("你好，shi4jie4。", "你好，世界。"),
+        ("(ni3hao3)", "(你好)"),
+        ("\"ni3hao3\"", "\"你好\""),
+        ("「ni3hao3」", "「你好」"),
+        ("ni3hao3? shu1ru4fa3.", "你好? 输入法."),
+        ("ni3hao3: shi4jie4", "你好: 世界"),
+        ("ni3hao3,shi4jie4", "你好,世界"),
+    ];
+    let mut misses = Vec::new();
+    for (seed, expected) in cases {
+        let mut engine = engine(seed);
+        if engine.candidates()[0].text != expected {
+            misses.push(format!("{seed:?}: {:?}", engine.candidates()));
+        } else {
+            assert!(engine.candidates().iter().any(|c| c.text == seed));
+            assert_eq!(
+                engine.commit(CommitOptions { force: true }).text.as_deref(),
+                Some(expected),
+                "exact punctuation and one commit: {seed:?}"
+            );
+        }
+    }
+    assert!(misses.is_empty(), "{}", misses.join("\n"));
+}
+
+#[test]
+fn numbers_next_to_pinyin_remain_literal_outside_tone_positions() {
+    for (seed, expected) in [
+        ("hao3.5", "好3.5"),
+        ("hao3:30", "好3:30"),
+        ("hao3,000", "好3,000"),
+        ("hao30!", "好30!"),
+        ("hao3/4", "好3/4"),
+        ("hao3-4", "好3-4"),
+        ("hao3_4", "好3_4"),
+        ("hao6!", "好6!"),
+        ("hao0!", "好0!"),
+        ("你好 3!", "你好 3!"),
+    ] {
+        let mut engine = engine(seed);
+        assert_eq!(engine.candidates()[0].text, expected, "{seed:?}");
+        assert!(engine.candidates().iter().any(|c| c.text == seed));
+        assert_eq!(
+            engine.commit(CommitOptions { force: true }).text.as_deref(),
+            Some(expected),
+            "{seed:?}"
+        );
+    }
+}
+
+#[test]
+fn long_literal_prefixes_do_not_exhaust_the_pinyin_tail_search() {
+    let mut cases = Vec::new();
+    for length in [125, 126, 127, 128, 160, 250, 251] {
+        let prefix = "你".repeat(length);
+        cases.push((format!("{prefix}nihao"), format!("{prefix}你好")));
+    }
+    for prefix in [
+        "你".repeat(128),
+        format!("  {}\u{3000}", "你".repeat(160)),
+        format!("{}\n", "你".repeat(128)),
+        format!("{}  ", "👩‍💻".repeat(42)),
+    ] {
+        cases.push((format!("{prefix}bei j"), format!("{prefix}北京")));
+    }
+    let mut misses = Vec::new();
+    for mixed in [false, true] {
+        for (seed, expected) in &cases {
+            let mut engine = XRTabletImeEngine::new(EngineConfig {
+                default_language: "zh-Hans".into(),
+                ..Default::default()
+            });
+            if mixed {
+                engine.enable_ibus_candidate_mix();
+            }
+            engine.seed(seed);
+            assert!(seed.chars().count() <= 256);
+            assert!(engine.candidates().iter().any(|c| c.text == *seed));
+            if engine.candidates()[0].text != *expected {
+                misses.push(format!(
+                    "mixed={mixed}, {} characters: incorrect primary conversion ({} candidates)",
+                    seed.chars().count(),
+                    engine.candidates().len()
+                ));
+                continue;
+            }
+            assert_eq!(
+                engine.commit(CommitOptions { force: true }).text.as_deref(),
+                Some(expected.as_str())
+            );
+        }
+    }
+    println!(
+        "Chinese long-prefix conversions: {}/{}",
+        cases.len() * 2 - misses.len(),
+        cases.len() * 2
+    );
+    assert!(misses.is_empty(), "{}", misses.join("\n"));
+}
+
+#[test]
+fn bounded_pinyin_search_finishes_all_segments_before_its_existing_length_limit() {
+    for (seed, expected) in [
+        ("ni".repeat(128), "你".repeat(128)),
+        (
+            format!("{}hao", "ni,".repeat(80)),
+            format!("{}好", "你,".repeat(80)),
+        ),
+    ] {
+        let mut engine = engine(&seed);
+        assert!(seed.chars().count() <= 256);
+        assert_eq!(engine.candidates()[0].text, expected);
+        assert!(engine.candidates().iter().any(|c| c.text == seed));
+        assert_eq!(
+            engine.commit(CommitOptions { force: true }).text.as_deref(),
+            Some(expected.as_str())
+        );
+    }
+    let prefix = "你".repeat(251);
+    let mut engine = engine(&format!("{prefix}nihao!"));
+    let literal = format!("{prefix}nihao!");
+    assert_eq!(literal.chars().count(), 257);
+    assert_eq!(engine.candidates().len(), 1);
+    assert_eq!(engine.candidates()[0].text, literal);
+    engine.seed(format!("{prefix}nihao"));
+    assert_eq!(engine.candidates()[0].text, format!("{prefix}你好"));
+}
