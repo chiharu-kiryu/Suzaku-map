@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.7.0 — Linux Alpha continuous word-to-sentence input**.
+Current source version: **0.7.1 — Linux Alpha activation diagnostics and installation audit**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,22 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.7.1 — Activation diagnostics and installation audit
+
+- Private IBus tests preserve real CLI stderr and exit codes on activation/release failures,
+  without changing production restoration logic or retrying failures until success. Dedicated
+  checks reject desktop access, invalid scope, self-recursion and unrelated commands.
+- A guarded repeat-test mode complements the complete native suites. The 0.7.0 CI failure
+  did not reproduce in 130 repeated cycles; rerunning the failed job at the same commit passed.
+  Its root cause remains unconfirmed, and that older run does not validate the new diagnostics.
+- The 0.7.0 installation audit records 124 isolated application checks and 13 real GNOME
+  input workflows, plus tray/service quit and reopen. Two desktop cases stopped at the focus
+  guard remain incomplete; package metadata and documentation do not update the installed app.
+
+See the [0.7.1 release notes](docs/releases/0.7.1.md),
+[activation follow-up](docs/ci-activation-followup-2026-09-27.md) and
+[installation audit](docs/install-audit-0.7.0-2026-09-27.md).
 
 ### 0.7.0 — Continuous word-to-sentence input
 

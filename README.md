@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.7.0 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.7.1 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -28,13 +28,13 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.7.0 keeps authored Chinese sentence suggestions available after adopting a word, typing Space,
-or shrinking a long Pinyin draft back below the local-window threshold. Earlier text and literal
-spacing remain intact; the longest known phrase supplies the continuation. Bilingual regression
-checks cover punctuation deletion, exact undo, model length boundaries and real-editor submission.
-The existing 3,906 English forms, 602 Pinyin entries, panel ergonomics, explicit submission and
-model consent are retained; this release does not add a corpus or enlarge model context.
-See the [release notes](docs/releases/0.7.0.md) for the changes and validation scope.
+0.7.1 is a Linux validation and diagnostics maintenance release. Private IBus activation tests
+retain real command errors and exit codes on failure, with guarded isolation checks and an explicit
+repeat-test mode. It also records the 0.7.0 installation audit and same-commit CI rerun; the original
+release failure was not reproduced and its root cause remains unconfirmed. Production input behavior,
+the existing 3,906 English forms and 602 Pinyin entries, continuous word-to-sentence choices,
+explicit submission and model-consent boundaries are unchanged.
+See the [release notes](docs/releases/0.7.1.md) for the changes and validation scope.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -43,11 +43,11 @@ speech and application compatibility. This is not a replacement for a full Chine
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
 Source tags can precede downloadable packages; use a release with attached packages or build from
-source. Once the matching 0.7.0 package is available, in the download directory on Ubuntu 24.04 amd64:
+source. Once the matching 0.7.1 package is available, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.7.0_amd64.deb.sha256
-sudo apt install ./suzaku_0.7.0_amd64.deb
+sha256sum -c suzaku_0.7.1_amd64.deb.sha256
+sudo apt install ./suzaku_0.7.1_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -133,12 +133,12 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.0 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.1 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.7.0 release notes](docs/releases/0.7.0.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.7.1 release notes](docs/releases/0.7.1.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

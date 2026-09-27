@@ -25,6 +25,26 @@ bash scripts/test-linux-ci.sh ibus
 bash scripts/test-linux-ci.sh ui
 ```
 
+On a memory-constrained desktop, especially after an OOM, run build, test and packaging
+jobs **one at a time** with `CARGO_BUILD_JOBS=1`; `--test-threads=1` alone does not limit
+compiler processes or other simultaneously launched commands. Check available memory,
+swap pressure and kernel OOM timestamps first. Do not stop unrelated applications or
+assume an earlier timeout/empty response was caused by a later OOM event.
+
+With a working user systemd manager and cgroup memory controller, an isolated local
+check can also have a resource ceiling (adjust it to the available headroom):
+
+```bash
+systemd-run --user --scope -p MemoryHigh=2G -p MemoryMax=4G -p MemorySwapMax=0 \
+  env CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true PYTHONUNBUFFERED=1 \
+  bash scripts/test-linux-ci.sh ibus
+```
+
+Offline mode requires already cached dependencies. The transient scope limits only this
+command and its children, not the desktop or installed input service. A scope OOM is a
+failed check, never a pass. Preserve original failures and rerun gates explicitly under
+stable conditions; do not add retry-until-green loops or relax IPC/suite deadlines.
+
 Run the paired offline input-quality gates without a model:
 
 ```bash
@@ -77,6 +97,13 @@ Stock-popup ordinal checks derive the
 number of slots from the real fixture, still requiring a partial final page and clicking every
 available slot; vocabulary size is not a fixed nine-candidate assertion. See the
 [adopted-continuation/CI follow-up](docs/bug-audit-adopted-continuation-2026-09-27.md).
+
+For repeated native tray activation/release checks on a private bus, run
+`SUZAKU_NATIVE_ACTIVATION_ONLY=1 bash scripts/test-linux-ci.sh ibus`.
+The default is 10 rounds; `SUZAKU_NATIVE_ACTIVATION_REPEATS` accepts 1–20. Failures still fail
+immediately. The fixture retains real IBus command errors and exit codes for failed assertions;
+its isolation/failure-propagation checks run with `python3 scripts/test-native-ibus-trace.py`.
+See the [0.7.0 activation CI follow-up](docs/ci-activation-followup-2026-09-27.md).
 
 Real application checks additionally need GTK input modules and Qt test bindings:
 

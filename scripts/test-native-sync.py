@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import select
+import shutil
 import socket
 import subprocess
 import time
@@ -478,6 +479,16 @@ def check_engine_recovery(bus):
                 print(stderr)
 
 
+def activation_trace_tail(path):
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - 16384))
+            return stream.read(16384).decode("utf-8", errors="replace")
+    except OSError as error:
+        return f"Trace unavailable: {error}"
+
+
 def check_tray_activation(bus):
     executable = os.environ["SUZAKU_NATIVE_ACTIVATION_TEST"]
     test = "input_method::tests::native_activation_input_and_release_roundtrip"
@@ -485,7 +496,20 @@ def check_tray_activation(bus):
     assert listing.returncode == 0 and f"{test}: test" in listing.stdout.splitlines(), \
         "the native activation test must not silently become a zero-test run"
     arguments = [executable, test, "--exact", "--ignored", "--nocapture", "--test-threads=1"]
-    unmarked = dict(os.environ)
+    # Production deliberately discards command stderr. This fixture-only shim
+    # still executes the real CLI and preserves its status/stdout, retaining the
+    # engine operation and errors for a failed CI assertion, never input text.
+    fixture_bin = runtime / "activation-bin"
+    fixture_bin.mkdir(mode=0o700, exist_ok=True)
+    shutil.copyfile(Path(__file__).parent / "fixtures/trace-native-ibus.sh", fixture_bin / "ibus")
+    (fixture_bin / "ibus").chmod(0o700)
+    trace = runtime / "activation-ibus.log"
+    trace.write_text("")
+    real_ibus = shutil.which("ibus")
+    assert real_ibus is not None and Path(real_ibus).resolve() != (fixture_bin / "ibus").resolve()
+    marked = dict(os.environ, PATH=str(fixture_bin) + os.pathsep + os.environ["PATH"],
+                  SUZAKU_NATIVE_REAL_IBUS=str(Path(real_ibus).resolve()))
+    unmarked = dict(marked)
     unmarked.pop("SUZAKU_NATIVE_SYNC_QA")
     guarded = subprocess.run(arguments, env=unmarked, capture_output=True, text=True, timeout=5)
     assert guarded.returncode != 0 and "private IBus fixture required" in guarded.stderr, \
@@ -495,9 +519,15 @@ def check_tray_activation(bus):
     assert bus.set_global_engine(previous)
     wait(lambda: bus.get_global_engine() is not None and bus.get_global_engine().get_name() == previous,
          "prepare the private activation restore target")
-    result = subprocess.run(arguments, capture_output=True, text=True, timeout=20)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert bus.get_global_engine().get_name() == previous, "activation test did not restore its private engine"
+    try:
+        result = subprocess.run(arguments, env=marked, capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired as error:
+        raise AssertionError("Native activation timed out. Real IBus CLI trace:\n" + activation_trace_tail(trace)) from error
+    diagnostic = activation_trace_tail(trace) if result.returncode != 0 else ""
+    assert result.returncode == 0, result.stdout + result.stderr + "\nReal IBus CLI trace:\n" + diagnostic
+    current = bus.get_global_engine()
+    assert current is not None and current.get_name() == previous, \
+        "activation test did not restore its private engine\n" + activation_trace_tail(trace)
     print(result.stdout.strip())
 
 
@@ -3793,6 +3823,13 @@ try:
         wait(lambda: watch.latest is not None and watch.latest["focused"], "shortcut-only context")
         check_home_row_shortcuts(context, watch, commits, lookup)
         check_adoption_key_repeats(context, watch, commits)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_ACTIVATION_ONLY") == "1":
+        repetitions = int(os.environ.get("SUZAKU_NATIVE_ACTIVATION_REPEATS", "10"))
+        assert 1 <= repetitions <= 20
+        for attempt in range(repetitions):
+            check_tray_activation(bus)
+            print(f"PASS: isolated activation/release repetition {attempt + 1}/{repetitions}", flush=True)
         raise SystemExit(0)
     check_tray_activation(bus)
     check_post_process_preedit(bus)
