@@ -105,6 +105,22 @@ immediately. The fixture retains real IBus command errors and exit codes for fai
 its isolation/failure-propagation checks run with `python3 scripts/test-native-ibus-trace.py`.
 See the [0.7.0 activation CI follow-up](docs/ci-activation-followup-2026-09-27.md).
 
+For slow settings persistence, run
+`SUZAKU_NATIVE_CONTROL_IO_ONLY=1 bash scripts/test-linux-ci.sh ibus`.
+Its bounded `fsync` barrier is injected into one private, display-free host only; nine cases check
+input responsiveness, no-op adoption undo, single-worker backpressure, timeout/disconnect discard,
+I/O failure, external edits and password redaction. Do not preload this fixture into the desktop.
+See the [settings I/O audit](docs/bug-audit-settings-io-2026-09-27.md); this controlled reproduction
+does not establish the cause of earlier release-time empty replies.
+
+The same slow-I/O gate also checks ten focus-bound keyboard language changes: ongoing typing,
+timeout, reset, Escape, commit, focus transfer, privacy, pending/completed Compose and engine destruction.
+`SUZAKU_NATIVE_LANGUAGE_ONLY=1 bash scripts/test-linux-ci.sh ibus` runs the focused Ctrl+Shift+Space
+regression (24 profile/language/draft/lock combinations, two long Unicode drafts, plus failure and repeat boundaries); both
+full IBus modes include it. The real keyboard gate adds four owned GTK workflows with long holds,
+early modifier release, unchanged keymaps/LEDs, adoption and exact application commits.
+A fifth workflow retains a pending dead-key sequence through physical Ctrl/Shift presses.
+
 Real application checks additionally need GTK input modules and Qt test bindings:
 
 ```bash

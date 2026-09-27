@@ -68,7 +68,15 @@ fn shortcut_reference_reflows_translates_and_never_exposes_fake_buttons() {
                             shortcut_profile == ShortcutProfile::HomeRow
                         );
                     }
-                    for label in ["Shortcuts", "Space", "Enter", "F1", "Ctrl+,"] {
+                    for label in [
+                        "Shortcuts",
+                        "Space",
+                        "Enter",
+                        "F1",
+                        "Ctrl+,",
+                        "Switch EN/ZH",
+                        "Ctrl+Shift+Space",
+                    ] {
                         assert!(
                             lines
                                 .iter()

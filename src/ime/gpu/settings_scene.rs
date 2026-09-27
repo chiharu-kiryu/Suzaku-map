@@ -83,6 +83,7 @@ impl WgpuCandidateRenderer {
             "Literal digits",
             "Panel help",
             "Panel settings",
+            "Switch EN/ZH",
         ]
         .into_iter()
         .map(|label| {

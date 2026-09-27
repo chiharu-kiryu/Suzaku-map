@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.7.1 — Linux Alpha activation diagnostics and installation audit**.
+Current source version: **0.7.2 — Draft-preserving language shortcuts and responsive settings**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,23 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.7.2 — Draft-preserving language shortcuts and responsive settings
+
+- Ctrl+Shift+Space toggles English/Chinese in a normal, focused IBus field, retaining the
+  latest draft after persistence succeeds. Empty drafts and both shortcut profiles are supported;
+  Japanese switches to English. Held keys remain one-shot, including early modifier release.
+- N56 moves settings reads, writes and file sync out of the input loop and shared session lock.
+  A single worker stages the change; publication validates the request lifetime, deadline and
+  settings baseline. Canceled jobs never publish late, and a busy worker cannot multiply.
+- Pending language gestures are canceled by focus, commit, clear, privacy and Compose boundaries.
+  Save errors keep the old language and draft. Physical modifier presses preserve pending accents.
+  F1 exposes the localized shortcut reference; no global bindings or arbitrary rebinding are added.
+- The isolated keyboard gate grows to 49 groups; the controlled slow-I/O gate checks 9 settings
+  cases plus 10 keyboard-language cases. Historical release failures are not attributed to this fix.
+
+See the [0.7.2 release notes](docs/releases/0.7.2.md), [shortcut reference](docs/shortcuts.md)
+and [N56 settings I/O audit](docs/bug-audit-settings-io-2026-09-27.md).
 
 ### 0.7.1 — Activation diagnostics and installation audit
 

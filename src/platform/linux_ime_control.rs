@@ -70,6 +70,9 @@ fn request_at(
 }
 
 fn parse_status(response: &str) -> Result<NativeImeStatus, String> {
+    if response.is_empty() {
+        return Err("输入法设置请求未收到确认，请刷新状态后重试".into());
+    }
     let value: serde_json::Value =
         serde_json::from_str(response).map_err(|_| "本机输入法服务版本过旧，请重新安装宿主")?;
     if value["ok"] != true {
@@ -164,6 +167,29 @@ mod tests {
         assert_eq!(
             parse_status(r#"{"ok":false,"error":"not saved"}"#).unwrap_err(),
             "not saved"
+        );
+    }
+
+    #[test]
+    fn closed_settings_reply_is_unconfirmed_not_an_old_host() {
+        let endpoint = Endpoint::new();
+        let path = endpoint.path.clone();
+        let server = std::thread::spawn(move || {
+            let mut stream = endpoint.accept();
+            assert_eq!(
+                Deadline::new(Duration::from_millis(500))
+                    .read_to_end(&mut stream, 3)
+                    .unwrap(),
+                b"Len"
+            );
+            // EOF without an acknowledgement cannot establish whether a save
+            // happened; do not report an obsolete host or claim it was not saved.
+        });
+        let result = request_at(&path, "Len", Duration::from_millis(500));
+        server.join().unwrap();
+        assert_eq!(
+            result.unwrap_err(),
+            "输入法设置请求未收到确认，请刷新状态后重试"
         );
     }
 }

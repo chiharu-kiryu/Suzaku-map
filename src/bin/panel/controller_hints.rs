@@ -330,7 +330,7 @@ impl PanelState {
                 Some(format!("{} settings", ui.tr(category.label())))
             }
             InteractionKind::SetShortcutProfile(_) => {
-                Some("IBus draft shortcuts only. Standard keeps Alt keys for the app.".into())
+                Some("IBus input shortcuts only. Standard keeps Alt keys for the app.".into())
             }
             InteractionKind::ShortcutReference(_) => None,
             InteractionKind::SettingsSearchClear => Some("Clear settings search".to_string()),

@@ -13,12 +13,15 @@ typedef struct {
     gsize output_offset;
     GSource *io_source;
     GSource *deadline_source;
+    GSource *control_source;
+    void *control_job;
     gint64 deadline;
     guint64 context;
 } SuzakuIpcClient;
 
 static GPtrArray *suzaku_ipc_clients = NULL;
 static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client);
+static gboolean suzaku_ibus_control_ready(gpointer data);
 
 static void suzaku_ipc_destroy_source(GSource **source) {
     if (*source != NULL) {
@@ -31,6 +34,8 @@ static void suzaku_ipc_destroy_source(GSource **source) {
 static void suzaku_ipc_finish(SuzakuIpcClient *client, gboolean close_connection) {
     suzaku_ipc_destroy_source(&client->io_source);
     suzaku_ipc_destroy_source(&client->deadline_source);
+    suzaku_ipc_destroy_source(&client->control_source);
+    suzaku_host_ime_control_free(client->control_job);
     g_ptr_array_remove_fast(suzaku_ipc_clients, client);
     if (close_connection) {
         g_io_stream_close(G_IO_STREAM(client->connection), NULL, NULL);
@@ -79,6 +84,18 @@ static void suzaku_ipc_reply(SuzakuIpcClient *client, const gchar *response) {
         G_IO_OUT | G_IO_ERR | G_IO_HUP, NULL);
     g_source_set_callback(client->io_source, G_SOURCE_FUNC(suzaku_ipc_write_ready), client, NULL);
     g_source_attach(client->io_source, NULL);
+}
+
+static void suzaku_ipc_start_control(SuzakuIpcClient *client, const gchar *request) {
+    gint64 remaining = client->deadline - g_get_monotonic_time();
+    if (remaining <= 0) { suzaku_ipc_finish(client, TRUE); return; }
+    client->control_job = suzaku_host_ime_control_start_utf8(request,
+        (uint32_t)((remaining + G_TIME_SPAN_MILLISECOND - 1) / G_TIME_SPAN_MILLISECOND));
+    if (client->control_job == NULL) { suzaku_ipc_reply(client, "0"); return; }
+    suzaku_ipc_destroy_source(&client->io_source);
+    client->control_source = g_timeout_source_new(5);
+    g_source_set_callback(client->control_source, suzaku_ibus_control_ready, client, NULL);
+    g_source_attach(client->control_source, NULL);
 }
 
 static gboolean suzaku_ipc_read_ready(GSocket *socket, GIOCondition condition, gpointer data) {

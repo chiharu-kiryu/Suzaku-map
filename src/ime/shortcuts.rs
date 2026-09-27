@@ -59,7 +59,8 @@ impl ShortcutProfile {
     /// Searchable read-only reference, including the unchanged writing-stream keys.
     pub fn reference(self) -> Vec<(&'static str, Vec<&'static str>)> {
         let mut rows = vec![
-            ("Scope", vec!["IBus", "Active draft"]),
+            ("Scope", vec!["IBus", "Focused input"]),
+            ("Switch EN/ZH", vec!["Ctrl+Shift+Space"]),
             ("Previous", vec!["Shift+Tab", "↑"]),
             ("Next choice", vec!["Tab", "↓"]),
             ("Page back", vec!["PageUp"]),
@@ -74,7 +75,7 @@ impl ShortcutProfile {
             ("Panel settings", vec!["Ctrl+,"]),
         ];
         if self == Self::HomeRow {
-            for ((_, _, key), (_, keys)) in HOME_ROW_BINDINGS.iter().zip(&mut rows[1..6]) {
+            for ((_, _, key), (_, keys)) in HOME_ROW_BINDINGS.iter().zip(&mut rows[2..7]) {
                 keys.push(key);
             }
         }
@@ -94,6 +95,27 @@ pub const HOME_ROW_BINDINGS: [(char, ShortcutAction, &str); 5] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn language_toggle_is_easy_to_find_without_moving_home_row_aliases() {
+        for profile in ShortcutProfile::ALL {
+            let rows = profile.reference();
+            assert_eq!(rows[1], ("Switch EN/ZH", vec!["Ctrl+Shift+Space"]));
+            for (label, (_, _, key)) in [
+                "Previous",
+                "Next choice",
+                "Page back",
+                "Page forward",
+                "Adopt",
+            ]
+            .into_iter()
+            .zip(HOME_ROW_BINDINGS)
+            {
+                let keys = &rows.iter().find(|(name, _)| *name == label).unwrap().1;
+                assert_eq!(keys.contains(&key), profile == ShortcutProfile::HomeRow);
+            }
+        }
+    }
 
     #[test]
     fn profiles_and_displayed_aliases_match_without_stealing_literal_digits() {

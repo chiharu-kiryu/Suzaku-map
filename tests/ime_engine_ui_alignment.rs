@@ -330,7 +330,17 @@ fn settings_categories_align_and_global_search_crosses_pages() {
                 let scene = renderer.build_settings_scene(&chrome, None);
                 let metadata = scene.settings_scroll_metadata.unwrap();
                 heights.push(metadata.preferred_window_height);
-                assert_eq!(metadata.max_scroll_offset, 0.0);
+                if metadata.preferred_window_height <= 1200.0 {
+                    assert_eq!(metadata.max_scroll_offset, 0.0);
+                } else {
+                    // Large text + stacked reference rows may exceed this
+                    // deliberately bounded viewport. Scroll only the overflow;
+                    // the exact preferred-height scene below must still fit.
+                    assert!(metadata.max_scroll_offset > 0.0);
+                    assert!(
+                        metadata.max_scroll_offset <= metadata.preferred_window_height - 1200.0
+                    );
+                }
                 for tab in SettingsCategory::ALL {
                     let kind = InteractionKind::SetSettingsCategory(tab);
                     let target = scene

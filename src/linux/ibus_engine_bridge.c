@@ -39,6 +39,9 @@ extern void suzaku_host_ime_set_private(bool private_input);
 extern unsigned int suzaku_host_ime_language_kind(void);
 extern unsigned int suzaku_host_ime_alt_shortcut(uint32_t key);
 extern char *suzaku_host_ime_control_utf8(const char *command);
+extern void *suzaku_host_ime_control_start_utf8(const char *command, uint32_t timeout_ms);
+extern char *suzaku_host_ime_control_poll_utf8(void *job);
+extern void suzaku_host_ime_control_free(void *job);
 extern char *suzaku_host_ime_companion_snapshot_utf8(
     const char *host, uint64_t context, uint64_t revision, bool focused, bool private_input);
 
@@ -51,6 +54,11 @@ typedef struct _SuzakuIBusEngine {
     gboolean bypass_input;
     gboolean private_input;
     gboolean inline_preedit;
+    void *language_job;
+    guint language_source;
+    gint64 language_deadline;
+    guint64 language_context;
+    gchar *language_feedback;
 } SuzakuIBusEngine;
 
 typedef struct _SuzakuIBusEngineClass {
@@ -69,6 +77,7 @@ static gchar *suzaku_companion_host_id = NULL;
 static guint64 suzaku_companion_context = 0;
 static guint64 suzaku_companion_revision = 0;
 static GPtrArray *suzaku_companion_subscribers = NULL;
+static void suzaku_ibus_cancel_language_change(SuzakuIBusEngine *self);
 
 static gboolean suzaku_ibus_engine_is_composing(SuzakuIBusEngine *self) {
     return self->compose != NULL &&
@@ -128,7 +137,8 @@ static const gchar *suzaku_ibus_draft_preview_start(const gchar *input) {
 static void suzaku_ibus_engine_render_auxiliary(SuzakuIBusEngine *self, gboolean composing) {
     guint language = suzaku_host_ime_language_kind();
     const gchar *mode = language == 2 ? "EN" : language == 1 ? "拼音" : "ローマ字";
-    gchar *help = composing ? g_strdup("Compose… · Esc / Backspace 取消") : g_strdup_printf(
+    gchar *help = composing ? g_strdup("Compose… · Esc / Backspace 取消") :
+        self->language_feedback != NULL ? g_strdup_printf("%s · %s", mode, self->language_feedback) : g_strdup_printf(
         "%s · ᵂ词 ˢ句 ᴿ原文 · 权重₀–₁₀₀ | 1–6 选词续写 · Alt+数字 输入数字 · 空格连写 · %sEnter/点击提交",
         mode, language == 2 ? "Ctrl+Backspace 删词 · " : "");
     gchar *display = NULL;
@@ -159,6 +169,9 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
     }
     if (self->input->len == 0) {
         suzaku_ibus_engine_hide(engine);
+        if (self->language_feedback != NULL && !self->private_input) {
+            suzaku_ibus_engine_render_auxiliary(self, FALSE);
+        }
         return;
     }
 
@@ -244,6 +257,8 @@ static void suzaku_ibus_engine_delete_word(SuzakuIBusEngine *self) {
 }
 
 static void suzaku_ibus_engine_clear_local(SuzakuIBusEngine *self) {
+    suzaku_ibus_cancel_language_change(self);
+    g_clear_pointer(&self->language_feedback, g_free);
     suzaku_ibus_engine_reset_compose(self);
     g_string_truncate(self->input, 0);
     g_clear_pointer(&self->completion_undo, g_free);
@@ -350,11 +365,13 @@ static void suzaku_ibus_engine_move_selection(
 }
 
 static void suzaku_ibus_engine_hold_adoption(SuzakuIBusEngine *self, guint keycode) {
-    /* A physical selection gesture must not walk through newly generated
-     * candidates on autorepeat. Zero means no physical key identity (e.g. a
+    /* A physical selection/language gesture must not repeat its one-shot
+     * action on autorepeat. Zero means no physical key identity (e.g. a
      * synthetic client): preserve its discrete events, which may omit releases. */
     if (keycode != 0) { g_hash_table_add(self->held_adoption_keys, GUINT_TO_POINTER(keycode)); }
 }
+
+#include "ibus_language.inc.c"
 
 static gboolean suzaku_ibus_engine_process_key_event(
     IBusEngine *engine, guint keyval, guint keycode, guint state) {
@@ -370,6 +387,25 @@ static gboolean suzaku_ibus_engine_process_key_event(
      * a held Shift+Enter must not turn the repeat into a bare Enter commit.
      * Other held keys are independent; normal typing/navigation still repeats. */
     if (g_hash_table_contains(self->held_adoption_keys, GUINT_TO_POINTER(keycode))) { return TRUE; }
+    /* Defer command cancellation until the command key, not the modifier
+     * presses that form it. A real Ctrl+Shift+Space must see the same pending
+     * Compose state as a client delivering the complete chord in one event. */
+    if (suzaku_ibus_engine_is_composing(self) &&
+        (keyval == IBUS_KEY_Control_L || keyval == IBUS_KEY_Control_R ||
+         keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R)) { return FALSE; }
+    if (self->language_feedback != NULL) {
+        g_clear_pointer(&self->language_feedback, g_free);
+        suzaku_ibus_engine_render(self);
+    }
+    /* Focus-local bilingual toggle, even without a draft. Keep Compose and
+     * AltGr/desktop chords untouched; Caps/Num Lock are never changed. */
+    if (keyval == IBUS_KEY_space &&
+        (state & ~(IBUS_LOCK_MASK | IBUS_MOD2_MASK)) == (IBUS_CONTROL_MASK | IBUS_SHIFT_MASK)) {
+        if (self->private_input || suzaku_ibus_engine_is_composing(self)) { return FALSE; }
+        suzaku_ibus_engine_hold_adoption(self, keycode);
+        suzaku_ibus_start_language_change(self);
+        return TRUE;
+    }
     if (keyval == IBUS_KEY_BackSpace && self->input->len > 0 &&
         suzaku_host_ime_language_kind() == 2 && (state & IBUS_CONTROL_MASK) != 0 &&
         (state & ((SUZAKU_SYSTEM_MODIFIERS & ~IBUS_CONTROL_MASK) |
@@ -425,7 +461,15 @@ static gboolean suzaku_ibus_engine_process_key_event(
     }
     /* Compose owns its sequence before Space and number-choice shortcuts.
      * The completed UTF-8 result is one draft edit, never a direct commit. */
-    if (suzaku_ibus_engine_process_compose(self, keyval)) { return TRUE; }
+    if (suzaku_ibus_engine_process_compose(self, keyval)) {
+        if (suzaku_ibus_engine_is_composing(self)) {
+            /* Cancel at the event boundary: a complete accent sequence can
+             * start and finish between two asynchronous settings polls. */
+            suzaku_ibus_cancel_language_change(self);
+            g_clear_pointer(&self->language_feedback, g_free);
+        }
+        return TRUE;
+    }
 
     if (keyval == IBUS_KEY_BackSpace && self->input->len > 0) {
         if (self->completion_undo != NULL) {
@@ -670,6 +714,8 @@ static void suzaku_ibus_engine_destroy(IBusObject *object) {
 
 static void suzaku_ibus_engine_finalize(GObject *object) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
+    suzaku_ibus_cancel_language_change(self);
+    g_clear_pointer(&self->language_feedback, g_free);
     g_clear_pointer(&self->compose, xkb_compose_state_unref);
     g_clear_pointer(&self->completion_undo, g_free);
     g_clear_pointer(&self->held_adoption_keys, g_hash_table_unref);
@@ -719,6 +765,48 @@ static void suzaku_ibus_bus_disconnected(IBusBus *bus, gpointer user_data) {
 #include "ibus_companion.inc.c"
 #include "ibus_ipc.inc.c"
 
+static void suzaku_ibus_control_reply(SuzakuIpcClient *client, char *response,
+    unsigned int previous_language) {
+    if (response == NULL) { suzaku_ipc_reply(client, "0"); return; }
+    char operation = (char)client->input->data[0];
+    if (strstr(response, "\"ok\":true") != NULL) {
+        GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
+        if (focused != NULL) {
+            SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
+            /* Publish only a successfully persisted change. Same-language
+             * controls retain drafts, adoption undo and pending Compose. */
+            if ((operation == 'L' || operation == 'R') &&
+                previous_language != suzaku_host_ime_language_kind()) {
+                suzaku_companion_context++;
+                suzaku_ibus_engine_clear(engine);
+            }
+            if (operation != 'S') { suzaku_ibus_engine_render(engine); }
+            g_object_unref(focused);
+        }
+        suzaku_ibus_schedule_prediction();
+    }
+    suzaku_ipc_reply(client, response);
+    suzaku_host_ime_free_utf8(response);
+}
+
+static gboolean suzaku_ibus_control_ready(gpointer data) {
+    SuzakuIpcClient *client = data;
+    GSocket *socket = g_socket_connection_get_socket(client->connection);
+    if (g_get_monotonic_time() >= client->deadline ||
+        (g_socket_condition_check(socket, G_IO_HUP | G_IO_ERR) & (G_IO_HUP | G_IO_ERR))) {
+        suzaku_ipc_finish(client, TRUE);
+        return G_SOURCE_REMOVE;
+    }
+    unsigned int previous_language = suzaku_host_ime_language_kind();
+    char *response = suzaku_host_ime_control_poll_utf8(client->control_job);
+    if (response == NULL) { return G_SOURCE_CONTINUE; }
+    suzaku_ipc_destroy_source(&client->control_source);
+    suzaku_host_ime_control_free(client->control_job);
+    client->control_job = NULL;
+    suzaku_ibus_control_reply(client, response, previous_language);
+    return G_SOURCE_REMOVE;
+}
+
 static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
     GSocketConnection *connection = client->connection;
     gsize bytes_read = client->input->len;
@@ -734,32 +822,13 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
     if (bytes_read > 0 && bytes_read < 128 &&
         (request[0] == 'S' || request[0] == 'L' || request[0] == 'P' || request[0] == 'R' || request[0] == 'U') &&
         g_utf8_validate(request, (gssize)bytes_read, NULL)) {
+        if (request[0] != 'S') {
+            suzaku_ipc_start_control(client, request);
+            return;
+        }
         unsigned int previous_language = suzaku_host_ime_language_kind();
         char *response = suzaku_host_ime_control_utf8(request);
-        if (response != NULL) {
-            if (strstr(response, "\"ok\":true") != NULL) {
-                GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
-                if (focused != NULL) {
-                    SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
-                    /* Reloading a provider or reselecting the current language
-                     * keeps the draft. Only a real language boundary clears it. */
-                    if ((request[0] == 'L' || request[0] == 'R') &&
-                        previous_language != suzaku_host_ime_language_kind()) {
-                        /* Even an away-and-back language change ends the old
-                         * target. Latest-only readers may skip its middle frame. */
-                        suzaku_companion_context++;
-                        suzaku_ibus_engine_clear(engine);
-                    }
-                    if (request[0] != 'S') { suzaku_ibus_engine_render(engine); }
-                    g_object_unref(focused);
-                }
-                suzaku_ibus_schedule_prediction();
-            }
-            suzaku_ipc_reply(client, response);
-            suzaku_host_ime_free_utf8(response);
-        } else {
-            suzaku_ipc_reply(client, "0");
-        }
+        suzaku_ibus_control_reply(client, response, previous_language);
         return;
     }
 

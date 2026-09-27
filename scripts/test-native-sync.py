@@ -160,9 +160,9 @@ def wait(check, label, timeout=5):
     raise AssertionError(label)
 
 
-def command(request):
+def command(request, timeout=2):
     with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(2)
+        client.settimeout(timeout)
         client.connect(str(host_socket))
         client.sendall(request.encode())
         client.shutdown(socket.SHUT_WR)
@@ -489,6 +489,132 @@ def activation_trace_tail(path):
         return f"Trace unavailable: {error}"
 
 
+def check_settings_io_responsiveness(bus):
+    """A blocked settings fsync must not hold the native event loop or apply late."""
+    context = create_context(bus, "suzaku-settings-io-qa")
+    commits = []
+    context.connect("commit-text", lambda _, text: commits.append(text.get_text()))
+    context.focus_in()
+    assert bus.set_global_engine("dev.suzaku.linux.ime")
+    assert json.loads(command("P0"))["ok"]
+    assert json.loads(command("Len"))["ok"]
+    watch = Watch()
+    wait(lambda: watch.latest is not None and watch.latest["focused"], "settings I/O context")
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    armed, entered, released, finished, failed = [runtime / ("control-io." + name)
+                                                for name in ["arm", "entered", "release", "finished", "fail"]]
+    host = processes[-1]
+
+    def workers():
+        count = 0
+        for name in Path(f"/proc/{host.pid}/task").glob("*/comm"):
+            try:
+                count += name.read_text().strip() == "suzaku-settings"
+            except FileNotFoundError:
+                pass  # A worker can exit while its owned /proc entry is read.
+        return count
+
+    def read_response(client):
+        data = b""
+        while chunk := client.recv(8192):
+            data += chunk
+        return data
+
+    cases = [("change", "Lzh-Hans"), ("same", "Len"),
+             ("shortcut", 'U{"shortcut_profile":"home-row"}'), ("reload", "R"),
+             ("timeout", "Lja"), ("disconnect", "Lja"), ("write-failure", "Lja"),
+             ("external-edit", "Lja"), ("private", "Lzh-Hans")]
+    latencies = []
+    try:
+        for case, request in cases:
+            assert json.loads(command("Len"))["ok"]
+            assert json.loads(command('U{"shortcut_profile":"standard"}'))["ok"]
+            context.reset()
+            wait(lambda: not watch.latest["seed"], "fresh slow-settings draft")
+            baseline = config.read_bytes()
+            settings = json.loads(command("S"))["settings"]
+            for path in [armed, entered, released, finished, failed]:
+                path.unlink(missing_ok=True)
+            with socket.socket(socket.AF_UNIX) as pending:
+                pending.settimeout(2)
+                try:
+                    armed.touch()
+                    pending.connect(str(host_socket))
+                    pending.sendall(request.encode())
+                    pending.shutdown(socket.SHUT_WR)
+                    wait(entered.exists, "test-only fsync barrier reached")
+                    started = time.monotonic()
+                    status = json.loads(command("S", timeout=0.25))
+                    latency = (time.monotonic() - started) * 1000
+                    assert latency < 250, "settings save blocked native status"
+                    latencies.append(round(latency, 2))
+                    assert status["settings"] == settings
+                    type_seed(context, "hel")
+                    wait(lambda: watch.latest["seed"] == "hel", "native keys while saving settings")
+                    assert config.read_bytes() == baseline, "staged settings were published early"
+                    for rejected in ["Lja", "P0"]:
+                        busy = json.loads(command(rejected, timeout=0.25))
+                        assert not busy["ok"] and "正在保存" in busy["error"] and busy["settings"] == settings
+                    assert workers() == 1, "pending controls created extra disk workers"
+                    if case in ["same", "shortcut"]:
+                        assert context.process_key_event(IBus.KEY_2, 0, 0)
+                        wait(lambda: watch.latest["seed"] == "hello", "adopt while settings save is pending")
+                    if case == "timeout":
+                        assert read_response(pending) == b"", "original IPC deadline must still close the request"
+                        assert not finished.exists(), "barrier escaped before the deadline"
+                        busy = json.loads(command("P0", timeout=0.25))
+                        assert not busy["ok"] and "正在保存" in busy["error"]
+                        assert workers() == 1, "timed-out worker was replaced before it exited"
+                    elif case == "disconnect":
+                        pending.close()
+                    elif case == "write-failure":
+                        failed.touch()
+                    elif case == "external-edit":
+                        changed = dict(settings, llm_temperature_tenths=(settings["llm_temperature_tenths"] + 1) % 11)
+                        config.write_text(json.dumps(changed))
+                        external_bytes = config.read_bytes()
+                    elif case == "private":
+                        context.set_content_type(IBus.InputPurpose.PASSWORD, 0)
+                        wait(lambda: watch.latest["private"] and not watch.latest["seed"], "privacy while saving settings")
+                    released.touch()
+                    if case not in ["timeout", "disconnect"]:
+                        result = json.loads(read_response(pending))
+                        if case in ["write-failure", "external-edit"]:
+                            assert not result["ok"] and result["settings"] == settings
+                            assert ("无法保存" if case == "write-failure" else "重新加载") in result["error"]
+                        else:
+                            assert result["ok"], result
+                    wait(lambda: finished.exists() and workers() == 0 and not list(runtime.glob(".suzaku-*.tmp")),
+                         "finished worker releases lease and removes temporary settings")
+                    current = json.loads(command("S"))["settings"]
+                    if case in ["timeout", "disconnect", "write-failure", "external-edit"]:
+                        assert current == settings and watch.latest["seed"] == "hel"
+                        assert config.read_bytes() == (external_bytes if case == "external-edit" else baseline)
+                    else:
+                        assert json.loads(config.read_bytes()) == current
+                        expected = "" if case in ["change", "private"] else "hello" if case in ["same", "shortcut"] else "hel"
+                        wait(lambda: watch.latest["seed"] == expected, "settings acknowledgement preserves the right draft")
+                        if case in ["same", "shortcut"]:
+                            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                            wait(lambda: watch.latest["seed"] == "hel", "slow setting preserves exact adoption undo")
+                        if case == "private":
+                            assert watch.latest["private"] and not watch.latest["candidates"]
+                            context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+                            wait(lambda: not watch.latest["private"], "leave private settings check")
+                    assert not commits, "settings preparation submitted a draft"
+                    if case == "external-edit":
+                        config.write_bytes(baseline)
+                        assert json.loads(command("R"))["ok"]
+                    print("PASS: slow settings I/O " + case, flush=True)
+                finally:
+                    released.touch(exist_ok=True)
+        assert json.loads(command("Len"))["ok"]
+        print(f"PASS: {len(cases)} slow-settings cases preserve input, acknowledgements, single-worker bounds and canceled saves; status ms: {latencies}")
+    finally:
+        released.touch(exist_ok=True)
+        context.destroy()
+
+
 def check_tray_activation(bus):
     executable = os.environ["SUZAKU_NATIVE_ACTIVATION_TEST"]
     test = "input_method::tests::native_activation_input_and_release_roundtrip"
@@ -684,6 +810,234 @@ class EnginePeer:
         self.connection.signal_unsubscribe(self.subscription)
 
 
+def check_language_shortcut(bus):
+    """Focus-local language changes keep drafts, persist, and never submit text."""
+    watch = Watch()
+    peer, stale = EnginePeer(bus), EnginePeer(bus)
+    chord = IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.SHIFT_MASK
+    release = IBus.ModifierType.RELEASE_MASK
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    feedback = {"text": ""}
+
+    def auxiliary(_connection, _sender, _path, _interface, _signal, params, *_data):
+        text = IBus.Serializable.deserialize_object(params.get_child_value(0).get_variant())
+        feedback["text"] = text.get_text()
+
+    subscription = peer.connection.signal_subscribe(peer.destination, peer.interface,
+        "UpdateAuxiliaryText", peer.path, None, Gio.DBusSignalFlags.NONE, auxiliary)
+
+    def press(mask=chord, keycode=57):
+        assert peer.process_key_event(IBus.KEY_space, keycode, mask), "language shortcut was not handled"
+        assert not peer.process_key_event(IBus.KEY_space, keycode, release)
+
+    def language():
+        return json.loads(command("S"))["settings"]["language"]
+
+    passed = 0
+    try:
+        assert json.loads(command("P0"))["ok"]
+        for profile in ["standard", "home-row"]:
+            assert json.loads(command('U' + json.dumps({"shortcut_profile": profile})))["ok"]
+            for original, target, seed, candidate in [("en", "zh-Hans", "nihao", "你好"),
+                                                     ("zh-Hans", "en", "hel", "hello"),
+                                                     ("ja", "en", "hel", "hello")]:
+                for draft in ["", seed]:
+                    for locks in [0, IBus.ModifierType.LOCK_MASK | IBus.ModifierType.MOD2_MASK]:
+                        assert json.loads(command("L" + original))["ok"]
+                        peer.event("FocusIn")
+                        if draft:
+                            type_seed(peer, draft)
+                        pump()
+                        before = watch.latest
+                        press(chord | locks)
+                        wait(lambda: language() == target, "language shortcut saved/applied")
+                        wait(lambda: watch.latest["context"] != before["context"] and watch.latest["seed"] == draft,
+                             "language boundary preserves exact draft")
+                        assert json.loads(config.read_bytes())["language"] == target
+                        assert not action(before, "Tstale"), "old-language panel action remained valid"
+                        if draft:
+                            assert any(row["text"] == candidate for row in watch.latest["candidates"])
+                        assert not peer.commits and not stale.commits
+                        passed += 1
+
+        # Reinterpret the full latest stream, never a truncated preview or old candidate.
+        for original, target, seed, candidate in [
+            ("en", "zh-Hans", "  " + "你" * 300 + "nihao", "  " + "你" * 300 + "你好"),
+            ("zh-Hans", "en", "\u3000" + "note " * 80 + "hel", "\u3000" + "note " * 80 + "hello"),
+        ]:
+            assert json.loads(command("L" + original))["ok"]
+            peer.event("FocusIn")
+            assert command("Q") == b"1"
+            pump()
+            assert action(watch.latest, "T" + seed)
+            wait(lambda: watch.latest["seed"] == seed, "long multilingual draft before language shortcut")
+            press()
+            wait(lambda: language() == target, "long draft language switch")
+            wait(lambda: watch.latest["seed"] == seed and
+                 any(row["text"] == candidate for row in watch.latest["candidates"]),
+                 "language switch preserves long Unicode prefix and rebuilds tail completion")
+            assert not peer.commits
+            passed += 1
+
+        # Physical identity, not current modifiers, owns repeats until release.
+        assert json.loads(command("Len"))["ok"]
+        peer.event("FocusIn")
+        type_seed(peer, "hel")
+        assert peer.process_key_event(IBus.KEY_space, 57, chord)
+        wait(lambda: language() == "zh-Hans", "held chord switches once")
+        for mask in [chord, 0, IBus.ModifierType.SHIFT_MASK, chord]:
+            assert peer.process_key_event(IBus.KEY_space, 57, mask)
+            assert language() == "zh-Hans" and watch.latest["seed"] == "hel"
+        assert not peer.process_key_event(IBus.KEY_space, 57, release)
+        press()
+        wait(lambda: language() == "en", "released chord can immediately switch again")
+
+        # Only exact Ctrl+Shift is ours. Empty drafts keep all these keys with the app.
+        peer.event("Reset")
+        for mask in [IBus.ModifierType.CONTROL_MASK, IBus.ModifierType.SHIFT_MASK,
+                     chord | IBus.ModifierType.MOD1_MASK, chord | IBus.ModifierType.MOD5_MASK,
+                     chord | IBus.ModifierType.SUPER_MASK, chord | IBus.ModifierType.MOD4_MASK,
+                     chord | IBus.ModifierType.HYPER_MASK, chord | IBus.ModifierType.META_MASK]:
+            assert not peer.process_key_event(IBus.KEY_space, 0, mask)
+            assert language() == "en"
+        assert not stale.process_key_event(IBus.KEY_space, 0, chord)
+        for purpose, hints in [(IBus.InputPurpose.PASSWORD, 0), (IBus.InputPurpose.PIN, 0),
+                               (IBus.InputPurpose.NUMBER, 0), (IBus.InputPurpose.FREE_FORM, 1 << 11)]:
+            peer.set_content_type(purpose, hints)
+            assert not peer.process_key_event(IBus.KEY_space, 0, chord)
+            assert language() == "en"
+        peer.set_content_type(IBus.InputPurpose.FREE_FORM)
+        assert peer.process_key_event(IBus.KEY_dead_acute)
+        assert not peer.process_key_event(IBus.KEY_Control_L, 37, IBus.ModifierType.CONTROL_MASK)
+        assert not peer.process_key_event(IBus.KEY_Shift_L, 50, chord)
+        assert not peer.process_key_event(IBus.KEY_space, 0, chord)
+        assert not peer.process_key_event(IBus.KEY_Shift_L, 50, release)
+        assert not peer.process_key_event(IBus.KEY_Control_L, 37, release)
+        assert peer.process_key_event(IBus.KEY_e)
+        wait(lambda: watch.latest["seed"] == "é", "language chord leaves pending Compose intact")
+
+        # External edits and write errors keep the exact draft/adoption undo and old language.
+        for failure in ["conflict", "write"]:
+            peer.event("Reset")
+            type_seed(peer, "hel")
+            assert peer.process_key_event(IBus.KEY_2)
+            wait(lambda: watch.latest["seed"] == "hello", "choice before failed language switch")
+            saved = config.read_bytes()
+            feedback["text"] = ""
+            try:
+                if failure == "conflict":
+                    changed = json.loads(saved)
+                    changed["llm_temperature_tenths"] = (changed["llm_temperature_tenths"] + 1) % 11
+                    config.write_text(json.dumps(changed))
+                else:
+                    runtime.chmod(0o500)
+                disk = config.read_bytes()
+                press()
+                wait(lambda: "未保存" in feedback["text"], "failed language switch is visibly reported")
+                assert language() == "en" and config.read_bytes() == disk
+                assert watch.latest["seed"] == "hello"
+                assert peer.process_key_event(IBus.KEY_BackSpace)
+                wait(lambda: watch.latest["seed"] == "hel", "failed switch preserves choice undo")
+            finally:
+                runtime.chmod(0o700)
+                config.write_bytes(saved)
+        assert not peer.commits and not stale.commits
+        print(f"PASS: {passed} EN/ZH language shortcut flows persist and preserve drafts/candidates; repeat, modifiers, locks, stale focus, privacy, Compose and save failures are safe")
+    finally:
+        peer.connection.signal_unsubscribe(subscription)
+        peer.close()
+        stale.close()
+        watchers.remove(watch)
+        watch.sock.close()
+        assert json.loads(command('U{"shortcut_profile":"standard"}'))["ok"]
+        assert json.loads(command("Len"))["ok"]
+
+
+def check_language_shortcut_slow_io(bus):
+    """A delayed keyboard switch belongs to its original live input context."""
+    watch = Watch()
+    chord = IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.SHIFT_MASK
+    armed, entered, released, finished = [runtime / ("control-io." + name)
+                                         for name in ["arm", "entered", "release", "finished"]]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    cases = ["typing", "timeout", "reset", "escape", "commit", "focus", "private", "compose", "compose-completed", "destroy"]
+    try:
+        for case in cases:
+            assert json.loads(command("Len"))["ok"]
+            before = config.read_bytes()
+            peer, other = EnginePeer(bus), EnginePeer(bus)
+            try:
+                peer.event("FocusIn")
+                type_seed(peer, "hel")
+                wait(lambda: watch.latest["seed"] == "hel", "slow language draft")
+                for marker in [armed, entered, released, finished, runtime / "control-io.fail"]:
+                    marker.unlink(missing_ok=True)
+                armed.touch()
+                started = time.monotonic()
+                assert peer.process_key_event(IBus.KEY_space, 57, chord)
+                assert time.monotonic() - started < .25, "language shortcut blocked the input loop"
+                assert not peer.process_key_event(IBus.KEY_space, 57, IBus.ModifierType.RELEASE_MASK)
+                wait(entered.exists, "slow keyboard setting entered durable-write barrier")
+                assert json.loads(command("S", timeout=.25))["settings"]["language"] == "en"
+                assert config.read_bytes() == before
+                if case == "typing":
+                    assert peer.process_key_event(IBus.KEY_x)
+                    wait(lambda: watch.latest["seed"] == "helx", "typing while keyboard switch saves")
+                elif case == "timeout":
+                    # Pump beyond the unchanged one-second deadline, while the
+                    # controlled disk write remains blocked until explicitly released.
+                    until = started + 1.1
+                    while time.monotonic() < until:
+                        pump()
+                        time.sleep(.01)
+                    assert not finished.exists()
+                elif case == "reset":
+                    peer.event("Reset")
+                elif case == "escape":
+                    assert peer.process_key_event(IBus.KEY_Escape)
+                elif case == "commit":
+                    assert peer.process_key_event(IBus.KEY_Return)
+                    wait(lambda: peer.commits == ["hel"], "explicit commit while switch is pending")
+                elif case == "focus":
+                    other.event("FocusIn")
+                    type_seed(other, "new")
+                elif case == "private":
+                    peer.set_content_type(IBus.InputPurpose.PASSWORD)
+                    wait(lambda: watch.latest["private"], "password cancels pending language gesture")
+                elif case in ["compose", "compose-completed"]:
+                    assert peer.process_key_event(IBus.KEY_dead_acute)
+                    if case == "compose-completed":
+                        assert peer.process_key_event(IBus.KEY_e)
+                else:
+                    peer.destroy()
+                busy = json.loads(command("P0", timeout=.25))
+                assert not busy["ok"] and "正在保存" in busy["error"], "cancellation must not release a still-running disk worker"
+                released.touch()
+                wait(lambda: finished.exists() and not list(runtime.glob(".suzaku-*.tmp")),
+                     "language worker finishes and discards canceled temporary settings")
+                target = "zh-Hans" if case == "typing" else "en"
+                assert json.loads(command("S"))["settings"]["language"] == target
+                if case == "typing":
+                    assert json.loads(config.read_bytes())["language"] == target
+                    wait(lambda: watch.latest["seed"] == "helx", "latest draft survives language switch")
+                else:
+                    assert config.read_bytes() == before, case
+                    if case == "compose":
+                        assert peer.process_key_event(IBus.KEY_e)
+                    expected = {"timeout": "hel", "focus": "new", "compose": "helé", "compose-completed": "helé"}.get(case, "")
+                    wait(lambda: watch.latest["seed"] == expected, "canceled language switch keeps its boundary")
+                assert peer.commits == (["hel"] if case == "commit" else []) and not other.commits
+                print("PASS: slow language shortcut " + case, flush=True)
+            finally:
+                released.touch(exist_ok=True)
+                peer.close()
+                other.close()
+        print(f"PASS: {len(cases)} delayed language shortcut cases keep typing responsive and discard obsolete focus/commit/privacy/Compose requests")
+    finally:
+        watchers.remove(watch)
+        watch.sock.close()
+
+
 def check_prediction_cancellation(bus):
     """Observe socket closure before replying, not only revision invalidation."""
     saved = json.loads(command("S"))["settings"]
@@ -693,13 +1047,13 @@ def check_prediction_cancellation(bus):
     watch = Watch()
     timings = {}
     try:
-        for boundary in ["edit", "escape", "commit", "language", "password", "disable", "reload", "destroy", "shortcut"]:
+        for boundary in ["edit", "escape", "commit", "language", "password", "disable", "reload", "destroy", "shortcut", "language shortcut"]:
             name = f"synthetic-cancellation-{boundary}"
             gate = {key: threading.Event() for key in ["received", "release", "finished"]}
             model_reply_gates[name] = gate
             peer = EnginePeer(bus)
             try:
-                settings = dict(saved, language="en", llm_enabled=False, llm_model=name, llm_timeout_ms=2000,
+                settings = dict(saved, language="zh-Hans" if boundary == "language shortcut" else "en", llm_enabled=False, llm_model=name, llm_timeout_ms=2000,
                                 llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
                 config.write_text(json.dumps(settings))
                 assert json.loads(command("R"))["ok"]
@@ -734,6 +1088,11 @@ def check_prediction_cancellation(bus):
                     assert peer.process_key_event(IBus.KEY_Return)
                 elif boundary == "language":
                     assert json.loads(command("Lja"))["ok"]
+                elif boundary == "language shortcut":
+                    assert peer.process_key_event(IBus.KEY_space, 0,
+                        IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.SHIFT_MASK)
+                    wait(lambda: json.loads(command("S"))["settings"]["language"] == "en",
+                         "language shortcut acknowledged while model pending")
                 elif boundary == "password":
                     peer.set_content_type(IBus.InputPurpose.PASSWORD)
                 elif boundary == "disable":
@@ -748,12 +1107,14 @@ def check_prediction_cancellation(bus):
                 assert 0 <= elapsed < 0.5, (boundary, elapsed)
                 timings[boundary] = round(elapsed * 1000, 1)
                 gate["release"].set()
-                if boundary in ("edit", "reload"):
+                if boundary in ("edit", "reload", "language shortcut"):
                     wait(lambda: json.loads(command("S"))["prediction"] == "Ready" and
                          any(c["source"] == "model" for c in watch.latest["candidates"]),
                          "new draft/provider must recover without the old timeout")
                     payload = json.loads(model_requests[requested + 1]["messages"][1]["content"])
                     assert payload["raw_composition"] == ("please rec" if boundary == "edit" else "hel")
+                    if boundary == "language shortcut":
+                        assert payload["language"] == "en" and payload["committed_context"] == ""
                 elif boundary == "disable":
                     assert json.loads(command("S"))["prediction"] == "Disabled"
                     assert watch.latest["seed"] == "hel"
@@ -766,7 +1127,7 @@ def check_prediction_cancellation(bus):
                 peer.close()
                 assert json.loads(command("P0"))["ok"]
                 model_reply_gates.pop(name, None)
-        print("PASS: N46 8 native boundaries close obsolete model sockets before replying; cancellation ms:", timings)
+        print(f"PASS: N46 {len(timings)} native boundaries close obsolete model sockets before replying; cancellation ms:", timings)
     finally:
         config.write_text(original)
         assert json.loads(command("R"))["ok"]
@@ -2251,11 +2612,22 @@ def check_editable_completions(context, watch, commits, lookup):
     choose("hello")
     before = len(commits)
     for mask in [IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.MOD5_MASK,
-                 IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.CONTROL_MASK]:
+                 IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.MOD1_MASK]:
         for key in [IBus.KEY_space, IBus.KEY_Return]:
             assert not context.process_key_event(key, 0, mask)
+    chord = IBus.ModifierType.SHIFT_MASK | IBus.ModifierType.CONTROL_MASK
+    assert not context.process_key_event(IBus.KEY_Return, 0, chord)
     pump()
     assert watch.latest["seed"] == "hel" and len(commits) == before
+    # Ctrl+Shift+Space is now a language gesture, not a pass-through chord or
+    # adoption: even a selected "hello" must not replace the literal "hel".
+    for target in ["zh-Hans", "en"]:
+        assert context.process_key_event(IBus.KEY_space, 0, chord)
+        wait(lambda: json.loads(command("S"))["settings"]["language"] == target,
+             "input-context language gesture acknowledgement")
+        wait(lambda: watch.latest["seed"] == "hel", "language gesture is not word adoption")
+        assert len(commits) == before
+    choose("hello")
     assert context.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
     wait(lambda: watch.latest["seed"] == "hello", "English completion before normal edit")
     type_seed(context, "x")
@@ -3802,11 +4174,25 @@ def check_english_writing_flow(context, watch, commits, lookup):
 try:
     processes.append(subprocess.Popen(["ibus-daemon", "--single", "--address=" + os.environ["IBUS_ADDRESS"], "--cache=none"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     wait(lambda: (runtime / "ibus.sock").exists(), "isolated IBus did not start")
-    processes.append(subprocess.Popen([str(host_path)], stdout=subprocess.DEVNULL))
+    host_environment = dict(os.environ)
+    if os.environ.get("SUZAKU_NATIVE_CONTROL_IO_ONLY") == "1":
+        fixture = runtime / "slow-settings-fsync.so"
+        subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
+                        str(Path(__file__).parent / "fixtures/slow-settings-fsync.c"),
+                        "-ldl", "-o", str(fixture)], check=True, timeout=15)
+        host_environment["LD_PRELOAD"] = str(fixture)
+    processes.append(subprocess.Popen([str(host_path)], stdout=subprocess.DEVNULL, env=host_environment))
     wait(host_socket.exists, "native host did not start")
     IBus.init()
     bus = IBus.Bus.new()
     assert bus.is_connected()
+    if os.environ.get("SUZAKU_NATIVE_LANGUAGE_ONLY") == "1":
+        check_language_shortcut(bus)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_CONTROL_IO_ONLY") == "1":
+        check_settings_io_responsiveness(bus)
+        check_language_shortcut_slow_io(bus)
+        raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_RECOVERY_ONLY") == "1":
         check_password_probe_cleanup(bus)
         check_engine_recovery(bus)
@@ -3832,6 +4218,7 @@ try:
             print(f"PASS: isolated activation/release repetition {attempt + 1}/{repetitions}", flush=True)
         raise SystemExit(0)
     check_tray_activation(bus)
+    check_language_shortcut(bus)
     check_post_process_preedit(bus)
     check_engine_event_boundaries(bus)
     check_prediction_cancellation(bus)

@@ -104,6 +104,7 @@ install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus
   docs/bug-audit-long-draft-window-2026-09-25.md \
   docs/bug-audit-adopted-continuation-2026-09-27.md \
   docs/bug-audit-continuation-threshold-2026-09-27.md \
+  docs/bug-audit-settings-io-2026-09-27.md \
   "$suzaku_package_tree/share/doc/suzaku/docs/"
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"

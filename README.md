@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.7.1 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.7.2 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -28,13 +28,12 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.7.1 is a Linux validation and diagnostics maintenance release. Private IBus activation tests
-retain real command errors and exit codes on failure, with guarded isolation checks and an explicit
-repeat-test mode. It also records the 0.7.0 installation audit and same-commit CI rerun; the original
-release failure was not reproduced and its root cause remains unconfirmed. Production input behavior,
-the existing 3,906 English forms and 602 Pinyin entries, continuous word-to-sentence choices,
-explicit submission and model-consent boundaries are unchanged.
-See the [release notes](docs/releases/0.7.1.md) for the changes and validation scope.
+0.7.2 adds **Ctrl+Shift+Space** to switch English ↔ Chinese in a focused IBus input field,
+preserving the draft and rebuilding candidates without submitting. Settings reads, writes and
+file sync now run in one bounded background worker, keeping typing responsive during slow saves;
+expired or abandoned requests do not apply late. Vocabulary, explicit submission and model-consent
+boundaries are unchanged. This controlled fix does not establish the cause of historical CI or
+release-time failures. See the [release notes](docs/releases/0.7.2.md) for validation and scope.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -43,11 +42,11 @@ speech and application compatibility. This is not a replacement for a full Chine
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
 Source tags can precede downloadable packages; use a release with attached packages or build from
-source. Once the matching 0.7.1 package is available, in the download directory on Ubuntu 24.04 amd64:
+source. Once the matching 0.7.2 package is available, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.7.1_amd64.deb.sha256
-sudo apt install ./suzaku_0.7.1_amd64.deb
+sha256sum -c suzaku_0.7.2_amd64.deb.sha256
+sudo apt install ./suzaku_0.7.2_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -88,6 +87,11 @@ draft, ordinary digits go directly to the application, so `2026` and `12.5` need
 | Ctrl+Backspace in English | Delete the last whitespace-delimited draft word |
 | Enter / primary candidate click | Submit the candidate |
 | Esc | Cancel the draft |
+
+**Ctrl+Shift+Space** switches English ↔ Chinese, even with an empty draft; from Japanese it
+switches to English. It preserves unsubmitted text, does not repeat while held and leaves system
+input-source shortcuts and lock states unchanged. It is local to Suzaku's ordinary IBus fields,
+not a global activation or interface-language shortcut. Japanese remains available in the tray.
 
 In the focused panel, **F1** opens Settings → Shortcuts and **Ctrl+,** opens settings.
 The optional home-row IBus profile adds **Alt+J/K** navigation, **Alt+H/L** paging and
@@ -133,12 +137,12 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.1 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.2 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
-- [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — opt-in IBus home-row layout and in-panel reference
+- [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — EN/ZH toggle, opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.7.1 release notes](docs/releases/0.7.1.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.7.2 release notes](docs/releases/0.7.2.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

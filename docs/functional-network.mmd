@@ -1,4 +1,6 @@
-%% Suzaku functional network: 2026-09-27 source snapshot for 0.7.1, retaining rounds 46-47 and adding activation diagnostics/install audits without changing the input graph; not the installed build.
+%% Suzaku functional network: 2026-09-27 source snapshot for 0.7.2 including round 48; not the installed build.
+%% Round 48 N56 stages native settings persistence off the input thread, then publishes within the live client's deadline; F42/F44 stay acknowledgement-based.
+%% 0.7.2 Ctrl+Shift+Space reuses F15/F42/F44 for focus-bound EN/ZH changes, preserving the current draft after durable acknowledgement.
 %% Round 47 N55 shares authored Han suffix matching across short/long routing; model limits and input routes stay unchanged.
 %% Round 46 N54 keeps an authored Han phrase in the bounded local tail after adoption; input routes/model limits are unchanged.
 %% Vocabulary expansion reuses F16-F18; 897 Rust tests, strict Clippy and both private IBus modes pass after restoring toolchain access. GUI/install/performance acceptance is separate.
@@ -62,7 +64,8 @@ flowchart TB
     SERVICE -->|运行宿主| INPUT
     TRAY -->|同总线宿主替换后仅修复空输入源| INPUT
     TRAY -->|语言或联想设置| IMESET
-    IMESET -->|加载与重载| CORE
+    INPUT -->|Ctrl+Shift+Space 中英切换| IMESET
+    IMESET -->|加载 / 异步保存后应用| CORE
     IMESET -->|模型配置| MODEL
     IMESET -->|独立编辑配置| LOCAL
     UISET -->|布局、主题、字体、本地化| PANEL

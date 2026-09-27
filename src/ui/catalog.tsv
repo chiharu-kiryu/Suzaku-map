@@ -14,9 +14,11 @@ Shortcuts	快捷键	ショートカット	단축키	Atajos	Raccourcis	Tastenkür
 Key layout	按键方案	キー配列	키 구성	Esquema	Disposition	Tastenprofil	Esquema
 Standard keys	标准按键	標準キー	기본 키	Estándar	Standard	Standard	Padrão
 Home row (Alt)	主键区 (Alt)	ホーム段 (Alt)	홈 행 (Alt)	Fila base (Alt)	Rangée (Alt)	Grundreihe (Alt)	Fila base (Alt)
-IBus draft shortcuts only. Standard keeps Alt keys for the app.	仅用于 IBus 输入草稿。标准方案不拦截应用的 Alt 按键。	IBus の入力中のみ有効。標準では Alt キーをアプリに渡します。	IBus 입력 중에만 적용됩니다. 기본 구성은 Alt 키를 앱에 전달합니다.	Solo al escribir con IBus. El modo estándar deja Alt a la aplicación.	Pendant la saisie IBus uniquement. Le mode standard réserve Alt à l’application.	Nur beim Schreiben mit IBus. Standard lässt Alt-Tasten bei der App.	Somente durante a escrita no IBus. O modo padrão mantém Alt para o aplicativo.
+IBus input shortcuts only. Standard keeps Alt keys for the app.	仅用于 IBus 输入。标准方案不拦截应用的 Alt 按键。	IBus 入力専用。標準では Alt キーをアプリに渡します。	IBus 입력 전용입니다. 기본 구성은 Alt 키를 앱에 전달합니다.	Solo para IBus. El modo estándar deja Alt a la aplicación.	Pour IBus uniquement. Le mode standard réserve Alt à l’application.	Nur für IBus. Standard lässt Alt-Tasten bei der App.	Somente para IBus. O modo padrão mantém Alt para o aplicativo.
 Scope	作用范围	適用範囲	적용 범위	Ámbito	Portée	Bereich	Escopo
 Active draft	输入进行中	入力中のみ	입력 중	Al escribir	Saisie active	Beim Tippen	Durante a escrita
+Focused input	当前输入框	入力先のみ	현재 입력란	Campo activo	Champ actif	Aktives Feld	Campo ativo
+Switch EN/ZH	中英切换	英語／中国語	영어/중국어	Inglés/chino	Anglais/chinois	Englisch/Chinesisch	Inglês/chinês
 Previous	上一候选	前の候補	이전 후보	Anterior	Précédent	Zurück	Anterior
 Next choice	下一候选	次の候補	다음 후보	Siguiente	Suivant	Weiter	Seguinte
 Page back	上一页	前のページ	이전 페이지	Página anterior	Page précédente	Seite zurück	Página anterior

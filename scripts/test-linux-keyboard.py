@@ -240,6 +240,42 @@ try:
     assert qa.json.loads(qa.command('U{"shortcut_profile":"standard"}'))["ok"]
     assert qa.json.loads(qa.command("Len"))["ok"]
 
+    clean()
+    layout("us", "intl")
+    initial, keymap = keyboard.state(), keyboard.map()
+    keyboard.press("'")
+    keyboard.press(" ", "Control_L", "Shift_L")
+    assert qa.json.loads(qa.command("S"))["settings"]["language"] == "en"
+    keyboard.press("e")
+    finish("é", "language chord preserves pending Compose through physical modifier presses", initial, keymap)
+
+    for language, target, seed, adopted in [("en", "zh-Hans", "nihao", "你好"),
+                                            ("zh-Hans", "en", "hel", "hello")]:
+        for release_early in [False, True]:
+            clean()
+            assert qa.json.loads(qa.command("L" + language))["ok"]
+            keyboard.type(seed)
+            expect(seed)
+            keyboard.locks(caps=release_early, num=release_early)
+            initial, keymap = keyboard.state(), keyboard.map()
+            keyboard.press(" ", "Control_L", "Shift_L", duration=.65,
+                           release_modifiers_after=.1 if release_early else None)
+            qa.wait(lambda: qa.json.loads(qa.command("S"))["settings"]["language"] == target,
+                    "physical language chord changes once")
+            expect(seed)
+            qa.save_document(x, document, "")
+            qa.choose_number(x, adopted)
+            expect(adopted)
+            keyboard.press(" ", "Control_L", "Shift_L")
+            qa.wait(lambda: qa.json.loads(qa.command("S"))["settings"]["language"] == language,
+                    "released physical language chord switches back")
+            expect(adopted)
+            keyboard.press(" ")
+            finish(adopted + " ", f"{language} language toggle, early release/locks={release_early}: draft/adoption/return/explicit commit",
+                   initial, keymap)
+
+    clean()
+    assert qa.json.loads(qa.command("Len"))["ok"]
     for caps in [False, True]:
         for shift in [None, "Shift_L", "Shift_R"]:
             clean()
@@ -467,8 +503,8 @@ try:
             passed += 1
             print("PASS:", language, method, "key-up in another window, fresh adoption/undo and focus return", flush=True)
 
-    assert passed == 44, passed
-    print("RESULT: 44 strict physical-keyboard workflow groups passed", flush=True)
+    assert passed == 49, passed
+    print("RESULT: 49 strict physical-keyboard workflow groups passed", flush=True)
 except Exception:
     if "keyboard" in globals():
         print("QA keyboard state:", keyboard.state())

@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.7.0 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.7.2 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an

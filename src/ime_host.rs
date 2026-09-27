@@ -7,6 +7,8 @@ use crate::languages::{BuiltinLanguage, model::HttpModelProvider};
 use std::ffi::{CStr, CString};
 use std::sync::{Arc, Mutex, OnceLock};
 
+mod control;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostImeUpdate {
     pub active: bool,
@@ -408,69 +410,22 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
         return std::ptr::null_mut();
     };
     let value = with_shared_host_ime_session(|session| {
-        let mut settings = session.settings.clone();
-        let change = match command.as_str() {
-            "S" => Ok(false),
-            "R" => match ImeSettings::load() {
-                Ok(loaded) => {
-                    settings = loaded;
-                    Ok(true)
+        let result = control::settings_for_command(&command, &session.settings, ImeSettings::load)
+            .and_then(|change| {
+                if let Some(settings) = change {
+                    // Reload explicitly adopts the file we just read. Narrow controls
+                    // must never replace a newer file with the host's stale snapshot.
+                    let expected = if command == "R" {
+                        &settings
+                    } else {
+                        &session.settings
+                    };
+                    settings.save_if_unchanged(expected)?;
+                    control::apply_settings(session, settings, command == "R");
                 }
-                Err(error) => Err(error),
-            },
-            "P0" => {
-                settings.llm_enabled = false;
-                Ok(true)
-            }
-            "P1" => {
-                settings.llm_enabled = true;
-                Ok(true)
-            }
-            patch if patch.starts_with('U') => {
-                crate::ime::settings::PanelImeSettingsPatch::from_json(&patch[1..])
-                    .and_then(|patch| patch.apply(&mut settings))
-                    .map(|()| true)
-            }
-            language if language.starts_with('L') => match BuiltinLanguage::resolve(&language[1..])
-            {
-                Some(language) => {
-                    settings.language = language;
-                    Ok(true)
-                }
-                None => Err("不支持的输入语言".to_string()),
-            },
-            _ => Err("不支持的输入法控制命令".to_string()),
-        };
-        let result = change.and_then(|changed| {
-            if changed {
-                // Reload explicitly adopts the file we just read. Narrow controls
-                // must never replace a newer file with the host's stale snapshot.
-                let expected = if command == "R" {
-                    &settings
-                } else {
-                    &session.settings
-                };
-                settings.save_if_unchanged(expected)?;
-                // Repeating a narrow setting must not rebuild candidates or
-                // unlock the user's selection. Still validate/persist above;
-                // an explicit reload must reconfigure even if values match.
-                if command == "R"
-                    || settings.language != session.settings.language
-                    || settings.llm_enabled != session.settings.llm_enabled
-                    || settings.provider != session.settings.provider
-                {
-                    session.apply_settings(settings);
-                } else {
-                    // Shortcut changes must not cancel prediction, unlock the current
-                    // choice, clear context or replace a one-step completion undo.
-                    session.settings = settings;
-                }
-            }
-            Ok(())
-        });
-        serde_json::json!({"ok": result.is_ok(), "error": result.err(),
-            "settings": session.settings.to_json(), "prediction": format!("{:?}", session.engine.prediction_status()),
-            "prediction_error": session.engine.prediction_error().map(ToString::to_string)})
+                Ok(())
+            });
+        control::response(session, result)
     });
     into_raw_c_string(value.to_string())
 }

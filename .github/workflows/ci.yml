@@ -112,6 +112,10 @@ jobs:
         env:
           SUZAKU_IBUS_INLINE_PREEDIT: "1"
         run: bash scripts/test-linux-ci.sh ibus
+      - name: Test slow settings I/O and abandoned settings or language-key controls
+        env:
+          SUZAKU_NATIVE_CONTROL_IO_ONLY: "1"
+        run: bash scripts/test-linux-ci.sh ibus
       - name: Test isolated windows, keyboard input and multilingual GPU rendering
         run: bash scripts/test-linux-ci.sh ui
       - name: Test English and Chinese typing in real GTK applications on an isolated display

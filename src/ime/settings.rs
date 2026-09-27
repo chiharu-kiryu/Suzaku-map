@@ -6,7 +6,29 @@ use crate::languages::{
     model::{ModelProtocol, ModelProviderConfig, ModelScope},
 };
 use serde_json::{Value, json};
-use std::{fs, io::Read, path::PathBuf};
+use std::{
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+};
+
+/// A durable temporary file plus the cooperating-writer and restore leases.
+/// Dropping an uncommitted save removes only its private temporary file.
+pub(crate) struct PreparedSettingsSave {
+    staged: crate::data::files::StagedFile,
+    _writer: crate::data::files::DataLease,
+    _lease: crate::data::files::DataLease,
+}
+
+impl PreparedSettingsSave {
+    pub(crate) fn commit(self) -> Result<(), String> {
+        self.staged.replace().map_err(settings_save_error)
+    }
+}
+
+fn settings_save_error(error: std::io::Error) -> String {
+    format!("无法保存输入法设置（未应用修改）：{error}")
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImeSettings {
@@ -179,6 +201,10 @@ impl ImeSettings {
 
     pub fn load() -> Result<Self, String> {
         let path = settings_path().ok_or("无法定位输入法设置目录")?;
+        Self::load_at(&path)
+    }
+
+    pub(crate) fn load_at(path: &Path) -> Result<Self, String> {
         let mut options = fs::OpenOptions::new();
         options.read(true);
         #[cfg(target_os = "linux")]
@@ -188,7 +214,7 @@ impl ImeSettings {
             // Keep existing symlink support, but validate the opened target below.
             options.custom_flags(libc::O_NONBLOCK);
         }
-        let file = match options.open(&path) {
+        let file = match options.open(path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Self::default());
@@ -223,11 +249,19 @@ impl ImeSettings {
     }
 
     fn save_checked(&self, expected: Option<&Self>) -> Result<(), String> {
-        let _lease = crate::data::files::DataLease::current_shared()?;
         let path = settings_path().ok_or("无法定位输入法设置目录")?;
-        let _writer = crate::data::files::DataLease::settings_writer(&path)?;
+        self.prepare_save_at(&path, expected)?.commit()
+    }
+
+    pub(crate) fn prepare_save_at(
+        &self,
+        path: &Path,
+        expected: Option<&Self>,
+    ) -> Result<PreparedSettingsSave, String> {
+        let lease = crate::data::files::DataLease::settings_shared(path)?;
+        let writer = crate::data::files::DataLease::settings_writer(path)?;
         if let Some(expected) = expected
-            && Self::load()? != *expected
+            && Self::load_at(path)? != *expected
         {
             return Err(
                 "配置已在其他位置更改；请先重新加载模型配置再重试（未覆盖已保存设置）".into(),
@@ -236,8 +270,22 @@ impl ImeSettings {
         let validated = Self::from_json(&self.to_json().to_string())?;
         let contents =
             serde_json::to_vec_pretty(&validated.to_json()).map_err(|e| e.to_string())?;
-        crate::data::files::atomic_write(&path, &contents)
-            .map_err(|error| format!("无法保存输入法设置（未应用修改）：{error}"))
+        let staged =
+            crate::data::files::StagedFile::new(path, &contents).map_err(settings_save_error)?;
+        // An editor need not honor our writer lease. Recheck after the slow
+        // durable-write phase so a saved external edit is not silently replaced.
+        if let Some(expected) = expected
+            && Self::load_at(path)? != *expected
+        {
+            return Err(
+                "配置已在其他位置更改；请先重新加载模型配置再重试（未覆盖已保存设置）".into(),
+            );
+        }
+        Ok(PreparedSettingsSave {
+            staged,
+            _writer: writer,
+            _lease: lease,
+        })
     }
 }
 
@@ -252,6 +300,113 @@ pub fn settings_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct SaveFixture(PathBuf);
+
+    impl SaveFixture {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            use std::time::{SystemTime, UNIX_EPOCH};
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "suzaku-settings-test-{}-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> PathBuf {
+            self.0.join("ime.json")
+        }
+
+        fn staged_count(&self) -> usize {
+            fs::read_dir(&self.0)
+                .unwrap()
+                .filter(|entry| {
+                    entry
+                        .as_ref()
+                        .unwrap()
+                        .file_name()
+                        .to_string_lossy()
+                        .ends_with(".tmp")
+                })
+                .count()
+        }
+    }
+
+    impl Drop for SaveFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn prepared_save_is_invisible_and_drop_releases_files_and_leases() {
+        let fixture = SaveFixture::new();
+        let path = fixture.path();
+        let before = ImeSettings::default();
+        let changed = ImeSettings {
+            language: BuiltinLanguage::Japanese,
+            ..before.clone()
+        };
+        let prepared = changed.prepare_save_at(&path, Some(&before)).unwrap();
+        assert!(!path.exists());
+        assert_eq!(ImeSettings::load_at(&path).unwrap(), before);
+        assert_eq!(fixture.staged_count(), 1);
+        assert!(crate::data::files::DataLease::settings_writer(&path).is_err());
+        assert!(
+            crate::data::files::DataLease::acquire(&fixture.0.join(".suzaku-data.lock"), true)
+                .is_err()
+        );
+        drop(prepared);
+        assert!(!path.exists());
+        assert_eq!(fixture.staged_count(), 0);
+        assert!(crate::data::files::DataLease::settings_writer(&path).is_ok());
+        assert!(
+            crate::data::files::DataLease::acquire(&fixture.0.join(".suzaku-data.lock"), true)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn prepared_save_publishes_at_commit_and_preserves_stale_baselines() {
+        let fixture = SaveFixture::new();
+        let path = fixture.path();
+        let before = ImeSettings::default();
+        let changed = ImeSettings {
+            language: BuiltinLanguage::ChineseSimplified,
+            ..before.clone()
+        };
+        fs::write(&path, before.to_json().to_string()).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        let prepared = changed.prepare_save_at(&path, Some(&before)).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        prepared.commit().unwrap();
+        assert_eq!(ImeSettings::load_at(&path).unwrap(), changed);
+        assert_eq!(fixture.staged_count(), 0);
+        assert!(before.prepare_save_at(&path, Some(&before)).is_err());
+        assert_eq!(ImeSettings::load_at(&path).unwrap(), changed);
+        assert_eq!(fixture.staged_count(), 0);
+    }
+
+    #[test]
+    fn failed_prepared_publication_cleans_up_without_removing_the_destination() {
+        let fixture = SaveFixture::new();
+        let path = fixture.path();
+        let prepared = ImeSettings::default().prepare_save_at(&path, None).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert!(prepared.commit().unwrap_err().contains("未应用修改"));
+        assert!(path.is_dir());
+        assert_eq!(fixture.staged_count(), 0);
+        assert!(crate::data::files::DataLease::settings_writer(&path).is_ok());
+    }
+
     #[test]
     fn shortcut_profiles_migrate_validate_and_patch_without_changing_models() {
         assert_eq!(
