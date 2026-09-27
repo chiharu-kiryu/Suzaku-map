@@ -45,6 +45,8 @@ mod render;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "panel/settings_chain_audit_test.rs"]
 mod settings_chain_audit_test;
+#[path = "panel/settings_keyboard.rs"]
+mod settings_keyboard;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "panel/settings_native_test.rs"]
 mod settings_native_test;
@@ -86,7 +88,6 @@ use suzaku_map::platform::gpu_host::{
     decorate_settings_window_attributes, finish_main_window_creation,
     finish_settings_window_creation, main_window_runs_without_focus,
 };
-use suzaku_map::platform::panel_companion_dispatch::current_panel_companion_dispatch;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::dpi::PhysicalPosition;
@@ -238,9 +239,8 @@ fn panel_window_attributes() -> WindowAttributes {
     let width = DEFAULT_PANEL_INNER_WIDTH * scale as f64;
     let height =
         WgpuCandidateRenderer::new(width as f32, 1.0).preferred_input_panel_height(&chrome) as f64;
-    let panel_dispatch = current_panel_companion_dispatch();
     let attrs = WindowAttributes::default()
-        .with_title(panel_dispatch.default_panel_title())
+        .with_title(helpers::window_title(chrome.ui_language, false))
         .with_window_icon(panel_window_icon())
         .with_transparent(true)
         .with_decorations(!chrome.hide_system_titlebar)
@@ -262,7 +262,10 @@ fn panel_window_attributes() -> WindowAttributes {
 
 fn settings_window_attributes(chrome: &PanelChromeState) -> WindowAttributes {
     let attrs = WindowAttributes::default()
-        .with_title("Suzaku Panel Settings")
+        .with_title(format!(
+            "Suzaku · {}",
+            chrome.ui_language.tr("Panel Settings")
+        ))
         .with_window_icon(panel_window_icon())
         .with_transparent(true)
         .with_decorations(!chrome.hide_system_titlebar)
@@ -910,6 +913,7 @@ struct PanelState {
     last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
     last_scene: Option<suzaku_map::ime::gpu::RenderScene>,
     last_window_title: String,
+    last_frame_diagnostic: Option<String>,
     close_requested: bool,
     quit_requested: bool,
 }
@@ -1160,6 +1164,7 @@ impl PanelState {
             settings_scroll_offset: 0.0,
             settings_search_query: String::new(),
             settings_search_focused: false,
+            settings_keyboard_focus: None,
             settings_collapsed_sections: Vec::new(),
         });
         if let Some(saved) = persisted_settings.as_ref() {
@@ -1318,6 +1323,7 @@ impl PanelState {
             last_interaction_action: None,
             last_scene: None,
             last_window_title: String::new(),
+            last_frame_diagnostic: None,
             close_requested: false,
             quit_requested: false,
         };

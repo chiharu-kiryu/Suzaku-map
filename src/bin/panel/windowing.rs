@@ -516,7 +516,10 @@ impl PanelState {
         self.interaction.panel_drag_start_window_pos = self.window.outer_position().ok();
         self.interaction.panel_drag_start_instant = Some(std::time::Instant::now());
         self.update_pointer_cursor();
-        if !self.runs_without_window_focus {
+        // A compact orb is both a button and a drag handle. Starting a WM drag
+        // on press can consume its release (GNOME/X11), making clicks inert.
+        // Wait for real pointer movement before handing an orb gesture to the WM.
+        if !self.runs_without_window_focus && !self.chrome.compact_mode {
             let _ = self.window.drag_window();
         }
     }
@@ -540,8 +543,15 @@ impl PanelState {
         }
         if let Some((start_x, start_y)) = self.interaction.panel_drag_start_cursor {
             let moved = compact_drag_exceeded_threshold((start_x, start_y), (cursor_x, cursor_y));
+            let start_native_drag = moved
+                && !self.interaction.panel_drag_moved
+                && self.chrome.compact_mode
+                && !self.runs_without_window_focus;
             if moved {
                 self.interaction.panel_drag_moved = true;
+            }
+            if start_native_drag {
+                let _ = self.window.drag_window();
             }
             if self.runs_without_window_focus
                 && self.interaction.panel_drag_moved

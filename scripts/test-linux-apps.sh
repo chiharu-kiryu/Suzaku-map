@@ -88,6 +88,7 @@ timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
   XDG_DATA_HOME="$suzaku_apps_tmp/data" XDG_CACHE_HOME="$suzaku_apps_tmp/cache" \
   SUZAKU_APP_QA=1 SUZAKU_APP_QA_ROOT="$suzaku_apps_tmp" SUZAKU_APP_QA_BIN_DIR="$suzaku_apps_bins" \
   SUZAKU_APP_QA_SUITE="$suzaku_apps_suite" \
+  SUZAKU_PANEL_TEST_FRAME_LOG=1 \
   SUZAKU_IME_CONFIG="$suzaku_apps_tmp/ime.json" \
   SUZAKU_LINUX_IME_SOCKET="$suzaku_apps_tmp/runtime/suzaku-ime/host.sock" \
   IBUS_ADDRESS="unix:path=$suzaku_apps_tmp/runtime/ibus.sock" \

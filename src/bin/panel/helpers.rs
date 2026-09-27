@@ -1,31 +1,19 @@
-use suzaku_map::ime::gpu::{CandidateQuad, RenderScene};
-use suzaku_map::platform::{host_platform, support_for};
+use suzaku_map::ime::gpu::CandidateQuad;
+use suzaku_map::ui::UiLanguage;
 
 pub(super) fn point_in_rect(x: f32, y: f32, rect: [f32; 4]) -> bool {
     let [rx, ry, rw, rh] = rect;
     x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
 }
 
-pub(super) fn window_title(
-    scene: &RenderScene,
-    committed_text: &str,
-    uses_runtime_font: bool,
-    font_label: &str,
-) -> String {
-    let selected = scene.selected_label.as_deref().unwrap_or("no candidate");
-    let host = support_for(host_platform());
-    format!(
-        "Suzaku XR Candidate Panel | host: {:?} ({:?}) | font: {}:{} | selected: {selected} | draft: {} | committed: {committed_text} | keys: 1–4 continue, arrows move, D degrade, R reset, Space continue, Enter send",
-        host.platform,
-        host.tier,
-        if uses_runtime_font {
-            "system-atlas"
-        } else {
-            "bitmap-fallback"
-        },
-        font_label,
-        scene.draft_text,
-    )
+/// Window managers, task switchers and desktop integrations can read this title.
+/// It must never receive drafts, candidates or committed text.
+pub(super) fn window_title(ui: UiLanguage, compact: bool) -> String {
+    if compact {
+        "Suzaku".into()
+    } else {
+        ui.tr("Suzaku · Input").into()
+    }
 }
 
 #[allow(dead_code)]
@@ -35,7 +23,7 @@ pub(super) fn _quad_debug(_quad: &CandidateQuad) {}
 mod tests {
     use super::point_in_rect;
     use super::window_title;
-    use suzaku_map::ime::gpu::RenderScene;
+    use suzaku_map::ui::UiLanguage;
 
     #[test]
     fn point_in_rect_includes_edges() {
@@ -57,58 +45,17 @@ mod tests {
     }
 
     #[test]
-    fn window_title_includes_host_and_scene_summary() {
-        let scene = RenderScene {
-            quads: Vec::new(),
-            text_quads: Vec::new(),
-            atlas_glyphs: Vec::new(),
-            text_sections: Vec::new(),
-            hit_targets: Vec::new(),
-            interactive_targets: Vec::new(),
-            sentence_candidate_truncated: Vec::new(),
-            next_token_candidate_truncated: Vec::new(),
-            handwriting_candidate_truncated: Vec::new(),
-            settings_option_truncated: Vec::new(),
-            settings_scroll_metadata: None,
-            labels: vec!["hello".to_string()],
-            selected_label: Some("selected label".to_string()),
-            draft_text: "draft text".to_string(),
-        };
-
-        let title = window_title(&scene, "committed", false, "Mono");
-
-        assert!(title.contains("Suzaku XR Candidate Panel"));
-        assert!(title.contains("selected: selected label"));
-        assert!(title.contains("draft: draft text"));
-        assert!(title.contains("committed: committed"));
-        assert!(title.contains("font: bitmap-fallback"));
-        assert!(title.contains("host: "));
+    fn window_title_is_localized_and_contains_no_diagnostics() {
+        for ui in UiLanguage::ALL {
+            assert_eq!(window_title(ui, false), ui.tr("Suzaku · Input"));
+            assert!(!window_title(ui, false).contains('|'));
+        }
     }
 
     #[test]
-    fn window_title_shows_fallbacks_when_selection_missing() {
-        let scene = RenderScene {
-            quads: Vec::new(),
-            text_quads: Vec::new(),
-            atlas_glyphs: Vec::new(),
-            text_sections: Vec::new(),
-            hit_targets: Vec::new(),
-            interactive_targets: Vec::new(),
-            sentence_candidate_truncated: Vec::new(),
-            next_token_candidate_truncated: Vec::new(),
-            handwriting_candidate_truncated: Vec::new(),
-            settings_option_truncated: Vec::new(),
-            settings_scroll_metadata: None,
-            labels: Vec::new(),
-            selected_label: None,
-            draft_text: String::new(),
-        };
-
-        let title = window_title(&scene, "", true, "system");
-
-        assert!(title.contains("selected: no candidate"));
-        assert!(title.contains("draft: "));
-        assert!(title.contains("committed: "));
-        assert!(title.contains("font: system-atlas"));
+    fn compact_window_title_is_only_the_application_name() {
+        for ui in UiLanguage::ALL {
+            assert_eq!(window_title(ui, true), "Suzaku");
+        }
     }
 }

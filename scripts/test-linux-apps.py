@@ -68,6 +68,23 @@ def pump():
         watch.drain()
 
 
+def companion_frame():
+    """Read the latest rendered frame from the live, owned companion's opt-in log."""
+    for index in range(len(processes) - 1, -1, -1):
+        process = processes[index]
+        if process.args == [str(bins / "panel")] and process.poll() is None:
+            lines = (root / f"process-{index}.log").read_text().splitlines()
+            for line in reversed(lines):
+                if line.startswith("Suzaku frame: "):
+                    try:
+                        frame = json.loads(line.removeprefix("Suzaku frame: "))
+                    except json.JSONDecodeError:
+                        continue  # A concurrent write may not have finished yet.
+                    if frame["window"] == "Main":
+                        return frame
+    return {}
+
+
 def wait(check, label, timeout=8):
     until = time.monotonic() + timeout
     while time.monotonic() < until:
@@ -443,6 +460,10 @@ def check_gtk(bus, x):
         ("zh-Hans", "你" * 160, "bei j", "你" * 160 + "北京", " de", " 的"),
         ("zh-Hans", "你" * 251, "nihao", "你" * 251 + "你好", " de", " 的"),
         ("en", "note " * 49, "hel", "note " * 49 + "hello", " wo", " world"),
+        ("en", "note " * 60, "please sen", "note " * 60 + "please send", " me the d", " me the details"),
+        ("en", "note " * 1000, "hel", "note " * 1000 + "hello", " wo", " world"),
+        ("zh-Hans", "你" * 252, "nihao", "你" * 252 + "你好", " de", " 的"),
+        ("zh-Hans", "前文。" * 300 + "  ", "bei j", "前文。" * 300 + "  北京", " de", " 的"),
     ]:
         clear_document(x, document)
         revision = watch.latest["revision"]
@@ -467,7 +488,10 @@ def check_gtk(bus, x):
         save_document(x, document, "")
         commit(x)
         save_document(x, document, expected + continued + "\n")
-    print("PASS: N53 long Chinese/English tails preserve numeric adoption, exact undo, continued typing and saved text")
+    print("PASS: 8 long Chinese/English tails preserve numeric adoption, exact undo, continued typing and saved text")
+    revision = watch.latest["revision"]
+    assert json.loads(command("Len"))["ok"]
+    wait(lambda: watch.latest["revision"] > revision, "English restored after long-tail checks")
 
     clear_document(x, document)
     x.type("version ")
@@ -560,9 +584,10 @@ def check_gtk(bus, x):
     x.type("hel")
     wait(lambda: seed_is("hel"), "draft before real companion launch")
     panel = spawn([str(bins / "panel")])
-    wait(lambda: any("Suzaku XR Candidate Panel" in title and "font: system-atlas" in title
-                     and "draft: hel" in title for _, title in x.windows()),
+    wait(lambda: companion_frame().get("runtime_font") and companion_frame().get("draft") == "hel",
          "real companion rendered the native draft with system fonts", timeout=30)
+    assert x.window("Suzaku · Input") is not None
+    assert all("draft:" not in title and "committed:" not in title for _, title in x.windows())
     assert x.focused() == editor_window, "companion launch stole application focus"
     x.type("lo world")
     wait(lambda: seed_is("hello world"), "typing with real companion open")

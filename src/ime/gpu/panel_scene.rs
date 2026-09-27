@@ -346,6 +346,7 @@ impl WgpuCandidateRenderer {
         let mut text_sections = Vec::new();
         let mut hit_targets = Vec::with_capacity(snapshot.candidate_labels.len());
         let mut interactive_targets = Vec::new();
+        let mut settings_focus_targets = Vec::new();
         let mut sentence_candidate_truncated = Vec::new();
         let mut next_token_candidate_truncated = Vec::new();
         let mut handwriting_candidate_truncated = Vec::new();
@@ -574,7 +575,7 @@ impl WgpuCandidateRenderer {
                     panel_x + 16.0 * responsive_scale,
                     input_box_y + 9.0 * responsive_scale,
                 ],
-                max_width: (panel_width - 190.0 * responsive_scale).max(0.0),
+                max_width: (panel_width - 240.0 * responsive_scale).max(0.0),
                 pixel_size: title_px,
                 letter_spacing: heading_tracking,
                 line_gap: base_line_gap,
@@ -587,7 +588,7 @@ impl WgpuCandidateRenderer {
                 [
                     panel_x + 16.0 * responsive_scale,
                     input_box_y + 6.0 * responsive_scale,
-                    (panel_width - 206.0 * responsive_scale).max(0.0),
+                    (panel_width - 244.0 * responsive_scale).max(0.0),
                     20.0 * responsive_scale,
                 ],
                 [0.0, responsive_scale],
@@ -612,13 +613,13 @@ impl WgpuCandidateRenderer {
         }
 
         let close_button_rect = [
-            panel_x + panel_width - 32.0 * responsive_scale,
-            input_box_y + 6.0 * responsive_scale,
-            20.0 * responsive_scale,
-            20.0 * responsive_scale,
+            panel_x + panel_width - 39.0 * responsive_scale,
+            input_box_y + 0.5 * responsive_scale,
+            27.0 * responsive_scale,
+            27.0 * responsive_scale,
         ];
         let compact_button_rect = [
-            close_button_rect[0] - 25.0 * responsive_scale,
+            close_button_rect[0] - 34.0 * responsive_scale,
             close_button_rect[1],
             close_button_rect[2],
             close_button_rect[3],
@@ -664,33 +665,45 @@ impl WgpuCandidateRenderer {
             kind: InteractionKind::DragWindow,
             rect: window_drag_rect,
         });
-        let scale_button_size = 15.6 * responsive_scale;
-        let scale_button_spacing = 3.2 * responsive_scale;
+        let scale_button_size = 27.0 * responsive_scale;
+        let scale_button_spacing = 7.0 * responsive_scale;
+        // Respect the user's hit slop without overlapping adjacent controls or the text row.
+        let header_hit_rect = |rect: [f32; 4]| {
+            intersect_rect(
+                interaction_hit_rect(rect),
+                [
+                    rect[0] - 3.0 * responsive_scale,
+                    input_box_y,
+                    rect[2] + 6.0 * responsive_scale,
+                    28.0 * responsive_scale,
+                ],
+            )
+        };
         // Four digits (for example `100%`) need more room with the runtime system-font atlas.
         let scale_label_width = 38.0 * responsive_scale;
         let scale_plus_rect = [
             compact_button_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
             scale_button_size,
-            20.0 * responsive_scale,
+            scale_button_size,
         ];
         let scale_reset_rect = [
             scale_plus_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
             scale_button_size,
-            20.0 * responsive_scale,
+            scale_button_size,
         ];
         let scale_minus_rect = [
             scale_reset_rect[0] - scale_button_spacing - scale_button_size,
             compact_button_rect[1],
             scale_button_size,
-            20.0 * responsive_scale,
+            scale_button_size,
         ];
         let scale_drag_rect = [
             scale_minus_rect[0],
             compact_button_rect[1],
             (scale_plus_rect[0] + scale_plus_rect[2] - scale_minus_rect[0]).max(scale_button_size),
-            20.0 * responsive_scale,
+            scale_button_size,
         ];
         let scale_text_x = (scale_minus_rect[0] - scale_label_width - 3.0 * responsive_scale)
             .max(panel_x + 8.0 * responsive_scale);
@@ -757,7 +770,7 @@ impl WgpuCandidateRenderer {
         );
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::DragWindowScale,
-            rect: interaction_hit_rect(scale_drag_rect),
+            rect: header_hit_rect(scale_drag_rect),
         });
         append_soft_card_quads(
             &mut quads,
@@ -774,7 +787,7 @@ impl WgpuCandidateRenderer {
         );
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::ToggleCompactMode,
-            rect: interaction_hit_rect(compact_button_rect),
+            rect: header_hit_rect(compact_button_rect),
         });
         let compact_icon = TextBlock {
             text: "".to_string(),
@@ -830,7 +843,7 @@ impl WgpuCandidateRenderer {
         );
         interactive_targets.push(InteractiveTarget {
             kind: InteractionKind::ClosePanel,
-            rect: interaction_hit_rect(close_button_rect),
+            rect: header_hit_rect(close_button_rect),
         });
         append_close_icon_quads(
             &mut quads,
@@ -898,7 +911,7 @@ impl WgpuCandidateRenderer {
         if can_decrease_scale {
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::DecreaseWindowScale,
-                rect: interaction_hit_rect(scale_minus_rect),
+                rect: header_hit_rect(scale_minus_rect),
             });
         }
         let minus_text = TextBlock {
@@ -963,7 +976,7 @@ impl WgpuCandidateRenderer {
         if can_reset_scale {
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::ResetWindowScale,
-                rect: interaction_hit_rect(scale_reset_rect),
+                rect: header_hit_rect(scale_reset_rect),
             });
         }
         append_refresh_icon_quads(
@@ -1004,7 +1017,7 @@ impl WgpuCandidateRenderer {
         if can_increase_scale {
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::IncreaseWindowScale,
-                rect: interaction_hit_rect(scale_plus_rect),
+                rect: header_hit_rect(scale_plus_rect),
             });
         }
         let plus_text = TextBlock {

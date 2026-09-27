@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.8 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.6.9 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -49,6 +49,13 @@ does not imply cross-platform stability. Keep another input method available.
   XKB lock/indicator state and keymap preservation on a private Xvfb server, not actual keyboard
   LEDs, firmware, arbitrary remappings, native Wayland or all application shortcuts. No new
   product defect was reproduced. See the [keyboard audit](bug-audit-keyboard-layouts-2026-09-24.md).
+- **Settings accessibility:** 0.6.9 adds visible Tab/arrow-key focus,
+  Enter/Space activation, Ctrl+F search and scroll-to-focus; enlarge and separate zoom targets;
+  fix zoom reset using stale state and GNOME/X11 orb clicks consumed by immediate WM dragging;
+  and remove input text/debug hints from window titles.
+  These fixes were installed and checked locally before this source release; the 0.6.8 tag lacks them.
+  This custom-drawn UI still lacks full native accessibility/screen-reader semantics and
+  human comfort/touchscreen validation. See the [installed ergonomics check](ergonomics-audit-2026-09-25.md).
 - **Shortcut presets (0.6.7):** opt-in Alt home-row aliases apply only to public, nonempty
   Linux IBus drafts; direct panel editing keeps editor semantics. Defaults preserve application
   Alt keys. Desktop-reserved chords, arbitrary remapping, non-QWERTY ergonomics and native Wayland
@@ -61,6 +68,15 @@ does not imply cross-platform stability. Keep another input method available.
 - **Small dictionaries:** English collocations and Chinese/Japanese conversion are bounded. There
   is no complete Japanese morphological analyzer, personal learning dictionary or arbitrary
   long-sentence offline conversion. Unknown text remains available literally.
+  The 0.6.9 source expands the deduplicated English index to 3,906 forms and
+  Chinese readings to 602 entries, with more authored collocations and a stable Pinyin
+  first-letter index. This is still a curated vocabulary, not a downloaded corpus or learned
+  user history. After restoring the agent session's access to the existing Rust toolchain,
+  897 Rust tests and strict Clippy pass; 27 opt-in tests are skipped by the ordinary suite.
+  The complete private IBus regressions pass separately in default and inline-preedit modes.
+  Expanded Pinyin branches no longer crowd authored/model sentences off the first page.
+  Independent performance measurements, GUI and installation remain unverified for this expansion.
+  See [vocabulary expansion and validation status](ibus-candidates.md#中英词库扩充0692026-09-27).
   Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
   Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,
@@ -91,6 +107,12 @@ does not imply cross-platform stability. Keep another input method available.
   exact conversions after long literal prefixes now finish within the same bounded search.
   This does not increase the maximum draft length for predictions or qualify arbitrary long-sentence
   conversion; see the [long-Pinyin audit](bug-audit-long-pinyin-continuation-2026-09-25.md).
+  0.6.9 adds bounded local tails for English and adopted Chinese drafts up
+  to the existing 8192-byte mirror limit. The earlier prefix stays byte-exact; the model limit
+  remains 256 code points. Candidate counts shrink to fit the unchanged frame budget, and
+  unbroken oversized readings / protected identifiers remain literal. Chinese IBus labels expose
+  shared-prefix tail differences. This is not whole-document model context or arbitrary long-Pinyin
+  conversion; see the [local-window audit](bug-audit-long-draft-window-2026-09-25.md).
 - **External model quality:** offline fallback needs no model, but translation needs a configured
   provider. Language quality depends on that provider/model. Not every proprietary API is compatible.
   Local `llama3.2:3b` Q4_K_M runs on CPU on this machine (`size_vram: 0`). The round-33 baseline

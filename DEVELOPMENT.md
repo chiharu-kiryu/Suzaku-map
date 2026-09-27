@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.8 — Linux Alpha bilingual candidate continuity patch**.
+Current source version: **0.6.9 — Linux Alpha vocabulary, long drafts and panel ergonomics**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,30 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.6.9 — Vocabulary, long drafts and panel ergonomics
+
+- The curated English index grows from 1,242 to 3,906 explicit forms; Chinese Pinyin grows
+  from 98 to 602 entries. More authored collocations offer words and sentences together.
+  A stable first-letter Pinyin index bounds matching work; ambiguous alternate conversions
+  no longer crowd authored/model sentences off the first page. No downloaded corpus,
+  personal learning, forced correction or model dependency is introduced.
+- English and adopted-Chinese drafts beyond 256 code points retain bounded local tail
+  completion, preserving the exact earlier prefix. The existing 8192-byte mirror text and
+  65536-byte frame limits remain; fewer alternatives fit very long drafts. Model requests
+  still use the unchanged 256-code-point limit. See the [round-45 audit](docs/bug-audit-long-draft-window-2026-09-25.md).
+- Settings support visible Tab/arrow navigation, Enter/Space activation, Ctrl+F search and
+  scroll-to-focus. Zoom targets are larger and separated, reset uses live scale, and an orb
+  press begins WM dragging only after movement. Window titles omit user drafts and debug text.
+  See the [installed ergonomics checks](docs/ergonomics-audit-2026-09-25.md); these are not full
+  screen-reader or human-comfort acceptance.
+- Regression fixtures now compare constant dictionary contents rather than addresses and
+  compare runtime-report dispatch against fixed ready/unready states. Development instructions
+  distinguish toolchain visibility, required feature flags and short Unix-socket fixture paths.
+
+See the [0.6.9 release notes](docs/releases/0.6.9.md) for verification and upgrade boundaries.
+Historical reports retain their original test counts and installation state; source publication
+does not update the installed application or establish remote CI/package success.
 
 ### 0.6.8 — Bilingual candidate continuity and Linux QA
 

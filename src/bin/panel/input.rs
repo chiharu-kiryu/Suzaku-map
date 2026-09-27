@@ -130,6 +130,8 @@ pub(super) fn handle_panel_window_event(
                     event.repeat,
                 ) {
                     state.chrome.settings_open = true;
+                    state.chrome.settings_keyboard_focus = None;
+                    state.chrome.settings_search_focused = false;
                     if show_reference {
                         state.chrome.settings_category =
                             suzaku_map::ime::gpu::SettingsCategory::Shortcuts;
@@ -190,6 +192,16 @@ pub(super) fn handle_panel_window_event(
                     state.window.request_redraw();
                     return;
                 }
+                if state.kind == PanelWindowKind::Settings || state.chrome.settings_open {
+                    state.handle_settings_key(
+                        &event.logical_key,
+                        event.text.as_deref(),
+                        event.repeat,
+                    );
+                    state.last_scene = None;
+                    state.window.request_redraw();
+                    return;
+                }
                 if !super::keyboard::text_modifiers_allowed(state.modifiers) {
                     return;
                 }
@@ -217,53 +229,7 @@ pub(super) fn handle_panel_window_event(
                     return;
                 }
 
-                if state.kind == PanelWindowKind::Settings
-                    || (state.kind == PanelWindowKind::Main && state.chrome.settings_open)
                 {
-                    match event.physical_key {
-                        PhysicalKey::Code(KeyCode::Escape) => {
-                            state.chrome.settings_open = false;
-                        }
-                        PhysicalKey::Code(KeyCode::PageUp) => {
-                            state.current_scene();
-                            state.adjust_settings_scroll(-34.0);
-                            state.window.request_redraw();
-                            return;
-                        }
-                        PhysicalKey::Code(KeyCode::PageDown) => {
-                            state.current_scene();
-                            state.adjust_settings_scroll(34.0);
-                            state.window.request_redraw();
-                            return;
-                        }
-                        PhysicalKey::Code(KeyCode::Home) => {
-                            state.current_scene();
-                            state.set_settings_scroll_offset(0.0);
-                            state.window.request_redraw();
-                            return;
-                        }
-                        PhysicalKey::Code(KeyCode::End) => {
-                            state.current_scene();
-                            state.set_settings_scroll_offset(
-                                state.interaction.settings_scroll_max_offset,
-                            );
-                            state.window.request_redraw();
-                            return;
-                        }
-                        PhysicalKey::Code(KeyCode::Backspace) => {
-                            state.backspace_settings_search_text();
-                            state.window.request_redraw();
-                            return;
-                        }
-                        _ => {}
-                    }
-
-                    if let Some(text) = event.text.as_deref() {
-                        state.handle_settings_search_text(text);
-                        state.window.request_redraw();
-                        return;
-                    }
-                } else {
                     // Chords such as AltGr are text only, never tab/voice commands.
                     if !state.modifiers.is_empty() {
                         return;

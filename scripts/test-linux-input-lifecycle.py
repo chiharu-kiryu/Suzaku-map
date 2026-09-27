@@ -149,14 +149,13 @@ try:
         old = setup("en", state)
         for _ in range(2):
             companion = qa.spawn([str(qa.bins / "panel")])
-            qa.wait(lambda: any("Suzaku XR Candidate Panel" in title and
-                    "draft: " + old["seed"] + " |" in title for _, title in x.windows()),
+            qa.wait(lambda: qa.companion_frame().get("draft") == old["seed"],
                     "new companion receives current draft without another key", timeout=30)
             assert x.focused() == window and qa.watch.latest == old
             qa.save_document(x, document, "")
             companion.terminate()
             companion.wait(timeout=3)
-            qa.wait(lambda: x.window("Suzaku XR Candidate Panel") is None, "owned companion closed")
+            qa.wait(lambda: x.window("Suzaku · Input") is None, "owned companion closed")
         x.key(qa.IBus.KEY_Escape)
         if state == "compose":
             x.key(qa.IBus.KEY_Escape)
@@ -168,8 +167,7 @@ try:
     companion = qa.spawn([str(qa.bins / "panel")])
     for state in ["draft", "adopted", "compose"]:
         old = setup("en", state)
-        qa.wait(lambda: any("Suzaku XR Candidate Panel" in title and
-                "draft: " + old["seed"] + " |" in title for _, title in x.windows()),
+        qa.wait(lambda: qa.companion_frame().get("draft") == old["seed"],
                 "companion mirrors draft before host exit", timeout=30)
         qa.watch.sock.close()
         qa.watch = None
@@ -194,8 +192,7 @@ try:
         x.type("fresh")
         qa.wait(lambda: qa.seed_is("fresh"), "real application reconnected to new host")
         popup.expect_page()
-        qa.wait(lambda: any("Suzaku XR Candidate Panel" in title and "draft: fresh |" in title
-                for _, title in x.windows()), "running companion reconnects without restart")
+        qa.wait(lambda: qa.companion_frame().get("draft") == "fresh", "running companion reconnects without restart")
         fresh = qa.watch.latest.copy()
         forged = f'A{old["host"]} {fresh["revision"]} K0'
         assert qa.command(forged) == b"0", "an earlier host token was accepted"

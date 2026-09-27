@@ -25,8 +25,9 @@ if [[ ${1:-} == --panel-smoke ]]; then
   for ((suzaku_install_attempt=0; suzaku_install_attempt<100; suzaku_install_attempt++)); do
     kill -0 "$suzaku_install_panel_pid" 2>/dev/null || break
     suzaku_install_windows=$(xwininfo -root -tree)
-    if [[ $suzaku_install_windows == *'Suzaku XR Candidate Panel'*'font: system-atlas'*'Noto Sans CJK'* &&
-          $suzaku_install_windows != *'glyphs unavailable'* ]]; then
+    suzaku_install_frame=$(sed -n 's/^Suzaku frame: //p' "$suzaku_install_gui/panel.log" | tail -n 1)
+    if [[ $suzaku_install_windows == *'朱雀 · 输入'* && $suzaku_install_frame == *'"runtime_font":true'* &&
+          $suzaku_install_frame == *'Noto Sans CJK'* && $suzaku_install_frame != *'glyphs unavailable'* ]]; then
       suzaku_install_rendered=1
       break
     fi

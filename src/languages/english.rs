@@ -68,6 +68,9 @@ fn dictionary() -> &'static [Word] {
                     .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
                     .filter(|word| !word.is_empty())
             }))
+            // Additions follow the existing vocabulary/collocations so their
+            // general-prefix ranks do not displace familiar local completions.
+            .chain(lexicon::EXTENDED_WORDS.split_whitespace())
             .enumerate()
             .map(|(rank, text)| Word {
                 text: canonical_word(text),
@@ -724,8 +727,8 @@ mod tests {
 
     #[test]
     fn vocabulary_is_bounded_indexed_and_covers_every_prefix() {
-        assert!(dictionary().len() >= 900, "{}", dictionary().len());
-        assert!(dictionary().len() < 2000);
+        assert!(dictionary().len() >= 3800, "{}", dictionary().len());
+        assert!(dictionary().len() < 4096);
         for pair in dictionary().windows(2) {
             assert!(pair[0].text < pair[1].text);
         }
@@ -735,6 +738,27 @@ mod tests {
             let words = english_sentence_variants(prefix);
             assert!(words.len() >= 2 && words.len() <= 12, "{prefix}: {words:?}");
             assert!(words.iter().all(|word| word.starts_with(prefix)));
+        }
+    }
+
+    #[test]
+    fn authored_additions_are_unique_explicit_word_forms() {
+        let baseline: std::collections::HashSet<_> = lexicon::WORDS
+            .split_whitespace()
+            .map(canonical_word)
+            .collect();
+        let mut additions = std::collections::HashSet::new();
+        for word in lexicon::EXTENDED_WORDS.split_whitespace() {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(!baseline.contains(word), "duplicate baseline word: {word}");
+            assert!(additions.insert(word), "duplicate addition: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        for invented in ["runned", "buyed", "goed", "choosed", "bringed", "writed"] {
+            assert!(!is_known_english_word(invented), "{invented}");
         }
     }
 }

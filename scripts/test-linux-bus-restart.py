@@ -36,10 +36,9 @@ def host_ready():
 
 
 def companion_shows(frame):
-    # The title exposes the selected commit preview, not the raw pinyin/romaji.
+    # The opt-in fixture log observes the selected preview, not raw pinyin/romaji.
     text = frame["candidates"][frame["selected"]]["text"]
-    return any("Suzaku XR Candidate Panel" in title and "draft: " + text + " |" in title
-               for _, title in x.windows())
+    return qa.companion_frame().get("draft") == text
 
 
 try:

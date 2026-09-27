@@ -141,6 +141,39 @@ fn assert_gesture_routing(state: &mut PanelState) {
     state.clear_pointer_hover();
 }
 
+fn assert_scale_button_roundtrip(state: &mut PanelState) {
+    for touch in [false, true] {
+        state.chrome.window_scale = 1.0; // The persisted chrome can lag the live window.
+        for (kind, expected) in [
+            (InteractionKind::DecreaseWindowScale, 0.9),
+            (InteractionKind::ResetWindowScale, 1.0),
+            (InteractionKind::IncreaseWindowScale, 1.1),
+            (InteractionKind::ResetWindowScale, 1.0),
+        ] {
+            let scene = state.current_scene();
+            let rect = scene
+                .interactive_targets
+                .iter()
+                .find(|target| target.kind == kind)
+                .expect("live scale exposes the enabled button")
+                .rect;
+            let cursor = (rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.5);
+            assert_eq!(scene.hit_interaction(cursor.0, cursor.1), Some(kind));
+            state.last_scene = Some(scene);
+            state.cursor_position = Some(cursor);
+            state.begin_primary_press(touch);
+            state.complete_primary_release(touch);
+            assert!(
+                (state.window_scale - expected).abs() < 0.001,
+                "{kind:?} did not apply live scale {expected}; touch={touch}"
+            );
+        }
+    }
+    println!(
+        "PASS: actual scale targets shrink/grow and reset to 100% through mouse/touch dispatch, even with stale appearance state"
+    );
+}
+
 impl ApplicationHandler for FitProbe {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = Arc::new(
@@ -160,6 +193,7 @@ impl ApplicationHandler for FitProbe {
         state.chrome.seed_text = "hel".into();
         state.engine.seed("hel");
         state.refresh_composition_candidates();
+        assert_scale_button_roundtrip(&mut state);
         self.state = Some(state);
     }
 
@@ -186,6 +220,27 @@ impl ApplicationHandler for FitProbe {
                     return;
                 }
             } else {
+                // Default focusing desktop path: a compact click is not a WM drag.
+                state.runs_without_window_focus = false;
+                state.apply_compact_mode(true);
+                state.last_compact_toggle = None;
+                let scene = state.current_scene();
+                let rect = scene
+                    .interactive_targets
+                    .iter()
+                    .find(|target| target.kind == InteractionKind::ToggleCompactMode)
+                    .unwrap()
+                    .rect;
+                state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+                state.last_scene = Some(scene);
+                state.begin_primary_press(false);
+                assert!(state.chrome.compact_mode);
+                state.complete_primary_release(false);
+                assert!(
+                    !state.chrome.compact_mode,
+                    "a stationary orb click expands on the focusing path"
+                );
+                state.runs_without_window_focus = true;
                 // Standalone settings use the same routing, but keep their own controls.
                 state.kind = PanelWindowKind::Settings;
                 assert_gesture_routing(state);

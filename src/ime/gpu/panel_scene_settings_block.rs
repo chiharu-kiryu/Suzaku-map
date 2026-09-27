@@ -11,4 +11,5 @@ if !chrome.settings_open || settings_panel_h <= 8.0 {
     interactive_targets.extend(settings.interactive_targets);
     settings_option_truncated = settings.settings_option_truncated;
     settings_scroll_metadata = settings.settings_scroll_metadata;
+    settings_focus_targets = settings.settings_focus_targets;
 }

@@ -674,6 +674,7 @@ impl WgpuCandidateRenderer {
         let mut text_sections = Vec::new();
         let hit_targets = Vec::new();
         let mut interactive_targets = Vec::new();
+        let mut settings_focus_targets = Vec::new();
         let mut settings_option_truncated = Vec::new();
         let interaction_state = |kind: InteractionKind| {
             (
@@ -1105,6 +1106,7 @@ impl WgpuCandidateRenderer {
                 ));
             }
             interactive_targets.push(InteractiveTarget { kind, rect });
+            settings_focus_targets.push(InteractiveTarget { kind, rect });
             let layout = TextBlock {
                 text: ui.tr(category.label()).into(),
                 origin: [0.0; 2],
@@ -1132,6 +1134,27 @@ impl WgpuCandidateRenderer {
         });
 
         let settings_content_top = search_bar_y + search_bar_h + 8.0;
+        settings_focus_targets.push(InteractiveTarget {
+            kind: InteractionKind::SettingsSearchInput,
+            rect: [
+                search_bar_x,
+                search_bar_y,
+                search_bar_w
+                    - if clear_search_visible {
+                        search_clear_size
+                    } else {
+                        0.0
+                    },
+                search_bar_h,
+            ],
+        });
+        if clear_search_visible {
+            settings_focus_targets.push(InteractiveTarget {
+                kind: InteractionKind::SettingsSearchClear,
+                rect: clear_button_rect,
+            });
+        }
+        let content_focus_start = settings_focus_targets.len();
         let settings_content_bottom = panel_y + panel_height - 8.0;
         let visible_content_height = (settings_content_bottom - settings_content_top).max(0.0);
         let max_scroll_offset = (estimated_height - visible_content_height).max(0.0);
@@ -1302,6 +1325,22 @@ impl WgpuCandidateRenderer {
             }
 
             let row_y = content_y + section_margin;
+            let toggle_rect = [
+                panel_x + 10.0 * ui_scale,
+                row_y,
+                if stacked_labels {
+                    chip_area_width
+                } else {
+                    chip_start_x - panel_x - 16.0 * ui_scale
+                },
+                row_height,
+            ];
+            if !is_searching {
+                settings_focus_targets.push(InteractiveTarget {
+                    kind: InteractionKind::ToggleSettingsSection(*section_index),
+                    rect: toggle_rect,
+                });
+            }
             if visible_in_settings(row_y, row_height) {
                 let toggle_size = 16.0 * ui_scale;
                 append_chevron_icon_quads(
@@ -1318,16 +1357,7 @@ impl WgpuCandidateRenderer {
                 if !is_searching {
                     interactive_targets.push(InteractiveTarget {
                         kind: InteractionKind::ToggleSettingsSection(*section_index),
-                        rect: interaction_hit_rect([
-                            panel_x + 10.0 * ui_scale,
-                            row_y,
-                            if stacked_labels {
-                                chip_area_width
-                            } else {
-                                chip_start_x - panel_x - 16.0 * ui_scale
-                            },
-                            row_height,
-                        ]),
+                        rect: interaction_hit_rect(toggle_rect),
                     });
                 }
             }
@@ -1353,6 +1383,9 @@ impl WgpuCandidateRenderer {
                         chip_y += row_height + chip_gap_y;
                     }
                     let rect = [chip_x, chip_y, chip_w, row_height];
+                    if !read_only {
+                        settings_focus_targets.push(InteractiveTarget { kind: *kind, rect });
+                    }
                     let rect_visible = visible_in_settings(chip_y, row_height);
                     let visual_rect = animated_rect(rect, hovered, pressed);
 
@@ -1480,6 +1513,29 @@ impl WgpuCandidateRenderer {
         }
         interactive_targets.retain(|target| target.rect[2] > 0.0 && target.rect[3] > 0.0);
 
+        let content_focus_end = settings_focus_targets.len();
+        if let Some(retry) = interactive_targets
+            .iter()
+            .find(|target| target.kind == InteractionKind::RetrySaveSettings)
+        {
+            settings_focus_targets.push(*retry);
+        }
+        settings_focus_targets.push(InteractiveTarget {
+            kind: InteractionKind::SettingsToggle,
+            rect: close_rect,
+        });
+        if let Some((index, target)) = settings_focus_targets
+            .iter()
+            .enumerate()
+            .find(|(_, target)| Some(target.kind) == chrome.settings_keyboard_focus)
+        {
+            let mut ring = CandidateQuad::outline(target.rect, accent, settings_chip_radius, 2.0);
+            if (content_focus_start..content_focus_end).contains(&index) {
+                ring.clip_rect = Some(content_viewport);
+            }
+            quads.push(ring);
+        }
+
         text_sections.push(TextSection {
             role: TextRole::SettingLabel,
             layouts: label_layouts,
@@ -1496,6 +1552,7 @@ impl WgpuCandidateRenderer {
             text_sections,
             hit_targets,
             interactive_targets,
+            settings_focus_targets,
             sentence_candidate_truncated: Vec::new(),
             next_token_candidate_truncated: Vec::new(),
             handwriting_candidate_truncated: Vec::new(),

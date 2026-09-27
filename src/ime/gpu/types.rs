@@ -342,6 +342,8 @@ pub struct PanelChromeState {
     pub settings_scroll_offset: f32,
     pub settings_search_query: String,
     pub settings_search_focused: bool,
+    /// Runtime-only keyboard focus, independent from selection and pointer hover.
+    pub settings_keyboard_focus: Option<InteractionKind>,
     pub settings_collapsed_sections: Vec<bool>,
 }
 
@@ -398,6 +400,7 @@ impl Default for PanelChromeState {
             settings_scroll_offset: 0.0,
             settings_search_query: String::new(),
             settings_search_focused: false,
+            settings_keyboard_focus: None,
             settings_collapsed_sections: Vec::new(),
         }
     }
@@ -612,6 +615,8 @@ pub struct RenderScene {
     pub handwriting_candidate_truncated: Vec<usize>,
     pub settings_option_truncated: Vec<InteractionKind>,
     pub settings_scroll_metadata: Option<SettingsScrollMetadata>,
+    /// Tab order with unclipped rectangles, including controls outside the scroll viewport.
+    pub settings_focus_targets: Vec<InteractiveTarget>,
     pub labels: Vec<String>,
     pub selected_label: Option<String>,
     pub draft_text: String,
@@ -686,6 +691,9 @@ impl RenderScene {
             shift(&mut target.rect);
         }
         for target in &mut self.interactive_targets {
+            shift(&mut target.rect);
+        }
+        for target in &mut self.settings_focus_targets {
             shift(&mut target.rect);
         }
         if let Some(scroll) = &mut self.settings_scroll_metadata {

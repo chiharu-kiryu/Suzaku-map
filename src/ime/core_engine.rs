@@ -741,6 +741,30 @@ impl XRTabletImeEngine {
     }
 
     fn compose_candidates_with_plugin(&self, plugin: &dyn LanguagePlugin) -> Vec<Candidate> {
+        // Long English / adopted Chinese drafts only need bounded local tail
+        // work. Do not truncate the actual seed, re-normalize the preserved
+        // prefix, carry unrelated committed context into this window, or relax
+        // request_prediction's independent whole-draft model budget.
+        if self.state.seed_text.len() <= super::companion::MAX_TEXT_BYTES
+            && let Some((prefix, tail)) = crate::languages::draft::long_local_tail(
+                &self.state.active_language,
+                &self.state.seed_text,
+            )
+            && let Some(base) =
+                plugin.direct_candidates_with_context(tail, "", self.state.confidence)
+        {
+            return super::candidate_mix::offline_long_draft(
+                &self.state.active_language,
+                prefix,
+                tail,
+                base,
+                if self.state.degraded {
+                    3
+                } else {
+                    self.config.max_candidates
+                },
+            );
+        }
         if self.state.expansions.is_empty() {
             // Printable whitespace is a real accepted preedit even though it
             // has no words. It must remain losslessly committable, not leak

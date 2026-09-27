@@ -28,15 +28,34 @@ bash scripts/test-linux-ci.sh ui
 Run the paired offline input-quality gates without a model:
 
 ```bash
-cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality
+cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
 ```
 
 The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
 cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
 commit checks. These are project-authored regressions, not independent corpus accuracy. The native
-`ibus` gate adds 20 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
+`ibus` gate adds 36 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
 64 literal-boundary workflows using owned-prefix key continuation and companion replacement.
 Chinese literal padding, non-Pinyin case and line boundaries also have direct-engine regressions.
+The expanded vocabulary gate covers explicit word forms, homophones and authored sentences that
+must stay on page one even when a larger lexicon adds more Pinyin branches. Use `--all-features`
+for these project checks, matching CI; bare `cargo test` does not enable the required GPU/platform
+modules. If a restricted agent session reports an unconfigured Rust installation, first compare
+`rustup show` and `cargo --version` with the host terminal before reinstalling or changing defaults.
+The tool runner itself reporting a missing executable is also distinct from a project build error;
+check the session's filesystem access before changing the host Rust installation.
+For Codex sessions, see the official [sandboxing documentation](https://learn.chatgpt.com/docs/sandboxing).
+
+Unix socket fixtures need short paths. If an IDE supplies a long `TMPDIR`, use a fresh private
+directory for that test process (do not overwrite the shell's persistent environment):
+
+```bash
+suzaku_test_tmp=$(mktemp -d /tmp/szqa.XXXXXX)
+env TMPDIR="$suzaku_test_tmp" TMP="$suzaku_test_tmp" TEMP="$suzaku_test_tmp" \
+  cargo test --locked --all-features -- --test-threads=1
+rmdir -- "$suzaku_test_tmp" # Only removes the empty directory after fixture cleanup.
+```
+
 Tone-number checks cover sentence punctuation/closing quotes without stripping decimal, time,
 grouped-number or fraction digits; see the [tone-boundary audit](docs/bug-audit-pinyin-tone-punctuation-2026-09-24.md).
 Core multiline tests do not relax the native protocol's control-character restrictions.

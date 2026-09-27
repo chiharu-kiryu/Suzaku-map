@@ -431,12 +431,14 @@ fn bounded_pinyin_search_finishes_all_segments_before_its_existing_length_limit(
             Some(expected.as_str())
         );
     }
-    let prefix = "你".repeat(251);
-    let mut engine = engine(&format!("{prefix}nihao!"));
-    let literal = format!("{prefix}nihao!");
+    // An unbroken, unconverted reading still has the same bounded search.
+    // Adopted Han prefixes use the separate long-draft tail window instead.
+    let prefix = "ni".repeat(128);
+    let mut engine = engine(&format!("{prefix}n"));
+    let literal = format!("{prefix}n");
     assert_eq!(literal.chars().count(), 257);
     assert_eq!(engine.candidates().len(), 1);
     assert_eq!(engine.candidates()[0].text, literal);
-    engine.seed(format!("{prefix}nihao"));
-    assert_eq!(engine.candidates()[0].text, format!("{prefix}你好"));
+    engine.seed(prefix);
+    assert_eq!(engine.candidates()[0].text, "你".repeat(128));
 }

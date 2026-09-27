@@ -135,6 +135,10 @@ pub fn offline(
     if seed.chars().count() > MAX_PREDICTION_SEED_CHARS {
         return vec![candidate(seed.into(), CandidateKind::Literal, 100.0)];
     }
+    let is_chinese = matches!(
+        BuiltinLanguage::resolve(language),
+        Some(BuiltinLanguage::ChineseSimplified)
+    );
     let mut pool: Vec<_> = base
         .into_iter()
         .enumerate()
@@ -148,6 +152,11 @@ pub fn offline(
                 100.0
             } else if kind == CandidateKind::Literal {
                 55.0
+            } else if is_chinese && kind == CandidateKind::Sentence {
+                // Alternative Pinyin paths such as 你号/呢好 are not authored
+                // continuations. Keep them below explicit local/model sentences
+                // without displacing the primary conversion or known-word choices.
+                74.0 - index as f32 * 0.5
             } else {
                 94.0 - index as f32 * 2.0
             };
@@ -184,6 +193,54 @@ fn pinned_count(language: &str, pool: &[Candidate]) -> usize {
     } else {
         pool.len().min(1)
     }
+}
+
+/// Reattach the exact frozen prefix after bounded local candidate generation.
+/// Large full-text payloads also need a smaller list: the native mirror sends
+/// both text and label, and JSON may double quote/backslash-heavy draft bytes.
+/// Reserve the literal choice before adding alternatives so a usable draft
+/// never makes the entire bounded companion frame disappear.
+pub(crate) fn offline_long_draft(
+    language: &str,
+    prefix: &str,
+    tail: &str,
+    base: Vec<Candidate>,
+    limit: usize,
+) -> Vec<Candidate> {
+    use super::companion::{MAX_FRAME_BYTES, MAX_TEXT_BYTES};
+    let seed = format!("{prefix}{tail}");
+    let pool: Vec<_> = offline(language, tail, "", base, limit)
+        .into_iter()
+        .map(|mut item| {
+            item.text.insert_str(0, prefix);
+            item.label = item.text.clone();
+            item
+        })
+        .collect();
+    // Include a conservative allowance for metadata and the <=42-character
+    // annotated preview. No text is truncated to fit these transport bounds.
+    let text_cost = |text: &str| serde_json::to_string(text).unwrap().len();
+    let cost = |item: &Candidate| text_cost(&item.text) + text_cost(&item.label) + 1024;
+    let literal = pool
+        .iter()
+        .find(|item| item.text == seed)
+        .cloned()
+        .unwrap_or_else(|| candidate(seed.clone(), CandidateKind::Literal, 100.0));
+    let mut remaining = MAX_FRAME_BYTES.saturating_sub(text_cost(&seed) + 1024 + cost(&literal));
+    let mut output = Vec::new();
+    for item in pool {
+        if item.text == seed {
+            output.push(item);
+        } else if item.text.len() <= MAX_TEXT_BYTES && cost(&item) <= remaining {
+            remaining -= cost(&item);
+            output.push(item);
+        }
+    }
+    if !output.iter().any(|item| item.text == seed) {
+        output.truncate(limit.max(1).saturating_sub(1));
+        output.push(literal);
+    }
+    output
 }
 
 pub fn merge_model(
@@ -301,7 +358,7 @@ pub fn display_label(
     display_label_for_seed("", "", text, kind, source, weight)
 }
 
-/// English long drafts elide only text shared with the preedit, keeping the
+/// English/Chinese long drafts elide only text shared with the preedit, keeping the
 /// changing word/continuation visible. Replacement and commit text stay untouched.
 pub fn display_label_for_seed(
     language: &str,
@@ -334,10 +391,34 @@ pub fn display_label_for_seed(
     let room = PREVIEW_CHARS.saturating_sub(suffix.chars().count());
     let preview = if language == "en" {
         english_preview(seed, text, room)
+    } else if language == "zh-Hans" {
+        chinese_preview(seed, text, room)
     } else {
         bounded_preview(text, room)
     };
     format!("{preview}{suffix}")
+}
+
+fn chinese_preview(seed: &str, text: &str, room: usize) -> String {
+    let shared = seed
+        .chars()
+        .zip(text.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    if text.chars().count() <= room || shared <= room / 2 {
+        return bounded_preview(text, room);
+    }
+    // Han text need not contain whitespace. Retain a little shared context,
+    // then the differing conversion/continuation; never elide a rewritten start.
+    let start = text
+        .char_indices()
+        .skip(shared.saturating_sub(room / 2))
+        .find(|(_, ch)| unicode_width::UnicodeWidthChar::width(*ch) != Some(0))
+        .map_or(text.len(), |(index, _)| index);
+    format!(
+        "…{}",
+        bounded_preview(&text[start..], room.saturating_sub(1))
+    )
 }
 
 fn bounded_preview(text: &str, room: usize) -> String {

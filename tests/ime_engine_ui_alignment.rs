@@ -475,3 +475,135 @@ fn empty_settings_search_explains_that_no_options_match() {
         0.0
     );
 }
+
+#[test]
+fn settings_tab_order_includes_offscreen_controls_but_not_readonly_or_filtered_rows() {
+    use suzaku_map::ime::gpu::SettingsCategory;
+    use suzaku_map::ui::UiLanguage;
+    for ui_language in UiLanguage::ALL {
+        for width in [400.0, 620.0] {
+            let renderer = WgpuCandidateRenderer::new(width, 270.0);
+            let mut chrome = PanelChromeState {
+                ui_language,
+                ..Default::default()
+            };
+            for category in SettingsCategory::ALL {
+                chrome.settings_category = category;
+                let scene = renderer.build_settings_scene(&chrome, None);
+                let targets = &scene.settings_focus_targets;
+                assert_eq!(
+                    targets[0].kind,
+                    InteractionKind::SetSettingsCategory(SettingsCategory::Appearance)
+                );
+                assert_eq!(
+                    targets.last().unwrap().kind,
+                    InteractionKind::SettingsToggle
+                );
+                for (index, target) in targets.iter().enumerate() {
+                    assert!(
+                        !targets[..index]
+                            .iter()
+                            .any(|other| target.kind == other.kind)
+                    );
+                    assert!(!matches!(
+                        target.kind,
+                        InteractionKind::ShortcutReference(_)
+                            | InteractionKind::DragWindow
+                            | InteractionKind::SettingsScrollTrack
+                            | InteractionKind::SettingsScrollHandle
+                    ));
+                }
+                if category == SettingsCategory::Appearance {
+                    assert!(targets.iter().any(|target| target.rect[1] > 270.0));
+                    assert!(targets.len() > scene.interactive_targets.len());
+                }
+            }
+            chrome.settings_search_query = "not-a-setting".into();
+            let scene = renderer.build_settings_scene(&chrome, None);
+            assert_eq!(
+                scene.settings_focus_targets.len(),
+                SettingsCategory::ALL.len() + 3
+            );
+            chrome.settings_search_query.clear();
+            chrome.settings_category = SettingsCategory::Appearance;
+            chrome.settings_collapsed_sections = vec![true; 40];
+            let scene = renderer.build_settings_scene(&chrome, None);
+            assert!(scene.settings_focus_targets.iter().all(|target| matches!(
+                target.kind,
+                InteractionKind::SetSettingsCategory(_)
+                    | InteractionKind::ToggleSettingsSection(_)
+                    | InteractionKind::SettingsSearchInput
+                    | InteractionKind::SettingsToggle
+            )));
+        }
+    }
+}
+
+#[test]
+fn settings_keyboard_focus_is_visible_without_changing_the_selected_preference() {
+    let renderer = WgpuCandidateRenderer::new(620.0, 500.0);
+    let mut chrome = PanelChromeState::default();
+    let before = renderer.build_settings_scene(&chrome, None);
+    let kind = InteractionKind::SetTextScale(DisplayTextScale::Large);
+    chrome.settings_keyboard_focus = Some(kind);
+    let after = renderer.build_settings_scene(&chrome, None);
+    assert_eq!(chrome.text_scale, DisplayTextScale::Medium);
+    assert_eq!(after.interactive_targets, before.interactive_targets);
+    assert_eq!(after.text_sections, before.text_sections);
+    assert_eq!(after.quads.len(), before.quads.len() + 1);
+    let target = after
+        .settings_focus_targets
+        .iter()
+        .find(|target| target.kind == kind)
+        .unwrap();
+    assert_eq!(after.quads.last().unwrap().rect, target.rect);
+    assert!(after.quads.last().unwrap().clip_rect.is_some());
+}
+
+#[test]
+fn header_controls_have_large_separate_targets_without_covering_the_editor() {
+    let engine = XRTabletImeEngine::new(EngineConfig::default());
+    let snapshot = engine.snapshot();
+    for width in [400.0, 620.0, 900.0, 1280.0] {
+        for pointer_target_slop_tenths in [0, 50, 200] {
+            let chrome = PanelChromeState {
+                window_scale: 0.8,
+                pointer_target_slop_tenths,
+                ..Default::default()
+            };
+            let scene = WgpuCandidateRenderer::new(width, 520.0)
+                .build_panel_scene(&snapshot, &chrome, None, None, None, None);
+            let get = |kind| {
+                scene
+                    .interactive_targets
+                    .iter()
+                    .find(|target| target.kind == kind)
+                    .unwrap()
+                    .rect
+            };
+            let kinds = [
+                InteractionKind::DecreaseWindowScale,
+                InteractionKind::ResetWindowScale,
+                InteractionKind::IncreaseWindowScale,
+                InteractionKind::ToggleCompactMode,
+                InteractionKind::ClosePanel,
+            ];
+            let editor = get(InteractionKind::SeedInput);
+            let mut previous_right = 0.0;
+            for kind in kinds {
+                let rect = get(kind);
+                assert!(
+                    rect[2] >= 24.0 && rect[3] >= 24.0,
+                    "{width} {kind:?}: {rect:?}"
+                );
+                assert!(rect[0] > previous_right);
+                assert!(rect[1] + rect[3] <= editor[1] + 0.01);
+                assert_eq!(
+                    scene.hit_interaction(rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0),
+                    Some(kind)
+                );
+                previous_right = rect[0] + rect[2];
+            }
+        }
+    }
+}

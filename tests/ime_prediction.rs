@@ -392,6 +392,45 @@ fn large_pasted_input_avoids_token_recursion_and_is_not_sent_to_a_model() {
 }
 
 #[test]
+fn long_local_tail_candidates_do_not_expand_the_model_request_budget() {
+    for (language, prefix, tail, completed) in [
+        ("en", "note ".repeat(60), "hel", "hello"),
+        ("zh-Hans", "你".repeat(260), "nihao", "你好"),
+    ] {
+        for mixed in [false, true] {
+            let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
+                default_language: language.into(),
+                ..Default::default()
+            });
+            if mixed {
+                engine.enable_ibus_candidate_mix();
+            }
+            engine.seed(format!("{prefix}{tail}"));
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .any(|c| c.text == format!("{prefix}{completed}"))
+            );
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .all(|c| c.source == suzaku_map::ime::candidate_mix::CandidateSource::Local)
+            );
+            assert_eq!(engine.prediction_status(), PredictionStatus::Idle);
+            assert!(requests.recv_timeout(Duration::from_millis(180)).is_err());
+            engine.seed(tail);
+            let request = requests.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert_eq!(request.seed_text, tail);
+            assert!(request.context_before_cursor.is_empty());
+            replies.send(answer(completed)).unwrap();
+            settle(&mut engine);
+        }
+    }
+}
+
+#[test]
 fn legacy_next_word_environment_cannot_trigger_model_io_from_previews() {
     const CHILD: &str = "SUZAKU_IME_TEST_PREVIEW_CHILD";
     if std::env::var_os(CHILD).is_some() {

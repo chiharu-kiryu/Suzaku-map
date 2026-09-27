@@ -101,8 +101,20 @@ fn assert_shortcut_preferences(
             .rect;
         settings.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
         settings.last_scene = Some(scene);
-        settings.begin_primary_press(false);
-        settings.complete_primary_release(false);
+        settings.chrome.settings_keyboard_focus = Some(target);
+        settings.chrome.settings_search_focused = false;
+        let generation = settings.chrome.shortcut_edit_generation;
+        settings.handle_settings_key(
+            &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Enter),
+            None,
+            true,
+        );
+        assert_eq!(settings.chrome.shortcut_edit_generation, generation);
+        settings.handle_settings_key(
+            &winit::keyboard::Key::Named(winit::keyboard::NamedKey::Enter),
+            None,
+            false,
+        );
         assert_eq!(settings.chrome.shortcut_profile, profile);
         let id = settings.window.id();
         app.window_event(event_loop, id, WindowEvent::RedrawRequested);
@@ -133,7 +145,127 @@ fn assert_shortcut_preferences(
         );
     }
     println!(
-        "PASS: shortcut profile clicks synchronize both windows, acknowledge success and roll back failure without touching drafts or translations"
+        "PASS: keyboard profile confirmation synchronizes both windows, ignores key repeats, acknowledges success and rolls back failure without touching drafts or translations"
+    );
+}
+
+fn assert_settings_keyboard(settings: &mut PanelState) {
+    use suzaku_map::ime::gpu::SettingsCategory;
+    use suzaku_map::ui::UiLanguage;
+    use winit::{
+        event::Ime,
+        keyboard::{Key, ModifiersState, NamedKey},
+    };
+    let original = settings.chrome.clone();
+    let original_size = settings.size;
+    let original_focus = settings.is_focused;
+    settings.set_window_focus(true);
+    settings.resize(400, 270);
+    for ui_language in UiLanguage::ALL {
+        settings.chrome = original.clone();
+        settings.chrome.ui_language = ui_language;
+        settings.chrome.settings_category = SettingsCategory::Appearance;
+        settings.chrome.settings_search_query.clear();
+        settings.chrome.settings_search_focused = false;
+        settings.chrome.settings_keyboard_focus = None;
+        settings.chrome.settings_scroll_offset = 0.0;
+        let preferences = PersistedDisplaySettings::from(&settings.chrome);
+        let targets = settings.current_scene().settings_focus_targets;
+        let cursor = settings.cursor_position;
+        for target in &targets {
+            settings.handle_settings_key(&Key::Named(NamedKey::Tab), None, false);
+            assert_eq!(settings.chrome.settings_keyboard_focus, Some(target.kind));
+            assert_eq!(
+                PersistedDisplaySettings::from(&settings.chrome),
+                preferences
+            );
+            let scene = settings.current_scene();
+            let visible = scene
+                .interactive_targets
+                .iter()
+                .find(|item| item.kind == target.kind)
+                .expect("focused control is scrolled into view");
+            assert!(visible.rect[2] > 0.0 && visible.rect[3] > 0.0);
+        }
+        assert_eq!(
+            settings.cursor_position, cursor,
+            "keyboard navigation must not move the pointer"
+        );
+        assert!(settings.chrome.settings_scroll_offset > 0.0);
+        settings.handle_settings_key(&Key::Named(NamedKey::Tab), None, false);
+        assert_eq!(
+            settings.chrome.settings_keyboard_focus,
+            Some(targets[0].kind)
+        );
+        settings.modifiers = ModifiersState::SHIFT;
+        settings.handle_settings_key(&Key::Named(NamedKey::Tab), None, false);
+        assert_eq!(
+            settings.chrome.settings_keyboard_focus,
+            Some(targets.last().unwrap().kind)
+        );
+        settings.modifiers = ModifiersState::empty();
+        settings.handle_settings_key(&Key::Named(NamedKey::Tab), None, false);
+        settings.handle_settings_key(&Key::Named(NamedKey::ArrowRight), None, false);
+        assert_eq!(
+            settings.chrome.settings_category,
+            SettingsCategory::Appearance
+        );
+        settings.handle_settings_key(&Key::Named(NamedKey::Enter), None, true);
+        assert_eq!(
+            settings.chrome.settings_category,
+            SettingsCategory::Appearance
+        );
+        settings.handle_settings_key(&Key::Named(NamedKey::Enter), None, false);
+        assert_eq!(settings.chrome.settings_category, SettingsCategory::Input);
+        settings.handle_settings_key(&Key::Named(NamedKey::Space), Some(" "), false);
+        assert!(settings.chrome.settings_search_query.is_empty());
+
+        settings.modifiers = ModifiersState::CONTROL;
+        settings.handle_settings_key(&Key::Character("f".into()), Some("f"), false);
+        settings.modifiers = ModifiersState::empty();
+        assert!(settings.chrome.settings_search_focused);
+        settings.handle_settings_key(&Key::Character("Font".into()), Some("Font"), false);
+        settings.handle_settings_key(&Key::Named(NamedKey::Space), Some(" "), false);
+        assert_eq!(settings.chrome.settings_search_query, "Font ");
+        settings.handle_settings_key(&Key::Named(NamedKey::Enter), Some("\r"), false);
+        assert_eq!(
+            PersistedDisplaySettings::from(&settings.chrome),
+            preferences
+        );
+        settings.handle_settings_key(&Key::Named(NamedKey::Backspace), None, true);
+        assert_eq!(settings.chrome.settings_search_query, "Font");
+        settings.sync_text_input_state();
+        settings.handle_ime_event(Ime::Preedit("拼".into(), None));
+        assert!(settings.text_input.composing());
+        let focus = settings.chrome.settings_keyboard_focus;
+        settings.handle_settings_key(&Key::Named(NamedKey::Tab), None, false);
+        assert_eq!(settings.chrome.settings_keyboard_focus, focus);
+        settings.handle_ime_event(Ime::Preedit(String::new(), None));
+        settings.handle_settings_key(&Key::Named(NamedKey::Tab), None, false);
+        assert_eq!(
+            settings.chrome.settings_keyboard_focus,
+            Some(InteractionKind::SettingsSearchClear)
+        );
+        settings.handle_settings_key(&Key::Named(NamedKey::Space), Some(" "), false);
+        assert!(settings.chrome.settings_search_query.is_empty());
+        assert!(settings.chrome.settings_search_focused);
+        settings.chrome.settings_keyboard_focus =
+            Some(InteractionKind::SetTextScale(DisplayTextScale::Large));
+        settings.chrome.settings_search_focused = false;
+        settings.chrome.settings_search_query = "no-such-setting".into();
+        settings.handle_settings_key(&Key::Named(NamedKey::Enter), None, false);
+        assert_eq!(
+            PersistedDisplaySettings::from(&settings.chrome),
+            preferences,
+            "filtered-out controls cannot activate"
+        );
+    }
+    settings.chrome = original;
+    settings.set_window_focus(original_focus);
+    settings.resize(original_size.width, original_size.height);
+    settings.last_scene = None;
+    println!(
+        "PASS: keyboard focus wraps, scrolls across eight languages, never edits while navigating, owns search/IME text and rejects stale or repeated activation"
     );
 }
 
@@ -152,6 +284,7 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
         );
         app.open_settings(event_loop);
         assert_controls(&app, LlmTemperaturePreset::Expressive);
+        assert_settings_keyboard(app.settings.as_mut().unwrap());
 
         // Real Chinese labels, pointer hit testing, persistence and window-to-window sync.
         for theme in [

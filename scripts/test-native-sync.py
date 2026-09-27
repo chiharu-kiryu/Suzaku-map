@@ -879,8 +879,8 @@ def check_prediction_length_boundaries(bus):
                     longer = seed + suffix
                     wait(lambda: watch.latest["seed"] == longer, "retain over-budget draft")
                     assert watch.latest["context"] == baseline["context"] and not watch.latest["private"]
-                    assert len(watch.latest["candidates"]) == 1
                     assert watch.latest["candidates"][0]["text"] == longer
+                    assert all(c["source"] == "local" for c in watch.latest["candidates"])
                     assert json.loads(command("S"))["prediction"] == "Idle"
                     assert not action(baseline, "K0")
                     stable = watch.latest
@@ -2577,6 +2577,14 @@ def check_bilingual_core_completion(context, watch, commits):
         ("zh-Hans", "shu ru fa", "输入法", "输入法支持多种语言。"),
         ("zh-Hans", "ji xu", "继续", "继续完善这个功能。"),
         ("zh-Hans", "wo xi huan bei j", "我喜欢北京", "我喜欢北京的文化。"),
+        ("en", "please attach the inv", "please attach the invoice", "please attach the invoice."),
+        ("en", "I'll bring the groc", "I'll bring the groceries", "I'll bring the groceries home."),
+        ("en", "please run the reg", "please run the regression", "please run the regression tests."),
+        ("en", "could we res", "could we reschedule", "could we reschedule the meeting?"),
+        ("zh-Hans", "ni hao", "你好", "你好，很高兴认识你。"),
+        ("zh-Hans", "hui yi", "会议", "会议什么时候开始？"),
+        ("zh-Hans", "fu wu qi", "服务器", "服务器已经启动了。"),
+        ("zh-Hans", "ci ku", "词库", "词库还需要继续扩充。"),
     ]
 
     def adopt(text):
@@ -2613,7 +2621,7 @@ def check_bilingual_core_completion(context, watch, commits):
             assert context.process_key_event(IBus.KEY_Return, 0, 0)
             wait(lambda: commits[before:] == [selected] and not watch.latest["seed"], "bilingual exact single commit")
     assert json.loads(command("Len"))["ok"]
-    print(f"PASS: N47/N50 {len(cases) * 2} English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
+    print(f"PASS: N47/N50 and expanded vocabulary: {len(cases) * 2} English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
 
 
 def check_bilingual_literal_boundaries(context, watch, commits):
@@ -2698,6 +2706,12 @@ def check_long_local_continuations(context, watch, commits, lookup):
         ("zh-Hans", "ni," * 80, "hao", "你," * 80 + "好"),
         ("en", "note " * 25, "hel", "note " * 25 + "hello"),
         ("en", "note " * 49, "hel", "note " * 49 + "hello"),
+        ("en", "note " * 60, "please sen", "note " * 60 + "please send"),
+        ("en", "note " * 1000, "hel", "note " * 1000 + "hello"),
+        ("en", '"\\ ' * 2000, "hel", '"\\ ' * 2000 + "hello"),
+        ("zh-Hans", "你" * 252, "nihao", "你" * 252 + "你好"),
+        ("zh-Hans", "你" * 1000, "bei j", "你" * 1000 + "北京"),
+        ("zh-Hans", "前文。" * 600 + "  ", "ni hao", "前文。" * 600 + "  你好"),
     ]
 
     def setting(language):
@@ -2716,6 +2730,13 @@ def check_long_local_continuations(context, watch, commits, lookup):
         assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
         wait(lambda: watch.latest["seed"] == text, "long-local numeric adoption")
 
+    def type_tail(text):
+        # A real companion reads continuously. This synchronous QA reader must
+        # drain each full long-draft frame too, not become an intentionally slow
+        # subscriber by withholding all reads until the whole word is typed.
+        for character in text:
+            type_seed(context, character)
+
     checked = 0
     for language, prefix, tail, expected in cases:
         setting(language)
@@ -2723,14 +2744,15 @@ def check_long_local_continuations(context, watch, commits, lookup):
             clear()
             before = len(commits)
             seed = prefix + tail
-            assert len(seed) <= 256
+            assert len(seed.encode()) < 8192
             if route == "key-continuation":
                 assert action(watch.latest, "T" + prefix)
                 wait(lambda: watch.latest["seed"] == prefix, "owned long-local prefix")
-                type_seed(context, tail)
+                type_tail(tail)
             else:
                 assert action(watch.latest, "T" + seed)
-            wait(lambda: watch.latest["seed"] == seed, "exact long-local raw spelling")
+            wait(lambda: watch.latest["seed"] == seed,
+                 f"exact long-local raw spelling: {language}/{route}, {len(seed.encode())} bytes")
             assert any(c["text"] == seed for c in watch.latest["candidates"])
             assert all(c["source"] == "local" for c in watch.latest["candidates"])
             if language == "zh-Hans":
@@ -2741,7 +2763,9 @@ def check_long_local_continuations(context, watch, commits, lookup):
             wait(lambda: watch.latest["seed"] == seed, "long-local exact spelling undo")
             adopt(expected)
             suffix, converted = (" de", " 的") if language == "zh-Hans" else (" wo", " world")
-            type_seed(context, suffix)
+            if tail == "please sen":
+                suffix, converted = " me the d", " me the details"
+            type_tail(suffix)
             wait(lambda: watch.latest["seed"] == expected + suffix, "long-local Space and tail continuation")
             adopt(expected + converted)
             assert len(commits) == before
@@ -2752,19 +2776,19 @@ def check_long_local_continuations(context, watch, commits, lookup):
 
     setting("zh-Hans")
     clear()
-    seed = "你" * 251 + "nihao!"
+    seed = "ni" * 128 + "n"
     before = len(commits)
     assert len(seed) == 257 and action(watch.latest, "T" + seed)
     wait(lambda: watch.latest["seed"] == seed, "over-limit local draft")
     assert [c["text"] for c in watch.latest["candidates"]] == [seed]
     assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
     wait(lambda: watch.latest["seed"] == seed[:-1], "shorten to existing 256-character limit")
-    expected = "你" * 251 + "你好"
+    expected = "你" * 128
     assert watch.latest["candidates"][0]["text"] == expected
     assert context.process_key_event(IBus.KEY_Return, 0, 0)
     wait(lambda: commits[before:] == [expected] and not watch.latest["seed"], "commit recovered conversion")
     setting("en")
-    print(f"PASS: N53 {checked} long Chinese/English key/companion workflows preserve conversion, undo and continuation; 257-to-256 recovery remains bounded")
+    print(f"PASS: {checked} long Chinese/English key/companion workflows preserve conversion, undo and continuation; unbroken Pinyin 257-to-256 recovery remains bounded")
 
 
 def check_literal_choice_publication(context, watch, commits, lookup):

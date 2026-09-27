@@ -227,17 +227,33 @@ mod tests {
 
     #[test]
     fn current_runtime_report_matches_runtime_report_for_host_platform() {
-        crate::platform::test_env::with_test_env(|_| {
+        crate::platform::test_env::with_test_env(|env| {
             let platform = host_platform();
-
-            assert_eq!(
-                current_runtime_report(false),
-                runtime_report_for(platform, false)
-            );
-            assert_eq!(
-                current_runtime_report(true),
-                runtime_report_for(platform, true)
-            );
+            // Compare dispatch/report paths against one fixed fixture, not two
+            // live desktop probes that may observe a host starting or stopping.
+            env.set_var("SUZAKU_LINUX_IME_FRAMEWORK", "ibus");
+            for ready in ["0", "1"] {
+                for key in [
+                    "SUZAKU_LINUX_IME_DAEMON_READY",
+                    "SUZAKU_LINUX_IME_REGISTERED",
+                    "SUZAKU_LINUX_IME_RUNTIME_VISIBLE",
+                    "SUZAKU_LINUX_IME_ACTIVE",
+                    "SUZAKU_LINUX_IME_HOST_READY",
+                    "SUZAKU_LINUX_IME_MARKED_TEXT",
+                    "SUZAKU_LINUX_IME_COMMIT",
+                    "SUZAKU_LINUX_IME_NATIVE_CANDIDATE_WINDOW",
+                ] {
+                    env.set_var(key, ready);
+                }
+                assert_eq!(
+                    current_runtime_report(false),
+                    runtime_report_for(platform, false)
+                );
+                assert_eq!(
+                    current_runtime_report(true),
+                    runtime_report_for(platform, true)
+                );
+            }
         });
     }
 

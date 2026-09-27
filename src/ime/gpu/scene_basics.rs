@@ -169,6 +169,7 @@ impl WgpuCandidateRenderer {
             rect: compact_hit_rect,
         }];
         RenderScene {
+            settings_focus_targets: Vec::new(),
             quads,
             text_quads,
             atlas_glyphs,

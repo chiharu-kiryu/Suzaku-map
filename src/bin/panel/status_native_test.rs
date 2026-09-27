@@ -48,7 +48,7 @@ impl ApplicationHandler<PanelUserEvent> for StatusProbe {
             !cold.commit_roundtrip,
             "unknown startup status is conservative"
         );
-        current_panel_companion_dispatch();
+        suzaku_map::platform::panel_companion_dispatch::current_panel_companion_dispatch();
         assert!(
             started.elapsed() < Duration::from_millis(200),
             "cold status query blocked the UI"
