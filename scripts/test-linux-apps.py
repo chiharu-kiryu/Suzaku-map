@@ -489,6 +489,46 @@ def check_gtk(bus, x):
         commit(x)
         save_document(x, document, expected + continued + "\n")
     print("PASS: 8 long Chinese/English tails preserve numeric adoption, exact undo, continued typing and saved text")
+
+    for language, prefix, reading, word, spacing, suffix in [
+        ("zh-Hans", "你" * 252, "ni hao", "你好", "", "，很高兴认识你。"),
+        ("zh-Hans", "你" * 254, "hui yi", "会议", " ", "什么时候开始？"),
+        ("zh-Hans", "前文。", "wo xiang xue xi zhong wen", "我想学习中文", " ", "，请多指教。"),
+        ("en", "note " * 60, "please sen", "please send", " ", "me the details."),
+    ]:
+        clear_document(x, document)
+        revision = watch.latest["revision"]
+        assert json.loads(command("L" + language))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "adopted-sentence language setting")
+        assert command(f'A{watch.latest["host"]} {watch.latest["revision"]} T{prefix}') == b"1"
+        wait(lambda: seed_is(prefix), "owned prefix before physical word adoption")
+        x.type(reading)
+        wait(lambda: seed_is(prefix + reading), "physical spelling before threshold change")
+        choose_number(x, prefix + word)
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(prefix + reading), "restore spelling across local-window threshold")
+        choose_number(x, prefix + word)
+        x.type(spacing)
+        draft = prefix + word + spacing
+        sentence = draft + suffix
+        wait(lambda: seed_is(draft), "word adoption and Space preserve the draft")
+        assert any(c["text"] == sentence and c["kind"] == "sentence" and c["source"] == "local"
+                   for c in watch.latest["candidates"][:6])
+        save_document(x, document, "")
+        x.type(".")
+        wait(lambda: seed_is(draft + "."), "physical punctuation remains editable")
+        assert [c["text"] for c in watch.latest["candidates"]] == [draft + "."]
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(draft), "physical punctuation deletion restores draft")
+        choose_number(x, sentence)
+        save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(draft), "sentence undo restores word and exact spacing")
+        choose_number(x, sentence)
+        commit(x)
+        save_document(x, document, sentence + "\n")
+    print("PASS: N54/N55 4 physical word-to-sentence workflows preserve threshold crossings, punctuation deletion, exact undo and saved text")
+
     revision = watch.latest["revision"]
     assert json.loads(command("Len"))["ok"]
     wait(lambda: watch.latest["revision"] > revision, "English restored after long-tail checks")

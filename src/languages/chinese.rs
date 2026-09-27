@@ -777,64 +777,92 @@ pub(crate) fn is_dictionary_word(text: &str) -> bool {
     PINYIN.iter().any(|word| word.text == text) && text != "你好吗"
 }
 
+const CONTINUATIONS: &[(&str, &[&str])] = &[
+    (
+        "你好",
+        &["你好，很高兴认识你。", "你好，请问有什么可以帮忙？"],
+    ),
+    ("谢谢", &["谢谢你的帮助。", "谢谢，辛苦了。"]),
+    ("请问", &["请问现在方便吗？", "请问可以帮我一下吗？"]),
+    ("我", &["我想了解一下。", "我可以帮忙。"]),
+    ("你", &["你现在方便吗？", "你有什么建议？"]),
+    ("我们", &["我们一起试试看。", "我们可以稍后讨论。"]),
+    ("今天", &["今天天气很好。", "今天有什么安排？"]),
+    ("明天", &["明天见。", "明天再讨论吧。"]),
+    ("中文", &["中文输入很方便。", "中文和英文都可以输入。"]),
+    (
+        "输入法",
+        &["输入法支持多种语言。", "输入法可以提供词句候选。"],
+    ),
+    ("继续", &["继续完善这个功能。", "继续下一步吧。"]),
+    ("可以", &["可以帮我看一下吗？", "可以继续了。"]),
+    ("学习", &["学习一门新的语言。", "学习需要不断练习。"]),
+    ("测试", &["测试一下输入效果。", "测试已经完成。"]),
+    ("再见", &["再见，下次再聊。"]),
+    ("我喜欢北京", &["我喜欢北京的文化。", "我喜欢北京的美食。"]),
+    ("我想学习中文", &["我想学习中文，请多指教。"]),
+    ("早饭", &["早饭吃什么？", "早饭已经准备好了。"]),
+    ("午饭", &["午饭一起吃吧。", "午饭想吃什么？"]),
+    ("晚饭", &["晚饭一起吃吧。", "晚饭后出去散步吧。"]),
+    ("周末", &["周末有什么安排？", "周末一起出去走走吧。"]),
+    ("预约", &["预约已经确认了。", "预约时间可以修改吗？"]),
+    ("订单", &["订单已经确认了。", "订单什么时候发货？"]),
+    ("快递", &["快递已经到了。", "快递放在门口就可以。"]),
+    ("地址", &["地址已经发给你了。", "地址需要修改一下。"]),
+    ("会议", &["会议什么时候开始？", "会议时间已经确认了。"]),
+    ("文件", &["文件已经保存了。", "文件已经发给你了。"]),
+    ("保存", &["保存一下当前的修改。", "保存后再关闭窗口。"]),
+    ("确认", &["确认一下时间和地点。", "确认后我再回复你。"]),
+    ("安排", &["安排一个合适的时间吧。", "安排已经确认了。"]),
+    ("收到", &["收到，谢谢。", "收到，我稍后处理。"]),
+    ("稍等", &["稍等，我确认一下。", "稍等，我马上就来。"]),
+    ("没问题", &["没问题，我来处理。", "没问题，稍后联系。"]),
+    ("数据库", &["数据库连接正常。", "数据库需要先备份。"]),
+    ("服务器", &["服务器已经启动了。", "服务器连接超时了。"]),
+    ("部署", &["部署已经完成了。", "部署前先运行测试。"]),
+    ("更新", &["更新已经完成了。", "更新后请重新启动。"]),
+    ("修复", &["修复后再测试一下。", "修复已经完成了。"]),
+    (
+        "回归测试",
+        &["回归测试已经通过了。", "回归测试还需要补充。"],
+    ),
+    ("词库", &["词库还需要继续扩充。", "词库已经更新了。"]),
+    (
+        "本地模型",
+        &["本地模型已经加载了。", "本地模型还在加载中。"],
+    ),
+];
+
+/// Match the same authored tail on both sides of the local-window threshold.
+/// Keep literal padding, reject protected tokens and prefer the longest phrase.
+fn authored_continuation(seed: &str) -> Option<(&str, &'static [&'static str])> {
+    let phrase_end = seed.trim_end_matches(is_pinyin_spacing);
+    let (phrase, values) = CONTINUATIONS
+        .iter()
+        .copied()
+        .filter(|(phrase, _)| phrase_end.ends_with(phrase))
+        .max_by_key(|(phrase, _)| phrase.len())?;
+    let start = phrase_end.len() - phrase.len();
+    let token = seed[..start]
+        .rsplit(char::is_whitespace)
+        .next()
+        .unwrap_or("");
+    if token.contains(['/', '\\', '_', '@']) {
+        return None;
+    }
+    Some((&seed[start..], values))
+}
+
+/// Retain a complete authored Han phrase when a long draft has just adopted it.
+/// Horizontal padding belongs to the draft; line boundaries and punctuation
+/// are not discarded to force a continuation.
+pub(crate) fn adopted_continuation_tail(seed: &str) -> Option<&str> {
+    authored_continuation(seed).map(|(tail, _)| tail)
+}
+
 pub(crate) fn mixed_candidates(
     seed: &str,
 ) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
-    const CONTINUATIONS: &[(&str, &[&str])] = &[
-        (
-            "你好",
-            &["你好，很高兴认识你。", "你好，请问有什么可以帮忙？"],
-        ),
-        ("谢谢", &["谢谢你的帮助。", "谢谢，辛苦了。"]),
-        ("请问", &["请问现在方便吗？", "请问可以帮我一下吗？"]),
-        ("我", &["我想了解一下。", "我可以帮忙。"]),
-        ("你", &["你现在方便吗？", "你有什么建议？"]),
-        ("我们", &["我们一起试试看。", "我们可以稍后讨论。"]),
-        ("今天", &["今天天气很好。", "今天有什么安排？"]),
-        ("明天", &["明天见。", "明天再讨论吧。"]),
-        ("中文", &["中文输入很方便。", "中文和英文都可以输入。"]),
-        (
-            "输入法",
-            &["输入法支持多种语言。", "输入法可以提供词句候选。"],
-        ),
-        ("继续", &["继续完善这个功能。", "继续下一步吧。"]),
-        ("可以", &["可以帮我看一下吗？", "可以继续了。"]),
-        ("学习", &["学习一门新的语言。", "学习需要不断练习。"]),
-        ("测试", &["测试一下输入效果。", "测试已经完成。"]),
-        ("再见", &["再见，下次再聊。"]),
-        ("我喜欢北京", &["我喜欢北京的文化。", "我喜欢北京的美食。"]),
-        ("我想学习中文", &["我想学习中文，请多指教。"]),
-        ("早饭", &["早饭吃什么？", "早饭已经准备好了。"]),
-        ("午饭", &["午饭一起吃吧。", "午饭想吃什么？"]),
-        ("晚饭", &["晚饭一起吃吧。", "晚饭后出去散步吧。"]),
-        ("周末", &["周末有什么安排？", "周末一起出去走走吧。"]),
-        ("预约", &["预约已经确认了。", "预约时间可以修改吗？"]),
-        ("订单", &["订单已经确认了。", "订单什么时候发货？"]),
-        ("快递", &["快递已经到了。", "快递放在门口就可以。"]),
-        ("地址", &["地址已经发给你了。", "地址需要修改一下。"]),
-        ("会议", &["会议什么时候开始？", "会议时间已经确认了。"]),
-        ("文件", &["文件已经保存了。", "文件已经发给你了。"]),
-        ("保存", &["保存一下当前的修改。", "保存后再关闭窗口。"]),
-        ("确认", &["确认一下时间和地点。", "确认后我再回复你。"]),
-        ("安排", &["安排一个合适的时间吧。", "安排已经确认了。"]),
-        ("收到", &["收到，谢谢。", "收到，我稍后处理。"]),
-        ("稍等", &["稍等，我确认一下。", "稍等，我马上就来。"]),
-        ("没问题", &["没问题，我来处理。", "没问题，稍后联系。"]),
-        ("数据库", &["数据库连接正常。", "数据库需要先备份。"]),
-        ("服务器", &["服务器已经启动了。", "服务器连接超时了。"]),
-        ("部署", &["部署已经完成了。", "部署前先运行测试。"]),
-        ("更新", &["更新已经完成了。", "更新后请重新启动。"]),
-        ("修复", &["修复后再测试一下。", "修复已经完成了。"]),
-        (
-            "回归测试",
-            &["回归测试已经通过了。", "回归测试还需要补充。"],
-        ),
-        ("词库", &["词库还需要继续扩充。", "词库已经更新了。"]),
-        (
-            "本地模型",
-            &["本地模型已经加载了。", "本地模型还在加载中。"],
-        ),
-    ];
     let code = normalize_pinyin(seed);
     let mut output = Vec::new();
     if code.bytes().filter(u8::is_ascii_lowercase).count() >= 2 {
@@ -854,14 +882,14 @@ pub(crate) fn mixed_candidates(
         }
     }
     if let Some(primary) = pinyin_candidates(seed).first()
-        && let phrase = primary.trim_matches(is_pinyin_spacing)
-        && let Some((_, values)) = CONTINUATIONS.iter().find(|(word, _)| *word == phrase)
+        && let Some((tail, values)) = authored_continuation(primary)
     {
+        let phrase_bytes = tail.trim_end_matches(is_pinyin_spacing).len();
         output.extend(values.iter().map(|text| {
-            // Keep literal padding around adopted Han text, including a
-            // newly typed Space. Only the authored continuation is appended.
+            // Keep the full primary conversion and all literal spacing. An
+            // adopted word shrinking below 257 scalars must keep its sentence.
             (
-                format!("{primary}{}", &text[phrase.len()..]),
+                format!("{primary}{}", &text[phrase_bytes..]),
                 CandidateKind::Sentence,
             )
         }));

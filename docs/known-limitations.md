@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.6.9 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.7.0 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
@@ -113,6 +113,13 @@ does not imply cross-platform stability. Keep another input method available.
   unbroken oversized readings / protected identifiers remain literal. Chinese IBus labels expose
   shared-prefix tail differences. This is not whole-document model context or arbitrary long-Pinyin
   conversion; see the [local-window audit](bug-audit-long-draft-window-2026-09-25.md).
+  The 0.7.0 N54 follow-up retains the longest authored Han phrase after long-draft adoption,
+  so local sentences remain available before/after Space. It preserves literal prefixes, protected
+  tokens and model limits; it is not arbitrary paragraph continuation. See the
+  [adopted-continuation and CI audit](bug-audit-adopted-continuation-2026-09-27.md).
+  Its N55 follow-up uses the same suffix match in the ordinary IBus mix, preventing sentence loss
+  when Pinyin adoption shrinks a draft back below the local-window threshold. It does not add
+  vocabulary or enlarge model context; see the [threshold audit](bug-audit-continuation-threshold-2026-09-27.md).
 - **External model quality:** offline fallback needs no model, but translation needs a configured
   provider. Language quality depends on that provider/model. Not every proprietary API is compatible.
   Local `llama3.2:3b` Q4_K_M runs on CPU on this machine (`size_vram: 0`). The round-33 baseline

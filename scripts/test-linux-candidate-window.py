@@ -225,10 +225,15 @@ def check_popup(bus, x, popup, window, document):
 
     # Ordinal clicks are now mandatory, not a separately enabled known failure.
     # Exercise every slot of a full first page and a partial second page.
-    for page, slots in [(0, range(6)), (1, range(3))]:
-        for slot in slots:
+    ordinal_candidate_count = 0
+    for page in [0, 1]:
+        slots = 6 if page == 0 else ordinal_candidate_count - 6
+        for slot in range(slots):
             frame = draft("hel", page)
-            assert len(frame["candidates"]) == 9, "fixture must exercise a partial final page"
+            if ordinal_candidate_count == 0:
+                ordinal_candidate_count = len(frame["candidates"])
+            assert 6 < ordinal_candidate_count < 12, "fixture must exercise a partial final page"
+            assert len(frame["candidates"]) == ordinal_candidate_count, "offline fixture changed during clicks"
             finish(click_candidate(frame, slot, ordinal=True))
             passed_case("actual superscript glyph click commits the correct page-local candidate", page, slot)
 
@@ -251,8 +256,9 @@ def check_popup(bus, x, popup, window, document):
             popup.expect_hidden()
             passed_case("secondary ordinal button does not select or commit", page, button)
 
-    assert passed == 46
-    print("RESULT: 46 strict stock-popup workflow checks passed, including 17 ordinal-glyph checks")
+    ordinal_checks = ordinal_candidate_count + 8  # Every English slot, multilingual and secondary clicks.
+    assert passed == 29 + ordinal_checks
+    print(f"RESULT: {passed} strict stock-popup workflow checks passed, including {ordinal_checks} ordinal-glyph checks")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.6.9 — Linux Alpha vocabulary, long drafts and panel ergonomics**.
+Current source version: **0.7.0 — Linux Alpha continuous word-to-sentence input**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,26 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.7.0 — Continuous word-to-sentence input
+
+- N54 keeps an adopted Chinese phrase and its horizontal spacing in the bounded local window,
+  preserving authored sentence choices before the next Pinyin input. Longest matches retain
+  the complete phrase rather than falling back to a shorter suffix. See the
+  [round-46 audit](docs/bug-audit-adopted-continuation-2026-09-27.md).
+- N55 shares that match with the ordinary IBus mix: adopting Pinyin can shrink a draft from
+  above 256 code points back within the short path without losing its sentence. Prefixes,
+  whitespace, protected tokens and full-draft model limits remain unchanged. See the
+  [round-47 audit](docs/bug-audit-continuation-threshold-2026-09-27.md).
+- Bilingual native and real-editor checks cover threshold changes, Space, punctuation deletion,
+  exact word/sentence undo and explicit submission. Controlled providers verify full-draft
+  requests and stale-result rejection at the model limit; no model quality claim is added.
+- The stock-popup fixture no longer assumes exactly nine English candidates. It checks every
+  actual slot while still requiring a full first page and a partial last page. This fixes the
+  0.6.9 CI fixture failure without reducing click or saved-text coverage.
+
+See the [0.7.0 release notes](docs/releases/0.7.0.md) for verification and upgrade boundaries.
+Historical audits retain their original test counts and publication/installation state.
 
 ### 0.6.9 — Vocabulary, long drafts and panel ergonomics
 

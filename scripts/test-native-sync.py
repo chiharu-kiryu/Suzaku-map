@@ -2791,6 +2791,81 @@ def check_long_local_continuations(context, watch, commits, lookup):
     print(f"PASS: {checked} long Chinese/English key/companion workflows preserve conversion, undo and continuation; unbroken Pinyin 257-to-256 recovery remains bounded")
 
 
+def check_long_adopted_sentence_continuity(context, watch, commits, lookup):
+    """N54/N55: adopted sentences survive bounded/short routing and punctuation edits."""
+    assert not json.loads(command("S"))["settings"]["llm_enabled"]
+    cases = [
+        ("zh-Hans", "你" * 260, "ni hao", "你好", "，很高兴认识你。"),
+        ("zh-Hans", "前文。" * 100, "hui yi", "会议", "什么时候开始？"),
+        ("zh-Hans", "前文。" * 100, "wo xiang xue xi zhong wen", "我想学习中文", "，请多指教。"),
+        ("en", "Earlier note. " * 30, "please sen", "please send", " me the details."),
+        ("zh-Hans", "你" * 252, "ni hao", "你好", "，很高兴认识你。"),
+        ("zh-Hans", "你" * 254, "hui yi", "会议", "什么时候开始？"),
+        ("zh-Hans", "前文。", "wo xiang xue xi zhong wen", "我想学习中文", "，请多指教。"),
+    ]
+
+    def adopt(text):
+        index = next(i for i, candidate in enumerate(watch.latest["candidates"][:6])
+                     if candidate["text"] == text)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == text, "long-adopted numeric choice")
+
+    checked = 0
+    for language, prefix, reading, word, suffix in cases:
+        revision = watch.latest["revision"]
+        assert json.loads(command("L" + language))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "long-adopted language acknowledgement")
+        for route in ["key-continuation", "companion"]:
+            for spacing in ["", " "]:
+                revision = watch.latest["revision"]
+                assert action(watch.latest, "X")
+                wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"],
+                     "long-adopted acknowledged clear")
+                before = len(commits)
+                raw = prefix + reading
+                if route == "key-continuation":
+                    assert action(watch.latest, "T" + prefix)
+                    wait(lambda: watch.latest["seed"] == prefix, "long-adopted owned prefix")
+                    for character in reading:
+                        type_seed(context, character)
+                else:
+                    assert action(watch.latest, "T" + raw)
+                wait(lambda: watch.latest["seed"] == raw, "long-adopted raw spelling")
+                adopt(prefix + word)
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == raw, "long-adopted exact reading undo")
+                adopt(prefix + word)
+                if spacing:
+                    type_seed(context, spacing)
+                draft = prefix + word + spacing
+                wait(lambda: watch.latest["seed"] == draft, "long-adopted Space remains editable")
+                sentence = draft + (suffix.lstrip(" ") if language == "en" and spacing else suffix)
+                assert watch.latest["candidates"][0]["text"] == draft
+                assert any(c["text"] == sentence and c["kind"] == "sentence"
+                           and c["source"] == "local" for c in watch.latest["candidates"][:6]), (
+                               language, route, spacing, "authored sentence disappeared after adoption")
+                assert all(c["text"].startswith(draft) for c in watch.latest["candidates"])
+                check_candidate_presentation(watch, lookup, require_mix=False)
+                type_seed(context, ".")
+                wait(lambda: watch.latest["seed"] == draft + ".", "adopted punctuation remains editable")
+                assert [c["text"] for c in watch.latest["candidates"]] == [draft + "."]
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == draft, "delete punctuation without undoing adopted word")
+                assert any(c["text"] == sentence and c["kind"] == "sentence"
+                           for c in watch.latest["candidates"][:6])
+                adopt(sentence)
+                assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                wait(lambda: watch.latest["seed"] == draft, "long-adopted sentence undo preserves spacing")
+                adopt(sentence)
+                assert len(commits) == before
+                assert context.process_key_event(IBus.KEY_Return, 0, 0)
+                wait(lambda: commits[before:] == [sentence] and not watch.latest["seed"],
+                     "long-adopted exact single sentence commit")
+                checked += 1
+    assert json.loads(command("Len"))["ok"]
+    print(f"PASS: N54/N55 {checked} adopted English/Chinese word-to-sentence workflows preserve threshold crossings, Space, punctuation edits, exact undo and explicit single commit")
+
+
 def check_literal_choice_publication(context, watch, commits, lookup):
     """N28: adopting unchanged spelling still changes the selected candidate."""
     failures = []
@@ -3805,6 +3880,7 @@ try:
     check_bilingual_core_completion(other, watch, other_commits)
     check_bilingual_literal_boundaries(other, watch, other_commits)
     check_long_local_continuations(other, watch, other_commits, other_lookup)
+    check_long_adopted_sentence_continuity(other, watch, other_commits, other_lookup)
     check_home_row_shortcuts(other, watch, other_commits, other_lookup)
     check_adoption_key_repeats(other, watch, other_commits)
     check_literal_choice_publication(other, watch, other_commits, other_lookup)

@@ -1,6 +1,6 @@
 //! A bounded local editing window. The prefix is never normalized or sent to a
 //! provider: model requests retain their independent whole-draft limit.
-use super::BuiltinLanguage;
+use super::{BuiltinLanguage, chinese};
 
 const LOCAL_TAIL_CHARS: usize = 256;
 
@@ -15,18 +15,24 @@ pub(crate) fn long_local_tail<'a>(language: &str, seed: &'a str) -> Option<(&'a 
             .filter(|(_, ch)| ch.is_whitespace())
             .map(|(index, ch)| index + ch.len_utf8())
             .last()?,
-        // Only an explicit Han / CJK punctuation boundary can freeze a prefix.
-        // Spaces and apostrophes may still join unconverted Pinyin syllables;
-        // ASCII punctuation can be part of an identifier, path or URL.
+        // Keep an adopted authored phrase available for sentence continuation;
+        // otherwise only a Han / CJK punctuation boundary can freeze a prefix.
+        // Spaces and apostrophes may still join unconverted Pinyin syllables.
         BuiltinLanguage::ChineseSimplified => {
-            let start = boundaries
-                .find(|(_, ch)| {
-                    matches!(ch,
+            let start = if let Some(tail) = chinese::adopted_continuation_tail(seed)
+                .filter(|tail| tail.chars().count() <= LOCAL_TAIL_CHARS)
+            {
+                seed.len() - tail.len()
+            } else {
+                boundaries
+                    .find(|(_, ch)| {
+                        matches!(ch,
                 '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' |
                 '\u{f900}'..='\u{faff}' | '\u{20000}'..='\u{323af}' |
                 '。' | '，' | '！' | '？' | '；' | '：' | '、' | '「' | '」' | '『' | '』')
-                })
-                .map(|(index, ch)| index + ch.len_utf8())?;
+                    })
+                    .map(|(index, ch)| index + ch.len_utf8())?
+            };
             // Han can also occur inside URLs / identifiers. Do not hide their
             // syntax to make a protected suffix look like plain Pinyin.
             let token = seed[..start]

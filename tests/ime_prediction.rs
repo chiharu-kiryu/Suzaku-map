@@ -396,6 +396,12 @@ fn long_local_tail_candidates_do_not_expand_the_model_request_budget() {
     for (language, prefix, tail, completed) in [
         ("en", "note ".repeat(60), "hel", "hello"),
         ("zh-Hans", "你".repeat(260), "nihao", "你好"),
+        (
+            "zh-Hans",
+            "你".repeat(260),
+            "你好 ",
+            "你好 ，很高兴认识你。",
+        ),
     ] {
         for mixed in [false, true] {
             let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
@@ -428,6 +434,72 @@ fn long_local_tail_candidates_do_not_expand_the_model_request_budget() {
             settle(&mut engine);
         }
     }
+}
+
+#[test]
+fn chinese_adoption_threshold_preserves_local_sentences_and_full_model_requests() {
+    use suzaku_map::ime::candidate_mix::{CandidateKind, CandidateSource};
+    let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
+        default_language: "zh-Hans".into(),
+        ..Default::default()
+    });
+    engine.enable_ibus_candidate_mix();
+    let prefix = "你".repeat(254);
+    let raw = format!("{prefix}ni hao");
+    let adopted = format!("{prefix}你好");
+    let spaced = format!("{adopted} ");
+    engine.seed(&raw);
+    assert_eq!(engine.prediction_status(), PredictionStatus::Idle);
+    assert!(requests.recv_timeout(Duration::from_millis(180)).is_err());
+
+    engine.seed(&adopted);
+    let request = requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(request.seed_text, adopted);
+    assert_eq!(request.normalized_phrase, adopted);
+    assert!(request.context_before_cursor.is_empty());
+    assert!(engine.candidates().iter().take(6).any(|c| {
+        c.text == format!("{adopted}，很高兴认识你。")
+            && c.kind == CandidateKind::Sentence
+            && c.source == CandidateSource::Local
+    }));
+
+    // Space grows the full draft to 257 scalars: only local continuations remain.
+    engine.seed(&spaced);
+    assert_eq!(engine.prediction_status(), PredictionStatus::Idle);
+    assert!(engine.candidates().iter().take(6).any(|c| {
+        c.text == format!("{spaced}，很高兴认识你。")
+            && c.kind == CandidateKind::Sentence
+            && c.source == CandidateSource::Local
+    }));
+    assert!(requests.recv_timeout(Duration::from_millis(180)).is_err());
+    let stale = format!("{adopted}，旧的模型结果。");
+    replies.send(answer(&stale)).unwrap();
+
+    // Deleting that Space requests the entire draft again, never a cropped tail.
+    engine.seed(&adopted);
+    let request = requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(request.seed_text, adopted);
+    assert_eq!(request.normalized_phrase, adopted);
+    assert!(request.context_before_cursor.is_empty());
+    engine.poll_prediction();
+    assert!(
+        engine
+            .candidates()
+            .iter()
+            .all(|c| c.source == CandidateSource::Local)
+    );
+    let fresh = format!("{adopted}，新的模型结果。");
+    replies.send(answer(&fresh)).unwrap();
+    settle(&mut engine);
+    assert!(!engine.candidates().iter().any(|c| c.text == stale));
+    assert!(
+        engine
+            .candidates()
+            .iter()
+            .any(|c| c.text == fresh && c.source == CandidateSource::Model)
+    );
+    assert_eq!(engine.candidates()[0].text, adopted);
+    assert!(engine.snapshot().committed_text.is_empty());
 }
 
 #[test]

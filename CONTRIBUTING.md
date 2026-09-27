@@ -69,6 +69,14 @@ Twenty additional offline native workflows check long Chinese/English tails, exa
 and continued input, plus a 257-to-256-character recovery check. The corresponding four real-editor
 scenarios and bounded search regressions are described in the
 [long-Pinyin audit](docs/bug-audit-long-pinyin-continuation-2026-09-25.md).
+Twenty-eight further native workflows cover adopted words retaining their authored sentences
+across short/long routing, Space and punctuation deletion, with exact undo and explicit commits.
+Four real-editor workflows also verify the saved text; see the
+[threshold-crossing audit](docs/bug-audit-continuation-threshold-2026-09-27.md).
+Stock-popup ordinal checks derive the
+number of slots from the real fixture, still requiring a partial final page and clicking every
+available slot; vocabulary size is not a fixed nine-candidate assertion. See the
+[adopted-continuation/CI follow-up](docs/bug-audit-adopted-continuation-2026-09-27.md).
 
 Real application checks additionally need GTK input modules and Qt test bindings:
 

@@ -123,6 +123,158 @@ fn chinese_long_adopted_prefixes_keep_tail_conversion_and_sentence_choices() {
 }
 
 #[test]
+fn adopted_long_chinese_words_keep_authored_sentences_before_and_after_space() {
+    for prefix in ["你".repeat(260), "前文 café 😀。  ".repeat(60)] {
+        for (reading, word, sentence) in [
+            ("ni hao", "你好", "你好，很高兴认识你。"),
+            ("hui yi", "会议", "会议什么时候开始？"),
+            ("shu ru fa", "输入法", "输入法支持多种语言。"),
+            (
+                "wo xiang xue xi zhong wen",
+                "我想学习中文",
+                "我想学习中文，请多指教。",
+            ),
+        ] {
+            let raw = format!("{prefix}{reading}");
+            let adopted = format!("{prefix}{word}");
+            for mixed in [false, true] {
+                let mut engine = engine("zh-Hans", &raw, mixed);
+                assert_eq!(engine.candidates()[0].text, adopted);
+                // The native host adopts a choice by reseeding the complete editable text.
+                for spacing in ["", " ", "  ", "\u{a0}", "\u{3000}"] {
+                    let seed = format!("{adopted}{spacing}");
+                    let expected = format!("{seed}{}", &sentence[word.len()..]);
+                    engine.seed(&seed);
+                    assert_eq!(engine.candidates()[0].text, seed);
+                    assert!(engine.snapshot().committed_text.is_empty());
+                    assert!(engine.candidates().iter().all(|candidate| {
+                        candidate.text.starts_with(&seed)
+                            && candidate.source == CandidateSource::Local
+                    }));
+                    let index = engine
+                        .candidates()
+                        .iter()
+                        .take(6)
+                        .position(|c| c.text == expected && c.kind == CandidateKind::Sentence)
+                        .unwrap_or_else(|| {
+                            panic!("missing continuation: {word:?}/{spacing:?}/{mixed}")
+                        });
+                    engine.select_candidate(index);
+                    assert!(engine.snapshot().committed_text.is_empty());
+                    assert_eq!(
+                        engine.commit(CommitOptions { force: true }).text.as_deref(),
+                        Some(expected.as_str())
+                    );
+                    engine.clear_session_context();
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn adopted_chinese_sentences_survive_crossing_the_local_window_threshold() {
+    for (reading, word, suffix) in [
+        ("ni hao", "你好", "，很高兴认识你。"),
+        ("hui yi", "会议", "什么时候开始？"),
+        ("wo xiang xue xi zhong wen", "我想学习中文", "，请多指教。"),
+    ] {
+        for length in [254, 255, 256, 257, 258] {
+            let prefix = "你".repeat(length - word.chars().count());
+            let raw = format!("{prefix}{reading}");
+            let adopted = format!("{prefix}{word}");
+            assert!(raw.chars().count() > 256);
+            let mut engine = engine("zh-Hans", &raw, true);
+            assert_eq!(engine.candidates()[0].text, adopted);
+            assert!(engine.candidates().iter().take(6).any(|candidate| {
+                candidate.text == format!("{adopted}{suffix}")
+                    && candidate.kind == CandidateKind::Sentence
+            }));
+            for spacing in ["", " ", "  ", "\u{3000}"] {
+                let draft = format!("{adopted}{spacing}");
+                engine.seed(&draft);
+                assert_eq!(engine.candidates()[0].text, draft);
+                assert!(engine.snapshot().committed_text.is_empty());
+                assert!(
+                    engine
+                        .candidates()
+                        .iter()
+                        .all(|c| c.text.starts_with(&draft))
+                );
+                assert!(
+                    engine.candidates().iter().take(6).any(|candidate| {
+                        candidate.text == format!("{draft}{suffix}")
+                            && candidate.kind == CandidateKind::Sentence
+                    }),
+                    "lost sentence after adoption: {word:?}, length={length}, spacing={spacing:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn long_chinese_continuation_does_not_hide_identifiers_or_cross_line_boundaries() {
+    let prefix = "前文。".repeat(100);
+    for tail in [
+        "https://你好",
+        "https://你好 ",
+        "user_会议",
+        "person@中文",
+        "dir\\输入法",
+        "你好。",
+        "你好\n",
+        "你好\u{2028}",
+        "一个没有续写的词",
+    ] {
+        let seed = format!("{prefix}{tail}");
+        let engine = engine("zh-Hans", &seed, true);
+        assert_eq!(
+            engine
+                .candidates()
+                .iter()
+                .map(|c| c.text.as_str())
+                .collect::<Vec<_>>(),
+            [seed.as_str()],
+            "{tail:?}"
+        );
+    }
+    let seed = format!("{prefix}你好{}", " ".repeat(256));
+    assert_eq!(engine("zh-Hans", &seed, true).candidates().len(), 1);
+}
+
+#[test]
+fn adopted_long_english_words_keep_next_words_and_sentences_across_space() {
+    let prefix = "Earlier writing. ".repeat(40);
+    for spacing in ["", " ", "  ", "\u{3000}"] {
+        let seed = format!("{prefix}please send{spacing}");
+        let separator = if spacing.is_empty() { " " } else { "" };
+        let word = format!("{seed}{separator}me");
+        let sentence = format!("{word} the details.");
+        let engine = engine("en", &seed, true);
+        assert_eq!(engine.candidates()[0].text, seed);
+        for (text, kind) in [
+            (word, CandidateKind::Word),
+            (sentence, CandidateKind::Sentence),
+        ] {
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .take(6)
+                    .any(|c| c.text == text && c.kind == kind)
+            );
+        }
+        assert!(
+            engine
+                .candidates()
+                .iter()
+                .all(|c| c.text.starts_with(&seed))
+        );
+    }
+}
+
+#[test]
 fn long_unbroken_readings_and_identifiers_are_not_split_into_invented_words() {
     for (language, seed) in [
         ("zh-Hans", format!("{}n", "ni".repeat(128))),
@@ -163,6 +315,8 @@ fn long_candidate_payloads_fit_the_existing_native_frame_without_losing_literal_
         ("en", format!("{}please sen", "\"\\ ".repeat(2700))),
         ("en", format!("{}hel", " ".repeat(8189))),
         ("zh-Hans", format!("{}nihao", "你".repeat(2729))),
+        ("zh-Hans", format!("{}你好 ", "前文。".repeat(880))),
+        ("zh-Hans", format!("{}会议", "你".repeat(2728))),
     ] {
         let engine = engine(language, &seed, true);
         assert!(engine.candidates().iter().any(|c| c.text == seed));

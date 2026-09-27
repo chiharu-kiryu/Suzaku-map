@@ -309,6 +309,83 @@ fn literal_spacing_keeps_chinese_word_and_sentence_continuations_available() {
 }
 
 #[test]
+fn prefixed_chinese_words_keep_authored_sentences_after_adoption_and_spacing() {
+    for (seed, word, suffix) in [
+        ("前文。ni hao", "前文。你好", "，很高兴认识你。"),
+        ("😀 已确认。hui yi", "😀 已确认。会议", "什么时候开始？"),
+        (
+            "前文。wo xiang xue xi zhong wen",
+            "前文。我想学习中文",
+            "，请多指教。",
+        ),
+        ("前文。hui gui ce shi", "前文。回归测试", "已经通过了。"),
+        ("ΩΣ\nshu ru fa", "ΩΣ\n输入法", "支持多种语言。"),
+    ] {
+        for spacing in ["", " ", "  ", "\u{a0}", "\u{3000}"] {
+            let mut engine = engine(seed);
+            assert_eq!(engine.candidates()[0].text, word);
+            assert!(engine.candidates().iter().any(|c| c.text == seed));
+            assert!(engine.candidates().iter().take(PAGE_SIZE).any(|c| {
+                c.text == format!("{word}{suffix}") && c.kind == CandidateKind::Sentence
+            }));
+            let draft = format!("{word}{spacing}");
+            let sentence = format!("{draft}{suffix}");
+            engine.seed(&draft);
+            assert_eq!(engine.candidates()[0].text, draft);
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .all(|c| { c.text.starts_with(&draft) && c.source == CandidateSource::Local })
+            );
+            let index = engine
+                .candidates()
+                .iter()
+                .take(PAGE_SIZE)
+                .position(|c| c.text == sentence && c.kind == CandidateKind::Sentence)
+                .unwrap_or_else(|| panic!("missing prefixed sentence: {draft:?}"));
+            engine.select_candidate(index);
+            assert!(engine.snapshot().committed_text.is_empty());
+            assert_eq!(
+                engine.commit(CommitOptions { force: true }).text.as_deref(),
+                Some(sentence.as_str())
+            );
+        }
+    }
+}
+
+#[test]
+fn chinese_authored_suffixes_do_not_escape_protected_tokens_or_finished_text() {
+    for seed in [
+        "https://你好",
+        "https://你好 ",
+        "person@会议",
+        "user_输入法",
+        "src/回归测试",
+        "C:\\你好",
+        "'你好'",
+        "前文。你好。",
+        "前文。你好!",
+        "前文。你好,",
+        "前文。你好\n",
+        "前文。你好\r\n",
+        "前文。你好\u{2028}",
+        "前文。你好\u{2029}",
+    ] {
+        let engine = engine(seed);
+        assert_eq!(
+            engine
+                .candidates()
+                .iter()
+                .map(|c| c.text.as_str())
+                .collect::<Vec<_>>(),
+            [seed],
+            "{seed:?}"
+        );
+    }
+}
+
+#[test]
 fn tone_numbers_end_at_sentence_punctuation_without_leaking_into_candidates() {
     let cases = [
         ("ni3 hao3!", "你好!"),
