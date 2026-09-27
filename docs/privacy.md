@@ -10,6 +10,22 @@ in memory. Suzaku does not persist input history. Backups include recognized set
 names, not key values, drafts, model weights or transcripts. Backups are unencrypted and may reveal
 provider addresses and preferences; review before sharing. See [data management](linux-packaging-data.md).
 
+The 0.7.3 IBus frequency cache is separate from settings and dictionaries. It retains
+at most 2,048 salted fingerprints of language/query/candidate tuples and decaying counts, rather
+than draft text. Hashing is not encryption or an anonymity guarantee. Confirmed
+preferences can affect existing suggestions across ordinary fields during the host's lifetime;
+the cache never generates text or sends its contents to a model. Private fields neither read
+nor update it. Pending adoptions are discarded on cancellation, editing away the chosen prefix,
+focus/language/provider/privacy boundaries, or cache clear. A number/Shift+Enter/Space adoption
+is not learned until its text survives to a successful engine commit. Native delivery still uses
+IBus's normal commit signal, not an application-level receipt.
+
+No cache file, input history, backup entry or background persistence worker is created. The tray's
+**Clear candidate preferences (memory only)** action discards both confirmed and pending learning
+without changing a live selection; the next draft rebuild uses defaults. Restarting the host also
+forgets it. This is process-lifetime personalization, not a persistent user dictionary; unhinted
+masked fields have the same limitations described below.
+
 The native companion channel contains active preedit/candidates, not surrounding application text
 or accumulated committed history. Password/PIN and declared numeric/decimal/phone fields bypass
 composition and panel injection. Private hints suppress model requests and companion snapshots.

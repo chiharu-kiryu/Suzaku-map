@@ -212,6 +212,7 @@ Model status unknown	模型服务状态未知	モデルの状態不明	모델 �
 Discover / check local models	发现 / 检查本机模型	ローカルモデルを検索・確認	로컬 모델 검색/확인	Buscar / comprobar modelos locales	Découvrir / vérifier les modèles locaux	Lokale Modelle suchen / prüfen	Buscar / verificar modelos locais
 Warm Ollama model (unload after 5 minutes idle)	预热本机 Ollama 模型（空闲 5 分钟后释放）	Ollama モデルを準備（5分待機後に解放）	Ollama 모델 준비 (5분 유휴 후 해제)	Preparar Ollama (liberar tras 5 min inactivo)	Préparer Ollama (libérer après 5 min d’inactivité)	Ollama vorladen (nach 5 Min. Leerlauf entladen)	Preparar Ollama (liberar após 5 min ocioso)
 Reload model settings	重新加载模型配置	モデル設定を再読み込み	모델 설정 다시 불러오기	Recargar ajustes del modelo	Recharger les réglages du modèle	Modelleinstellungen neu laden	Recarregar configurações do modelo
+Clear candidate preferences (memory only)	清除候选偏好（仅内存）	候補の学習を消去（メモリのみ）	후보 학습 초기화 (메모리만)	Borrar preferencias de candidatos (solo memoria)	Effacer les préférences de candidats (mémoire uniquement)	Kandidatenpräferenzen löschen (nur Arbeitsspeicher)	Limpar preferências de candidatos (somente memória)
 Hide panel	隐藏面板	パネルを隠す	패널 숨기기	Ocultar panel	Masquer le panneau	Panel ausblenden	Ocultar painel
 Show panel	显示面板	パネルを表示	패널 표시	Mostrar panel	Afficher le panneau	Panel anzeigen	Mostrar painel
 Settings	设置	設定	설정	Ajustes	Réglages	Einstellungen	Configurações

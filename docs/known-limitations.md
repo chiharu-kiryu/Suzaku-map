@@ -1,7 +1,14 @@
 # Alpha limitations and support
 
-0.7.2 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.7.3 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
+
+- **In-memory candidate preferences (0.7.3):** Linux/IBus now ranks existing
+  candidates using bounded, decaying feedback from confirmed choices. Preferences are scoped to
+  the exact language/query/candidate, not a persistent user dictionary; restarting the host
+  forgets them. Private fields bypass learning/ranking, and the tray can clear the cache.
+  Other hosts retain their existing candidate policy. No installation is changed by this source
+  addition. See [frequency cache](ibus-candidates.md#偏好频率缓存).
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
   Alpha input method as the only way to enter essential credentials.
@@ -77,6 +84,18 @@ does not imply cross-platform stability. Keep another input method available.
   Expanded Pinyin branches no longer crowd authored/model sentences off the first page.
   Independent performance measurements, GUI and installation remain unverified for this expansion.
   See [vocabulary expansion and validation status](ibus-candidates.md#中英词库扩充0692026-09-27).
+  0.7.3 adds everyday writing vocabulary: 5,251 indexed English
+  forms, 1,143 Chinese readings, 238 English and 256 Chinese authored sentences. Earlier English
+  index ranks, Chinese entry order and all input/model budgets remain unchanged. It was subsequently
+  installed locally: 141 isolated installed-app checks and five current GNOME desktop workflows pass,
+  including new vocabulary and draft-preserving language switching. That development installation
+  predates the data refactor and preference cache; it is not full 0.7.3 installation acceptance, a
+  general language-quality benchmark or arbitrary-application/Wayland acceptance; see the
+  [current vocabulary scope](ibus-candidates.md#中英日常写作词库).
+  The subsequent data refactor, also in 0.7.3, separates EN/ZH/JA vocabulary into versioned JSON
+  resources behind a model/platform-independent data interface. Resources are still embedded:
+  editing them requires rebuilding/reinstalling, not hot reload or personal-dictionary import.
+  See the [data contract](../data/lexicons/README.md).
   Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
   Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,

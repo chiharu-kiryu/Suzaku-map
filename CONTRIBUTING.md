@@ -6,6 +6,13 @@ Focused fixes with regression tests are especially useful during Alpha.
 Current input-quality work prioritizes **English and Simplified Chinese**; Japanese stays compatible
 without expanding its scope. See the [development priorities](DEVELOPMENT.md).
 
+Vocabulary is data, not decoder code. Maintain the versioned JSON resources under
+[data/lexicons](data/lexicons/README.md), consumed through the platform/model-independent
+[lexicon interface](src/lexicon.rs). Do not add vocabulary batches or special-case word text
+to language algorithms. Keep phonetic conversion, indexing and candidate limits in the language
+implementations; preserve existing entry/layer priority and update quality baselines explicitly.
+Embedded resources still require rebuilding/reinstalling; there is no implicit user-file import.
+
 ## Build and test
 
 CI uses Rust 1.95.0 and the committed Cargo.lock. Ubuntu dependencies:
@@ -49,16 +56,23 @@ Run the paired offline input-quality gates without a model:
 
 ```bash
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
+cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
 ```
 
 The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
 cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
 commit checks. These are project-authored regressions, not independent corpus accuracy. The native
-`ibus` gate adds 36 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
+`ibus` gate adds 76 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
 64 literal-boundary workflows using owned-prefix key continuation and companion replacement.
 Chinese literal padding, non-Pinyin case and line boundaries also have direct-engine regressions.
 The expanded vocabulary gate covers explicit word forms, homophones and authored sentences that
-must stay on page one even when a larger lexicon adds more Pinyin branches. Use `--all-features`
+must stay on page one even when a larger lexicon adds more Pinyin branches. Everyday-writing
+cases exercise word/space/partial-prefix transitions, explicit English inflections and regional
+spellings, straight/curly-apostrophe contractions, five Pinyin spellings, same-sound choices, and
+short/long adopted drafts with literal padding. Synthetic tone digits test boundaries, not
+pronunciation; numeric key entry still follows the IME's literal-digit path. Lexicon unit checks
+retain every pre-expansion English rank and
+validate authored table uniqueness and reachability. Use `--all-features`
 for these project checks, matching CI; bare `cargo test` does not enable the required GPU/platform
 modules. If a restricted agent session reports an unconfigured Rust installation, first compare
 `rustup show` and `cargo --version` with the host terminal before reinstalling or changing defaults.
@@ -129,6 +143,7 @@ sudo apt install gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 ibus-
 python3 scripts/test-editor-observer.py
 bash scripts/test-linux-apps.sh editor
 bash scripts/test-linux-apps.sh gtk
+bash scripts/test-linux-apps.sh vocabulary
 bash scripts/test-linux-apps.sh keyboard
 bash scripts/test-linux-apps.sh popup
 bash scripts/test-linux-apps.sh lifecycle
@@ -142,6 +157,12 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
+The `vocabulary` gate exercises twelve offline English/Chinese writing workflows in the real
+GTK editor: physical spelling, word/sentence labels, numeric adoption, exact undo, Space
+continuation and saved word/sentence commits. It uses no companion-seeded text or live model.
+To validate a user-local installation instead of rebuilding debug binaries, set
+`SUZAKU_APP_QA_BIN_DIR="$HOME/.local/libexec/suzaku"`; the directory must contain `panel` and
+`linux_ime_host`. This still uses a private display/bus and is not personal-desktop acceptance.
 Owned GNOME Text Editor windows enable read-only accessibility observation: saving requires the
 exact application buffer and a finished load/save indicator before and after one physical Ctrl+S.
 File contents alone are not a completion barrier. Missing observation, stale files or wrong text

@@ -1,9 +1,15 @@
-%% Suzaku functional network: 2026-09-27 source snapshot for 0.7.2 including round 48; not the installed build.
+%% Suzaku functional network: 2026-09-27 source snapshot for 0.7.3: vocabulary resources and in-memory preferences. The earlier vocabulary installation does not qualify the subsequent refactor/cache installation.
+%% Two unreleased vocabulary rounds reuse F16-F18: 5,251 indexed English forms, 1,143 Pinyin entries, 238 English / 256 Chinese sentences; earlier index ranks and input/model budgets remain unchanged.
+%% First writing expansion: 918 Rust tests passed, 27 opt-in tests skipped; strict Clippy and complete default/inline private IBus gates passed, each with 60 bilingual adoption workflows. No installed update.
+%% Second daily expansion: 924 Rust tests pass, 27 opt-in tests skip; strict Clippy and both complete private IBus modes pass, each with 76 bilingual adoption workflows. GUI/install/performance acceptance remains separate.
+%% Subsequent user-local installation: 141 isolated installed-app groups plus 5 actual GNOME desktop groups and tray quit/reopen passed. Config/Rime preserved; no model/performance/Wayland acceptance.
+%% Subsequent refactor reuses F16-F19: versioned EN/ZH/JA JSON resources, shared data-only validation/cache, unchanged decoder rules/ranks/budgets. No dictionary hot reload or model coupling.
+%% Refactor checks: 934 Rust tests passed/27 opt-in skipped; 55 focused checks, strict Clippy, both full private IBus modes and 12 source-build GTK vocabulary workflows passed. Not reinstalled.
 %% Round 48 N56 stages native settings persistence off the input thread, then publishes within the live client's deadline; F42/F44 stay acknowledgement-based.
 %% 0.7.2 Ctrl+Shift+Space reuses F15/F42/F44 for focus-bound EN/ZH changes, preserving the current draft after durable acknowledgement.
 %% Round 47 N55 shares authored Han suffix matching across short/long routing; model limits and input routes stay unchanged.
 %% Round 46 N54 keeps an authored Han phrase in the bounded local tail after adoption; input routes/model limits are unchanged.
-%% Vocabulary expansion reuses F16-F18; 897 Rust tests, strict Clippy and both private IBus modes pass after restoring toolchain access. GUI/install/performance acceptance is separate.
+%% Historical 0.6.9 vocabulary expansion reused F16-F18; 897 Rust tests, strict Clippy and both private IBus modes passed after restoring toolchain access. GUI/install/performance acceptance is separate.
 %% Round 40 observes owned GTK buffers/save completion; no input route or product behavior change.
 %% Round 41 N50 aligns English single-next-word classification and model projection before Space; existing routes are unchanged.
 %% Round 42 N51 handles Pinyin tone digits before punctuation, preserving literal numbers and existing adoption/commit routes.
@@ -30,6 +36,7 @@ flowchart TB
     APP["目标应用 / 实体键盘"]
     INPUT["IBus 宿主：事件、隐私门控、连续草稿"]
     CORE["宿主引擎：中英日插件、词句候选、排序"]
+    PREF["内存偏好：有界指纹频率与衰减"]
     CAND["IBus 候选区草稿与候选条"]
     IPC["本用户 Unix 通道：快照、动作、确认"]
     PANEL["浮动面板 / 屏幕键盘 / 悬浮球"]
@@ -45,6 +52,9 @@ flowchart TB
 
     APP -->|输入事件| INPUT
     INPUT -->|当前草稿| CORE
+    CORE -->|已确认且保留的选择| PREF
+    PREF -->|只给现有候选加权；隐私字段禁用| CORE
+    TRAY -->|清除确认与待确认偏好| PREF
     CORE -->|候选与选中状态| CAND
     CAND -->|采用后继续写| INPUT
     CAND -->|回车或主按钮点击提交| APP

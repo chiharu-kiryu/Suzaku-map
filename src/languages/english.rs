@@ -1,9 +1,33 @@
 use super::ranked_candidates;
 use crate::ime::{Candidate, LanguagePlugin};
+use crate::lexicon::{Lexicon, WordLayer};
 use std::sync::OnceLock;
 
-#[path = "english_lexicon.rs"]
-mod lexicon;
+fn vocabulary() -> &'static Lexicon {
+    crate::lexicon::builtin("en").expect("English vocabulary is registered")
+}
+
+// Indexing is an English implementation concern; the data layer only supplies
+// ordered words, contexts and sentences, with no knowledge of ranking rules.
+fn indexed_words(layers: &[WordLayer]) -> impl Iterator<Item = &str> {
+    layers.iter().flat_map(|layer| {
+        layer
+            .words
+            .iter()
+            .map(String::as_str)
+            .chain(
+                layer
+                    .next_words
+                    .iter()
+                    .flat_map(|(_, words)| words.iter().map(String::as_str)),
+            )
+            .chain(layer.sentences.iter().flat_map(|sentence| {
+                sentence
+                    .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                    .filter(|word| !word.is_empty())
+            }))
+    })
+}
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EnglishLanguagePlugin;
@@ -56,21 +80,7 @@ fn canonical_word(text: &str) -> String {
 fn dictionary() -> &'static [Word] {
     static WORDS: OnceLock<Vec<Word>> = OnceLock::new();
     WORDS.get_or_init(|| {
-        let mut words: Vec<_> = lexicon::WORDS
-            .split_whitespace()
-            .chain(
-                lexicon::NEXT_WORDS
-                    .iter()
-                    .flat_map(|(_, words)| words.iter().copied()),
-            )
-            .chain(lexicon::SENTENCES.iter().flat_map(|sentence| {
-                sentence
-                    .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
-                    .filter(|word| !word.is_empty())
-            }))
-            // Additions follow the existing vocabulary/collocations so their
-            // general-prefix ranks do not displace familiar local completions.
-            .chain(lexicon::EXTENDED_WORDS.split_whitespace())
+        let mut words: Vec<_> = indexed_words(vocabulary().word_layers())
             .enumerate()
             .map(|(rank, text)| Word {
                 text: canonical_word(text),
@@ -161,7 +171,7 @@ fn case_completion(word: &str, prefix: &str) -> String {
     )
 }
 
-fn context_word_match(context: &str) -> (usize, &'static [&'static str]) {
+fn context_word_match(context: &str) -> (usize, &'static [String]) {
     let boundary = context
         .rfind(['.', '?', '!', ';', '\n', '\r'])
         .map_or(0, |i| i + 1);
@@ -172,8 +182,8 @@ fn context_word_match(context: &str) -> (usize, &'static [&'static str]) {
         })
         .collect::<Vec<_>>()
         .join(" ");
-    lexicon::NEXT_WORDS
-        .iter()
+    vocabulary()
+        .next_words()
         .filter(|(prefix, _)| {
             normalized == *prefix
                 || normalized
@@ -181,7 +191,7 @@ fn context_word_match(context: &str) -> (usize, &'static [&'static str]) {
                     .is_some_and(|left| left.ends_with(' '))
         })
         .max_by_key(|(prefix, _)| prefix.len())
-        .map_or((0, &[]), |(prefix, words)| (prefix.chars().count(), *words))
+        .map_or((0, &[]), |(prefix, words)| (prefix.chars().count(), words))
 }
 
 fn bounded_context(context: &str) -> &str {
@@ -294,11 +304,11 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
             add(format!("{seed} {word}"));
         }
     }
-    if let Some((_, endings)) = lexicon::PHRASE_ENDINGS
-        .iter()
+    if let Some((_, endings)) = vocabulary()
+        .phrase_endings()
         .find(|(prefix, _)| *prefix == seed.to_lowercase())
     {
-        for ending in *endings {
+        for ending in endings {
             add(format!("{seed} {ending}"));
         }
     }
@@ -372,8 +382,8 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
     // phrase match. A failed match never falls back to a fabricated suffix.
     for start in starts {
         let typed = &combined[start..];
-        let remainders: Vec<_> = lexicon::SENTENCES
-            .iter()
+        let remainders: Vec<_> = vocabulary()
+            .sentences()
             .filter_map(|phrase| phrase_remainder(typed, phrase))
             .collect();
         if !remainders.is_empty() {
@@ -479,6 +489,17 @@ pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn layer_words(id: &str) -> impl Iterator<Item = &'static str> {
+        vocabulary()
+            .word_layers()
+            .iter()
+            .find(|layer| layer.id == id)
+            .unwrap()
+            .words
+            .iter()
+            .map(String::as_str)
+    }
 
     #[test]
     fn raw_input_is_first_and_completions_preserve_case_and_prefix() {
@@ -727,8 +748,8 @@ mod tests {
 
     #[test]
     fn vocabulary_is_bounded_indexed_and_covers_every_prefix() {
-        assert!(dictionary().len() >= 3800, "{}", dictionary().len());
-        assert!(dictionary().len() < 4096);
+        assert!(dictionary().len() >= 5200, "{}", dictionary().len());
+        assert!(dictionary().len() < 6144, "{}", dictionary().len());
         for pair in dictionary().windows(2) {
             assert!(pair[0].text < pair[1].text);
         }
@@ -743,12 +764,10 @@ mod tests {
 
     #[test]
     fn authored_additions_are_unique_explicit_word_forms() {
-        let baseline: std::collections::HashSet<_> = lexicon::WORDS
-            .split_whitespace()
-            .map(canonical_word)
-            .collect();
+        let baseline: std::collections::HashSet<_> =
+            layer_words("core").map(canonical_word).collect();
         let mut additions = std::collections::HashSet::new();
-        for word in lexicon::EXTENDED_WORDS.split_whitespace() {
+        for word in layer_words("extended") {
             assert!(
                 word.bytes()
                     .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
@@ -760,5 +779,154 @@ mod tests {
         for invented in ["runned", "buyed", "goed", "choosed", "bringed", "writed"] {
             assert!(!is_known_english_word(invented), "{invented}");
         }
+    }
+
+    #[test]
+    fn writing_tier_preserves_every_existing_word_rank() {
+        let baseline = indexed_words(&vocabulary().word_layers()[..2]);
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in baseline.enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 3906);
+        for (word, rank) in &old_ranks {
+            let index = dictionary()
+                .binary_search_by(|entry| entry.text.cmp(word))
+                .unwrap();
+            assert_eq!(dictionary()[index].rank, *rank, "rank changed for {word}");
+        }
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("writing") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate writing word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 912);
+        assert_eq!(dictionary().len(), 5251);
+    }
+
+    #[test]
+    fn daily_tier_preserves_the_whole_writing_index_and_real_word_forms() {
+        let previous = indexed_words(&vocabulary().word_layers()[..3]);
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in previous.enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 4827);
+        for (word, rank) in &old_ranks {
+            let index = dictionary()
+                .binary_search_by(|entry| entry.text.cmp(word))
+                .unwrap();
+            assert_eq!(dictionary()[index].rank, *rank, "rank changed for {word}");
+        }
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("daily") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate daily word: {word}");
+            assert!(is_known_english_word(word), "missing word: {word}");
+            assert!(
+                is_known_english_word(&word.replace('\'', "’")),
+                "missing curly form: {word}"
+            );
+        }
+        assert_eq!(additions.len(), 419);
+        assert_eq!(dictionary().len(), 5251);
+        for invented in [
+            "sweeped",
+            "oversleeped",
+            "hangged",
+            "picnicing",
+            "rechargeing",
+        ] {
+            assert!(!is_known_english_word(invented), "{invented}");
+        }
+    }
+
+    #[test]
+    fn authored_collocations_and_sentences_are_unique_and_reachable() {
+        use crate::ime::candidate_mix::CandidateKind;
+        let mut keys = std::collections::HashSet::new();
+        for (key, words) in vocabulary().next_words() {
+            assert!(keys.insert(key), "duplicate collocation: {key}");
+            assert_eq!(key.trim(), key);
+            assert!(!words.is_empty());
+            let mut unique = std::collections::HashSet::new();
+            for word in words {
+                assert!(
+                    word.chars()
+                        .all(|ch| ch.is_ascii_alphabetic() || ch == '\'')
+                );
+                assert!(
+                    unique.insert(canonical_word(word)),
+                    "duplicate next word: {key} {word}"
+                );
+                assert!(is_known_english_word(word), "{key} {word}");
+            }
+        }
+        let mut sentences = std::collections::HashSet::new();
+        for sentence in vocabulary().sentences() {
+            assert!(
+                sentences.insert(canonical_word(sentence)),
+                "duplicate sentence: {sentence}"
+            );
+            assert!(
+                sentence.ends_with(['.', '?', '!']),
+                "unfinished sentence: {sentence}"
+            );
+            let seed = sentence.trim_end_matches(['.', '?', '!']);
+            assert!(
+                mixed_candidates(seed, "")
+                    .iter()
+                    .any(|(text, kind)| { text == sentence && *kind == CandidateKind::Sentence }),
+                "unreachable sentence: {sentence}"
+            );
+        }
+        assert_eq!(keys.len(), 137);
+        assert_eq!(sentences.len(), 238);
+    }
+
+    #[test]
+    fn resource_migration_preserves_all_5251_word_ranks() {
+        // Captured from the pre-migration Rust tables, including duplicate
+        // priority positions and words projected from explicit sentences.
+        let mut hash = 0xcbf29ce484222325_u64;
+        for word in dictionary() {
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        assert_eq!(dictionary().len(), 5251);
+        assert_eq!(hash, 0x9db0c1a22060829a);
+    }
+
+    #[test]
+    fn indexing_accepts_data_layers_without_knowing_their_names() {
+        let data = Lexicon::from_json(r#"{"format_version":1,"language":"en","word_layers":[
+            {"id":"unrelated-name","words":["first"],"next_words":[["a context",["second"]]],"sentences":["third fourth."]},
+            {"id":"one-more-layer","words":["fifth"]}
+        ]}"#).unwrap();
+        assert_eq!(
+            indexed_words(data.word_layers()).collect::<Vec<_>>(),
+            ["first", "second", "third", "fourth", "fifth"]
+        );
     }
 }

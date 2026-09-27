@@ -233,7 +233,16 @@ impl PanelState {
         if self.native.showing {
             let mut history = suzaku_map::panel_support::CompletionHistory::default();
             if let Some(seed) = history.apply(&self.chrome.seed_text, &edit) {
-                self.native_action(suzaku_map::ime::companion::NativeOperation::Replace(seed));
+                use suzaku_map::ime::companion::NativeOperation;
+                let index = self.native.frame.as_ref().and_then(|frame| {
+                    frame
+                        .candidates
+                        .iter()
+                        .position(|candidate| candidate.text == seed)
+                });
+                self.native_action(
+                    index.map_or_else(|| NativeOperation::Replace(seed), NativeOperation::Adopt),
+                );
             }
             return;
         }
@@ -249,19 +258,15 @@ impl PanelState {
 
     /// Number-key choices are editable replacements; only an explicit send commits.
     pub(super) fn continue_sentence_candidate(&mut self, index: usize) {
-        let text = if self.native.showing {
-            self.native.frame.as_ref().and_then(|frame| {
-                frame
-                    .candidates
-                    .get(index)
-                    .map(|candidate| candidate.text.clone())
-            })
-        } else {
-            self.engine
-                .candidates()
-                .get(index)
-                .map(|candidate| candidate.text.clone())
-        };
+        if self.native.showing {
+            self.native_action(suzaku_map::ime::companion::NativeOperation::Adopt(index));
+            return;
+        }
+        let text = self
+            .engine
+            .candidates()
+            .get(index)
+            .map(|candidate| candidate.text.clone());
         if let Some(text) = text {
             self.replace_continuing_draft(text);
         }

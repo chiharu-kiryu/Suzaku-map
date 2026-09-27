@@ -128,6 +128,7 @@ impl HostImeSession {
         if self.private != private {
             self.private = private;
             self.engine.clear_session_context();
+            self.engine.set_preferences_enabled(!private);
             self.apply_settings(self.settings.clone());
         }
     }
@@ -410,6 +411,10 @@ pub extern "C" fn suzaku_host_ime_control_utf8(
         return std::ptr::null_mut();
     };
     let value = with_shared_host_ime_session(|session| {
+        if command == "F" {
+            session.engine.clear_preferences();
+            return control::response(session, Ok(()));
+        }
         let result = control::settings_for_command(&command, &session.settings, ImeSettings::load)
             .and_then(|change| {
                 if let Some(settings) = change {
@@ -474,6 +479,15 @@ pub extern "C" fn suzaku_host_ime_selected_index() -> usize {
 #[unsafe(no_mangle)]
 pub extern "C" fn suzaku_host_ime_enable_ibus_candidates() {
     with_shared_host_ime_session(|session| session.engine.enable_ibus_candidate_mix());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn suzaku_host_ime_stage_completion_preference() {
+    with_shared_host_ime_session(|session| {
+        if session.active && !session.private {
+            session.engine.stage_selected_preference();
+        }
+    });
 }
 
 #[unsafe(no_mangle)]
@@ -589,6 +603,43 @@ mod tests {
         assert!(update.active);
         assert_eq!(update.marked_text, "ni hao");
         assert!(!update.candidates.is_empty());
+    }
+
+    #[test]
+    fn host_private_fields_neither_learn_nor_use_public_preferences() {
+        let mut session = HostImeSession::new(EngineConfig {
+            default_language: "zh-Hans".into(),
+            ..Default::default()
+        });
+        session.engine.enable_ibus_candidate_mix();
+        session.activate();
+        for _ in 0..8 {
+            session.replace_marked_text("shijian", InputSource::HardwareKeyboard);
+            let index = session
+                .engine
+                .candidates()
+                .iter()
+                .position(|c| c.text == "实践")
+                .unwrap();
+            session.select_candidate(index);
+            assert!(session.commit_selected(CommitOptions { force: true }).0.ok);
+        }
+        assert_eq!(session.engine.preference_count(), 1);
+        session.set_private(true);
+        session.replace_marked_text("shijian", InputSource::HardwareKeyboard);
+        assert_eq!(session.engine.candidates()[0].text, "时间");
+        let index = session
+            .engine
+            .candidates()
+            .iter()
+            .position(|c| c.text == "事件")
+            .unwrap();
+        session.select_candidate(index);
+        assert!(session.commit_selected(CommitOptions { force: true }).0.ok);
+        assert_eq!(session.engine.preference_count(), 1);
+        session.set_private(false);
+        session.replace_marked_text("shijian", InputSource::HardwareKeyboard);
+        assert_eq!(session.engine.candidates()[0].text, "实践");
     }
 
     #[test]

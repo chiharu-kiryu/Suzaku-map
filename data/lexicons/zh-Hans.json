@@ -1,0 +1,2052 @@
+{
+  "format_version": 1,
+  "language": "zh-Hans",
+  "readings": [
+    {"reading": "ni'hao", "text": "你好", "kind": "word"},
+    {"reading": "ni'hao'ma", "text": "你好吗", "kind": "sentence"},
+    {"reading": "xie'xie", "text": "谢谢", "kind": "word"},
+    {"reading": "zai'jian", "text": "再见", "kind": "word"},
+    {"reading": "zao'shang'hao", "text": "早上好", "kind": "word"},
+    {"reading": "wan'shang'hao", "text": "晚上好", "kind": "word"},
+    {"reading": "mei'guan'xi", "text": "没关系", "kind": "word"},
+    {"reading": "dui'bu'qi", "text": "对不起", "kind": "word"},
+    {"reading": "qing'wen", "text": "请问", "kind": "word"},
+    {"reading": "ke'yi", "text": "可以", "kind": "word"},
+    {"reading": "bu'ke'yi", "text": "不可以", "kind": "word"},
+    {"reading": "wo'men", "text": "我们", "kind": "word"},
+    {"reading": "ni'men", "text": "你们", "kind": "word"},
+    {"reading": "ta'men", "text": "他们", "kind": "word"},
+    {"reading": "zhong'wen", "text": "中文", "kind": "word"},
+    {"reading": "ying'wen", "text": "英文", "kind": "word"},
+    {"reading": "ri'wen", "text": "日文", "kind": "word"},
+    {"reading": "zhong'guo", "text": "中国", "kind": "word"},
+    {"reading": "shi'jie", "text": "世界", "kind": "word"},
+    {"reading": "shu'ru'fa", "text": "输入法", "kind": "word"},
+    {"reading": "shu'ru", "text": "输入", "kind": "word"},
+    {"reading": "hou'xuan", "text": "候选", "kind": "word"},
+    {"reading": "lian'xiang", "text": "联想", "kind": "word"},
+    {"reading": "mo'xing", "text": "模型", "kind": "word"},
+    {"reading": "yu'yan", "text": "语言", "kind": "word"},
+    {"reading": "zhi'chi", "text": "支持", "kind": "word"},
+    {"reading": "gong'neng", "text": "功能", "kind": "word"},
+    {"reading": "ji'xu", "text": "继续", "kind": "word"},
+    {"reading": "kai'fa", "text": "开发", "kind": "word"},
+    {"reading": "ce'shi", "text": "测试", "kind": "word"},
+    {"reading": "she'zhi", "text": "设置", "kind": "word"},
+    {"reading": "jin'tian", "text": "今天", "kind": "word"},
+    {"reading": "ming'tian", "text": "明天", "kind": "word"},
+    {"reading": "zuo'tian", "text": "昨天", "kind": "word"},
+    {"reading": "xian'zai", "text": "现在", "kind": "word"},
+    {"reading": "tian'qi", "text": "天气", "kind": "word"},
+    {"reading": "gong'zuo", "text": "工作", "kind": "word"},
+    {"reading": "xue'xi", "text": "学习", "kind": "word"},
+    {"reading": "xi'huan", "text": "喜欢", "kind": "word"},
+    {"reading": "peng'you", "text": "朋友", "kind": "word"},
+    {"reading": "shi'jian", "text": "时间", "kind": "word"},
+    {"reading": "wen'ti", "text": "问题", "kind": "word"},
+    {"reading": "bang'zhu", "text": "帮助", "kind": "word"},
+    {"reading": "dian'nao", "text": "电脑", "kind": "word"},
+    {"reading": "shou'ji", "text": "手机", "kind": "word"},
+    {"reading": "bei'jing", "text": "北京", "kind": "word"},
+    {"reading": "shang'hai", "text": "上海", "kind": "word"},
+    {"reading": "shen'zhen", "text": "深圳", "kind": "word"},
+    {"reading": "guang'zhou", "text": "广州", "kind": "word"},
+    {"reading": "xi'an", "text": "西安", "kind": "word", "require_separators": true},
+    {"reading": "wo", "text": "我", "kind": "word"},
+    {"reading": "ni", "text": "你", "kind": "word"},
+    {"reading": "ni", "text": "呢", "kind": "word"},
+    {"reading": "ta", "text": "他", "kind": "word"},
+    {"reading": "ta", "text": "她", "kind": "word"},
+    {"reading": "men", "text": "们", "kind": "word"},
+    {"reading": "hao", "text": "好", "kind": "word"},
+    {"reading": "hao", "text": "号", "kind": "word"},
+    {"reading": "shi", "text": "是", "kind": "word"},
+    {"reading": "shi", "text": "时", "kind": "word"},
+    {"reading": "de", "text": "的", "kind": "word"},
+    {"reading": "le", "text": "了", "kind": "word"},
+    {"reading": "ma", "text": "吗", "kind": "word"},
+    {"reading": "ne", "text": "呢", "kind": "word"},
+    {"reading": "bu", "text": "不", "kind": "word"},
+    {"reading": "you", "text": "有", "kind": "word"},
+    {"reading": "you", "text": "又", "kind": "word"},
+    {"reading": "zai", "text": "在", "kind": "word"},
+    {"reading": "ai", "text": "爱", "kind": "word"},
+    {"reading": "hen", "text": "很", "kind": "word"},
+    {"reading": "xiang", "text": "想", "kind": "word"},
+    {"reading": "yao", "text": "要", "kind": "word"},
+    {"reading": "qu", "text": "去", "kind": "word"},
+    {"reading": "lai", "text": "来", "kind": "word"},
+    {"reading": "kan", "text": "看", "kind": "word"},
+    {"reading": "ting", "text": "听", "kind": "word"},
+    {"reading": "shuo", "text": "说", "kind": "word"},
+    {"reading": "qing", "text": "请", "kind": "word"},
+    {"reading": "he", "text": "和", "kind": "word"},
+    {"reading": "ye", "text": "也", "kind": "word"},
+    {"reading": "dou", "text": "都", "kind": "word"},
+    {"reading": "ke", "text": "可", "kind": "word"},
+    {"reading": "yi", "text": "以", "kind": "word"},
+    {"reading": "zhong", "text": "中", "kind": "word"},
+    {"reading": "guo", "text": "国", "kind": "word"},
+    {"reading": "ren", "text": "人", "kind": "word"},
+    {"reading": "tian", "text": "天", "kind": "word"},
+    {"reading": "qi", "text": "气", "kind": "word"},
+    {"reading": "xin", "text": "新", "kind": "word"},
+    {"reading": "da", "text": "大", "kind": "word"},
+    {"reading": "xiao", "text": "小", "kind": "word"},
+    {"reading": "duo", "text": "多", "kind": "word"},
+    {"reading": "shao", "text": "少", "kind": "word"},
+    {"reading": "lv", "text": "绿", "kind": "word"},
+    {"reading": "nv", "text": "女", "kind": "word"},
+    {"reading": "xian", "text": "先", "kind": "word"},
+    {"reading": "xi", "text": "西", "kind": "word"},
+    {"reading": "an", "text": "安", "kind": "word"},
+    {"reading": "zao'fan", "text": "早饭", "kind": "word"},
+    {"reading": "wu'fan", "text": "午饭", "kind": "word"},
+    {"reading": "wan'fan", "text": "晚饭", "kind": "word"},
+    {"reading": "zao'can", "text": "早餐", "kind": "word"},
+    {"reading": "wu'can", "text": "午餐", "kind": "word"},
+    {"reading": "wan'can", "text": "晚餐", "kind": "word"},
+    {"reading": "chi'fan", "text": "吃饭", "kind": "word"},
+    {"reading": "he'shui", "text": "喝水", "kind": "word"},
+    {"reading": "can'ting", "text": "餐厅", "kind": "word"},
+    {"reading": "fan'dian", "text": "饭店", "kind": "word"},
+    {"reading": "cai'dan", "text": "菜单", "kind": "word"},
+    {"reading": "dian'can", "text": "点餐", "kind": "word"},
+    {"reading": "wai'mai", "text": "外卖", "kind": "word"},
+    {"reading": "mi'fan", "text": "米饭", "kind": "word"},
+    {"reading": "mian'tiao", "text": "面条", "kind": "word"},
+    {"reading": "mian'bao", "text": "面包", "kind": "word"},
+    {"reading": "niu'nai", "text": "牛奶", "kind": "word"},
+    {"reading": "ji'dan", "text": "鸡蛋", "kind": "word"},
+    {"reading": "shui'guo", "text": "水果", "kind": "word"},
+    {"reading": "shu'cai", "text": "蔬菜", "kind": "word"},
+    {"reading": "ping'guo", "text": "苹果", "kind": "word"},
+    {"reading": "xiang'jiao", "text": "香蕉", "kind": "word"},
+    {"reading": "ka'fei", "text": "咖啡", "kind": "word"},
+    {"reading": "nai'cha", "text": "奶茶", "kind": "word"},
+    {"reading": "yin'liao", "text": "饮料", "kind": "word"},
+    {"reading": "hao'chi", "text": "好吃", "kind": "word"},
+    {"reading": "hao'he", "text": "好喝", "kind": "word"},
+    {"reading": "kou'wei", "text": "口味", "kind": "word"},
+    {"reading": "jian'kang", "text": "健康", "kind": "word"},
+    {"reading": "xiu'xi", "text": "休息", "kind": "word"},
+    {"reading": "shui'jiao", "text": "睡觉", "kind": "word"},
+    {"reading": "qi'chuang", "text": "起床", "kind": "word"},
+    {"reading": "duan'lian", "text": "锻炼", "kind": "word"},
+    {"reading": "yun'dong", "text": "运动", "kind": "word"},
+    {"reading": "san'bu", "text": "散步", "kind": "word"},
+    {"reading": "pao'bu", "text": "跑步", "kind": "word"},
+    {"reading": "you'yong", "text": "游泳", "kind": "word"},
+    {"reading": "yi'yuan", "text": "医院", "kind": "word"},
+    {"reading": "yi'sheng", "text": "医生", "kind": "word"},
+    {"reading": "hu'shi", "text": "护士", "kind": "word"},
+    {"reading": "yao'dian", "text": "药店", "kind": "word"},
+    {"reading": "yu'yue", "text": "预约", "kind": "word"},
+    {"reading": "sheng'ri", "text": "生日", "kind": "word"},
+    {"reading": "kuai'le", "text": "快乐", "kind": "word"},
+    {"reading": "gao'xing", "text": "高兴", "kind": "word"},
+    {"reading": "kai'xin", "text": "开心", "kind": "word"},
+    {"reading": "gan'xie", "text": "感谢", "kind": "word"},
+    {"reading": "gan'jue", "text": "感觉", "kind": "word"},
+    {"reading": "dan'xin", "text": "担心", "kind": "word"},
+    {"reading": "fang'xin", "text": "放心", "kind": "word"},
+    {"reading": "bao'qian", "text": "抱歉", "kind": "word"},
+    {"reading": "xin'ku", "text": "辛苦", "kind": "word"},
+    {"reading": "ma'fan", "text": "麻烦", "kind": "word"},
+    {"reading": "fang'bian", "text": "方便", "kind": "word"},
+    {"reading": "bu'yong", "text": "不用", "kind": "word"},
+    {"reading": "bu'ke'qi", "text": "不客气", "kind": "word"},
+    {"reading": "mei'wen'ti", "text": "没问题", "kind": "word"},
+    {"reading": "deng'yi'xia", "text": "等一下", "kind": "word"},
+    {"reading": "shao'deng", "text": "稍等", "kind": "word"},
+    {"reading": "shao'hou", "text": "稍后", "kind": "word"},
+    {"reading": "ma'shang", "text": "马上", "kind": "word"},
+    {"reading": "yi'hui", "text": "一会", "kind": "word"},
+    {"reading": "xian'deng'yi'xia", "text": "先等一下", "kind": "word"},
+    {"reading": "mei'shi", "text": "没事", "kind": "word"},
+    {"reading": "hao'de", "text": "好的", "kind": "word"},
+    {"reading": "xing'de", "text": "行的", "kind": "word"},
+    {"reading": "que'shi", "text": "确实", "kind": "word"},
+    {"reading": "dang'ran", "text": "当然", "kind": "word"},
+    {"reading": "zhen'de", "text": "真的", "kind": "word"},
+    {"reading": "yi'jing", "text": "已经", "kind": "word"},
+    {"reading": "hai'mei", "text": "还没", "kind": "word"},
+    {"reading": "yi'qi", "text": "一起", "kind": "word"},
+    {"reading": "yi'xia", "text": "一下", "kind": "word"},
+    {"reading": "yi'zhi", "text": "一直", "kind": "word"},
+    {"reading": "yi'yang", "text": "一样", "kind": "word"},
+    {"reading": "yi'dian", "text": "一点", "kind": "word"},
+    {"reading": "yi'ban", "text": "一般", "kind": "word"},
+    {"reading": "bi'jiao", "text": "比较", "kind": "word"},
+    {"reading": "fei'chang", "text": "非常", "kind": "word"},
+    {"reading": "te'bie", "text": "特别", "kind": "word"},
+    {"reading": "zui'jin", "text": "最近", "kind": "word"},
+    {"reading": "xian'qian", "text": "先前", "kind": "word"},
+    {"reading": "zhi'qian", "text": "之前", "kind": "word"},
+    {"reading": "zhi'hou", "text": "之后", "kind": "word"},
+    {"reading": "yi'qian", "text": "以前", "kind": "word"},
+    {"reading": "yi'hou", "text": "以后", "kind": "word"},
+    {"reading": "gang'cai", "text": "刚才", "kind": "word"},
+    {"reading": "ran'hou", "text": "然后", "kind": "word"},
+    {"reading": "suo'yi", "text": "所以", "kind": "word"},
+    {"reading": "yin'wei", "text": "因为", "kind": "word"},
+    {"reading": "ru'guo", "text": "如果", "kind": "word"},
+    {"reading": "dan'shi", "text": "但是", "kind": "word"},
+    {"reading": "sui'ran", "text": "虽然", "kind": "word"},
+    {"reading": "huo'zhe", "text": "或者", "kind": "word"},
+    {"reading": "hai'shi", "text": "还是", "kind": "word"},
+    {"reading": "er'qie", "text": "而且", "kind": "word"},
+    {"reading": "bing'qie", "text": "并且", "kind": "word"},
+    {"reading": "ling'wai", "text": "另外", "kind": "word"},
+    {"reading": "qi'shi", "text": "其实", "kind": "word"},
+    {"reading": "ying'gai", "text": "应该", "kind": "word"},
+    {"reading": "ke'neng", "text": "可能", "kind": "word"},
+    {"reading": "xu'yao", "text": "需要", "kind": "word"},
+    {"reading": "bi'xu", "text": "必须", "kind": "word"},
+    {"reading": "xi'wang", "text": "希望", "kind": "word"},
+    {"reading": "jue'de", "text": "觉得", "kind": "word"},
+    {"reading": "zhi'dao", "text": "知道", "kind": "word"},
+    {"reading": "ming'bai", "text": "明白", "kind": "word"},
+    {"reading": "liao'jie", "text": "了解", "kind": "word"},
+    {"reading": "ren'wei", "text": "认为", "kind": "word"},
+    {"reading": "ren'shi", "text": "认识", "kind": "word"},
+    {"reading": "jue'ding", "text": "决定", "kind": "word"},
+    {"reading": "tong'yi", "text": "同意", "kind": "word"},
+    {"reading": "yi'jian", "text": "意见", "kind": "word"},
+    {"reading": "jian'yi", "text": "建议", "kind": "word"},
+    {"reading": "xiang'fa", "text": "想法", "kind": "word"},
+    {"reading": "jie'shao", "text": "介绍", "kind": "word"},
+    {"reading": "shuo'ming", "text": "说明", "kind": "word"},
+    {"reading": "jie'shi", "text": "解释", "kind": "word"},
+    {"reading": "lian'xi", "text": "联系", "kind": "word"},
+    {"reading": "lian'xi", "text": "练习", "kind": "word"},
+    {"reading": "xiao'xi", "text": "消息", "kind": "word"},
+    {"reading": "you'jian", "text": "邮件", "kind": "word"},
+    {"reading": "duan'xin", "text": "短信", "kind": "word"},
+    {"reading": "dian'hua", "text": "电话", "kind": "word"},
+    {"reading": "hui'fu", "text": "回复", "kind": "word"},
+    {"reading": "hui'fu", "text": "恢复", "kind": "word"},
+    {"reading": "shou'dao", "text": "收到", "kind": "word"},
+    {"reading": "fa'song", "text": "发送", "kind": "word"},
+    {"reading": "tong'zhi", "text": "通知", "kind": "word"},
+    {"reading": "ti'xing", "text": "提醒", "kind": "word"},
+    {"reading": "yao'qing", "text": "邀请", "kind": "word"},
+    {"reading": "fen'xiang", "text": "分享", "kind": "word"},
+    {"reading": "jiao'liu", "text": "交流", "kind": "word"},
+    {"reading": "gou'tong", "text": "沟通", "kind": "word"},
+    {"reading": "tao'lun", "text": "讨论", "kind": "word"},
+    {"reading": "hui'yi", "text": "会议", "kind": "word"},
+    {"reading": "kai'hui", "text": "开会", "kind": "word"},
+    {"reading": "tong'shi", "text": "同事", "kind": "word"},
+    {"reading": "tong'shi", "text": "同时", "kind": "word"},
+    {"reading": "ke'hu", "text": "客户", "kind": "word"},
+    {"reading": "gong'si", "text": "公司", "kind": "word"},
+    {"reading": "tuan'dui", "text": "团队", "kind": "word"},
+    {"reading": "bu'men", "text": "部门", "kind": "word"},
+    {"reading": "ling'dao", "text": "领导", "kind": "word"},
+    {"reading": "jing'li", "text": "经理", "kind": "word"},
+    {"reading": "jing'li", "text": "经历", "kind": "word"},
+    {"reading": "xiang'mu", "text": "项目", "kind": "word"},
+    {"reading": "ren'wu", "text": "任务", "kind": "word"},
+    {"reading": "ji'hua", "text": "计划", "kind": "word"},
+    {"reading": "an'pai", "text": "安排", "kind": "word"},
+    {"reading": "jin'du", "text": "进度", "kind": "word"},
+    {"reading": "wan'cheng", "text": "完成", "kind": "word"},
+    {"reading": "kai'shi", "text": "开始", "kind": "word"},
+    {"reading": "jie'shu", "text": "结束", "kind": "word"},
+    {"reading": "qu'xiao", "text": "取消", "kind": "word"},
+    {"reading": "que'ren", "text": "确认", "kind": "word"},
+    {"reading": "jian'cha", "text": "检查", "kind": "word"},
+    {"reading": "chu'li", "text": "处理", "kind": "word"},
+    {"reading": "jie'jue", "text": "解决", "kind": "word"},
+    {"reading": "fu'ze", "text": "负责", "kind": "word"},
+    {"reading": "can'jia", "text": "参加", "kind": "word"},
+    {"reading": "zhun'bei", "text": "准备", "kind": "word"},
+    {"reading": "zi'liao", "text": "资料", "kind": "word"},
+    {"reading": "nei'rong", "text": "内容", "kind": "word"},
+    {"reading": "yao'qiu", "text": "要求", "kind": "word"},
+    {"reading": "xu'qiu", "text": "需求", "kind": "word"},
+    {"reading": "biao'zhun", "text": "标准", "kind": "word"},
+    {"reading": "jie'guo", "text": "结果", "kind": "word"},
+    {"reading": "yuan'yin", "text": "原因", "kind": "word"},
+    {"reading": "fang'fa", "text": "方法", "kind": "word"},
+    {"reading": "fang'an", "text": "方案", "kind": "word"},
+    {"reading": "mu'biao", "text": "目标", "kind": "word"},
+    {"reading": "zhong'dian", "text": "重点", "kind": "word"},
+    {"reading": "you'xian", "text": "优先", "kind": "word"},
+    {"reading": "you'xian'ji", "text": "优先级", "kind": "word"},
+    {"reading": "bao'gao", "text": "报告", "kind": "word"},
+    {"reading": "fan'kui", "text": "反馈", "kind": "word"},
+    {"reading": "zi'yuan", "text": "资源", "kind": "word"},
+    {"reading": "yi'ju", "text": "依据", "kind": "word"},
+    {"reading": "jing'yan", "text": "经验", "kind": "word"},
+    {"reading": "xiao'lv", "text": "效率", "kind": "word"},
+    {"reading": "zhi'liang", "text": "质量", "kind": "word"},
+    {"reading": "fu'jian", "text": "附件", "kind": "word"},
+    {"reading": "ri'cheng", "text": "日程", "kind": "word"},
+    {"reading": "ri'li", "text": "日历", "kind": "word"},
+    {"reading": "shang'wu", "text": "上午", "kind": "word"},
+    {"reading": "zhong'wu", "text": "中午", "kind": "word"},
+    {"reading": "xia'wu", "text": "下午", "kind": "word"},
+    {"reading": "zao'shang", "text": "早上", "kind": "word"},
+    {"reading": "wan'shang", "text": "晚上", "kind": "word"},
+    {"reading": "jin'wan", "text": "今晚", "kind": "word"},
+    {"reading": "hou'tian", "text": "后天", "kind": "word"},
+    {"reading": "zhou'mo", "text": "周末", "kind": "word"},
+    {"reading": "xing'qi", "text": "星期", "kind": "word"},
+    {"reading": "xing'qi'yi", "text": "星期一", "kind": "word"},
+    {"reading": "xing'qi'er", "text": "星期二", "kind": "word"},
+    {"reading": "xing'qi'san", "text": "星期三", "kind": "word"},
+    {"reading": "xing'qi'si", "text": "星期四", "kind": "word"},
+    {"reading": "xing'qi'wu", "text": "星期五", "kind": "word"},
+    {"reading": "xing'qi'liu", "text": "星期六", "kind": "word"},
+    {"reading": "xing'qi'tian", "text": "星期天", "kind": "word"},
+    {"reading": "xia'zhou", "text": "下周", "kind": "word"},
+    {"reading": "shang'zhou", "text": "上周", "kind": "word"},
+    {"reading": "ben'zhou", "text": "本周", "kind": "word"},
+    {"reading": "yue'fen", "text": "月份", "kind": "word"},
+    {"reading": "jin'nian", "text": "今年", "kind": "word"},
+    {"reading": "ming'nian", "text": "明年", "kind": "word"},
+    {"reading": "qu'nian", "text": "去年", "kind": "word"},
+    {"reading": "jia'qi", "text": "假期", "kind": "word"},
+    {"reading": "jie'ri", "text": "节日", "kind": "word"},
+    {"reading": "chu'fa", "text": "出发", "kind": "word"},
+    {"reading": "dao'da", "text": "到达", "kind": "word"},
+    {"reading": "chu'men", "text": "出门", "kind": "word"},
+    {"reading": "hui'jia", "text": "回家", "kind": "word"},
+    {"reading": "shang'ban", "text": "上班", "kind": "word"},
+    {"reading": "xia'ban", "text": "下班", "kind": "word"},
+    {"reading": "lu'shang", "text": "路上", "kind": "word"},
+    {"reading": "di'tie", "text": "地铁", "kind": "word"},
+    {"reading": "gong'jiao", "text": "公交", "kind": "word"},
+    {"reading": "chu'zu'che", "text": "出租车", "kind": "word"},
+    {"reading": "huo'che", "text": "火车", "kind": "word"},
+    {"reading": "gao'tie", "text": "高铁", "kind": "word"},
+    {"reading": "fei'ji", "text": "飞机", "kind": "word"},
+    {"reading": "ji'chang", "text": "机场", "kind": "word"},
+    {"reading": "che'zhan", "text": "车站", "kind": "word"},
+    {"reading": "che'piao", "text": "车票", "kind": "word"},
+    {"reading": "hang'ban", "text": "航班", "kind": "word"},
+    {"reading": "jiu'dian", "text": "酒店", "kind": "word"},
+    {"reading": "fang'jian", "text": "房间", "kind": "word"},
+    {"reading": "di'zhi", "text": "地址", "kind": "word"},
+    {"reading": "di'zhi", "text": "地质", "kind": "word"},
+    {"reading": "wei'zhi", "text": "位置", "kind": "word"},
+    {"reading": "fu'jin", "text": "附近", "kind": "word"},
+    {"reading": "di'tu", "text": "地图", "kind": "word"},
+    {"reading": "dao'hang", "text": "导航", "kind": "word"},
+    {"reading": "lv'xing", "text": "旅行", "kind": "word"},
+    {"reading": "lv'you", "text": "旅游", "kind": "word"},
+    {"reading": "jing'dian", "text": "景点", "kind": "word"},
+    {"reading": "feng'jing", "text": "风景", "kind": "word"},
+    {"reading": "zhao'pian", "text": "照片", "kind": "word"},
+    {"reading": "shi'pin", "text": "视频", "kind": "word"},
+    {"reading": "yin'yue", "text": "音乐", "kind": "word"},
+    {"reading": "dian'ying", "text": "电影", "kind": "word"},
+    {"reading": "gou'wu", "text": "购物", "kind": "word"},
+    {"reading": "chao'shi", "text": "超市", "kind": "word"},
+    {"reading": "shang'dian", "text": "商店", "kind": "word"},
+    {"reading": "shang'pin", "text": "商品", "kind": "word"},
+    {"reading": "jia'ge", "text": "价格", "kind": "word"},
+    {"reading": "you'hui", "text": "优惠", "kind": "word"},
+    {"reading": "ding'dan", "text": "订单", "kind": "word"},
+    {"reading": "ding'yue", "text": "订阅", "kind": "word"},
+    {"reading": "kuai'di", "text": "快递", "kind": "word"},
+    {"reading": "wu'liu", "text": "物流", "kind": "word"},
+    {"reading": "pei'song", "text": "配送", "kind": "word"},
+    {"reading": "shou'huo", "text": "收货", "kind": "word"},
+    {"reading": "fu'kuan", "text": "付款", "kind": "word"},
+    {"reading": "zhi'fu", "text": "支付", "kind": "word"},
+    {"reading": "tui'kuan", "text": "退款", "kind": "word"},
+    {"reading": "fa'piao", "text": "发票", "kind": "word"},
+    {"reading": "bao'xiu", "text": "保修", "kind": "word"},
+    {"reading": "shou'hou", "text": "售后", "kind": "word"},
+    {"reading": "yin'hang", "text": "银行", "kind": "word"},
+    {"reading": "xue'xiao", "text": "学校", "kind": "word"},
+    {"reading": "lao'shi", "text": "老师", "kind": "word"},
+    {"reading": "xue'sheng", "text": "学生", "kind": "word"},
+    {"reading": "ke'cheng", "text": "课程", "kind": "word"},
+    {"reading": "kao'shi", "text": "考试", "kind": "word"},
+    {"reading": "zuo'ye", "text": "作业", "kind": "word"},
+    {"reading": "zhi'shi", "text": "知识", "kind": "word"},
+    {"reading": "shu'ji", "text": "书籍", "kind": "word"},
+    {"reading": "yue'du", "text": "阅读", "kind": "word"},
+    {"reading": "bi'ji", "text": "笔记", "kind": "word"},
+    {"reading": "ci'ku", "text": "词库", "kind": "word"},
+    {"reading": "ci'yu", "text": "词语", "kind": "word"},
+    {"reading": "ci'zu", "text": "词组", "kind": "word"},
+    {"reading": "ci'dian", "text": "词典", "kind": "word"},
+    {"reading": "dan'ci", "text": "单词", "kind": "word"},
+    {"reading": "ju'zi", "text": "句子", "kind": "word"},
+    {"reading": "chang'ju", "text": "长句", "kind": "word"},
+    {"reading": "duan'luo", "text": "段落", "kind": "word"},
+    {"reading": "wen'ben", "text": "文本", "kind": "word"},
+    {"reading": "wen'zi", "text": "文字", "kind": "word"},
+    {"reading": "zi'ti", "text": "字体", "kind": "word"},
+    {"reading": "zi'fu", "text": "字符", "kind": "word"},
+    {"reading": "zi'hao", "text": "字号", "kind": "word"},
+    {"reading": "pin'yin", "text": "拼音", "kind": "word"},
+    {"reading": "luo'ma'yin", "text": "罗马音", "kind": "word"},
+    {"reading": "ying'yu", "text": "英语", "kind": "word"},
+    {"reading": "han'yu", "text": "汉语", "kind": "word"},
+    {"reading": "ri'yu", "text": "日语", "kind": "word"},
+    {"reading": "fan'yi", "text": "翻译", "kind": "word"},
+    {"reading": "hou'xuan'ci", "text": "候选词", "kind": "word"},
+    {"reading": "bu'quan", "text": "补全", "kind": "word"},
+    {"reading": "zi'dong'bu'quan", "text": "自动补全", "kind": "word"},
+    {"reading": "ci'pin", "text": "词频", "kind": "word"},
+    {"reading": "quan'zhong", "text": "权重", "kind": "word"},
+    {"reading": "pai'xu", "text": "排序", "kind": "word"},
+    {"reading": "tong'yin'ci", "text": "同音词", "kind": "word"},
+    {"reading": "jian'pan", "text": "键盘", "kind": "word"},
+    {"reading": "shu'biao", "text": "鼠标", "kind": "word"},
+    {"reading": "ping'mu", "text": "屏幕", "kind": "word"},
+    {"reading": "chuang'kou", "text": "窗口", "kind": "word"},
+    {"reading": "an'niu", "text": "按钮", "kind": "word"},
+    {"reading": "tu'biao", "text": "图标", "kind": "word"},
+    {"reading": "jie'mian", "text": "界面", "kind": "word"},
+    {"reading": "mian'ban", "text": "面板", "kind": "word"},
+    {"reading": "tuo'pan", "text": "托盘", "kind": "word"},
+    {"reading": "xuan'xiang", "text": "选项", "kind": "word"},
+    {"reading": "xuan'xiang'ka", "text": "选项卡", "kind": "word"},
+    {"reading": "kuai'jie'jian", "text": "快捷键", "kind": "word"},
+    {"reading": "shu'ru'kuang", "text": "输入框", "kind": "word"},
+    {"reading": "guang'biao", "text": "光标", "kind": "word"},
+    {"reading": "tuo'dong", "text": "拖动", "kind": "word"},
+    {"reading": "suo'fang", "text": "缩放", "kind": "word"},
+    {"reading": "gun'dong", "text": "滚动", "kind": "word"},
+    {"reading": "dian'ji", "text": "点击", "kind": "word"},
+    {"reading": "shuang'ji", "text": "双击", "kind": "word"},
+    {"reading": "xuan'ze", "text": "选择", "kind": "word"},
+    {"reading": "xuan'zhong", "text": "选中", "kind": "word"},
+    {"reading": "fu'zhi", "text": "复制", "kind": "word"},
+    {"reading": "zhan'tie", "text": "粘贴", "kind": "word"},
+    {"reading": "jian'qie", "text": "剪切", "kind": "word"},
+    {"reading": "che'xiao", "text": "撤销", "kind": "word"},
+    {"reading": "hui'tui", "text": "回退", "kind": "word"},
+    {"reading": "bao'cun", "text": "保存", "kind": "word"},
+    {"reading": "shan'chu", "text": "删除", "kind": "word"},
+    {"reading": "tian'jia", "text": "添加", "kind": "word"},
+    {"reading": "xiu'gai", "text": "修改", "kind": "word"},
+    {"reading": "ti'huan", "text": "替换", "kind": "word"},
+    {"reading": "cha'ru", "text": "插入", "kind": "word"},
+    {"reading": "da'kai", "text": "打开", "kind": "word"},
+    {"reading": "guan'bi", "text": "关闭", "kind": "word"},
+    {"reading": "tui'chu", "text": "退出", "kind": "word"},
+    {"reading": "qi'dong", "text": "启动", "kind": "word"},
+    {"reading": "chong'qi", "text": "重启", "kind": "word"},
+    {"reading": "chong'xin'qi'dong", "text": "重新启动", "kind": "word"},
+    {"reading": "ji'huo", "text": "激活", "kind": "word"},
+    {"reading": "shi'fang", "text": "释放", "kind": "word"},
+    {"reading": "qi'yong", "text": "启用", "kind": "word"},
+    {"reading": "jin'yong", "text": "禁用", "kind": "word"},
+    {"reading": "chong'zhi", "text": "重置", "kind": "word"},
+    {"reading": "mo'ren", "text": "默认", "kind": "word"},
+    {"reading": "zi'ding'yi", "text": "自定义", "kind": "word"},
+    {"reading": "zi'dong", "text": "自动", "kind": "word"},
+    {"reading": "shou'dong", "text": "手动", "kind": "word"},
+    {"reading": "zhu'ti", "text": "主题", "kind": "word"},
+    {"reading": "bu'ju", "text": "布局", "kind": "word"},
+    {"reading": "yang'shi", "text": "样式", "kind": "word"},
+    {"reading": "yan'se", "text": "颜色", "kind": "word"},
+    {"reading": "chi'cun", "text": "尺寸", "kind": "word"},
+    {"reading": "xian'shi", "text": "显示", "kind": "word"},
+    {"reading": "yin'cang", "text": "隐藏", "kind": "word"},
+    {"reading": "zhan'kai", "text": "展开", "kind": "word"},
+    {"reading": "shou'qi", "text": "收起", "kind": "word"},
+    {"reading": "jiao'dian", "text": "焦点", "kind": "word"},
+    {"reading": "shu'ju", "text": "数据", "kind": "word"},
+    {"reading": "shu'ju'ku", "text": "数据库", "kind": "word"},
+    {"reading": "wen'jian", "text": "文件", "kind": "word"},
+    {"reading": "wen'jian'jia", "text": "文件夹", "kind": "word"},
+    {"reading": "wen'dang", "text": "文档", "kind": "word"},
+    {"reading": "mu'lu", "text": "目录", "kind": "word"},
+    {"reading": "lu'jing", "text": "路径", "kind": "word"},
+    {"reading": "wang'luo", "text": "网络", "kind": "word"},
+    {"reading": "lian'jie", "text": "连接", "kind": "word"},
+    {"reading": "lian'jie", "text": "链接", "kind": "word"},
+    {"reading": "wang'zhan", "text": "网站", "kind": "word"},
+    {"reading": "wang'ye", "text": "网页", "kind": "word"},
+    {"reading": "liu'lan'qi", "text": "浏览器", "kind": "word"},
+    {"reading": "liu'lan", "text": "浏览", "kind": "word"},
+    {"reading": "sou'suo", "text": "搜索", "kind": "word"},
+    {"reading": "cha'xun", "text": "查询", "kind": "word"},
+    {"reading": "guo'lv", "text": "过滤", "kind": "word"},
+    {"reading": "zhang'hao", "text": "账号", "kind": "word"},
+    {"reading": "zhang'hao", "text": "帐号", "kind": "word"},
+    {"reading": "mi'ma", "text": "密码", "kind": "word"},
+    {"reading": "deng'lu", "text": "登录", "kind": "word"},
+    {"reading": "zhu'ce", "text": "注册", "kind": "word"},
+    {"reading": "quan'xian", "text": "权限", "kind": "word"},
+    {"reading": "shou'quan", "text": "授权", "kind": "word"},
+    {"reading": "an'quan", "text": "安全", "kind": "word"},
+    {"reading": "yin'si", "text": "隐私", "kind": "word"},
+    {"reading": "yan'zheng", "text": "验证", "kind": "word"},
+    {"reading": "fu'wu", "text": "服务", "kind": "word"},
+    {"reading": "fu'wu'qi", "text": "服务器", "kind": "word"},
+    {"reading": "ke'hu'duan", "text": "客户端", "kind": "word"},
+    {"reading": "jie'kou", "text": "接口", "kind": "word"},
+    {"reading": "xie'yi", "text": "协议", "kind": "word"},
+    {"reading": "qing'qiu", "text": "请求", "kind": "word"},
+    {"reading": "xiang'ying", "text": "响应", "kind": "word"},
+    {"reading": "chao'shi", "text": "超时", "kind": "word"},
+    {"reading": "yan'chi", "text": "延迟", "kind": "word"},
+    {"reading": "yi'bu", "text": "异步", "kind": "word"},
+    {"reading": "tong'bu", "text": "同步", "kind": "word"},
+    {"reading": "xian'cheng", "text": "线程", "kind": "word"},
+    {"reading": "jin'cheng", "text": "进程", "kind": "word"},
+    {"reading": "bing'fa", "text": "并发", "kind": "word"},
+    {"reading": "huan'cun", "text": "缓存", "kind": "word"},
+    {"reading": "nei'cun", "text": "内存", "kind": "word"},
+    {"reading": "ci'pan", "text": "磁盘", "kind": "word"},
+    {"reading": "kong'jian", "text": "空间", "kind": "word"},
+    {"reading": "xing'neng", "text": "性能", "kind": "word"},
+    {"reading": "you'hua", "text": "优化", "kind": "word"},
+    {"reading": "wen'ding", "text": "稳定", "kind": "word"},
+    {"reading": "liu'chang", "text": "流畅", "kind": "word"},
+    {"reading": "jian'rong", "text": "兼容", "kind": "word"},
+    {"reading": "cao'zuo", "text": "操作", "kind": "word"},
+    {"reading": "xi'tong", "text": "系统", "kind": "word"},
+    {"reading": "ping'tai", "text": "平台", "kind": "word"},
+    {"reading": "kua'ping'tai", "text": "跨平台", "kind": "word"},
+    {"reading": "ruan'jian", "text": "软件", "kind": "word"},
+    {"reading": "ying'jian", "text": "硬件", "kind": "word"},
+    {"reading": "ying'yong", "text": "应用", "kind": "word"},
+    {"reading": "cheng'xu", "text": "程序", "kind": "word"},
+    {"reading": "dai'ma", "text": "代码", "kind": "word"},
+    {"reading": "yuan'ma", "text": "源码", "kind": "word"},
+    {"reading": "kai'yuan", "text": "开源", "kind": "word"},
+    {"reading": "bian'cheng", "text": "编程", "kind": "word"},
+    {"reading": "bian'yi", "text": "编译", "kind": "word"},
+    {"reading": "gou'jian", "text": "构建", "kind": "word"},
+    {"reading": "yun'xing", "text": "运行", "kind": "word"},
+    {"reading": "diao'shi", "text": "调试", "kind": "word"},
+    {"reading": "ri'zhi", "text": "日志", "kind": "word"},
+    {"reading": "cuo'wu", "text": "错误", "kind": "word"},
+    {"reading": "yi'chang", "text": "异常", "kind": "word"},
+    {"reading": "beng'kui", "text": "崩溃", "kind": "word"},
+    {"reading": "xiu'fu", "text": "修复", "kind": "word"},
+    {"reading": "bu'ding", "text": "补丁", "kind": "word"},
+    {"reading": "ban'ben", "text": "版本", "kind": "word"},
+    {"reading": "geng'xin", "text": "更新", "kind": "word"},
+    {"reading": "sheng'ji", "text": "升级", "kind": "word"},
+    {"reading": "fa'bu", "text": "发布", "kind": "word"},
+    {"reading": "an'zhuang", "text": "安装", "kind": "word"},
+    {"reading": "xie'zai", "text": "卸载", "kind": "word"},
+    {"reading": "da'bao", "text": "打包", "kind": "word"},
+    {"reading": "bu'shu", "text": "部署", "kind": "word"},
+    {"reading": "pei'zhi", "text": "配置", "kind": "word"},
+    {"reading": "yi'lai", "text": "依赖", "kind": "word"},
+    {"reading": "cang'ku", "text": "仓库", "kind": "word"},
+    {"reading": "fen'zhi", "text": "分支", "kind": "word"},
+    {"reading": "he'bing", "text": "合并", "kind": "word"},
+    {"reading": "chong'tu", "text": "冲突", "kind": "word"},
+    {"reading": "ti'jiao", "text": "提交", "kind": "word"},
+    {"reading": "tui'song", "text": "推送", "kind": "word"},
+    {"reading": "la'qu", "text": "拉取", "kind": "word"},
+    {"reading": "bei'fen", "text": "备份", "kind": "word"},
+    {"reading": "dao'ru", "text": "导入", "kind": "word"},
+    {"reading": "dao'chu", "text": "导出", "kind": "word"},
+    {"reading": "shang'chuan", "text": "上传", "kind": "word"},
+    {"reading": "xia'zai", "text": "下载", "kind": "word"},
+    {"reading": "ben'di", "text": "本地", "kind": "word"},
+    {"reading": "yuan'cheng", "text": "远程", "kind": "word"},
+    {"reading": "yun'duan", "text": "云端", "kind": "word"},
+    {"reading": "li'xian", "text": "离线", "kind": "word"},
+    {"reading": "zai'xian", "text": "在线", "kind": "word"},
+    {"reading": "ben'di'mo'xing", "text": "本地模型", "kind": "word"},
+    {"reading": "ren'gong'zhi'neng", "text": "人工智能", "kind": "word"},
+    {"reading": "ji'qi'xue'xi", "text": "机器学习", "kind": "word"},
+    {"reading": "sheng'cheng", "text": "生成", "kind": "word"},
+    {"reading": "yu'ce", "text": "预测", "kind": "word"},
+    {"reading": "tui'jian", "text": "推荐", "kind": "word"},
+    {"reading": "shang'xia'wen", "text": "上下文", "kind": "word"},
+    {"reading": "yu'liao", "text": "语料", "kind": "word"},
+    {"reading": "yu'liao'ku", "text": "语料库", "kind": "word"},
+    {"reading": "can'shu", "text": "参数", "kind": "word"},
+    {"reading": "xun'lian", "text": "训练", "kind": "word"},
+    {"reading": "jing'du", "text": "精度", "kind": "word"},
+    {"reading": "zhun'que", "text": "准确", "kind": "word"},
+    {"reading": "jie'ou", "text": "解耦", "kind": "word"},
+    {"reading": "mo'kuai", "text": "模块", "kind": "word"},
+    {"reading": "jia'gou", "text": "架构", "kind": "word"},
+    {"reading": "kuang'jia", "text": "框架", "kind": "word"},
+    {"reading": "cha'jian", "text": "插件", "kind": "word"},
+    {"reading": "zu'jian", "text": "组件", "kind": "word"},
+    {"reading": "lei'xing", "text": "类型", "kind": "word"},
+    {"reading": "jie'gou", "text": "结构", "kind": "word"},
+    {"reading": "han'shu", "text": "函数", "kind": "word"},
+    {"reading": "bian'liang", "text": "变量", "kind": "word"},
+    {"reading": "chang'liang", "text": "常量", "kind": "word"},
+    {"reading": "bian'ma", "text": "编码", "kind": "word"},
+    {"reading": "jie'ma", "text": "解码", "kind": "word"},
+    {"reading": "zi'jie", "text": "字节", "kind": "word"},
+    {"reading": "zi'fu'chuan", "text": "字符串", "kind": "word"},
+    {"reading": "shu'zu", "text": "数组", "kind": "word"},
+    {"reading": "lie'biao", "text": "列表", "kind": "word"},
+    {"reading": "dui'lie", "text": "队列", "kind": "word"},
+    {"reading": "ji'he", "text": "集合", "kind": "word"},
+    {"reading": "suan'fa", "text": "算法", "kind": "word"},
+    {"reading": "suo'yin", "text": "索引", "kind": "word"},
+    {"reading": "xun'huan", "text": "循环", "kind": "word"},
+    {"reading": "di'gui", "text": "递归", "kind": "word"},
+    {"reading": "tiao'jian", "text": "条件", "kind": "word"},
+    {"reading": "luo'ji", "text": "逻辑", "kind": "word"},
+    {"reading": "bian'jie", "text": "边界", "kind": "word"},
+    {"reading": "yuan'wen", "text": "原文", "kind": "word"},
+    {"reading": "cao'gao", "text": "草稿", "kind": "word"},
+    {"reading": "hui'gui", "text": "回归", "kind": "word"},
+    {"reading": "hui'gui'ce'shi", "text": "回归测试", "kind": "word"},
+    {"reading": "dan'yuan'ce'shi", "text": "单元测试", "kind": "word"},
+    {"reading": "ji'cheng'ce'shi", "text": "集成测试", "kind": "word"},
+    {"reading": "shi'jian", "text": "事件", "kind": "word"},
+    {"reading": "shi'shi", "text": "事实", "kind": "word"},
+    {"reading": "shi'shi", "text": "实施", "kind": "word"},
+    {"reading": "shi'shi", "text": "实时", "kind": "word"},
+    {"reading": "shi'shi", "text": "试试", "kind": "word"},
+    {"reading": "gai'qi", "text": "改期", "kind": "word"},
+    {"reading": "yan'hou", "text": "延后", "kind": "word"},
+    {"reading": "tui'chi", "text": "推迟", "kind": "word"},
+    {"reading": "ti'qian", "text": "提前", "kind": "word"},
+    {"reading": "jin'kuai", "text": "尽快", "kind": "word"},
+    {"reading": "jin'zao", "text": "尽早", "kind": "word"},
+    {"reading": "zan'shi", "text": "暂时", "kind": "word"},
+    {"reading": "lin'shi", "text": "临时", "kind": "word"},
+    {"reading": "yu'ji", "text": "预计", "kind": "word"},
+    {"reading": "zhun'shi", "text": "准时", "kind": "word"},
+    {"reading": "an'shi", "text": "按时", "kind": "word"},
+    {"reading": "chao'qi", "text": "超期", "kind": "word"},
+    {"reading": "dao'qi", "text": "到期", "kind": "word"},
+    {"reading": "qi'xian", "text": "期限", "kind": "word"},
+    {"reading": "jie'zhi", "text": "截止", "kind": "word"},
+    {"reading": "jie'zhi'ri'qi", "text": "截止日期", "kind": "word"},
+    {"reading": "shi'jian'duan", "text": "时间段", "kind": "word"},
+    {"reading": "shi'jian'biao", "text": "时间表", "kind": "word"},
+    {"reading": "kong'xian", "text": "空闲", "kind": "word"},
+    {"reading": "you'kong", "text": "有空", "kind": "word"},
+    {"reading": "fang'bian'de'hua", "text": "方便的话", "kind": "word"},
+    {"reading": "bu'zhao'ji", "text": "不着急", "kind": "word"},
+    {"reading": "bie'dan'xin", "text": "别担心", "kind": "word"},
+    {"reading": "man'man'lai", "text": "慢慢来", "kind": "word"},
+    {"reading": "jiu'deng", "text": "久等", "kind": "word"},
+    {"reading": "lao'jia", "text": "劳驾", "kind": "word"},
+    {"reading": "da'rao", "text": "打扰", "kind": "word"},
+    {"reading": "bao'zhong", "text": "保重", "kind": "word"},
+    {"reading": "xin'ku'le", "text": "辛苦了", "kind": "word"},
+    {"reading": "ma'fan'ni", "text": "麻烦你", "kind": "word"},
+    {"reading": "duo'xie", "text": "多谢", "kind": "word"},
+    {"reading": "zai'lian'xi", "text": "再联系", "kind": "word"},
+    {"reading": "hui'tou'liao", "text": "回头聊", "kind": "word"},
+    {"reading": "shao'hou'lian'xi", "text": "稍后联系", "kind": "word"},
+    {"reading": "qing'cha'shou", "text": "请查收", "kind": "word"},
+    {"reading": "cha'shou", "text": "查收", "kind": "word"},
+    {"reading": "cha'yue", "text": "查阅", "kind": "word"},
+    {"reading": "he'dui", "text": "核对", "kind": "word"},
+    {"reading": "he'shi", "text": "核实", "kind": "word"},
+    {"reading": "fu'he", "text": "复核", "kind": "word"},
+    {"reading": "shen'he", "text": "审核", "kind": "word"},
+    {"reading": "shen'pi", "text": "审批", "kind": "word"},
+    {"reading": "shen'qing", "text": "申请", "kind": "word"},
+    {"reading": "shen'qing'biao", "text": "申请表", "kind": "word"},
+    {"reading": "qing'jia", "text": "请假", "kind": "word"},
+    {"reading": "jia'ban", "text": "加班", "kind": "word"},
+    {"reading": "bu'xiu", "text": "补休", "kind": "word"},
+    {"reading": "nian'jia", "text": "年假", "kind": "word"},
+    {"reading": "bing'jia", "text": "病假", "kind": "word"},
+    {"reading": "shi'jia", "text": "事假", "kind": "word"},
+    {"reading": "tiao'xiu", "text": "调休", "kind": "word"},
+    {"reading": "chu'chai", "text": "出差", "kind": "word"},
+    {"reading": "bao'xiao", "text": "报销", "kind": "word"},
+    {"reading": "bao'xiao'dan", "text": "报销单", "kind": "word"},
+    {"reading": "yu'suan", "text": "预算", "kind": "word"},
+    {"reading": "fei'yong", "text": "费用", "kind": "word"},
+    {"reading": "cheng'ben", "text": "成本", "kind": "word"},
+    {"reading": "bao'jia", "text": "报价", "kind": "word"},
+    {"reading": "ding'jin", "text": "定金", "kind": "word"},
+    {"reading": "ya'jin", "text": "押金", "kind": "word"},
+    {"reading": "yu'e", "text": "余额", "kind": "word"},
+    {"reading": "shou'ju", "text": "收据", "kind": "word"},
+    {"reading": "zhang'dan", "text": "账单", "kind": "word"},
+    {"reading": "zhang'hu", "text": "账户", "kind": "word"},
+    {"reading": "dui'zhang", "text": "对账", "kind": "word"},
+    {"reading": "jie'suan", "text": "结算", "kind": "word"},
+    {"reading": "shou'kuan", "text": "收款", "kind": "word"},
+    {"reading": "zhuan'zhang", "text": "转账", "kind": "word"},
+    {"reading": "fu'kuan'fang'shi", "text": "付款方式", "kind": "word"},
+    {"reading": "jiao'jie", "text": "交接", "kind": "word"},
+    {"reading": "jiao'fu", "text": "交付", "kind": "word"},
+    {"reading": "jin'zhan", "text": "进展", "kind": "word"},
+    {"reading": "li'cheng'bei", "text": "里程碑", "kind": "word"},
+    {"reading": "dai'ban", "text": "待办", "kind": "word"},
+    {"reading": "dai'ban'shi'xiang", "text": "待办事项", "kind": "word"},
+    {"reading": "qing'dan", "text": "清单", "kind": "word"},
+    {"reading": "bei'wang'lu", "text": "备忘录", "kind": "word"},
+    {"reading": "zhai'yao", "text": "摘要", "kind": "word"},
+    {"reading": "yao'dian", "text": "要点", "kind": "word"},
+    {"reading": "zong'jie", "text": "总结", "kind": "word"},
+    {"reading": "hui'gu", "text": "回顾", "kind": "word"},
+    {"reading": "fu'pan", "text": "复盘", "kind": "word"},
+    {"reading": "zheng'li", "text": "整理", "kind": "word"},
+    {"reading": "gui'na", "text": "归纳", "kind": "word"},
+    {"reading": "bu'chong", "text": "补充", "kind": "word"},
+    {"reading": "jing'jian", "text": "精简", "kind": "word"},
+    {"reading": "run'se", "text": "润色", "kind": "word"},
+    {"reading": "he'zuo", "text": "合作", "kind": "word"},
+    {"reading": "xie'zuo", "text": "协作", "kind": "word"},
+    {"reading": "xie'tiao", "text": "协调", "kind": "word"},
+    {"reading": "pei'he", "text": "配合", "kind": "word"},
+    {"reading": "fen'gong", "text": "分工", "kind": "word"},
+    {"reading": "gong'shi", "text": "共识", "kind": "word"},
+    {"reading": "gong'shi", "text": "公式", "kind": "word"},
+    {"reading": "fen'qi", "text": "分歧", "kind": "word"},
+    {"reading": "zheng'yi", "text": "争议", "kind": "word"},
+    {"reading": "gou'tong'cheng'ben", "text": "沟通成本", "kind": "word"},
+    {"reading": "cheng'qing", "text": "澄清", "kind": "word"},
+    {"reading": "ke'xing", "text": "可行", "kind": "word"},
+    {"reading": "ke'xing'xing", "text": "可行性", "kind": "word"},
+    {"reading": "jia'she", "text": "假设", "kind": "word"},
+    {"reading": "qian'ti", "text": "前提", "kind": "word"},
+    {"reading": "xian'zhi", "text": "限制", "kind": "word"},
+    {"reading": "feng'xian", "text": "风险", "kind": "word"},
+    {"reading": "yu'an", "text": "预案", "kind": "word"},
+    {"reading": "bei'xuan", "text": "备选", "kind": "word"},
+    {"reading": "ti'dai", "text": "替代", "kind": "word"},
+    {"reading": "quan'heng", "text": "权衡", "kind": "word"},
+    {"reading": "fu'ze'ren", "text": "负责人", "kind": "word"},
+    {"reading": "can'hui'ren", "text": "参会人", "kind": "word"},
+    {"reading": "lian'xi'ren", "text": "联系人", "kind": "word"},
+    {"reading": "lian'xi'fang'shi", "text": "联系方式", "kind": "word"},
+    {"reading": "hui'yi'ji'yao", "text": "会议纪要", "kind": "word"},
+    {"reading": "hui'yi'shi", "text": "会议室", "kind": "word"},
+    {"reading": "xian'shang'hui'yi", "text": "线上会议", "kind": "word"},
+    {"reading": "shi'pin'hui'yi", "text": "视频会议", "kind": "word"},
+    {"reading": "yao'qing'han", "text": "邀请函", "kind": "word"},
+    {"reading": "bao'ming", "text": "报名", "kind": "word"},
+    {"reading": "qian'dao", "text": "签到", "kind": "word"},
+    {"reading": "dao'chang", "text": "到场", "kind": "word"},
+    {"reading": "que'xi", "text": "缺席", "kind": "word"},
+    {"reading": "chu'xi", "text": "出席", "kind": "word"},
+    {"reading": "fang'ke", "text": "访客", "kind": "word"},
+    {"reading": "fang'wen", "text": "访问", "kind": "word"},
+    {"reading": "jie'dai", "text": "接待", "kind": "word"},
+    {"reading": "gong'gao", "text": "公告", "kind": "word"},
+    {"reading": "tong'bu'jin'du", "text": "同步进度", "kind": "word"},
+    {"reading": "gen'jin", "text": "跟进", "kind": "word"},
+    {"reading": "hui'fu'que'ren", "text": "回复确认", "kind": "word"},
+    {"reading": "yi'du", "text": "已读", "kind": "word"},
+    {"reading": "wei'du", "text": "未读", "kind": "word"},
+    {"reading": "wei'jie", "text": "未接", "kind": "word"},
+    {"reading": "shou'jian'xiang", "text": "收件箱", "kind": "word"},
+    {"reading": "fa'jian'xiang", "text": "发件箱", "kind": "word"},
+    {"reading": "cao'gao'xiang", "text": "草稿箱", "kind": "word"},
+    {"reading": "shou'jian'ren", "text": "收件人", "kind": "word"},
+    {"reading": "fa'jian'ren", "text": "发件人", "kind": "word"},
+    {"reading": "chao'song", "text": "抄送", "kind": "word"},
+    {"reading": "qun'fa", "text": "群发", "kind": "word"},
+    {"reading": "zhuan'fa", "text": "转发", "kind": "word"},
+    {"reading": "liu'yan", "text": "留言", "kind": "word"},
+    {"reading": "qun'liao", "text": "群聊", "kind": "word"},
+    {"reading": "qun'zu", "text": "群组", "kind": "word"},
+    {"reading": "lian'luo", "text": "联络", "kind": "word"},
+    {"reading": "bei'zhu", "text": "备注", "kind": "word"},
+    {"reading": "zheng'wen", "text": "正文", "kind": "word"},
+    {"reading": "biao'ti", "text": "标题", "kind": "word"},
+    {"reading": "tiao'mu", "text": "条目", "kind": "word"},
+    {"reading": "biao'ge", "text": "表格", "kind": "word"},
+    {"reading": "mu'ban", "text": "模板", "kind": "word"},
+    {"reading": "cuo'bie'zi", "text": "错别字", "kind": "word"},
+    {"reading": "biao'dian", "text": "标点", "kind": "word"},
+    {"reading": "yin'hao", "text": "引号", "kind": "word"},
+    {"reading": "kuo'hao", "text": "括号", "kind": "word"},
+    {"reading": "suo'xie", "text": "缩写", "kind": "word"},
+    {"reading": "shi'li", "text": "示例", "kind": "word"},
+    {"reading": "yin'yong", "text": "引用", "kind": "word"},
+    {"reading": "can'kao", "text": "参考", "kind": "word"},
+    {"reading": "can'kao'zi'liao", "text": "参考资料", "kind": "word"},
+    {"reading": "can'kao'wen'xian", "text": "参考文献", "kind": "word"},
+    {"reading": "zhu'shi", "text": "注释", "kind": "word"},
+    {"reading": "jiao'zhu", "text": "脚注", "kind": "word"},
+    {"reading": "shen'yue", "text": "审阅", "kind": "word"},
+    {"reading": "jiao'dui", "text": "校对", "kind": "word"},
+    {"reading": "zhai'lu", "text": "摘录", "kind": "word"},
+    {"reading": "guan'jian'ci", "text": "关键词", "kind": "word"},
+    {"reading": "jie'lun", "text": "结论", "kind": "word"},
+    {"reading": "tui'li", "text": "推理", "kind": "word"},
+    {"reading": "lun'ju", "text": "论据", "kind": "word"},
+    {"reading": "lun'wen", "text": "论文", "kind": "word"},
+    {"reading": "ke'ti", "text": "课题", "kind": "word"},
+    {"reading": "yan'jiu", "text": "研究", "kind": "word"},
+    {"reading": "wen'juan", "text": "问卷", "kind": "word"},
+    {"reading": "diao'cha", "text": "调查", "kind": "word"},
+    {"reading": "tong'ji", "text": "统计", "kind": "word"},
+    {"reading": "yang'ben", "text": "样本", "kind": "word"},
+    {"reading": "shi'yan", "text": "实验", "kind": "word"},
+    {"reading": "guan'cha", "text": "观察", "kind": "word"},
+    {"reading": "fen'lei", "text": "分类", "kind": "word"},
+    {"reading": "gui'lv", "text": "规律", "kind": "word"},
+    {"reading": "ding'yi", "text": "定义", "kind": "word"},
+    {"reading": "gai'nian", "text": "概念", "kind": "word"},
+    {"reading": "bei'jing", "text": "背景", "kind": "word"},
+    {"reading": "zi'xi", "text": "仔细", "kind": "word"},
+    {"reading": "ren'zhen", "text": "认真", "kind": "word"},
+    {"reading": "nai'xin", "text": "耐心", "kind": "word"},
+    {"reading": "qing'chu", "text": "清楚", "kind": "word"},
+    {"reading": "ming'que", "text": "明确", "kind": "word"},
+    {"reading": "he'shi", "text": "合适", "kind": "word"},
+    {"reading": "he'li", "text": "合理", "kind": "word"},
+    {"reading": "xiang'xi", "text": "详细", "kind": "word"},
+    {"reading": "jian'jie", "text": "简洁", "kind": "word"},
+    {"reading": "quan'mian", "text": "全面", "kind": "word"},
+    {"reading": "wan'zheng", "text": "完整", "kind": "word"},
+    {"reading": "ji'shi", "text": "及时", "kind": "word"},
+    {"reading": "an'quan'xing", "text": "安全性", "kind": "word"},
+    {"reading": "you'xiao", "text": "有效", "kind": "word"},
+    {"reading": "cheng'gong", "text": "成功", "kind": "word"},
+    {"reading": "shi'bai", "text": "失败", "kind": "word"},
+    {"reading": "chong'xin", "text": "重新", "kind": "word"},
+    {"reading": "chong'fu", "text": "重复", "kind": "word"},
+    {"reading": "jian'cha'biao", "text": "检查表", "kind": "word"},
+    {"reading": "yan'shou", "text": "验收", "kind": "word"},
+    {"reading": "zhun'bei'jiu'xu", "text": "准备就绪", "kind": "word"},
+    {"reading": "fu'xian", "text": "复现", "kind": "word"},
+    {"reading": "bu'zhou", "text": "步骤", "kind": "word"},
+    {"reading": "yuan'yin'fen'xi", "text": "原因分析", "kind": "word"},
+    {"reading": "yi'zhi'wen'ti", "text": "已知问题", "kind": "word"},
+    {"reading": "chu'li'fang'an", "text": "处理方案", "kind": "word"},
+    {"reading": "rong'cuo", "text": "容错", "kind": "word"},
+    {"reading": "jiu'cuo", "text": "纠错", "kind": "word"},
+    {"reading": "duan'lian", "text": "断连", "kind": "word"},
+    {"reading": "chong'lian", "text": "重连", "kind": "word"},
+    {"reading": "duan'kai", "text": "断开", "kind": "word"},
+    {"reading": "lian'jie'shi'bai", "text": "连接失败", "kind": "word"},
+    {"reading": "chong'shi", "text": "重试", "kind": "word"},
+    {"reading": "deng'dai", "text": "等待", "kind": "word"},
+    {"reading": "jia'zai", "text": "加载", "kind": "word"},
+    {"reading": "bao'cun'cheng'gong", "text": "保存成功", "kind": "word"},
+    {"reading": "kong'jian'bu'zu", "text": "空间不足", "kind": "word"},
+    {"reading": "zi'yuan'zhan'yong", "text": "资源占用", "kind": "word"},
+    {"reading": "bao'guo", "text": "包裹", "kind": "word"},
+    {"reading": "qian'shou", "text": "签收", "kind": "word"},
+    {"reading": "dai'shou", "text": "代收", "kind": "word"},
+    {"reading": "ji'cun", "text": "寄存", "kind": "word"},
+    {"reading": "ji'chu", "text": "寄出", "kind": "word"},
+    {"reading": "qu'jian", "text": "取件", "kind": "word"},
+    {"reading": "ji'jian", "text": "寄件", "kind": "word"},
+    {"reading": "yun'fei", "text": "运费", "kind": "word"},
+    {"reading": "you'fei", "text": "邮费", "kind": "word"},
+    {"reading": "dan'hao", "text": "单号", "kind": "word"},
+    {"reading": "kuai'di'dan'hao", "text": "快递单号", "kind": "word"},
+    {"reading": "zi'ti", "text": "自提", "kind": "word"},
+    {"reading": "song'da", "text": "送达", "kind": "word"},
+    {"reading": "pei'song'yuan", "text": "配送员", "kind": "word"},
+    {"reading": "gong'zuo'ri", "text": "工作日", "kind": "word"},
+    {"reading": "shou'huo'di'zhi", "text": "收货地址", "kind": "word"},
+    {"reading": "you'zheng'bian'ma", "text": "邮政编码", "kind": "word"},
+    {"reading": "you'bian", "text": "邮编", "kind": "word"},
+    {"reading": "bao'guan", "text": "保管", "kind": "word"},
+    {"reading": "bao'guan", "text": "报关", "kind": "word"},
+    {"reading": "an'jian", "text": "安检", "kind": "word"},
+    {"reading": "deng'ji", "text": "登机", "kind": "word"},
+    {"reading": "deng'ji'pai", "text": "登机牌", "kind": "word"},
+    {"reading": "deng'ji'kou", "text": "登机口", "kind": "word"},
+    {"reading": "hou'ji", "text": "候机", "kind": "word"},
+    {"reading": "zhuan'ji", "text": "转机", "kind": "word"},
+    {"reading": "zhong'zhuan", "text": "中转", "kind": "word"},
+    {"reading": "zhong'dian'zhan", "text": "终点站", "kind": "word"},
+    {"reading": "shi'fa'zhan", "text": "始发站", "kind": "word"},
+    {"reading": "zhan'tai", "text": "站台", "kind": "word"},
+    {"reading": "yue'tai", "text": "月台", "kind": "word"},
+    {"reading": "huan'cheng", "text": "换乘", "kind": "word"},
+    {"reading": "jin'zhan", "text": "进站", "kind": "word"},
+    {"reading": "chu'zhan", "text": "出站", "kind": "word"},
+    {"reading": "cheng'che", "text": "乘车", "kind": "word"},
+    {"reading": "jian'piao", "text": "检票", "kind": "word"},
+    {"reading": "tui'piao", "text": "退票", "kind": "word"},
+    {"reading": "gai'qian", "text": "改签", "kind": "word"},
+    {"reading": "piao'jia", "text": "票价", "kind": "word"},
+    {"reading": "che'ci", "text": "车次", "kind": "word"},
+    {"reading": "xing'cheng", "text": "行程", "kind": "word"},
+    {"reading": "xing'cheng", "text": "形成", "kind": "word"},
+    {"reading": "xing'li", "text": "行李", "kind": "word"},
+    {"reading": "lv'cheng", "text": "旅程", "kind": "word"},
+    {"reading": "zhu'su", "text": "住宿", "kind": "word"},
+    {"reading": "ru'zhu", "text": "入住", "kind": "word"},
+    {"reading": "tui'fang", "text": "退房", "kind": "word"},
+    {"reading": "yan'wu", "text": "延误", "kind": "word"},
+    {"reading": "tong'qin", "text": "通勤", "kind": "word"},
+    {"reading": "du'che", "text": "堵车", "kind": "word"},
+    {"reading": "rao'xing", "text": "绕行", "kind": "word"},
+    {"reading": "bu'xing", "text": "步行", "kind": "word"},
+    {"reading": "qi'xing", "text": "骑行", "kind": "word"},
+    {"reading": "zi'xing'che", "text": "自行车", "kind": "word"},
+    {"reading": "ting'che'chang", "text": "停车场", "kind": "word"},
+    {"reading": "dao'hang'lu'xian", "text": "导航路线", "kind": "word"},
+    {"reading": "ru'kou", "text": "入口", "kind": "word"},
+    {"reading": "chu'kou", "text": "出口", "kind": "word"},
+    {"reading": "qian'tai", "text": "前台", "kind": "word"},
+    {"reading": "ke'fu", "text": "客服", "kind": "word"},
+    {"reading": "liu'shui", "text": "流水", "kind": "word"},
+    {"reading": "bao'zhi'qi", "text": "保质期", "kind": "word"},
+    {"reading": "you'xiao'qi", "text": "有效期", "kind": "word"},
+    {"reading": "xu'fei", "text": "续费", "kind": "word"},
+    {"reading": "tuo'yun", "text": "托运", "kind": "word"},
+    {"reading": "zao'an", "text": "早安", "kind": "word"},
+    {"reading": "wan'an", "text": "晚安", "kind": "word"},
+    {"reading": "wu'an", "text": "午安", "kind": "word"},
+    {"reading": "yi'hui'er", "text": "一会儿", "kind": "word"},
+    {"reading": "deng'hui'er", "text": "等会儿", "kind": "word"},
+    {"reading": "dai'hui'er", "text": "待会儿", "kind": "word"},
+    {"reading": "bu'hao'yi'si", "text": "不好意思", "kind": "word"},
+    {"reading": "hao'jiu'bu'jian", "text": "好久不见", "kind": "word"},
+    {"reading": "huan'ying'hui'lai", "text": "欢迎回来", "kind": "word"},
+    {"reading": "zai'liao", "text": "再聊", "kind": "word"},
+    {"reading": "hui'liao", "text": "回聊", "kind": "word"},
+    {"reading": "dao'jia", "text": "到家", "kind": "word"},
+    {"reading": "lu'kou", "text": "路口", "kind": "word"},
+    {"reading": "dai'shang", "text": "带上", "kind": "word"},
+    {"reading": "wang'ji", "text": "忘记", "kind": "word"},
+    {"reading": "ji'de", "text": "记得", "kind": "word"},
+    {"reading": "ye'xu", "text": "也许", "kind": "word"},
+    {"reading": "da'gai", "text": "大概", "kind": "word"},
+    {"reading": "cha'bu'duo", "text": "差不多", "kind": "word"},
+    {"reading": "shun'bian", "text": "顺便", "kind": "word"},
+    {"reading": "tu'ran", "text": "突然", "kind": "word"},
+    {"reading": "zheng'hao", "text": "正好", "kind": "word"},
+    {"reading": "gang'hao", "text": "刚好", "kind": "word"},
+    {"reading": "li'ke", "text": "立刻", "kind": "word"},
+    {"reading": "shao'wei", "text": "稍微", "kind": "word"},
+    {"reading": "yi'ding", "text": "一定", "kind": "word"},
+    {"reading": "ou'er", "text": "偶尔", "kind": "word"},
+    {"reading": "ping'shi", "text": "平时", "kind": "word"},
+    {"reading": "zui'hou", "text": "最后", "kind": "word"},
+    {"reading": "shou'xian", "text": "首先", "kind": "word"},
+    {"reading": "qi'ci", "text": "其次", "kind": "word"},
+    {"reading": "bi'ru", "text": "比如", "kind": "word"},
+    {"reading": "bu'guo", "text": "不过", "kind": "word"},
+    {"reading": "jin'liang", "text": "尽量", "kind": "word"},
+    {"reading": "zhi'shao", "text": "至少", "kind": "word"},
+    {"reading": "zui'duo", "text": "最多", "kind": "word"},
+    {"reading": "cha'dian", "text": "差点", "kind": "word"},
+    {"reading": "nan'guai", "text": "难怪", "kind": "word"},
+    {"reading": "yuan'lai", "text": "原来", "kind": "word"},
+    {"reading": "ming'zao", "text": "明早", "kind": "word"},
+    {"reading": "ming'wan", "text": "明晚", "kind": "word"},
+    {"reading": "jin'zao", "text": "今早", "kind": "word"},
+    {"reading": "qian'tian", "text": "前天", "kind": "word"},
+    {"reading": "shang'ge'yue", "text": "上个月", "kind": "word"},
+    {"reading": "xia'ge'yue", "text": "下个月", "kind": "word"},
+    {"reading": "yue'di", "text": "月底", "kind": "word"},
+    {"reading": "yue'chu", "text": "月初", "kind": "word"},
+    {"reading": "nian'di", "text": "年底", "kind": "word"},
+    {"reading": "nian'chu", "text": "年初", "kind": "word"},
+    {"reading": "yi'ke'zhong", "text": "一刻钟", "kind": "word"},
+    {"reading": "ban'xiao'shi", "text": "半小时", "kind": "word"},
+    {"reading": "xiao'shi", "text": "小时", "kind": "word"},
+    {"reading": "fen'zhong", "text": "分钟", "kind": "word"},
+    {"reading": "ri'chang", "text": "日常", "kind": "word"},
+    {"reading": "wan'dian", "text": "晚点", "kind": "word"},
+    {"reading": "chi'dao", "text": "迟到", "kind": "word"},
+    {"reading": "zao'dao", "text": "早到", "kind": "word"},
+    {"reading": "kong'dang", "text": "空档", "kind": "word"},
+    {"reading": "nao'zhong", "text": "闹钟", "kind": "word"},
+    {"reading": "dao'ji'shi", "text": "倒计时", "kind": "word"},
+    {"reading": "ju'hui", "text": "聚会", "kind": "word"},
+    {"reading": "ju'can", "text": "聚餐", "kind": "word"},
+    {"reading": "yue'fan", "text": "约饭", "kind": "word"},
+    {"reading": "liu'wan", "text": "遛弯", "kind": "word"},
+    {"reading": "ye'can", "text": "野餐", "kind": "word"},
+    {"reading": "shao'kao", "text": "烧烤", "kind": "word"},
+    {"reading": "lu'ying", "text": "露营", "kind": "word"},
+    {"reading": "tu'bu", "text": "徒步", "kind": "word"},
+    {"reading": "chang'ge", "text": "唱歌", "kind": "word"},
+    {"reading": "yan'chang'hui", "text": "演唱会", "kind": "word"},
+    {"reading": "yin'yue'hui", "text": "音乐会", "kind": "word"},
+    {"reading": "pai'lian", "text": "排练", "kind": "word"},
+    {"reading": "ai'hao", "text": "爱好", "kind": "word"},
+    {"reading": "xing'qu", "text": "兴趣", "kind": "word"},
+    {"reading": "zhou'bian", "text": "周边", "kind": "word"},
+    {"reading": "shun'lu", "text": "顺路", "kind": "word"},
+    {"reading": "jie'ni", "text": "接你", "kind": "word"},
+    {"reading": "song'ni", "text": "送你", "kind": "word"},
+    {"reading": "yi'qi'lai", "text": "一起来", "kind": "word"},
+    {"reading": "you'shi'jian", "text": "有时间", "kind": "word"},
+    {"reading": "shi'you", "text": "室友", "kind": "word"},
+    {"reading": "lin'ju", "text": "邻居", "kind": "word"},
+    {"reading": "jia'ren", "text": "家人", "kind": "word"},
+    {"reading": "qin'qi", "text": "亲戚", "kind": "word"},
+    {"reading": "peng'you'men", "text": "朋友们", "kind": "word"},
+    {"reading": "chong'wu", "text": "宠物", "kind": "word"},
+    {"reading": "xiao'mao", "text": "小猫", "kind": "word"},
+    {"reading": "xiao'gou", "text": "小狗", "kind": "word"},
+    {"reading": "zhao'gu", "text": "照顾", "kind": "word"},
+    {"reading": "wei'shi", "text": "喂食", "kind": "word"},
+    {"reading": "jiao'shui", "text": "浇水", "kind": "word"},
+    {"reading": "da'sao", "text": "打扫", "kind": "word"},
+    {"reading": "shou'shi", "text": "收拾", "kind": "word"},
+    {"reading": "zheng'li'hao", "text": "整理好", "kind": "word"},
+    {"reading": "jia'wu", "text": "家务", "kind": "word"},
+    {"reading": "xi'yi'fu", "text": "洗衣服", "kind": "word"},
+    {"reading": "liang'yi'fu", "text": "晾衣服", "kind": "word"},
+    {"reading": "sao'di", "text": "扫地", "kind": "word"},
+    {"reading": "tuo'di", "text": "拖地", "kind": "word"},
+    {"reading": "ca'zhuo'zi", "text": "擦桌子", "kind": "word"},
+    {"reading": "xi'wan", "text": "洗碗", "kind": "word"},
+    {"reading": "xi'shou", "text": "洗手", "kind": "word"},
+    {"reading": "xi'zao", "text": "洗澡", "kind": "word"},
+    {"reading": "qing'xi", "text": "清洗", "kind": "word"},
+    {"reading": "chong'xi", "text": "冲洗", "kind": "word"},
+    {"reading": "jin'pao", "text": "浸泡", "kind": "word"},
+    {"reading": "zhe'die", "text": "折叠", "kind": "word"},
+    {"reading": "chuang'dan", "text": "床单", "kind": "word"},
+    {"reading": "bei'tao", "text": "被套", "kind": "word"},
+    {"reading": "zhen'tao", "text": "枕套", "kind": "word"},
+    {"reading": "xi'yi'ye", "text": "洗衣液", "kind": "word"},
+    {"reading": "xi'jie'jing", "text": "洗洁精", "kind": "word"},
+    {"reading": "qing'jie'ji", "text": "清洁剂", "kind": "word"},
+    {"reading": "ma'bu", "text": "抹布", "kind": "word"},
+    {"reading": "tuo'ba", "text": "拖把", "kind": "word"},
+    {"reading": "sao'zhou", "text": "扫帚", "kind": "word"},
+    {"reading": "la'ji'dai", "text": "垃圾袋", "kind": "word"},
+    {"reading": "zhi'jin", "text": "纸巾", "kind": "word"},
+    {"reading": "chou'zhi", "text": "抽纸", "kind": "word"},
+    {"reading": "zhi'bei", "text": "纸杯", "kind": "word"},
+    {"reading": "bao'xian'he", "text": "保鲜盒", "kind": "word"},
+    {"reading": "bao'xian'dai", "text": "保鲜袋", "kind": "word"},
+    {"reading": "bao'wen'bei", "text": "保温杯", "kind": "word"},
+    {"reading": "re'shui", "text": "热水", "kind": "word"},
+    {"reading": "kai'shui", "text": "开水", "kind": "word"},
+    {"reading": "bing'shui", "text": "冰水", "kind": "word"},
+    {"reading": "chang'wen", "text": "常温", "kind": "word"},
+    {"reading": "jia're", "text": "加热", "kind": "word"},
+    {"reading": "jie'dong", "text": "解冻", "kind": "word"},
+    {"reading": "sheng'cai", "text": "剩菜", "kind": "word"},
+    {"reading": "shi'cai", "text": "食材", "kind": "word"},
+    {"reading": "bao'xian", "text": "保鲜", "kind": "word"},
+    {"reading": "shou'na", "text": "收纳", "kind": "word"},
+    {"reading": "shou'na'he", "text": "收纳盒", "kind": "word"},
+    {"reading": "gou'wu'che", "text": "购物车", "kind": "word"},
+    {"reading": "shou'cang", "text": "收藏", "kind": "word"},
+    {"reading": "xin'yuan'dan", "text": "心愿单", "kind": "word"},
+    {"reading": "que'huo", "text": "缺货", "kind": "word"},
+    {"reading": "you'huo", "text": "有货", "kind": "word"},
+    {"reading": "xian'huo", "text": "现货", "kind": "word"},
+    {"reading": "bu'huo", "text": "补货", "kind": "word"},
+    {"reading": "yu'shou", "text": "预售", "kind": "word"},
+    {"reading": "yu'ding", "text": "预订", "kind": "word"},
+    {"reading": "bao'you", "text": "包邮", "kind": "word"},
+    {"reading": "man'jian", "text": "满减", "kind": "word"},
+    {"reading": "zhe'kou", "text": "折扣", "kind": "word"},
+    {"reading": "da'zhe", "text": "打折", "kind": "word"},
+    {"reading": "you'hui'quan", "text": "优惠券", "kind": "word"},
+    {"reading": "fu'kuan'ma", "text": "付款码", "kind": "word"},
+    {"reading": "er'wei'ma", "text": "二维码", "kind": "word"},
+    {"reading": "shou'kuan'ma", "text": "收款码", "kind": "word"},
+    {"reading": "tui'huo", "text": "退货", "kind": "word"},
+    {"reading": "huan'huo", "text": "换货", "kind": "word"},
+    {"reading": "tui'huan'huo", "text": "退换货", "kind": "word"},
+    {"reading": "shi'chuan", "text": "试穿", "kind": "word"},
+    {"reading": "chi'ma", "text": "尺码", "kind": "word"},
+    {"reading": "kuan'shi", "text": "款式", "kind": "word"},
+    {"reading": "mian'liao", "text": "面料", "kind": "word"},
+    {"reading": "kuan'song", "text": "宽松", "kind": "word"},
+    {"reading": "he'shen", "text": "合身", "kind": "word"},
+    {"reading": "pian'da", "text": "偏大", "kind": "word"},
+    {"reading": "pian'xiao", "text": "偏小", "kind": "word"},
+    {"reading": "hua'hen", "text": "划痕", "kind": "word"},
+    {"reading": "xia'ci", "text": "瑕疵", "kind": "word"},
+    {"reading": "po'sun", "text": "破损", "kind": "word"},
+    {"reading": "kai'feng", "text": "开封", "kind": "word"},
+    {"reading": "wei'kai'feng", "text": "未开封", "kind": "word"},
+    {"reading": "quan'xin", "text": "全新", "kind": "word"},
+    {"reading": "er'shou", "text": "二手", "kind": "word"},
+    {"reading": "zheng'pin", "text": "正品", "kind": "word"},
+    {"reading": "fang'shui", "text": "防水", "kind": "word"},
+    {"reading": "nai'yong", "text": "耐用", "kind": "word"},
+    {"reading": "bao'yang", "text": "保养", "kind": "word"},
+    {"reading": "wei'xiu", "text": "维修", "kind": "word"},
+    {"reading": "qu'huo", "text": "取货", "kind": "word"},
+    {"reading": "men'dian", "text": "门店", "kind": "word"},
+    {"reading": "dian'pu", "text": "店铺", "kind": "word"},
+    {"reading": "chong'dian", "text": "充电", "kind": "word"},
+    {"reading": "chong'dian'qi", "text": "充电器", "kind": "word"},
+    {"reading": "chong'dian'xian", "text": "充电线", "kind": "word"},
+    {"reading": "chong'dian'bao", "text": "充电宝", "kind": "word"},
+    {"reading": "dian'liang", "text": "电量", "kind": "word"},
+    {"reading": "sheng'dian", "text": "省电", "kind": "word"},
+    {"reading": "di'dian'liang", "text": "低电量", "kind": "word"},
+    {"reading": "mei'dian", "text": "没电", "kind": "word"},
+    {"reading": "dian'chi", "text": "电池", "kind": "word"},
+    {"reading": "dian'chi'rong'liang", "text": "电池容量", "kind": "word"},
+    {"reading": "er'ji", "text": "耳机", "kind": "word"},
+    {"reading": "er'mai", "text": "耳麦", "kind": "word"},
+    {"reading": "lan'ya", "text": "蓝牙", "kind": "word"},
+    {"reading": "pei'dui", "text": "配对", "kind": "word"},
+    {"reading": "qu'xiao'pei'dui", "text": "取消配对", "kind": "word"},
+    {"reading": "yi'lian'jie", "text": "已连接", "kind": "word"},
+    {"reading": "wei'lian'jie", "text": "未连接", "kind": "word"},
+    {"reading": "re'dian", "text": "热点", "kind": "word"},
+    {"reading": "chu'mo'ban", "text": "触摸板", "kind": "word"},
+    {"reading": "chu'kong'ban", "text": "触控板", "kind": "word"},
+    {"reading": "chu'mo'ping", "text": "触摸屏", "kind": "word"},
+    {"reading": "chu'kong'ping", "text": "触控屏", "kind": "word"},
+    {"reading": "bei'guang", "text": "背光", "kind": "word"},
+    {"reading": "jian'mao", "text": "键帽", "kind": "word"},
+    {"reading": "an'jian", "text": "按键", "kind": "word"},
+    {"reading": "shou'shi", "text": "手势", "kind": "word"},
+    {"reading": "dan'ji", "text": "单击", "kind": "word"},
+    {"reading": "chang'an", "text": "长按", "kind": "word"},
+    {"reading": "qing'dian", "text": "轻点", "kind": "word"},
+    {"reading": "hua'dong", "text": "滑动", "kind": "word"},
+    {"reading": "jing'yin", "text": "静音", "kind": "word"},
+    {"reading": "qu'xiao'jing'yin", "text": "取消静音", "kind": "word"},
+    {"reading": "yin'liang", "text": "音量", "kind": "word"},
+    {"reading": "liang'du", "text": "亮度", "kind": "word"},
+    {"reading": "zi'dong'liang'du", "text": "自动亮度", "kind": "word"},
+    {"reading": "bi'zhi", "text": "壁纸", "kind": "word"},
+    {"reading": "ping'bao", "text": "屏保", "kind": "word"},
+    {"reading": "suo'ping", "text": "锁屏", "kind": "word"},
+    {"reading": "jie'suo", "text": "解锁", "kind": "word"},
+    {"reading": "jie'ping", "text": "截屏", "kind": "word"},
+    {"reading": "lu'ping", "text": "录屏", "kind": "word"},
+    {"reading": "she'xiang'tou", "text": "摄像头", "kind": "word"},
+    {"reading": "mai'ke'feng", "text": "麦克风", "kind": "word"},
+    {"reading": "yang'sheng'qi", "text": "扬声器", "kind": "word"},
+    {"reading": "lu'you'qi", "text": "路由器", "kind": "word"},
+    {"reading": "wang'luo'she'zhi", "text": "网络设置", "kind": "word"},
+    {"reading": "wu'xian'wang'luo", "text": "无线网络", "kind": "word"},
+    {"reading": "wang'luo'mi'ma", "text": "网络密码", "kind": "word"},
+    {"reading": "lian'jie'chao'shi", "text": "连接超时", "kind": "word"},
+    {"reading": "xin'hao'ruo", "text": "信号弱", "kind": "word"},
+    {"reading": "wu'xin'hao", "text": "无信号", "kind": "word"},
+    {"reading": "wu'wang'luo", "text": "无网络", "kind": "word"},
+    {"reading": "kai'ji", "text": "开机", "kind": "word"},
+    {"reading": "guan'ji", "text": "关机", "kind": "word"},
+    {"reading": "dai'ji", "text": "待机", "kind": "word"},
+    {"reading": "xiu'mian", "text": "休眠", "kind": "word"},
+    {"reading": "hui'fu'mo'ren", "text": "恢复默认", "kind": "word"},
+    {"reading": "zi'dong'bo'fang", "text": "自动播放", "kind": "word"},
+    {"reading": "zi'dong'tian'chong", "text": "自动填充", "kind": "word"},
+    {"reading": "gu'jian", "text": "固件", "kind": "word"},
+    {"reading": "sheng'ji'shi'bai", "text": "升级失败", "kind": "word"},
+    {"reading": "lan'ping", "text": "蓝屏", "kind": "word"},
+    {"reading": "ka'dun", "text": "卡顿", "kind": "word"},
+    {"reading": "si'ji", "text": "死机", "kind": "word"},
+    {"reading": "fa're", "text": "发热", "kind": "word"},
+    {"reading": "shan'shuo", "text": "闪烁", "kind": "word"},
+    {"reading": "ka'zhu", "text": "卡住", "kind": "word"},
+    {"reading": "hei'ping", "text": "黑屏", "kind": "word"},
+    {"reading": "shi'jian", "text": "实践", "kind": "word"},
+    {"reading": "shi'jian", "text": "世间", "kind": "word"},
+    {"reading": "shi'ji", "text": "实际", "kind": "word"},
+    {"reading": "shi'ji", "text": "时机", "kind": "word"},
+    {"reading": "shi'ji", "text": "世纪", "kind": "word"},
+    {"reading": "shi'yong", "text": "使用", "kind": "word"},
+    {"reading": "shi'yong", "text": "食用", "kind": "word"},
+    {"reading": "shi'yong", "text": "实用", "kind": "word"},
+    {"reading": "shi'yong", "text": "适用", "kind": "word"},
+    {"reading": "dian'liang", "text": "点亮", "kind": "word"}
+  ],
+  "continuations": [
+    [
+      "你好",
+      [
+        "你好，很高兴认识你。",
+        "你好，请问有什么可以帮忙？"
+      ]
+    ],
+    [
+      "谢谢",
+      [
+        "谢谢你的帮助。",
+        "谢谢，辛苦了。"
+      ]
+    ],
+    [
+      "请问",
+      [
+        "请问现在方便吗？",
+        "请问可以帮我一下吗？"
+      ]
+    ],
+    [
+      "我",
+      [
+        "我想了解一下。",
+        "我可以帮忙。"
+      ]
+    ],
+    [
+      "你",
+      [
+        "你现在方便吗？",
+        "你有什么建议？"
+      ]
+    ],
+    [
+      "我们",
+      [
+        "我们一起试试看。",
+        "我们可以稍后讨论。"
+      ]
+    ],
+    [
+      "今天",
+      [
+        "今天天气很好。",
+        "今天有什么安排？"
+      ]
+    ],
+    [
+      "明天",
+      [
+        "明天见。",
+        "明天再讨论吧。"
+      ]
+    ],
+    [
+      "中文",
+      [
+        "中文输入很方便。",
+        "中文和英文都可以输入。"
+      ]
+    ],
+    [
+      "输入法",
+      [
+        "输入法支持多种语言。",
+        "输入法可以提供词句候选。"
+      ]
+    ],
+    [
+      "继续",
+      [
+        "继续完善这个功能。",
+        "继续下一步吧。"
+      ]
+    ],
+    [
+      "可以",
+      [
+        "可以帮我看一下吗？",
+        "可以继续了。"
+      ]
+    ],
+    [
+      "学习",
+      [
+        "学习一门新的语言。",
+        "学习需要不断练习。"
+      ]
+    ],
+    [
+      "测试",
+      [
+        "测试一下输入效果。",
+        "测试已经完成。"
+      ]
+    ],
+    [
+      "再见",
+      [
+        "再见，下次再聊。"
+      ]
+    ],
+    [
+      "我喜欢北京",
+      [
+        "我喜欢北京的文化。",
+        "我喜欢北京的美食。"
+      ]
+    ],
+    [
+      "我想学习中文",
+      [
+        "我想学习中文，请多指教。"
+      ]
+    ],
+    [
+      "早饭",
+      [
+        "早饭吃什么？",
+        "早饭已经准备好了。"
+      ]
+    ],
+    [
+      "午饭",
+      [
+        "午饭一起吃吧。",
+        "午饭想吃什么？"
+      ]
+    ],
+    [
+      "晚饭",
+      [
+        "晚饭一起吃吧。",
+        "晚饭后出去散步吧。"
+      ]
+    ],
+    [
+      "周末",
+      [
+        "周末有什么安排？",
+        "周末一起出去走走吧。"
+      ]
+    ],
+    [
+      "预约",
+      [
+        "预约已经确认了。",
+        "预约时间可以修改吗？"
+      ]
+    ],
+    [
+      "订单",
+      [
+        "订单已经确认了。",
+        "订单什么时候发货？"
+      ]
+    ],
+    [
+      "快递",
+      [
+        "快递已经到了。",
+        "快递放在门口就可以。"
+      ]
+    ],
+    [
+      "地址",
+      [
+        "地址已经发给你了。",
+        "地址需要修改一下。"
+      ]
+    ],
+    [
+      "会议",
+      [
+        "会议什么时候开始？",
+        "会议时间已经确认了。"
+      ]
+    ],
+    [
+      "文件",
+      [
+        "文件已经保存了。",
+        "文件已经发给你了。"
+      ]
+    ],
+    [
+      "保存",
+      [
+        "保存一下当前的修改。",
+        "保存后再关闭窗口。"
+      ]
+    ],
+    [
+      "确认",
+      [
+        "确认一下时间和地点。",
+        "确认后我再回复你。"
+      ]
+    ],
+    [
+      "安排",
+      [
+        "安排一个合适的时间吧。",
+        "安排已经确认了。"
+      ]
+    ],
+    [
+      "收到",
+      [
+        "收到，谢谢。",
+        "收到，我稍后处理。"
+      ]
+    ],
+    [
+      "稍等",
+      [
+        "稍等，我确认一下。",
+        "稍等，我马上就来。"
+      ]
+    ],
+    [
+      "没问题",
+      [
+        "没问题，我来处理。",
+        "没问题，稍后联系。"
+      ]
+    ],
+    [
+      "数据库",
+      [
+        "数据库连接正常。",
+        "数据库需要先备份。"
+      ]
+    ],
+    [
+      "服务器",
+      [
+        "服务器已经启动了。",
+        "服务器连接超时了。"
+      ]
+    ],
+    [
+      "部署",
+      [
+        "部署已经完成了。",
+        "部署前先运行测试。"
+      ]
+    ],
+    [
+      "更新",
+      [
+        "更新已经完成了。",
+        "更新后请重新启动。"
+      ]
+    ],
+    [
+      "修复",
+      [
+        "修复后再测试一下。",
+        "修复已经完成了。"
+      ]
+    ],
+    [
+      "回归测试",
+      [
+        "回归测试已经通过了。",
+        "回归测试还需要补充。"
+      ]
+    ],
+    [
+      "词库",
+      [
+        "词库还需要继续扩充。",
+        "词库已经更新了。"
+      ]
+    ],
+    [
+      "本地模型",
+      [
+        "本地模型已经加载了。",
+        "本地模型还在加载中。"
+      ]
+    ],
+    [
+      "改期",
+      [
+        "改期后的时间我再确认一下。",
+        "改期后请通知我。"
+      ]
+    ],
+    [
+      "交接",
+      [
+        "交接材料已经准备好了。",
+        "交接时请核对一下清单。"
+      ]
+    ],
+    [
+      "查收",
+      [
+        "查收后请回复确认。",
+        "查收一下刚发的邮件。"
+      ]
+    ],
+    [
+      "签收",
+      [
+        "签收前请检查包裹。",
+        "签收后请告诉我。"
+      ]
+    ],
+    [
+      "行李",
+      [
+        "行李可以寄存在哪里？",
+        "行李已经托运了。"
+      ]
+    ],
+    [
+      "进展",
+      [
+        "进展我会及时同步。",
+        "进展情况已经整理好了。"
+      ]
+    ],
+    [
+      "报销",
+      [
+        "报销需要提供发票。",
+        "报销材料已经提交了。"
+      ]
+    ],
+    [
+      "预计",
+      [
+        "预计明天下午可以完成。",
+        "预计还需要十分钟。"
+      ]
+    ],
+    [
+      "提前",
+      [
+        "提前十分钟到达就可以。",
+        "提前确认一下时间吧。"
+      ]
+    ],
+    [
+      "备忘录",
+      [
+        "备忘录已经更新了。",
+        "备忘录里记录了待办事项。"
+      ]
+    ],
+    [
+      "待办",
+      [
+        "待办事项已经整理好了。",
+        "待办事项需要按优先级处理。"
+      ]
+    ],
+    [
+      "联系方式",
+      [
+        "联系方式已经发给你了。",
+        "联系方式需要更新一下。"
+      ]
+    ],
+    [
+      "收件人",
+      [
+        "收件人的电话需要确认一下。",
+        "收件人信息已经填写好了。"
+      ]
+    ],
+    [
+      "原因分析",
+      [
+        "原因分析已经完成了。",
+        "原因分析还需要更多信息。"
+      ]
+    ],
+    [
+      "会议纪要",
+      [
+        "会议纪要已经发到群里了。",
+        "会议纪要请大家确认一下。"
+      ]
+    ],
+    [
+      "换乘",
+      [
+        "换乘需要预留一些时间。",
+        "换乘路线已经查好了。"
+      ]
+    ],
+    [
+      "请查收",
+      [
+        "请查收附件中的材料。",
+        "请查收刚发的邮件。"
+      ]
+    ],
+    [
+      "延后",
+      [
+        "延后半小时可以吗？",
+        "延后的时间需要重新确认。"
+      ]
+    ],
+    [
+      "推迟",
+      [
+        "推迟到明天可以吗？",
+        "推迟的原因已经说明了。"
+      ]
+    ],
+    [
+      "尽快",
+      [
+        "尽快回复你。",
+        "尽快确认一下吧。"
+      ]
+    ],
+    [
+      "不着急",
+      [
+        "不着急，你慢慢来。",
+        "不着急，准备好了再联系。"
+      ]
+    ],
+    [
+      "辛苦了",
+      [
+        "辛苦了，早点休息。",
+        "辛苦了，谢谢你的帮助。"
+      ]
+    ],
+    [
+      "核对",
+      [
+        "核对一下姓名和地址。",
+        "核对后再提交。"
+      ]
+    ],
+    [
+      "请假",
+      [
+        "请假申请已经提交了。",
+        "请假期间的工作已经安排好了。"
+      ]
+    ],
+    [
+      "出差",
+      [
+        "出差行程已经确认了。",
+        "出差回来后再联系。"
+      ]
+    ],
+    [
+      "预算",
+      [
+        "预算需要再确认一下。",
+        "预算已经通过审批了。"
+      ]
+    ],
+    [
+      "报价",
+      [
+        "报价单已经发给你了。",
+        "报价是否包含运费？"
+      ]
+    ],
+    [
+      "账单",
+      [
+        "账单已经核对过了。",
+        "账单里的费用需要确认一下。"
+      ]
+    ],
+    [
+      "清单",
+      [
+        "清单已经整理好了。",
+        "清单里还有几项待确认。"
+      ]
+    ],
+    [
+      "总结",
+      [
+        "总结一下今天的讨论。",
+        "总结已经发到群里了。"
+      ]
+    ],
+    [
+      "补充",
+      [
+        "补充一下相关背景。",
+        "补充材料已经准备好了。"
+      ]
+    ],
+    [
+      "共识",
+      [
+        "共识已经形成了。",
+        "共识需要记录在会议纪要里。"
+      ]
+    ],
+    [
+      "分工",
+      [
+        "分工已经明确了。",
+        "分工安排请大家确认一下。"
+      ]
+    ],
+    [
+      "负责人",
+      [
+        "负责人会尽快联系你。",
+        "负责人的联系方式已经发给你了。"
+      ]
+    ],
+    [
+      "会议室",
+      [
+        "会议室已经预订好了。",
+        "会议室在二楼。"
+      ]
+    ],
+    [
+      "留言",
+      [
+        "留言我已经看到了。",
+        "留言后我会尽快回复。"
+      ]
+    ],
+    [
+      "备注",
+      [
+        "备注里已经说明了。",
+        "备注一下特殊要求吧。"
+      ]
+    ],
+    [
+      "参考资料",
+      [
+        "参考资料已经整理好了。",
+        "参考资料在附件里。"
+      ]
+    ],
+    [
+      "校对",
+      [
+        "校对后再发给大家。",
+        "校对时请留意标点和数字。"
+      ]
+    ],
+    [
+      "结论",
+      [
+        "结论还需要进一步验证。",
+        "结论已经写在报告里了。"
+      ]
+    ],
+    [
+      "包裹",
+      [
+        "包裹已经寄出了。",
+        "包裹到了请告诉我。"
+      ]
+    ],
+    [
+      "取件",
+      [
+        "取件时请带好证件。",
+        "取件码已经发给你了。"
+      ]
+    ],
+    [
+      "改签",
+      [
+        "改签需要补差价吗？",
+        "改签后的行程已经确认了。"
+      ]
+    ],
+    [
+      "入住",
+      [
+        "入住时间可以提前吗？",
+        "入住时需要出示证件。"
+      ]
+    ],
+    [
+      "退房",
+      [
+        "退房时间是几点？",
+        "退房后可以寄存行李吗？"
+      ]
+    ],
+    [
+      "客服",
+      [
+        "客服会尽快联系你。",
+        "客服已经受理了这个问题。"
+      ]
+    ],
+    [
+      "准备就绪",
+      [
+        "准备就绪，可以开始了。",
+        "准备就绪后请通知我。"
+      ]
+    ],
+    [
+      "收货地址",
+      [
+        "收货地址需要修改一下。",
+        "收货地址已经确认了。"
+      ]
+    ],
+    [
+      "早安",
+      [
+        "早安，今天也要加油。",
+        "早安，今天有什么安排？"
+      ]
+    ],
+    [
+      "晚安",
+      [
+        "晚安，早点休息。",
+        "晚安，明天见。"
+      ]
+    ],
+    [
+      "明早",
+      [
+        "明早我再联系你。",
+        "明早一起出发吧。"
+      ]
+    ],
+    [
+      "一会儿",
+      [
+        "一会儿见。",
+        "一会儿我再回复你。"
+      ]
+    ],
+    [
+      "聚会",
+      [
+        "聚会几点开始？",
+        "聚会地点已经发给你了。"
+      ]
+    ],
+    [
+      "顺路",
+      [
+        "顺路的话帮我带一下。",
+        "顺路送你过去吧。"
+      ]
+    ],
+    [
+      "闹钟",
+      [
+        "闹钟已经设好了。",
+        "闹钟需要提前十分钟。"
+      ]
+    ],
+    [
+      "购物车",
+      [
+        "购物车里的商品需要再确认一下。",
+        "购物车已经清空了。"
+      ]
+    ],
+    [
+      "优惠券",
+      [
+        "优惠券可以一起使用吗？",
+        "优惠券还在有效期内。"
+      ]
+    ],
+    [
+      "退货",
+      [
+        "退货需要保留包装吗？",
+        "退货申请已经提交了。"
+      ]
+    ],
+    [
+      "尺码",
+      [
+        "尺码不合适可以换吗？",
+        "尺码表可以发给我吗？"
+      ]
+    ],
+    [
+      "充电宝",
+      [
+        "充电宝需要提前充电。",
+        "充电宝我已经带上了。"
+      ]
+    ],
+    [
+      "蓝牙",
+      [
+        "蓝牙已经连接好了。",
+        "蓝牙需要重新配对。"
+      ]
+    ],
+    [
+      "触摸板",
+      [
+        "触摸板的灵敏度可以调整。",
+        "触摸板已经启用了。"
+      ]
+    ],
+    [
+      "静音",
+      [
+        "静音已经取消了。",
+        "静音模式已经打开了。"
+      ]
+    ],
+    [
+      "洗衣服",
+      [
+        "洗衣服之前先检查口袋。",
+        "洗衣服需要一些时间。"
+      ]
+    ],
+    [
+      "不好意思",
+      [
+        "不好意思，让你久等了。",
+        "不好意思，刚才没看到消息。"
+      ]
+    ],
+    [
+      "好久不见",
+      [
+        "好久不见，最近怎么样？",
+        "好久不见，有空一起吃饭吧。"
+      ]
+    ],
+    [
+      "到家",
+      [
+        "到家后给我发个消息。",
+        "到家了，我先收拾一下。"
+      ]
+    ],
+    [
+      "记得",
+      [
+        "记得带上充电器。",
+        "记得提前确认时间。"
+      ]
+    ],
+    [
+      "晚点",
+      [
+        "晚点再联系你。",
+        "晚点到也没关系。"
+      ]
+    ],
+    [
+      "半小时",
+      [
+        "半小时后见。",
+        "半小时应该来得及。"
+      ]
+    ],
+    [
+      "野餐",
+      [
+        "野餐需要带些什么？",
+        "野餐的地点已经选好了。"
+      ]
+    ],
+    [
+      "散步",
+      [
+        "散步的时候再聊吧。",
+        "散步回来再联系。"
+      ]
+    ],
+    [
+      "室友",
+      [
+        "室友今天不在家。",
+        "室友已经帮忙收下了。"
+      ]
+    ],
+    [
+      "浇水",
+      [
+        "浇水的时间需要调整一下。",
+        "浇水用的水壶在阳台。"
+      ]
+    ],
+    [
+      "打扫",
+      [
+        "打扫完再休息吧。",
+        "打扫房间需要一点时间。"
+      ]
+    ],
+    [
+      "纸巾",
+      [
+        "纸巾放在桌上了。",
+        "纸巾快用完了。"
+      ]
+    ],
+    [
+      "收纳",
+      [
+        "收纳盒放在柜子里了。",
+        "收纳之前先整理一下。"
+      ]
+    ],
+    [
+      "取消静音",
+      [
+        "取消静音后再试一下。",
+        "取消静音后就能听到了。"
+      ]
+    ],
+    [
+      "换货",
+      [
+        "换货需要多久？",
+        "换货时请保留包装。"
+      ]
+    ],
+    [
+      "缺货",
+      [
+        "缺货的话可以等补货。",
+        "缺货的商品什么时候到货？"
+      ]
+    ],
+    [
+      "包邮",
+      [
+        "包邮吗？",
+        "包邮的范围需要确认一下。"
+      ]
+    ],
+    [
+      "未开封",
+      [
+        "未开封的商品可以退吗？",
+        "未开封的包装请保持完整。"
+      ]
+    ],
+    [
+      "电量",
+      [
+        "电量不足，需要充电。",
+        "电量已经充满了。"
+      ]
+    ],
+    [
+      "音量",
+      [
+        "音量可以调小一点吗？",
+        "音量已经调整好了。"
+      ]
+    ],
+    [
+      "亮度",
+      [
+        "亮度可以再调低一点。",
+        "亮度已经调好了。"
+      ]
+    ],
+    [
+      "热点",
+      [
+        "热点已经打开了。",
+        "热点密码已经发给你了。"
+      ]
+    ],
+    [
+      "锁屏",
+      [
+        "锁屏后需要重新解锁。",
+        "锁屏时间可以在设置里调整。"
+      ]
+    ],
+    [
+      "关机",
+      [
+        "关机之前先保存文件。",
+        "关机后再收起来吧。"
+      ]
+    ]
+  ]
+}

@@ -5,8 +5,8 @@ suzaku_apps_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$suzaku_apps_root"
 suzaku_apps_suite=${1:-gtk}
 case "$suzaku_apps_suite" in
-  gtk|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor) ;;
-  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor]\n' >&2; exit 2 ;;
+  gtk|vocabulary|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor) ;;
+  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|vocabulary|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor]\n' >&2; exit 2 ;;
 esac
 if [[ $suzaku_apps_suite == model && ( ${SUZAKU_MODEL_LOCAL_QA:-0} != 1 || -z ${SUZAKU_MODEL_QA_MODEL:-} ) ]]; then
   printf 'Live QA needs explicit SUZAKU_MODEL_LOCAL_QA=1 and SUZAKU_MODEL_QA_MODEL (installed local Ollama model).\n' >&2
@@ -14,9 +14,10 @@ if [[ $suzaku_apps_suite == model && ( ${SUZAKU_MODEL_LOCAL_QA:-0} != 1 || -z ${
 fi
 suzaku_apps_dependencies=(xvfb-run xauth dbus-run-session ibus-daemon xwininfo timeout)
 case "$suzaku_apps_suite" in
-  gtk|popup|lifecycle|bus-restart|keyboard|editor) suzaku_apps_dependencies+=(gsettings) ;;
+  gtk|vocabulary|popup|lifecycle|bus-restart|keyboard|editor) suzaku_apps_dependencies+=(gsettings) ;;
 esac
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity)
+[[ $suzaku_apps_suite != vocabulary ]] || suzaku_apps_dependencies+=(gnome-text-editor)
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_dependencies+=(gnome-text-editor /usr/libexec/ibus-ui-gtk3)
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_dependencies+=(gnome-text-editor zenity setxkbmap /usr/libexec/ibus-ui-gtk3)
 [[ $suzaku_apps_suite != bus-restart ]] || suzaku_apps_dependencies+=(gnome-text-editor setxkbmap /usr/libexec/ibus-ui-gtk3)
@@ -45,6 +46,7 @@ for suzaku_apps_qt in 5 6; do
 done
 suzaku_apps_script=scripts/test-linux-cross-apps.py
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_script=scripts/test-linux-apps.py
+[[ $suzaku_apps_suite != vocabulary ]] || suzaku_apps_script=scripts/test-linux-vocabulary.py
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_script=scripts/test-linux-candidate-window.py
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_script=scripts/test-linux-input-lifecycle.py
 [[ $suzaku_apps_suite != bus-restart ]] || suzaku_apps_script=scripts/test-linux-bus-restart.py

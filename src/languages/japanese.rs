@@ -2,6 +2,18 @@
 
 use super::ranked_candidates;
 use crate::ime::{Candidate, LanguagePlugin};
+use crate::lexicon::{EntryKind, Lexicon};
+
+fn vocabulary() -> &'static Lexicon {
+    crate::lexicon::builtin("ja").expect("Japanese vocabulary is registered")
+}
+
+fn kanji() -> impl DoubleEndedIterator<Item = (&'static str, &'static str)> {
+    vocabulary()
+        .readings()
+        .iter()
+        .map(|entry| (entry.reading.as_str(), entry.text.as_str()))
+}
 
 #[derive(Default)]
 pub struct JapaneseLanguagePlugin;
@@ -24,8 +36,7 @@ impl LanguagePlugin for JapaneseLanguagePlugin {
             return Vec::new();
         }
         let kana = composition_kana(seed);
-        let mut values: Vec<String> = KANJI
-            .iter()
+        let mut values: Vec<String> = kanji()
             .filter(|(reading, _)| *reading == kana)
             .map(|(_, text)| text.to_string())
             .collect();
@@ -46,38 +57,12 @@ impl LanguagePlugin for JapaneseLanguagePlugin {
     }
 }
 
-const KANJI: &[(&str, &str)] = &[
-    ("にほん", "日本"),
-    ("にほんご", "日本語"),
-    ("とうきょう", "東京"),
-    ("わたし", "私"),
-    ("きょう", "今日"),
-    ("あした", "明日"),
-    ("きのう", "昨日"),
-    ("ありがとう", "ありがとう"),
-    ("おはよう", "おはよう"),
-    ("こんにちは", "こんにちは"),
-    ("こんばんは", "こんばんは"),
-    ("せかい", "世界"),
-    ("にゅうりょく", "入力"),
-    ("へんかん", "変換"),
-    ("こうほ", "候補"),
-    ("げんご", "言語"),
-    ("べんきょう", "勉強"),
-    ("がっこう", "学校"),
-    ("しごと", "仕事"),
-    ("てんき", "天気"),
-    ("じかん", "時間"),
-    ("なまえ", "名前"),
-    ("すき", "好き"),
-    ("かんじ", "漢字"),
-    ("かんじ", "感じ"),
-    ("すずめ", "雀"),
-];
-
 pub(crate) fn is_dictionary_word(text: &str) -> bool {
-    KANJI.iter().any(|(reading, word)| {
-        *word == text || *reading == text || hiragana_to_katakana(reading) == text
+    vocabulary().readings().iter().any(|entry| {
+        entry.kind == EntryKind::Word
+            && (entry.text == text
+                || entry.reading == text
+                || hiragana_to_katakana(&entry.reading) == text)
     })
 }
 
@@ -87,8 +72,7 @@ fn convert_segments(kana: &str) -> String {
     let mut rest = kana;
     let mut output = String::new();
     while !rest.is_empty() {
-        if let Some((reading, word)) = KANJI
-            .iter()
+        if let Some((reading, word)) = kanji()
             .rev() // Keep the dictionary's first variant when readings have equal lengths.
             .filter(|(reading, _)| rest.starts_with(reading))
             .max_by_key(|(reading, _)| reading.len())
@@ -132,8 +116,8 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
     let mut output = Vec::new();
     while offset < kana.len() {
         let rest = &kana[offset..];
-        for (reading, word) in KANJI {
-            if *reading != rest
+        for (reading, word) in kanji() {
+            if reading != rest
                 && queries.iter().any(|query| {
                     query
                         .strip_prefix(&kana[..offset])
@@ -142,15 +126,21 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
             {
                 let text = format!("{prefix}{word}");
                 if !output.iter().any(|(value, _)| value == &text) {
-                    output.push((text, CandidateKind::Word));
+                    output.push((
+                        text,
+                        if is_dictionary_word(word) {
+                            CandidateKind::Word
+                        } else {
+                            CandidateKind::Sentence
+                        },
+                    ));
                     if output.len() == 4 {
                         return output;
                     }
                 }
             }
         }
-        if let Some((reading, word)) = KANJI
-            .iter()
+        if let Some((reading, word)) = kanji()
             .rev()
             .filter(|(reading, _)| rest.starts_with(reading))
             .max_by_key(|(reading, _)| reading.len())
@@ -207,61 +197,7 @@ pub(crate) fn mixed_candidates(
     seed: &str,
 ) -> Vec<(String, crate::ime::candidate_mix::CandidateKind)> {
     use crate::ime::candidate_mix::CandidateKind;
-    const CONTINUATIONS: &[(&str, &[&str])] = &[
-        (
-            "日本語",
-            &["日本語を勉強しています。", "日本語で入力できます。"],
-        ),
-        ("日本語入力", &["日本語入力を試しています。"]),
-        (
-            "私は日本語",
-            &[
-                "私は日本語を勉強しています。",
-                "私は日本語で入力しています。",
-            ],
-        ),
-        (
-            "日本語を勉強",
-            &["日本語を勉強しています。", "日本語を勉強したいです。"],
-        ),
-        (
-            "私",
-            &["私は日本語を勉強しています。", "私はそう思います。"],
-        ),
-        ("今日", &["今日はいい天気ですね。", "今日は何をしますか？"]),
-        (
-            "明日",
-            &["明日また会いましょう。", "明日よろしくお願いします。"],
-        ),
-        (
-            "ありがとう",
-            &["ありがとうございます。", "ありがとう、助かりました。"],
-        ),
-        (
-            "こんにちは",
-            &[
-                "こんにちは、お元気ですか？",
-                "こんにちは、よろしくお願いします。",
-            ],
-        ),
-        (
-            "おはよう",
-            &[
-                "おはようございます。",
-                "おはよう、今日もよろしくお願いします。",
-            ],
-        ),
-        (
-            "入力",
-            &["入力方法を変更できます。", "入力を確認してください。"],
-        ),
-        ("勉強", &["勉強を続けたいです。", "勉強になりました。"]),
-        (
-            "仕事",
-            &["仕事が終わりました。", "仕事について相談したいです。"],
-        ),
-        ("天気", &["天気がいいですね。", "天気はどうですか？"]),
-    ];
+
     let kana = composition_kana(seed);
     let converted = convert_segments(&kana);
     let mut output = Vec::new();
@@ -286,10 +222,13 @@ pub(crate) fn mixed_candidates(
         )
         .collect();
     for word in words {
-        if let Some((_, values)) = CONTINUATIONS.iter().find(|(prefix, _)| *prefix == word) {
-            for text in *values {
+        if let Some((_, values)) = vocabulary()
+            .continuations()
+            .find(|(prefix, _)| *prefix == word)
+        {
+            for text in values {
                 if !output.iter().any(|(existing, _)| existing == text) {
-                    output.push(((*text).into(), CandidateKind::Sentence));
+                    output.push((text.clone(), CandidateKind::Sentence));
                 }
             }
         }

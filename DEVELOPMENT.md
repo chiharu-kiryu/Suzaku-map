@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.7.2 — Draft-preserving language shortcuts and responsive settings**.
+Current source version: **0.7.3 — Vocabulary resources and in-memory candidate preferences**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -22,6 +22,26 @@ The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+### 0.7.3 — Vocabulary resources and in-memory candidate preferences
+
+- Adds two rounds of authored everyday English/Chinese vocabulary: 5,251 indexed English
+  forms, 1,143 Chinese readings, 238 English and 256 Chinese sentence examples in total.
+  Existing spelling, spacing, literal choices and word/sentence quotas remain protected.
+- Moves English, Chinese and Japanese vocabulary into versioned embedded JSON resources.
+  The data interface is independent of decoders, native hosts and model providers; parsing
+  and indexing happen once per language. This is not runtime import or hot reload.
+- Adds a bounded frequency cache independent of dictionary/model implementation. Confirmed
+  choices adjust existing IBus candidates; editable adoptions wait for final submission.
+  Canceled, undone, private or edited-away choices do not learn. English identifier/word
+  boundaries are checked, and asynchronous model refreshes do not stack bonuses.
+- Preferences contain salted fingerprints and decaying counts in memory only; the tray can
+  clear them, and host restart forgets them. No history file or input-thread persistence is added.
+- Adds a real GTK vocabulary workflow suite and connects it to CI. Native preference checks
+  cover numeric, Shift+Enter, Space and companion adoption, undo, privacy, focus and clear.
+
+See the [0.7.3 release notes](docs/releases/0.7.3.md), [vocabulary contract](data/lexicons/README.md)
+and [candidate preference scope](docs/ibus-candidates.md#偏好频率缓存).
 
 ### 0.7.2 — Draft-preserving language shortcuts and responsive settings
 

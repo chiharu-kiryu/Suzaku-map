@@ -307,6 +307,54 @@ pub fn merge_model(
     (balance(local, pinned, limit), accepted)
 }
 
+/// Preferences only rank candidates already supplied by a decoder/provider.
+/// Literal input, word/sentence quotas and async typing anchors remain intact.
+pub(crate) fn personalize(
+    language: &str,
+    seed: &str,
+    mut pool: Vec<Candidate>,
+    freeze_anchors: bool,
+    bonus: impl Fn(&Candidate) -> f32,
+) -> Vec<Candidate> {
+    let mut changed = false;
+    for candidate in &mut pool {
+        let extra = bonus(candidate);
+        if extra.is_finite() && extra > 0.0 && candidate.text != seed {
+            candidate.score += extra.min(24.0);
+            changed = true;
+        }
+    }
+    if !changed {
+        return pool;
+    }
+    if !freeze_anchors {
+        // English preserves the literal row; CJK may learn a preferred word
+        // conversion. Sentences never displace the primary word/typing anchor.
+        let anchor = usize::from(pool.first().is_some_and(|c| c.text == seed));
+        if pool
+            .get(anchor)
+            .is_some_and(|c| c.kind == CandidateKind::Word)
+        {
+            let mut best = anchor;
+            for index in anchor + 1..pool.len() {
+                if pool[index].kind == CandidateKind::Word && pool[index].score > pool[best].score {
+                    best = index;
+                }
+            }
+            pool.swap(anchor, best);
+        }
+    }
+    let pinned = pinned_count(language, &pool);
+    let limit = pool.len();
+    let mut pool = balance(pool, pinned, limit);
+    // Sort with the full bonus first, then clamp presentation weights. Otherwise
+    // a default weight of 100 could never be displaced by a learned conversion.
+    for candidate in &mut pool {
+        candidate.score = candidate.score.clamp(0.0, 100.0);
+    }
+    pool
+}
+
 fn balance(mut pool: Vec<Candidate>, pinned: usize, limit: usize) -> Vec<Candidate> {
     let limit = limit.max(1);
     let mut seen = HashSet::new();

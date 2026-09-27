@@ -31,6 +31,7 @@ extern char *suzaku_host_ime_candidate_label_utf8(size_t index);
 extern char *suzaku_host_ime_ibus_candidate_label_utf8(size_t index);
 extern char *suzaku_host_ime_completion_text_utf8(bool explicit_only);
 extern void suzaku_host_ime_enable_ibus_candidates(void);
+extern void suzaku_host_ime_stage_completion_preference(void);
 extern char *suzaku_host_ime_take_last_committed_text_utf8(void);
 extern void suzaku_host_ime_free_utf8(char *text);
 extern bool suzaku_host_ime_poll_prediction(void);
@@ -297,6 +298,7 @@ static gboolean suzaku_ibus_engine_complete(SuzakuIBusEngine *self, gboolean app
         return TRUE;
     }
     gchar *previous = changed ? g_strdup(self->input->str) : NULL;
+    if (changed) { suzaku_host_ime_stage_completion_preference(); }
     gchar *replacement = append_space ? g_strconcat(text, " ", NULL) : g_strdup(text);
     g_string_assign(self->input, replacement);
     g_free(replacement);
@@ -816,6 +818,15 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
         suzaku_companion_subscribe(connection);
         // The subscriber list owns the stream now; discard only request state.
         suzaku_ipc_finish(client, FALSE);
+        return;
+    }
+
+    /* Memory-only cache control: no settings worker or input-thread disk I/O.
+     * Keep the current native Compose/adoption/selection state untouched. */
+    if (bytes_read == 1 && request[0] == 'F') {
+        char *response = suzaku_host_ime_control_utf8(request);
+        suzaku_ipc_reply(client, response);
+        suzaku_host_ime_free_utf8(response);
         return;
     }
 

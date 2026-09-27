@@ -7,6 +7,7 @@ mod core_helpers;
 mod core_icons_a;
 mod core_icons_b;
 mod prediction;
+mod preferences;
 pub mod settings;
 pub mod shortcuts;
 pub mod tool_text;

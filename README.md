@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.7.2 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.7.3 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -28,12 +28,12 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.7.2 adds **Ctrl+Shift+Space** to switch English ↔ Chinese in a focused IBus input field,
-preserving the draft and rebuilding candidates without submitting. Settings reads, writes and
-file sync now run in one bounded background worker, keeping typing responsive during slow saves;
-expired or abandoned requests do not apply late. Vocabulary, explicit submission and model-consent
-boundaries are unchanged. This controlled fix does not establish the cause of historical CI or
-release-time failures. See the [release notes](docs/releases/0.7.2.md) for validation and scope.
+0.7.3 expands everyday English/Chinese vocabulary and separates vocabulary data from decoders
+and model providers. **In-memory candidate preferences** learn confirmed choices, decay over time,
+and can be cleared from the tray; private fields neither learn nor use them. No typed history is
+saved, and restarting the host forgets preferences. Ctrl+Shift+Space language switching, Space
+continuity and explicit submission remain unchanged. See the [release notes](docs/releases/0.7.3.md)
+for validation, vocabulary counts and scope.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -42,11 +42,11 @@ speech and application compatibility. This is not a replacement for a full Chine
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
 Source tags can precede downloadable packages; use a release with attached packages or build from
-source. Once the matching 0.7.2 package is available, in the download directory on Ubuntu 24.04 amd64:
+source. Once the matching 0.7.3 package is available, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.7.2_amd64.deb.sha256
-sudo apt install ./suzaku_0.7.2_amd64.deb
+sha256sum -c suzaku_0.7.3_amd64.deb.sha256
+sudo apt install ./suzaku_0.7.3_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -104,7 +104,7 @@ for literal input, selection, privacy and recovery after an unconfirmed send.
 
 ## Models and privacy
 
-Suggestions are opt-in. Default discovery checks fixed loopback endpoints for models already
+Model suggestions are opt-in. Default discovery checks fixed loopback endpoints for models already
 served locally. Suzaku does not install or start Ollama/llama.cpp for you.
 
 ```bash
@@ -119,6 +119,9 @@ A local gateway can forward data elsewhere; trust and configure the server separ
 Enabled suggestions can send the current draft, local conversion and up to 160 characters of
 committed context from the current focus session. Explicit translation sends its source draft.
 Suzaku does not collect surrounding application text or write an input history to disk.
+0.7.3 adds bounded, decaying IBus candidate preferences in memory only.
+Confirmed explicit choices can adjust existing candidates; private fields do not learn or use them.
+The tray can clear preferences, and restarting the host forgets them. See [candidate learning](docs/ibus-candidates.md#偏好频率缓存).
 See [privacy boundaries](docs/privacy.md); third-party provider retention is outside this guarantee.
 
 ## Build and contribute
@@ -137,12 +140,12 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.2 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.3 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — EN/ZH toggle, opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.7.2 release notes](docs/releases/0.7.2.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.7.3 release notes](docs/releases/0.7.3.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

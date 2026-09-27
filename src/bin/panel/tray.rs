@@ -42,6 +42,7 @@ mod platform {
         SetPredictionEnabled(bool),
         SetPanelImeSettings(PanelImeSettingsPatch),
         ReloadImeSettings,
+        ClearPreferences,
         CheckModel(ModelProviderConfig),
         WarmModel(ModelProviderConfig),
         ModelReport(ModelProviderConfig, Result<String, String>),
@@ -513,6 +514,15 @@ mod platform {
                     ..Default::default()
                 }
                 .into(),
+                StandardItem {
+                    label: "Clear candidate preferences (memory only)".into(),
+                    enabled: !self.input_method.busy && self.input_method.native.is_some(),
+                    activate: Box::new(|tray: &mut Self| {
+                        tray.request_input_method(TrayControl::ClearPreferences)
+                    }),
+                    ..Default::default()
+                }
+                .into(),
                 MenuItem::Separator,
                 StandardItem {
                     label: if self.panel_visible {
@@ -765,6 +775,9 @@ mod platform {
                         }
                         TrayControl::ReloadImeSettings => {
                             publish_native_settings(&handle, linux_ime_control::reload_settings());
+                        }
+                        TrayControl::ClearPreferences => {
+                            publish_native_settings(&handle, linux_ime_control::clear_preferences());
                         }
                         TrayControl::CheckModel(ref config)
                         | TrayControl::WarmModel(ref config) => {

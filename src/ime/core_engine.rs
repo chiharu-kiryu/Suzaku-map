@@ -231,6 +231,8 @@ pub struct XRTabletImeEngine {
     prediction_error: Option<LlmProviderError>,
     selection_locked: bool,
     ibus_candidate_mix: bool,
+    preferences: super::preferences::SelectionPreferences,
+    candidate_baseline: Vec<Candidate>,
 }
 
 impl XRTabletImeEngine {
@@ -250,6 +252,8 @@ impl XRTabletImeEngine {
             prediction_error: None,
             selection_locked: false,
             ibus_candidate_mix: false,
+            preferences: Default::default(),
+            candidate_baseline: Vec::new(),
             state: CompositionState {
                 mode: Mode::Idle,
                 seed_text: String::new(),
@@ -304,6 +308,9 @@ impl XRTabletImeEngine {
     pub fn set_language(&mut self, language_id: impl AsRef<str>) -> Snapshot {
         let language_id = language_id.as_ref();
         if let Some(plugin) = self.registry.get(language_id) {
+            if self.state.active_language != plugin.id() {
+                self.preferences.clear_pending();
+            }
             self.state.active_language = plugin.id().to_string();
             self.state.selected_index = 0;
             self.rebuild();
@@ -343,6 +350,7 @@ impl XRTabletImeEngine {
         self.selection_locked = false;
         self.state.mode = Mode::Composing;
         self.state.seed_text = self.active_plugin().normalize_seed(input.as_ref());
+        self.preferences.retain_draft(&self.state.seed_text);
         self.rebuild();
         self.snapshot()
     }
@@ -360,6 +368,7 @@ impl XRTabletImeEngine {
 
         self.state.mode = Mode::Composing;
         self.state.seed_text = self.active_plugin().normalize_seed(&self.state.seed_text);
+        self.preferences.retain_draft(&self.state.seed_text);
         self.rebuild();
         self.snapshot()
     }
@@ -425,6 +434,35 @@ impl XRTabletImeEngine {
             .is_some_and(|candidate| self.passes_control_gate(candidate, options))
     }
 
+    /// Stage an explicit adoption before replacing the draft. This does not
+    /// learn yet: edits/undo/cancel can discard it before a successful commit.
+    pub fn stage_selected_preference(&mut self) {
+        if self.ibus_candidate_mix
+            && let Some(candidate) = self.state.candidates.get(self.state.selected_index)
+        {
+            self.preferences.stage(
+                &self.state.active_language,
+                &self.state.seed_text,
+                candidate,
+            );
+        }
+    }
+
+    /// Hosts must disable both learning and ranking in private fields.
+    pub fn set_preferences_enabled(&mut self, enabled: bool) {
+        self.preferences.set_enabled(enabled);
+    }
+
+    /// Forget confirmed and pending feedback without reordering a live draft or
+    /// destroying its selection/adoption undo. The next rebuild uses defaults.
+    pub fn clear_preferences(&mut self) {
+        self.preferences.clear();
+    }
+
+    pub fn preference_count(&self) -> usize {
+        self.preferences.len()
+    }
+
     pub fn commit(&mut self, options: CommitOptions) -> CommitResult {
         self.commit_with_join(options, false)
     }
@@ -461,6 +499,10 @@ impl XRTabletImeEngine {
         }
 
         self.state.history.push(self.state.committed_text.clone());
+        if self.selection_locked {
+            self.stage_selected_preference();
+        }
+        self.preferences.commit(&candidate.text);
 
         if self.state.committed_text.is_empty() {
             self.state.committed_text = candidate.text;
@@ -480,6 +522,7 @@ impl XRTabletImeEngine {
         self.state.seed_text.clear();
         self.state.expansions.clear();
         self.state.candidates.clear();
+        self.candidate_baseline.clear();
         self.state.selected_index = 0;
         self.state.draft_text.clear();
 
@@ -494,6 +537,7 @@ impl XRTabletImeEngine {
     pub fn undo(&mut self) -> Option<Snapshot> {
         let previous = self.state.history.pop()?;
         self.state.committed_text = previous;
+        self.preferences.undo();
         Some(self.snapshot())
     }
 
@@ -507,6 +551,7 @@ impl XRTabletImeEngine {
             .map(|token| plugin.expand_token(token, self.state.degraded))
             .collect();
         self.state.candidates = self.compose_candidates_with_plugin(plugin.as_ref());
+        self.apply_preferences(false);
 
         if self.state.selected_index >= self.state.candidates.len() {
             self.state.selected_index = 0;
@@ -580,7 +625,21 @@ impl XRTabletImeEngine {
                 return false;
             }
         };
-        let local = self.state.candidates.clone();
+        // Strip the previous bonus before model corroboration; applying the
+        // overlay twice must not inflate scores. Keep the displayed anchors so
+        // model normalization uses the same primary conversion as its request.
+        let local: Vec<_> = self
+            .state
+            .candidates
+            .iter()
+            .map(|candidate| {
+                self.candidate_baseline
+                    .iter()
+                    .find(|base| base.text == candidate.text)
+                    .unwrap_or(candidate)
+                    .clone()
+            })
+            .collect();
         if self.ibus_candidate_mix {
             let (merged, accepted) = super::candidate_mix::merge_model(
                 &self.state.active_language,
@@ -597,8 +656,9 @@ impl XRTabletImeEngine {
             if !accepted {
                 self.prediction_error = Some(LlmProviderError::NoCandidates);
             }
-            let changed = merged != self.state.candidates;
-            self.state.candidates = merged;
+            let previous = std::mem::replace(&mut self.state.candidates, merged);
+            self.apply_preferences(true);
+            let changed = previous != self.state.candidates;
             self.render_draft();
             return changed;
         }
@@ -681,6 +741,29 @@ impl XRTabletImeEngine {
         self.cancel_prediction();
         self.state.committed_text.clear();
         self.state.history.clear();
+        self.preferences.clear_pending();
+    }
+
+    fn apply_preferences(&mut self, freeze_anchors: bool) {
+        self.candidate_baseline = self.state.candidates.clone();
+        if !self.ibus_candidate_mix {
+            return;
+        }
+        let now = std::time::Instant::now();
+        self.state.candidates = super::candidate_mix::personalize(
+            &self.state.active_language,
+            &self.state.seed_text,
+            std::mem::take(&mut self.state.candidates),
+            freeze_anchors,
+            |candidate| {
+                self.preferences.bonus(
+                    &self.state.active_language,
+                    &self.state.seed_text,
+                    candidate,
+                    now,
+                )
+            },
+        );
     }
 
     fn lock_prediction_selection(&mut self) {

@@ -2987,6 +2987,26 @@ def check_bilingual_core_completion(context, watch, commits):
         ("zh-Hans", "hui yi", "会议", "会议什么时候开始？"),
         ("zh-Hans", "fu wu qi", "服务器", "服务器已经启动了。"),
         ("zh-Hans", "ci ku", "词库", "词库还需要继续扩充。"),
+        ("en", "please acknowledge rece", "please acknowledge receipt", "please acknowledge receipt of this message."),
+        ("en", "could we postpone the mee", "could we postpone the meeting", "could we postpone the meeting until tomorrow?"),
+        ("en", "please keep me po", "please keep me posted", "please keep me posted on your progress."),
+        ("en", "we have reached a cons", "we have reached a consensus", "we have reached a consensus on the proposal."),
+        ("en", "please review the handover check", "please review the handover checklist", "please review the handover checklist."),
+        ("en", "please check the tracking num", "please check the tracking number", "please check the tracking number."),
+        ("zh-Hans", "gai qi", "改期", "改期后的时间我再确认一下。"),
+        ("zh-Hans", "jiao'jie", "交接", "交接材料已经准备好了。"),
+        ("zh-Hans", "cha shou", "查收", "查收后请回复确认。"),
+        ("zh-Hans", "bei wang lu", "备忘录", "备忘录已经更新了。"),
+        ("zh-Hans", "hui yi ji yao", "会议纪要", "会议纪要已经发到群里了。"),
+        ("zh-Hans", "huan cheng", "换乘", "换乘需要预留一些时间。"),
+        ("en", "can we catch up tom", "can we catch up tomorrow", "can we catch up tomorrow?"),
+        ("en", "i should’ve call", "i should’ve called", "i should’ve called earlier."),
+        ("en", "is this available in a larg", "is this available in a larger", "is this available in a larger size?"),
+        ("en", "the battery needs rech", "the battery needs recharging", "the battery needs recharging."),
+        ("zh-Hans", "zao'an", "早安", "早安，今天也要加油。"),
+        ("zh-Hans", "yi hui er", "一会儿", "一会儿见。"),
+        ("zh-Hans", "gou wu che", "购物车", "购物车里的商品需要再确认一下。"),
+        ("zh-Hans", "chong dian bao", "充电宝", "充电宝需要提前充电。"),
     ]
 
     def adopt(text):
@@ -3024,6 +3044,132 @@ def check_bilingual_core_completion(context, watch, commits):
             wait(lambda: commits[before:] == [selected] and not watch.latest["seed"], "bilingual exact single commit")
     assert json.loads(command("Len"))["ok"]
     print(f"PASS: N47/N50 and expanded vocabulary: {len(cases) * 2} English/Pinyin word/sentence numeric adoption, exact spelling undo, continuation and single-commit workflows")
+
+
+def check_preference_learning(context, watch, commits):
+    """Real native choices learn only after commit; cache controls never save text."""
+    context.reset()
+    assert json.loads(command("P0"))["ok"]
+    assert json.loads(command("Lzh-Hans"))["ok"]
+    config_path = Path(os.environ["SUZAKU_IME_CONFIG"])
+    saved = config_path.read_bytes()
+
+    def count():
+        status = json.loads(command("S"))
+        assert status["preferences"]["memory_only"]
+        return status["preferences"]["entries"]
+
+    def start(seed="shijian"):
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "preference fixture reset")
+        type_seed(context, seed)
+        wait(lambda: watch.latest["seed"] == seed, "preference spelling ready")
+
+    def index_of(text):
+        return next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == text)
+
+    def select(text):
+        index = index_of(text)
+        revision = watch.latest["revision"]
+        assert action(watch.latest, f"N{index}")
+        wait(lambda: watch.latest["revision"] > revision and watch.latest["selected"] == index,
+             "preference selection published")
+
+    assert json.loads(command("F"))["ok"]
+    assert count() == 0
+    assert command("Fgarbage") == b"0"
+    for boundary in ["undo", "escape", "focus", "privacy", "clear"]:
+        start()
+        before = len(commits)
+        index = index_of("实践")
+        assert index < 6
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == "实践", "preference adoption is editable")
+        assert count() == 0 and len(commits) == before
+        if boundary == "undo":
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == "shijian", "preference adoption undo")
+            select("shijian")
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == ["shijian"], "undo commits only literal spelling")
+        elif boundary == "escape":
+            assert context.process_key_event(IBus.KEY_Escape, 0, 0)
+        elif boundary == "focus":
+            context.focus_out()
+            wait(lambda: not watch.latest["seed"], "pending preference focus-out")
+            context.focus_in()
+            wait(lambda: watch.latest["focused"], "pending preference refocus")
+        elif boundary == "privacy":
+            context.set_content_type(IBus.InputPurpose.FREE_FORM, 1 << 11)
+            wait(lambda: watch.latest["private"], "pending preference privacy entry")
+            context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+            wait(lambda: not watch.latest["private"], "pending preference privacy exit")
+        else:
+            frozen = dict(watch.latest)
+            assert json.loads(command("F"))["ok"]
+            pump()
+            assert watch.latest == frozen, "clear reordered the live draft"
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == "shijian", "clear must preserve native adoption undo")
+            assert context.process_key_event(IBus.KEY_Escape, 0, 0)
+        wait(lambda: not watch.latest["seed"], "pending preference boundary cleared")
+        assert count() == 0, boundary
+
+    for route in ["number", "shift-enter", "space", "companion"] * 2:
+        start()
+        before = len(commits)
+        index = index_of("实践")
+        previous_count = count()
+        if route == "number":
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        elif route == "companion":
+            assert action(watch.latest, f"D{index}")
+        else:
+            select("实践")
+            key = IBus.KEY_space if route == "space" else IBus.KEY_Return
+            mask = 0 if route == "space" else IBus.ModifierType.SHIFT_MASK
+            assert context.process_key_event(key, 0, mask)
+        expected = "实践 " if route == "space" else "实践"
+        wait(lambda: watch.latest["seed"] == expected, "adoption before frequency learning")
+        assert count() == previous_count and len(commits) == before
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: commits[before:] == [expected] and not watch.latest["seed"], "exact preference commit")
+        assert count() == 1
+    start()
+    assert watch.latest["candidates"][0]["text"] == "实践", watch.latest
+    assert any(c["text"] == "shijian" for c in watch.latest["candidates"])
+    context.set_content_type(IBus.InputPurpose.FREE_FORM, 1 << 11)
+    wait(lambda: watch.latest["private"], "private preferences disabled")
+    before = len(commits)
+    type_seed(context, "shijian")
+    assert context.process_key_event(IBus.KEY_1, 0, 0)
+    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+    wait(lambda: commits[before:] == ["时间"], "private field must use default ranking")
+    assert count() == 1
+    context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+    wait(lambda: not watch.latest["private"], "public preferences restored")
+    start()
+    assert watch.latest["candidates"][0]["text"] == "实践"
+    assert json.loads(command("F"))["ok"]
+    start()
+    assert watch.latest["candidates"][0]["text"] == "时间"
+    assert count() == 0
+    assert config_path.read_bytes() == saved, "frequency cache wrote user settings"
+    context.reset()
+    wait(lambda: not watch.latest["seed"], "preference fixture finished")
+    assert json.loads(command("Len"))["ok"]
+    for suffix in ["2", "_name", "-world"]:
+        start("hel")
+        before = len(commits)
+        index = index_of("hello")
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == "hello", "English preference adoption")
+        type_seed(context, suffix)
+        wait(lambda: watch.latest["seed"] == "hello" + suffix, "identifier edits the chosen word")
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: commits[before:] == ["hello" + suffix] and not watch.latest["seed"], "literal identifier commit")
+        assert count() == 0, "identifier prefix was incorrectly learned as a word"
+    print("PASS: memory-only frequency learning: numeric/Shift+Enter/Space/companion adoption, undo/cancel/focus/privacy, exact commit, ranking, identifier boundaries and no-I/O clear")
 
 
 def check_bilingual_literal_boundaries(context, watch, commits):
@@ -4312,6 +4458,7 @@ try:
     check_unchanged_control_failures(other, watch, other_commits, other_lookup)
     check_english_writing_flow(other, watch, other_commits, other_lookup)
     check_numeric_field_routing(other, watch, other_commits)
+    check_preference_learning(other, watch, other_commits)
     type_seed(other, "hel")
     # A deterministic local model fixture tests asynchronous publication, not model quality.
     settings = json.loads(command("S"))["settings"]

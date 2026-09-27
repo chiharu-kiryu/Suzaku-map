@@ -13,6 +13,7 @@ pub const MAX_CANDIDATES: usize = 32;
 pub enum NativeOperation {
     Commit(usize),
     Select(usize),
+    Adopt(usize),
     Replace(String),
     Clear,
 }

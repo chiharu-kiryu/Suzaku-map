@@ -566,6 +566,7 @@ impl PanelState {
                     let mut typing = NativeTyping::new(frame);
                     typing.draft = match &operation {
                         NativeOperation::Replace(text) => text.clone(),
+                        NativeOperation::Adopt(index) => frame.candidates[*index].text.clone(),
                         NativeOperation::Commit(_) | NativeOperation::Clear => String::new(),
                         // Selection changes the highlighted candidate, not the seed.
                         NativeOperation::Select(_) => frame.seed.clone(),

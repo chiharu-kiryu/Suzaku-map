@@ -105,7 +105,9 @@ pub fn action_command(
         return Err("Native input is not public/active".into());
     }
     let action = match operation {
-        NativeOperation::Commit(index) | NativeOperation::Select(index) => {
+        NativeOperation::Commit(index)
+        | NativeOperation::Select(index)
+        | NativeOperation::Adopt(index) => {
             if frame.seed.is_empty() || *index >= frame.candidates.len() {
                 return Err("Candidate is no longer available".into());
             }
@@ -113,6 +115,8 @@ pub fn action_command(
                 "{}{index}",
                 if matches!(operation, NativeOperation::Commit(_)) {
                     'K'
+                } else if matches!(operation, NativeOperation::Adopt(_)) {
+                    'D'
                 } else {
                     'N'
                 }
@@ -292,6 +296,11 @@ mod tests {
             format!("A{} 4 K0", frame.host)
         );
         assert!(action_command(&frame, &NativeOperation::Commit(1)).is_err());
+        assert_eq!(
+            action_command(&frame, &NativeOperation::Adopt(0)).unwrap(),
+            format!("A{} 4 D0", frame.host)
+        );
+        assert!(action_command(&frame, &NativeOperation::Adopt(1)).is_err());
         assert!(action_command(&frame, &NativeOperation::Replace("bad\ntext".into())).is_err());
         frame.seed.clear();
         frame.candidates.clear();
@@ -301,6 +310,7 @@ mod tests {
                 .ends_with(" Thello")
         );
         assert!(action_command(&frame, &NativeOperation::Commit(0)).is_err());
+        assert!(action_command(&frame, &NativeOperation::Adopt(0)).is_err());
         frame.private = true;
         assert!(action_command(&frame, &NativeOperation::Replace("hello".into())).is_err());
     }

@@ -120,6 +120,8 @@ jobs:
         run: bash scripts/test-linux-ci.sh ui
       - name: Test English and Chinese typing in real GTK applications on an isolated display
         run: bash scripts/test-linux-apps.sh
+      - name: Test expanded bilingual vocabulary in real GTK input
+        run: bash scripts/test-linux-apps.sh vocabulary
       - name: Test owned editor observation across two real windows
         run: bash scripts/test-linux-apps.sh editor
       - name: Test physical keyboard layouts, locks and Compose in real GTK input

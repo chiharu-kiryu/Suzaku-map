@@ -37,6 +37,9 @@ pub fn set_panel_ime_settings(
 pub fn reload_settings() -> Result<NativeImeStatus, String> {
     request("R")
 }
+pub fn clear_preferences() -> Result<NativeImeStatus, String> {
+    request("F")
+}
 
 fn request(command: &str) -> Result<NativeImeStatus, String> {
     let path = std::env::var_os("SUZAKU_LINUX_IME_SOCKET")

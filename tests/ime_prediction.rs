@@ -61,6 +61,105 @@ fn settle(engine: &mut XRTabletImeEngine) {
 }
 
 #[test]
+fn learned_model_choices_do_not_replay_text_or_accumulate_bonuses_on_refresh() {
+    use suzaku_map::ime::candidate_mix::CandidateKind;
+    let (mut engine, requests, replies) = controlled();
+    engine.enable_ibus_candidate_mix();
+    let completion = || {
+        vec![LlmCompletion {
+            text: "helioseismology".into(),
+            kind: Some(CandidateKind::Word),
+            score_bias: 1.0,
+        }]
+    };
+    engine.seed("hel");
+    requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    replies.send(completion()).unwrap();
+    settle(&mut engine);
+    let index = engine
+        .candidates()
+        .iter()
+        .position(|c| c.text == "helioseismology")
+        .unwrap();
+    engine.select_candidate(index);
+    assert!(engine.commit(CommitOptions { force: true }).ok);
+    assert_eq!(engine.preference_count(), 1);
+    for _ in 0..3 {
+        engine.clear_session_context();
+        engine.seed("hel");
+        assert!(
+            !engine
+                .candidates()
+                .iter()
+                .any(|c| c.text == "helioseismology"),
+            "cache must not become a text-generation source"
+        );
+        requests.recv_timeout(Duration::from_secs(2)).unwrap();
+        replies.send(completion()).unwrap();
+        settle(&mut engine);
+        let word = engine
+            .candidates()
+            .iter()
+            .find(|c| c.text == "helioseismology")
+            .unwrap();
+        assert!(
+            (word.score - 99.0).abs() < 0.01,
+            "bonus was stacked: {}",
+            word.score
+        );
+        assert_eq!(engine.candidates()[0].text, "hel");
+        assert_eq!(
+            engine.candidates()[1].text,
+            "hello",
+            "late model must preserve typing anchor"
+        );
+        assert_eq!(engine.preference_count(), 1);
+    }
+}
+
+#[test]
+fn learned_chinese_anchor_is_the_model_prefix_and_explicit_selection_stays_frozen() {
+    let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
+        default_language: "zh-Hans".into(),
+        ..Default::default()
+    });
+    engine.configure_prediction(None);
+    engine.enable_ibus_candidate_mix();
+    for _ in 0..8 {
+        engine.seed("shijian");
+        let index = engine
+            .candidates()
+            .iter()
+            .position(|c| c.text == "实践")
+            .unwrap();
+        engine.select_candidate(index);
+        assert!(engine.commit(CommitOptions { force: true }).ok);
+    }
+    // Reconfigure with a fresh provider; preference keys have no provider ID.
+    drop(requests);
+    drop(replies);
+    let (tx, requests) = mpsc::channel();
+    let (replies, rx) = mpsc::channel();
+    engine.configure_prediction(Some(Arc::new(ControlledProvider {
+        requests: tx,
+        replies: Mutex::new(rx),
+    })));
+    engine.seed("shijian");
+    let request = requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(request.normalized_phrase, "实践");
+    replies.send(answer("实践可以积累经验。")).unwrap();
+    settle(&mut engine);
+    assert_eq!(engine.candidates()[0].text, "实践");
+    engine.seed("shijian");
+    requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    engine.move_selection(1);
+    let frozen = engine.candidates().to_vec();
+    replies.send(answer("实践让知识更牢固。")).unwrap();
+    settle(&mut engine);
+    assert_eq!(engine.candidates(), frozen);
+}
+
+#[test]
 fn slow_model_does_not_block_typing_and_never_replaces_primary_candidate() {
     let (mut engine, requests, replies) = controlled();
     let start = Instant::now();

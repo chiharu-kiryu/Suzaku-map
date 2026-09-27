@@ -170,8 +170,22 @@ fn start_action(state: &mut PanelState, case: &str, touch: bool) -> (NativeOpera
     match case {
         "word" => {
             let text = state.next_token_completions[0].seed_after.clone();
+            let index = state
+                .native
+                .frame
+                .as_ref()
+                .unwrap()
+                .candidates
+                .iter()
+                .position(|candidate| candidate.text == text);
             click(state, InteractionKind::SelectNextToken(0), touch);
-            (NativeOperation::Replace(text.clone()), text)
+            (
+                index.map_or_else(
+                    || NativeOperation::Replace(text.clone()),
+                    NativeOperation::Adopt,
+                ),
+                text,
+            )
         }
         "sentence" => {
             let frame = state.native.frame.as_ref().unwrap();
@@ -182,7 +196,7 @@ fn start_action(state: &mut PanelState, case: &str, touch: bool) -> (NativeOpera
                 .expect("synthetic sentence");
             let text = frame.candidates[index].text.clone();
             state.continue_sentence_candidate(index);
-            (NativeOperation::Replace(text.clone()), text)
+            (NativeOperation::Adopt(index), text)
         }
         "commit" => {
             let index = state.chrome.sentence_candidate_source_indices[0];
