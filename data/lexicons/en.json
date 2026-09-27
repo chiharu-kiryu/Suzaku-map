@@ -6563,6 +6563,1915 @@
         "i'll bring a picnic blanket.",
         "i'll bring a charger."
       ]
+    },
+    {
+      "id": "fallback",
+      "words": [
+        "connectivity",
+        "disconnects",
+        "temporarily",
+        "repeats",
+        "repeating",
+        "repeated",
+        "repetition",
+        "rephrase",
+        "rephrases",
+        "rephrasing",
+        "rephrased",
+        "misunderstands",
+        "misunderstanding",
+        "uncertain",
+        "uncertainty",
+        "unsure",
+        "basically",
+        "clearly",
+        "slowly",
+        "shortly",
+        "unnecessary",
+        "impossible",
+        "allows",
+        "allowed",
+        "allowing",
+        "deny",
+        "denies",
+        "denied",
+        "denying",
+        "refuse",
+        "refuses",
+        "refused",
+        "refusing",
+        "decline",
+        "declines",
+        "declined",
+        "declining",
+        "welcomes",
+        "welcomed",
+        "welcoming",
+        "responds",
+        "responded",
+        "reachable",
+        "unreachable",
+        "received",
+        "receives",
+        "receiving",
+        "resend",
+        "resends",
+        "resent",
+        "resending",
+        "forwards",
+        "cancels",
+        "whenever",
+        "wherever",
+        "somebody",
+        "anybody",
+        "everybody",
+        "beforehand",
+        "afterwards",
+        "afterward",
+        "despite",
+        "regarding",
+        "concerning",
+        "safely",
+        "carefully",
+        "unfamiliar",
+        "closest",
+        "straight",
+        "roundabouts",
+        "entrance",
+        "entrances",
+        "exit",
+        "exits",
+        "upstairs",
+        "downstairs",
+        "elevator",
+        "elevators",
+        "lift",
+        "lifts",
+        "staircase",
+        "staircases",
+        "escalator",
+        "escalators",
+        "ticketing",
+        "departing",
+        "departed",
+        "changed",
+        "changing",
+        "delivering",
+        "pickup",
+        "pickups",
+        "collects",
+        "misplaced",
+        "wallets",
+        "passports",
+        "identification",
+        "cardholder",
+        "cardholders",
+        "contacting",
+        "contacted",
+        "assistants",
+        "assist",
+        "assists",
+        "assisted",
+        "assisting",
+        "restroom",
+        "restrooms",
+        "bathrooms",
+        "toilet",
+        "toilets",
+        "faucet",
+        "faucets",
+        "reheated",
+        "reheat",
+        "reheats",
+        "reheating",
+        "leftovers",
+        "bookable",
+        "chargers",
+        "adapters",
+        "adaptors",
+        "plugging",
+        "plugs",
+        "cables",
+        "muting",
+        "modems",
+        "routers",
+        "passcode",
+        "passcodes",
+        "username",
+        "usernames",
+        "logout",
+        "verifies",
+        "recovers",
+        "restores",
+        "overwrite",
+        "overwrites",
+        "overwrote",
+        "overwritten",
+        "overwriting",
+        "unsaved",
+        "redo",
+        "undoing",
+        "redone",
+        "undone",
+        "autosave",
+        "autosaved",
+        "uppercase",
+        "lowercase",
+        "misspelling",
+        "misspellings",
+        "vocabularies"
+      ],
+      "next_words": [
+        [
+          "could you say that",
+          [
+            "again",
+            "slowly"
+          ]
+        ],
+        [
+          "could you repeat the",
+          [
+            "address",
+            "question"
+          ]
+        ],
+        [
+          "i didn't catch the",
+          [
+            "last",
+            "name"
+          ]
+        ],
+        [
+          "i'm not sure",
+          [
+            "what",
+            "whether"
+          ]
+        ],
+        [
+          "let me check the",
+          [
+            "details",
+            "time"
+          ]
+        ],
+        [
+          "please give me a",
+          [
+            "moment",
+            "call"
+          ]
+        ],
+        [
+          "i'll be there",
+          [
+            "shortly",
+            "soon"
+          ]
+        ],
+        [
+          "i'm on my",
+          [
+            "way",
+            "phone"
+          ]
+        ],
+        [
+          "please let me know when",
+          [
+            "you're",
+            "it's"
+          ]
+        ],
+        [
+          "that works",
+          [
+            "for",
+            "well"
+          ]
+        ],
+        [
+          "that sounds",
+          [
+            "good",
+            "reasonable"
+          ]
+        ],
+        [
+          "there's no need to",
+          [
+            "rush",
+            "worry"
+          ]
+        ],
+        [
+          "could you confirm the",
+          [
+            "time",
+            "location"
+          ]
+        ],
+        [
+          "please resend the",
+          [
+            "attachment",
+            "message"
+          ]
+        ],
+        [
+          "i haven't received the",
+          [
+            "message",
+            "confirmation"
+          ]
+        ],
+        [
+          "sorry for the",
+          [
+            "misunderstanding",
+            "inconvenience"
+          ]
+        ],
+        [
+          "thank you for letting me",
+          [
+            "know",
+            "join"
+          ]
+        ],
+        [
+          "i'll reply",
+          [
+            "shortly",
+            "tomorrow"
+          ]
+        ],
+        [
+          "could we move this to",
+          [
+            "tomorrow",
+            "friday"
+          ]
+        ],
+        [
+          "i need a little more",
+          [
+            "time",
+            "information"
+          ]
+        ],
+        [
+          "the network is",
+          [
+            "temporarily",
+            "unavailable"
+          ]
+        ],
+        [
+          "i'm working",
+          [
+            "offline",
+            "remotely"
+          ]
+        ],
+        [
+          "please try again",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ],
+        [
+          "the connection has been",
+          [
+            "restored",
+            "interrupted"
+          ]
+        ],
+        [
+          "please save the",
+          [
+            "current",
+            "document"
+          ]
+        ],
+        [
+          "please do not",
+          [
+            "overwrite",
+            "close"
+          ]
+        ],
+        [
+          "where is the nearest",
+          [
+            "entrance",
+            "restroom"
+          ]
+        ],
+        [
+          "how do i get to the",
+          [
+            "station",
+            "airport"
+          ]
+        ],
+        [
+          "could you help me find the",
+          [
+            "exit",
+            "entrance"
+          ]
+        ],
+        [
+          "is there an",
+          [
+            "elevator",
+            "adapter"
+          ]
+        ],
+        [
+          "i'd like a",
+          [
+            "refund",
+            "receipt"
+          ]
+        ],
+        [
+          "could i have a",
+          [
+            "receipt",
+            "bag"
+          ]
+        ],
+        [
+          "i'd like to collect my",
+          [
+            "order",
+            "parcel"
+          ]
+        ],
+        [
+          "does this include",
+          [
+            "delivery",
+            "tax"
+          ]
+        ],
+        [
+          "please send me the",
+          [
+            "tracking",
+            "address"
+          ]
+        ],
+        [
+          "is it possible to",
+          [
+            "reschedule",
+            "cancel"
+          ]
+        ],
+        [
+          "the file has not been",
+          [
+            "saved",
+            "uploaded"
+          ]
+        ],
+        [
+          "could you speak more",
+          [
+            "slowly",
+            "clearly"
+          ]
+        ],
+        [
+          "please keep the",
+          [
+            "original",
+            "receipt"
+          ]
+        ],
+        [
+          "i can wait",
+          [
+            "until",
+            "here"
+          ]
+        ]
+      ],
+      "sentences": [
+        "could you say that again?",
+        "could you say that slowly?",
+        "could you repeat the address?",
+        "could you repeat the question?",
+        "i didn't catch the last word.",
+        "i didn't catch the name.",
+        "i'm not sure what you mean.",
+        "i'm not sure whether this is correct.",
+        "let me check the details again.",
+        "let me check the time.",
+        "please give me a moment.",
+        "please give me a call when you arrive.",
+        "i'll be there shortly.",
+        "i'll be there soon.",
+        "i'm on my way to the station.",
+        "i'm on my phone right now.",
+        "please let me know when you're ready.",
+        "please let me know when it's available.",
+        "that works for me.",
+        "that works well for us.",
+        "that sounds good to me.",
+        "that sounds reasonable.",
+        "there's no need to rush.",
+        "there's no need to worry.",
+        "could you confirm the time?",
+        "could you confirm the location?",
+        "please resend the attachment.",
+        "please resend the message.",
+        "i haven't received the message yet.",
+        "i haven't received the confirmation yet.",
+        "sorry for the misunderstanding.",
+        "sorry for the inconvenience.",
+        "thank you for letting me know.",
+        "thank you for letting me join.",
+        "i'll reply shortly.",
+        "i'll reply tomorrow.",
+        "could we move this to tomorrow?",
+        "could we move this to friday?",
+        "i need a little more time.",
+        "i need a little more information.",
+        "the network is temporarily unavailable.",
+        "the network is unavailable right now.",
+        "i'm working offline right now.",
+        "i'm working remotely today.",
+        "please try again later.",
+        "please try again tomorrow.",
+        "the connection has been restored.",
+        "the connection has been interrupted.",
+        "please save the current draft.",
+        "please save the document before closing.",
+        "please do not overwrite this file.",
+        "please do not close this window.",
+        "where is the nearest entrance?",
+        "where is the nearest restroom?",
+        "how do i get to the station?",
+        "how do i get to the airport?",
+        "could you help me find the exit?",
+        "could you help me find the entrance?",
+        "is there an elevator nearby?",
+        "is there an adapter i can borrow?",
+        "i'd like a refund, please.",
+        "i'd like a receipt, please.",
+        "could i have a receipt?",
+        "could i have a bag?",
+        "i'd like to collect my order.",
+        "i'd like to collect my parcel.",
+        "does this include delivery?",
+        "does this include tax?",
+        "please send me the tracking number.",
+        "please send me the address.",
+        "is it possible to reschedule?",
+        "is it possible to cancel?",
+        "the file has not been saved.",
+        "the file has not been uploaded.",
+        "could you speak more slowly?",
+        "could you speak more clearly?",
+        "please keep the original text.",
+        "please keep the receipt.",
+        "i can wait until tomorrow.",
+        "i can wait here."
+      ]
+    },
+    {
+      "id": "conversation",
+      "words": [
+        "apologetic",
+        "hesitate",
+        "hesitates",
+        "hesitated",
+        "hesitating",
+        "hesitation",
+        "convenience",
+        "inconvenienced",
+        "preferably",
+        "confusion",
+        "confused",
+        "confusing",
+        "misunderstandings",
+        "wondering",
+        "wonders",
+        "wondered",
+        "mentioning",
+        "mentioned",
+        "mentions",
+        "discusses",
+        "disagrees",
+        "approves",
+        "suggesting",
+        "suggested",
+        "suggests",
+        "invites",
+        "attends",
+        "notifying",
+        "reassigned",
+        "reassigning",
+        "reassignment",
+        "assign",
+        "assigned",
+        "assigning",
+        "unblocking",
+        "dependents",
+        "measurable",
+        "overlaps",
+        "amend",
+        "amended",
+        "amending",
+        "amendments",
+        "revises",
+        "drafting",
+        "drafted",
+        "edits",
+        "editable",
+        "contributions",
+        "contributor",
+        "contributors",
+        "contributed",
+        "contributing",
+        "coworker",
+        "coworkers",
+        "workplace",
+        "workstation",
+        "workstations",
+        "instability",
+        "bandwidth",
+        "closings",
+        "closes",
+        "opens",
+        "opened",
+        "opening",
+        "reopen",
+        "reopened",
+        "reopens",
+        "reopening",
+        "encrypts",
+        "unauthenticated",
+        "renews",
+        "renewing",
+        "directions",
+        "routes",
+        "routing",
+        "reroute",
+        "rerouted",
+        "rerouting",
+        "reroutes",
+        "boarded",
+        "boards",
+        "concourse",
+        "concourses",
+        "nonstop",
+        "outbound",
+        "inbound",
+        "allowance",
+        "allowances",
+        "carousel",
+        "carousels",
+        "ticketed",
+        "crossings",
+        "transferred",
+        "transferring",
+        "taxis",
+        "rideshares",
+        "taxicab",
+        "distances",
+        "unchecked",
+        "refrigerated",
+        "refrigerate",
+        "refrigerates",
+        "refrigerating",
+        "refrigerators",
+        "freezers",
+        "froze",
+        "freeze",
+        "freezes",
+        "leftover",
+        "dine",
+        "dining",
+        "dined",
+        "dines",
+        "chopstick",
+        "chopsticks",
+        "spicier",
+        "spiciest",
+        "milder",
+        "mildest",
+        "vegetarians",
+        "vegans",
+        "nondairy",
+        "lactose",
+        "intolerant",
+        "caffeinated",
+        "bottled",
+        "bottles",
+        "recycled",
+        "biodegradable",
+        "compartment",
+        "compartments",
+        "cucumbers",
+        "sauces",
+        "served",
+        "serves",
+        "synchronises",
+        "synchronised",
+        "syncing",
+        "synced",
+        "unsynced",
+        "synchronisation",
+        "autosaving",
+        "restarts",
+        "diagnoses",
+        "enables",
+        "disables",
+        "retryable",
+        "saving",
+        "saves",
+        "duplicates",
+        "duplicated",
+        "duplicating",
+        "duplication",
+        "clipboards",
+        "pasted",
+        "pasting",
+        "pastes",
+        "formatted",
+        "formatting",
+        "formatter",
+        "indents",
+        "composed",
+        "compositions",
+        "literal",
+        "literals",
+        "spellings",
+        "misspelled",
+        "misspelt",
+        "misspells",
+        "autocorrection",
+        "abbreviates",
+        "phonetic",
+        "phonetics",
+        "pinyin",
+        "romanization",
+        "romanisation",
+        "monolingual",
+        "transcriptions",
+        "transcription",
+        "transliteration",
+        "transliterations",
+        "pronunciations",
+        "pronounces",
+        "pronouncing"
+      ],
+      "next_words": [
+        [
+          "i was wondering if",
+          [
+            "you",
+            "we"
+          ]
+        ],
+        [
+          "would you mind",
+          [
+            "checking",
+            "waiting"
+          ]
+        ],
+        [
+          "would you mind checking the",
+          [
+            "availability",
+            "details"
+          ]
+        ],
+        [
+          "i'm afraid i",
+          [
+            "can't",
+            "need"
+          ]
+        ],
+        [
+          "i didn't mean to",
+          [
+            "interrupt",
+            "confuse"
+          ]
+        ],
+        [
+          "please don't hesitate to",
+          [
+            "ask",
+            "contact"
+          ]
+        ],
+        [
+          "i appreciate your",
+          [
+            "help",
+            "feedback"
+          ]
+        ],
+        [
+          "i understand your",
+          [
+            "concern",
+            "point"
+          ]
+        ],
+        [
+          "let's discuss the",
+          [
+            "details",
+            "options"
+          ]
+        ],
+        [
+          "i agree with your",
+          [
+            "suggestion",
+            "assessment"
+          ]
+        ],
+        [
+          "could you explain the",
+          [
+            "difference",
+            "reason"
+          ]
+        ],
+        [
+          "i'll check with the",
+          [
+            "team",
+            "coordinator"
+          ]
+        ],
+        [
+          "are you available",
+          [
+            "tomorrow",
+            "later"
+          ]
+        ],
+        [
+          "please let me know your",
+          [
+            "availability",
+            "preference"
+          ]
+        ],
+        [
+          "what time would",
+          [
+            "work",
+            "suit"
+          ]
+        ],
+        [
+          "i have a scheduling",
+          [
+            "conflict",
+            "question"
+          ]
+        ],
+        [
+          "the meeting has been",
+          [
+            "rescheduled",
+            "canceled"
+          ]
+        ],
+        [
+          "please share the",
+          [
+            "agenda",
+            "notes"
+          ]
+        ],
+        [
+          "i'll update the",
+          [
+            "document",
+            "schedule"
+          ]
+        ],
+        [
+          "let's review the",
+          [
+            "action",
+            "requirements"
+          ]
+        ],
+        [
+          "we're waiting for",
+          [
+            "approval",
+            "confirmation"
+          ]
+        ],
+        [
+          "the next step is to",
+          [
+            "confirm",
+            "review"
+          ]
+        ],
+        [
+          "please check for",
+          [
+            "duplicates",
+            "errors"
+          ]
+        ],
+        [
+          "could you add the",
+          [
+            "missing",
+            "updated"
+          ]
+        ],
+        [
+          "i've attached the",
+          [
+            "revised",
+            "requested"
+          ]
+        ],
+        [
+          "please grant me",
+          [
+            "access",
+            "permission"
+          ]
+        ],
+        [
+          "the link has",
+          [
+            "expired",
+            "changed"
+          ]
+        ],
+        [
+          "please reopen the",
+          [
+            "document",
+            "application"
+          ]
+        ],
+        [
+          "could you send a",
+          [
+            "screenshot",
+            "reminder"
+          ]
+        ],
+        [
+          "please correct the",
+          [
+            "spelling",
+            "address"
+          ]
+        ],
+        [
+          "please preserve the",
+          [
+            "formatting",
+            "spacing"
+          ]
+        ],
+        [
+          "my flight has been",
+          [
+            "delayed",
+            "canceled"
+          ]
+        ],
+        [
+          "which platform does the",
+          [
+            "train",
+            "shuttle"
+          ]
+        ],
+        [
+          "how long is the",
+          [
+            "layover",
+            "journey"
+          ]
+        ],
+        [
+          "where can i collect my",
+          [
+            "baggage",
+            "tickets"
+          ]
+        ],
+        [
+          "i'd prefer an",
+          [
+            "aisle",
+            "earlier"
+          ]
+        ],
+        [
+          "is this ticket",
+          [
+            "refundable",
+            "transferable"
+          ]
+        ],
+        [
+          "could you show me the",
+          [
+            "route",
+            "entrance"
+          ]
+        ],
+        [
+          "i'm waiting at the",
+          [
+            "entrance",
+            "station"
+          ]
+        ],
+        [
+          "please meet me at the",
+          [
+            "entrance",
+            "reception"
+          ]
+        ],
+        [
+          "could i get this",
+          [
+            "without",
+            "packed"
+          ]
+        ],
+        [
+          "i'd like this",
+          [
+            "mild",
+            "reheated"
+          ]
+        ],
+        [
+          "does this contain",
+          [
+            "dairy",
+            "peanuts"
+          ]
+        ],
+        [
+          "please leave out the",
+          [
+            "onions",
+            "sauce"
+          ]
+        ],
+        [
+          "could we have some",
+          [
+            "napkins",
+            "water"
+          ]
+        ],
+        [
+          "please put the leftovers in the",
+          [
+            "refrigerator",
+            "freezer"
+          ]
+        ],
+        [
+          "let's make a",
+          [
+            "shopping",
+            "plan"
+          ]
+        ],
+        [
+          "please separate the",
+          [
+            "recycling",
+            "documents"
+          ]
+        ]
+      ],
+      "sentences": [
+        "i was wondering if you were available tomorrow.",
+        "i was wondering if we could meet earlier.",
+        "would you mind checking this for me?",
+        "would you mind waiting a moment?",
+        "would you mind checking the availability?",
+        "would you mind checking the details?",
+        "i'm afraid i can't make it today.",
+        "i'm afraid i need more time.",
+        "i didn't mean to interrupt you.",
+        "i didn't mean to confuse you.",
+        "please don't hesitate to ask questions.",
+        "please don't hesitate to contact me.",
+        "i appreciate your help with this.",
+        "i appreciate your feedback.",
+        "i understand your concern.",
+        "i understand your point of view.",
+        "let's discuss the details tomorrow.",
+        "let's discuss the options first.",
+        "i agree with your suggestion.",
+        "i agree with your assessment.",
+        "could you explain the difference?",
+        "could you explain the reason?",
+        "i'll check with the team.",
+        "i'll check with the coordinator.",
+        "are you available tomorrow afternoon?",
+        "are you available later today?",
+        "please let me know your availability.",
+        "please let me know your preference.",
+        "what time would work for you?",
+        "what time would suit you best?",
+        "i have a scheduling conflict.",
+        "i have a scheduling question.",
+        "the meeting has been rescheduled for tomorrow.",
+        "the meeting has been canceled.",
+        "please share the agenda before the meeting.",
+        "please share the notes with the team.",
+        "i'll update the document.",
+        "i'll update the schedule.",
+        "let's review the action items.",
+        "let's review the requirements.",
+        "we're waiting for approval.",
+        "we're waiting for confirmation.",
+        "the next step is to confirm the schedule.",
+        "the next step is to review the draft.",
+        "please check for duplicates.",
+        "please check for errors before submitting.",
+        "could you add the missing details?",
+        "could you add the updated estimate?",
+        "i've attached the revised document.",
+        "i've attached the requested files.",
+        "please grant me access to this document.",
+        "please grant me permission to edit.",
+        "the link has expired.",
+        "the link has changed.",
+        "please reopen the document.",
+        "please reopen the application.",
+        "could you send a screenshot of the error?",
+        "could you send a reminder tomorrow?",
+        "please correct the spelling.",
+        "please correct the address.",
+        "please preserve the formatting.",
+        "please preserve the spacing.",
+        "my flight has been delayed.",
+        "my flight has been canceled.",
+        "which platform does the train leave from?",
+        "which platform does the shuttle leave from?",
+        "how long is the layover?",
+        "how long is the journey?",
+        "where can i collect my baggage?",
+        "where can i collect my tickets?",
+        "i'd prefer an aisle seat.",
+        "i'd prefer an earlier departure.",
+        "is this ticket refundable?",
+        "is this ticket transferable?",
+        "could you show me the route?",
+        "could you show me the entrance?",
+        "i'm waiting at the entrance.",
+        "i'm waiting at the station.",
+        "please meet me at the entrance.",
+        "please meet me at the reception desk.",
+        "could i get this without ice?",
+        "could i get this packed to go?",
+        "i'd like this mild, please.",
+        "i'd like this reheated, please.",
+        "does this contain dairy?",
+        "does this contain peanuts?",
+        "please leave out the onions.",
+        "please leave out the sauce.",
+        "could we have some napkins?",
+        "could we have some water?",
+        "please put the leftovers in the refrigerator.",
+        "please put the leftovers in the freezer.",
+        "let's make a shopping list.",
+        "let's make a plan for tomorrow.",
+        "please separate the recycling.",
+        "please separate the documents by date."
+      ]
+    },
+    {
+      "id": "essentials",
+      "words": [
+        "nowadays",
+        "daytime",
+        "nighttime",
+        "mornings",
+        "afternoons",
+        "evenings",
+        "nights",
+        "mondays",
+        "tuesdays",
+        "wednesdays",
+        "thursdays",
+        "fridays",
+        "saturdays",
+        "sundays",
+        "weekly",
+        "monthly",
+        "yearly",
+        "annually",
+        "hourly",
+        "quarterly",
+        "biweekly",
+        "pm",
+        "anniversaries",
+        "birthdays",
+        "sooner",
+        "soonest",
+        "initially",
+        "approaching",
+        "onward",
+        "onwards",
+        "deferred",
+        "deferring",
+        "defers",
+        "deferral",
+        "durations",
+        "interval",
+        "intervals",
+        "countdown",
+        "countdowns",
+        "elapsed",
+        "elapses",
+        "elapsing",
+        "expire",
+        "timestamp",
+        "timestamps",
+        "timestamped",
+        "summertime",
+        "wintertime",
+        "seasonal",
+        "misses",
+        "missed",
+        "lateness",
+        "exact",
+        "roughly",
+        "obviously",
+        "fairly",
+        "extremely",
+        "totally",
+        "particularly",
+        "normally",
+        "seldom",
+        "till",
+        "whoever",
+        "whichever",
+        "altogether",
+        "anymore",
+        "belongs",
+        "belong",
+        "belonged",
+        "belonging",
+        "believes",
+        "believed",
+        "believing",
+        "realizes",
+        "realized",
+        "realizing",
+        "realises",
+        "realised",
+        "realising",
+        "realize",
+        "realise",
+        "guesses",
+        "guessed",
+        "guessing",
+        "supposes",
+        "supposed",
+        "supposing",
+        "suppose",
+        "seems",
+        "seemed",
+        "seeming",
+        "appears",
+        "appeared",
+        "appearing",
+        "sounded",
+        "sounding",
+        "means",
+        "meant",
+        "meaning",
+        "happens",
+        "happened",
+        "happening",
+        "notices",
+        "noticed",
+        "noticing",
+        "expects",
+        "wished",
+        "wishing",
+        "wants",
+        "wanted",
+        "needed",
+        "needing",
+        "likes",
+        "liked",
+        "liking",
+        "dislikes",
+        "disliked",
+        "disliking",
+        "dislike",
+        "enjoys",
+        "enjoyed",
+        "enjoying",
+        "cares",
+        "cared",
+        "caring",
+        "matters",
+        "mattered",
+        "mattering",
+        "minds",
+        "minded",
+        "minding",
+        "promised",
+        "promising",
+        "offers",
+        "offered",
+        "offering",
+        "thanked",
+        "thanking",
+        "asks",
+        "asked",
+        "asking",
+        "answers",
+        "explains",
+        "describes",
+        "described",
+        "describing",
+        "agrees",
+        "recommends",
+        "informs",
+        "informed",
+        "informing",
+        "inform",
+        "shares",
+        "shared",
+        "sharing",
+        "waits",
+        "waited",
+        "stays",
+        "stayed",
+        "staying",
+        "reaches",
+        "reaching",
+        "starts",
+        "finishes",
+        "ends",
+        "ended",
+        "ending",
+        "continues",
+        "continued",
+        "continuing",
+        "worked",
+        "helps",
+        "checks",
+        "looks",
+        "looked",
+        "turns",
+        "turned",
+        "turning",
+        "closed",
+        "visits",
+        "costs",
+        "costing",
+        "overcharges",
+        "undercharge",
+        "undercharged",
+        "undercharges",
+        "undercharging",
+        "billed",
+        "debit",
+        "debited",
+        "debits",
+        "debiting",
+        "credited",
+        "credits",
+        "crediting",
+        "owing",
+        "owes",
+        "owed",
+        "owe",
+        "amounts",
+        "quantities",
+        "priced",
+        "pricing",
+        "discounts",
+        "discounted",
+        "discounting",
+        "redemption",
+        "redeem",
+        "redeemed",
+        "redeeming",
+        "redeems",
+        "damages",
+        "damaging",
+        "cracked",
+        "cracks",
+        "cracking",
+        "crack",
+        "covers",
+        "claim",
+        "claims",
+        "claimed",
+        "claiming",
+        "eligible",
+        "eligibility",
+        "ineligible",
+        "purchasing",
+        "transact",
+        "transacted",
+        "transacting",
+        "payments",
+        "withdraw",
+        "withdrew",
+        "withdrawn",
+        "withdrawing",
+        "withdrawal",
+        "withdrawals",
+        "contactless",
+        "pin",
+        "pins",
+        "overpaid",
+        "overpay",
+        "overpaying",
+        "overpays",
+        "overpayment",
+        "insufficient",
+        "incorrect",
+        "mistaken",
+        "tracked",
+        "tracks",
+        "ships",
+        "ship",
+        "delivers",
+        "fulfillment",
+        "fulfilment",
+        "fulfill",
+        "fulfil",
+        "fulfilled",
+        "fulfilling",
+        "fulfills",
+        "fulfils",
+        "discontinued",
+        "discontinues",
+        "discontinue",
+        "discontinuing",
+        "unpaid",
+        "unclaimed",
+        "undelivered",
+        "undeliverable",
+        "undamaged",
+        "untouched",
+        "colored",
+        "coloured",
+        "coloring",
+        "colouring",
+        "navy",
+        "beige",
+        "turquoise",
+        "teal",
+        "maroon",
+        "violet",
+        "creamy",
+        "square",
+        "rectangular",
+        "oval",
+        "wider",
+        "widest",
+        "narrow",
+        "narrower",
+        "narrowest",
+        "lightweight",
+        "heavyweight",
+        "portable",
+        "delicate",
+        "detachable",
+        "foldable",
+        "collapsible",
+        "windproof",
+        "breathable",
+        "woolen",
+        "woollen",
+        "polyester",
+        "linen",
+        "plastic",
+        "metal",
+        "stainless",
+        "steel",
+        "wooden",
+        "rubber",
+        "nylon",
+        "fabrics",
+        "patterns",
+        "patterned",
+        "plain",
+        "striped",
+        "stripes",
+        "stripe",
+        "floral",
+        "checkered",
+        "dotted",
+        "spots",
+        "spotted"
+      ],
+      "next_words": [
+        [
+          "would tomorrow",
+          [
+            "morning",
+            "afternoon"
+          ]
+        ],
+        [
+          "can we meet on",
+          [
+            "monday",
+            "friday"
+          ]
+        ],
+        [
+          "i'm free this",
+          [
+            "weekend",
+            "evening"
+          ]
+        ],
+        [
+          "i'll be back in",
+          [
+            "an",
+            "ten"
+          ]
+        ],
+        [
+          "please remind me",
+          [
+            "tomorrow",
+            "before"
+          ]
+        ],
+        [
+          "let's meet next",
+          [
+            "week",
+            "weekend"
+          ]
+        ],
+        [
+          "could we start a little",
+          [
+            "earlier",
+            "later"
+          ]
+        ],
+        [
+          "please confirm the exact",
+          [
+            "date",
+            "time"
+          ]
+        ],
+        [
+          "the appointment is on",
+          [
+            "monday",
+            "friday"
+          ]
+        ],
+        [
+          "i'll finish this by",
+          [
+            "tomorrow",
+            "friday"
+          ]
+        ],
+        [
+          "please add it to the",
+          [
+            "calendar",
+            "schedule"
+          ]
+        ],
+        [
+          "we can talk after",
+          [
+            "lunch",
+            "work"
+          ]
+        ],
+        [
+          "when does the subscription",
+          [
+            "expire",
+            "renew"
+          ]
+        ],
+        [
+          "please cancel the",
+          [
+            "subscription",
+            "order"
+          ]
+        ],
+        [
+          "could you check my",
+          [
+            "order",
+            "payment"
+          ]
+        ],
+        [
+          "the payment was",
+          [
+            "declined",
+            "successful"
+          ]
+        ],
+        [
+          "i was charged",
+          [
+            "twice",
+            "incorrectly"
+          ]
+        ],
+        [
+          "please explain this",
+          [
+            "charge",
+            "difference"
+          ]
+        ],
+        [
+          "how much is the",
+          [
+            "delivery",
+            "total"
+          ]
+        ],
+        [
+          "is there a",
+          [
+            "discount",
+            "warranty"
+          ]
+        ],
+        [
+          "can i pay",
+          [
+            "by",
+            "in"
+          ]
+        ],
+        [
+          "please email me the",
+          [
+            "invoice",
+            "receipt"
+          ]
+        ],
+        [
+          "i'd like to change the",
+          [
+            "delivery",
+            "quantity"
+          ]
+        ],
+        [
+          "the delivery address is",
+          [
+            "incorrect",
+            "correct"
+          ]
+        ],
+        [
+          "when will my order",
+          [
+            "arrive",
+            "ship"
+          ]
+        ],
+        [
+          "please update the",
+          [
+            "tracking",
+            "delivery"
+          ]
+        ],
+        [
+          "the parcel arrived",
+          [
+            "damaged",
+            "late"
+          ]
+        ],
+        [
+          "one of the items is",
+          [
+            "missing",
+            "damaged"
+          ]
+        ],
+        [
+          "i received the wrong",
+          [
+            "item",
+            "size"
+          ]
+        ],
+        [
+          "could you send me a",
+          [
+            "replacement",
+            "return"
+          ]
+        ],
+        [
+          "i'd like to return",
+          [
+            "this",
+            "the"
+          ]
+        ],
+        [
+          "how do i request a",
+          [
+            "refund",
+            "replacement"
+          ]
+        ],
+        [
+          "when will the refund",
+          [
+            "arrive",
+            "appear"
+          ]
+        ],
+        [
+          "the refund has been",
+          [
+            "issued",
+            "received"
+          ]
+        ],
+        [
+          "is this still under",
+          [
+            "warranty",
+            "review"
+          ]
+        ],
+        [
+          "does this come in",
+          [
+            "black",
+            "blue"
+          ]
+        ],
+        [
+          "i hope you have a",
+          [
+            "great",
+            "relaxing"
+          ]
+        ],
+        [
+          "it was nice",
+          [
+            "talking",
+            "seeing"
+          ]
+        ],
+        [
+          "thanks for checking",
+          [
+            "in",
+            "this"
+          ]
+        ],
+        [
+          "i'm glad to",
+          [
+            "hear",
+            "help"
+          ]
+        ],
+        [
+          "please take care of",
+          [
+            "yourself",
+            "it"
+          ]
+        ],
+        [
+          "let me know how it",
+          [
+            "goes",
+            "works"
+          ]
+        ],
+        [
+          "i didn't realize",
+          [
+            "you",
+            "it"
+          ]
+        ],
+        [
+          "i thought you",
+          [
+            "were",
+            "had"
+          ]
+        ],
+        [
+          "i completely understand",
+          [
+            "your",
+            "the"
+          ]
+        ],
+        [
+          "could you give me an",
+          [
+            "example",
+            "update"
+          ]
+        ],
+        [
+          "i'll think about it",
+          [
+            "tonight",
+            "again"
+          ]
+        ],
+        [
+          "please tell me if",
+          [
+            "anything",
+            "you"
+          ]
+        ]
+      ],
+      "sentences": [
+        "would tomorrow morning work for you?",
+        "would tomorrow afternoon be okay?",
+        "can we meet on monday?",
+        "can we meet on friday?",
+        "i'm free this weekend.",
+        "i'm free this evening.",
+        "i'll be back in an hour.",
+        "i'll be back in ten minutes.",
+        "please remind me tomorrow morning.",
+        "please remind me before the deadline.",
+        "let's meet next week.",
+        "let's meet next weekend.",
+        "could we start a little earlier?",
+        "could we start a little later?",
+        "please confirm the exact date.",
+        "please confirm the exact time.",
+        "the appointment is on monday.",
+        "the appointment is on friday.",
+        "i'll finish this by tomorrow.",
+        "i'll finish this by friday.",
+        "please add it to the calendar.",
+        "please add it to the schedule.",
+        "we can talk after lunch.",
+        "we can talk after work.",
+        "when does the subscription expire?",
+        "when does the subscription renew?",
+        "please cancel the subscription.",
+        "please cancel the order.",
+        "could you check my order status?",
+        "could you check my payment?",
+        "the payment was declined.",
+        "the payment was successful.",
+        "i was charged twice for this order.",
+        "i was charged incorrectly.",
+        "please explain this charge.",
+        "please explain this difference.",
+        "how much is the delivery fee?",
+        "how much is the total cost?",
+        "is there a discount available?",
+        "is there a warranty included?",
+        "can i pay by card?",
+        "can i pay in cash?",
+        "please email me the invoice.",
+        "please email me the receipt.",
+        "i'd like to change the delivery address.",
+        "i'd like to change the quantity.",
+        "the delivery address is incorrect.",
+        "the delivery address is correct.",
+        "when will my order arrive?",
+        "when will my order ship?",
+        "please update the tracking information.",
+        "please update the delivery address.",
+        "the parcel arrived damaged.",
+        "the parcel arrived late.",
+        "one of the items is missing.",
+        "one of the items is damaged.",
+        "i received the wrong item.",
+        "i received the wrong size.",
+        "could you send me a replacement?",
+        "could you send me a return label?",
+        "i'd like to return this item.",
+        "i'd like to return the unopened package.",
+        "how do i request a refund?",
+        "how do i request a replacement?",
+        "when will the refund arrive?",
+        "when will the refund appear in my account?",
+        "the refund has been issued.",
+        "the refund has been received.",
+        "is this still under warranty?",
+        "is this still under review?",
+        "does this come in black?",
+        "does this come in blue?",
+        "i hope you have a great weekend.",
+        "i hope you have a relaxing evening.",
+        "it was nice talking to you.",
+        "it was nice seeing you again.",
+        "thanks for checking in.",
+        "thanks for checking this for me.",
+        "i'm glad to hear that.",
+        "i'm glad to help.",
+        "please take care of yourself.",
+        "please take care of it when you can.",
+        "let me know how it goes.",
+        "let me know how it works.",
+        "i didn't realize you were waiting.",
+        "i didn't realize it was so late.",
+        "i thought you were available today.",
+        "i thought you had already left.",
+        "i completely understand your concern.",
+        "i completely understand the situation.",
+        "could you give me an example?",
+        "could you give me an update?",
+        "i'll think about it tonight.",
+        "i'll think about it again tomorrow.",
+        "please tell me if anything changes.",
+        "please tell me if you need help."
+      ]
     }
   ],
   "phrase_endings": [

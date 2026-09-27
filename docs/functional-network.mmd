@@ -1,5 +1,7 @@
-%% Suzaku functional network: 2026-09-27 source snapshot for 0.7.3: vocabulary resources and in-memory preferences. The earlier vocabulary installation does not qualify the subsequent refactor/cache installation.
-%% Two unreleased vocabulary rounds reuse F16-F18: 5,251 indexed English forms, 1,143 Pinyin entries, 238 English / 256 Chinese sentences; earlier index ranks and input/model budgets remain unchanged.
+%% Suzaku functional network: 2026-09-27 source snapshot for 0.7.4: independent bilingual fallback expansions and bounded preference/model ranking. Source publication does not update the personal installation.
+%% Three fallback rounds reuse F16-F18/F20/F26-F28: 5,934 indexed English forms, 1,631 Pinyin entries, 510 English / 528 Chinese sentences; earlier ranks, homophones and input/model budgets remain unchanged.
+%% Round 49 N57 applies preference bonuses within the bounded merge pool before the final cutoff; quotas, typing anchors and explicit selection locks are preserved.
+%% Earlier 0.7.3 writing rounds reached 5,251 English forms and 1,143 Pinyin entries. Their staged installation does not qualify subsequent refactor/cache/fallback installation.
 %% First writing expansion: 918 Rust tests passed, 27 opt-in tests skipped; strict Clippy and complete default/inline private IBus gates passed, each with 60 bilingual adoption workflows. No installed update.
 %% Second daily expansion: 924 Rust tests pass, 27 opt-in tests skip; strict Clippy and both complete private IBus modes pass, each with 76 bilingual adoption workflows. GUI/install/performance acceptance remains separate.
 %% Subsequent user-local installation: 141 isolated installed-app groups plus 5 actual GNOME desktop groups and tray quit/reopen passed. Config/Rime preserved; no model/performance/Wayland acceptance.

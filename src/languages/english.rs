@@ -748,7 +748,7 @@ mod tests {
 
     #[test]
     fn vocabulary_is_bounded_indexed_and_covers_every_prefix() {
-        assert!(dictionary().len() >= 5200, "{}", dictionary().len());
+        assert!(dictionary().len() >= 5900, "{}", dictionary().len());
         assert!(dictionary().len() < 6144, "{}", dictionary().len());
         for pair in dictionary().windows(2) {
             assert!(pair[0].text < pair[1].text);
@@ -809,7 +809,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 912);
-        assert_eq!(dictionary().len(), 5251);
+        assert_eq!(dictionary().len(), 5934);
     }
 
     #[test]
@@ -844,7 +844,7 @@ mod tests {
             );
         }
         assert_eq!(additions.len(), 419);
-        assert_eq!(dictionary().len(), 5251);
+        assert_eq!(dictionary().len(), 5934);
         for invented in [
             "sweeped",
             "oversleeped",
@@ -854,6 +854,149 @@ mod tests {
         ] {
             assert!(!is_known_english_word(invented), "{invented}");
         }
+    }
+
+    #[test]
+    fn fallback_tier_preserves_all_previous_ranks_and_uses_explicit_word_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..4]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 5251);
+        for (word, rank) in &old_ranks {
+            let index = dictionary()
+                .binary_search_by(|entry| entry.text.cmp(word))
+                .unwrap();
+            assert_eq!(dictionary()[index].rank, *rank, "rank changed for {word}");
+        }
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("fallback") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate fallback word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 153);
+        assert_eq!(dictionary().len(), 5934);
+        let layer = &vocabulary().word_layers()[4];
+        assert_eq!(layer.id, "fallback");
+        assert_eq!(layer.next_words.len(), 40);
+        assert_eq!(layer.sentences.len(), 80);
+    }
+
+    #[test]
+    fn conversation_tier_preserves_the_previous_fallback_and_real_word_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..5]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 5410);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before this layer was appended. Keep the original migration
+        // fingerprint below too: neither old data nor the first fallback may drift.
+        assert_eq!(count, 5410);
+        assert_eq!(hash, 0x15a8c224b0150864);
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("conversation") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(
+                additions.insert(word),
+                "duplicate conversation word: {word}"
+            );
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 184);
+        assert_eq!(dictionary().len(), 5934);
+        let layer = &vocabulary().word_layers()[5];
+        assert_eq!(layer.id, "conversation");
+        assert_eq!(layer.next_words.len(), 48);
+        assert_eq!(layer.sentences.len(), 96);
+    }
+
+    #[test]
+    fn essentials_tier_preserves_conversation_ranks_and_explicit_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..6]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 5607);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before essentials was appended. Keep the older snapshots too,
+        // so each expansion protects its predecessors rather than rebaselining them.
+        assert_eq!(count, 5607);
+        assert_eq!(hash, 0x94bde893829bcfb0);
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("essentials") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate essentials word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 321);
+        assert_eq!(dictionary().len(), 5934);
+        let layer = &vocabulary().word_layers()[6];
+        assert_eq!(layer.id, "essentials");
+        assert_eq!(layer.next_words.len(), 48);
+        assert_eq!(layer.sentences.len(), 96);
     }
 
     #[test]
@@ -895,16 +1038,26 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 137);
-        assert_eq!(sentences.len(), 238);
+        assert_eq!(keys.len(), 273);
+        assert_eq!(sentences.len(), 510);
     }
 
     #[test]
     fn resource_migration_preserves_all_5251_word_ranks() {
         // Captured from the pre-migration Rust tables, including duplicate
         // priority positions and words projected from explicit sentences.
+        // Later layers may add words, but must not change this old fingerprint.
+        let original: std::collections::HashSet<_> =
+            indexed_words(&vocabulary().word_layers()[..4])
+                .map(canonical_word)
+                .collect();
         let mut hash = 0xcbf29ce484222325_u64;
-        for word in dictionary() {
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| original.contains(&word.text))
+        {
+            count += 1;
             for byte in word
                 .text
                 .bytes()
@@ -914,7 +1067,7 @@ mod tests {
                 hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
             }
         }
-        assert_eq!(dictionary().len(), 5251);
+        assert_eq!(count, 5251);
         assert_eq!(hash, 0x9db0c1a22060829a);
     }
 

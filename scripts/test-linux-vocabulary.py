@@ -17,7 +17,7 @@ spec.loader.exec_module(apps)
 assert apps.os.environ["SUZAKU_APP_QA_SUITE"] == "vocabulary"
 IBus = apps.IBus
 
-# Both vocabulary rounds: professional writing, daily conversation and devices.
+# Writing, daily conversation/devices and model-unavailable fallback vocabulary.
 CASES = [
     ("en", "please acknowledge rece", "please acknowledge receipt",
      "please acknowledge receipt of this message."),
@@ -29,12 +29,45 @@ CASES = [
      "is this available in a larger size?"),
     ("en", "the battery needs rech", "the battery needs recharging",
      "the battery needs recharging."),
+    ("en", "could you speak more slo", "could you speak more slowly",
+     "could you speak more slowly?"),
+    ("en", "please resend the atta", "please resend the attachment",
+     "please resend the attachment."),
+    ("en", "the network is temp", "the network is temporarily",
+     "the network is temporarily unavailable."),
+    ("en", "where is the nearest rest", "where is the nearest restroom",
+     "where is the nearest restroom?"),
+    ("en", "are you available tom", "are you available tomorrow",
+     "are you available tomorrow afternoon?"),
+    ("en", "please grant me acc", "please grant me access",
+     "please grant me access to this document."),
+    ("en", "my flight has been del", "my flight has been delayed",
+     "my flight has been delayed."),
+    ("en", "does this contain dai", "does this contain dairy", "does this contain dairy?"),
+    ("en", "would tomorrow mor", "would tomorrow morning", "would tomorrow morning work for you?"),
+    ("en", "when does the subscription exp", "when does the subscription expire",
+     "when does the subscription expire?"),
+    ("en", "i was charged tw", "i was charged twice", "i was charged twice for this order."),
+    ("en", "could you send me a rep", "could you send me a replacement",
+     "could you send me a replacement?"),
     ("zh-Hans", "hui yi ji yao", "会议纪要", "会议纪要已经发到群里了。"),
     ("zh-Hans", "gai'qi", "改期", "改期后的时间我再确认一下。"),
     ("zh-Hans", "zao'an", "早安", "早安，今天也要加油。"),
     ("zh-Hans", "yi hui er", "一会儿", "一会儿见。"),
     ("zh-Hans", "gou wu che", "购物车", "购物车里的商品需要再确认一下。"),
     ("zh-Hans", "chong dian bao", "充电宝", "充电宝需要提前充电。"),
+    ("zh-Hans", "qing shao deng", "请稍等", "请稍等，我查一下。"),
+    ("zh-Hans", "mei shou dao", "没收到", "没收到，可以重新发一下吗？"),
+    ("zh-Hans", "li xian mo shi", "离线模式", "离线模式下仍然可以输入。"),
+    ("zh-Hans", "bao liu yuan wen", "保留原文", "保留原文，不要自动替换。"),
+    ("zh-Hans", "hui yi lian jie", "会议链接", "会议链接已经发到群里了。"),
+    ("zh-Hans", "fang wen quan xian", "访问权限", "访问权限不足，麻烦帮我开通。"),
+    ("zh-Hans", "sui shen xing li", "随身行李", "随身行李有重量限制吗？"),
+    ("zh-Hans", "gou wu qing dan", "购物清单", "购物清单我已经列好了。"),
+    ("zh-Hans", "ming tian xia wu", "明天下午", "明天下午可以安排。"),
+    ("zh-Hans", "zi dong xu fei", "自动续费", "自动续费可以关闭吗？"),
+    ("zh-Hans", "chong fu kou kuan", "重复扣款", "重复扣款了，请帮我核对。"),
+    ("zh-Hans", "dian zi fa piao", "电子发票", "电子发票请发到我的邮箱。"),
 ]
 
 

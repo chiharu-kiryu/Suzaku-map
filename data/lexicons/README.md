@@ -9,6 +9,21 @@
 - [数据接口](../../src/lexicon.rs)只加载和校验数据，不导入输入引擎、语言插件、平台或模型。
   拼音分段、罗马音转假名、大小写/空白保真、索引、候选权重及数量上限仍归语言实现负责。
 
+## 定位：模型不可用时的输入兜底
+
+本地词库负责常用词补全、拼音转换和有限的日常短句，不替代大模型的开放式联想。
+模型关闭、未安装、报错、超时或返回空结果时，仍应能选词、选句、撤回、空格续写和明确提交。
+输入先同步给出本地候选，再异步接收可选模型增强；不等模型失败后才生成本地候选。
+这一定位不新增模型开关或提供器分支，也不承诺任意文本都有完整句子建议。
+
+当前资源包含 5,934 项去重英文索引、273 组下一词搭配、510 条英文短句，以及
+1,631 条中文读音、265 组汉字语境、528 条中文续句。最新 `essentials` 层追加
+321 个显式英文词形（连同搭配/短句投影共新增 327 项索引）、48 组搭配及 96 条短句；
+中文追加 203 条读音、48 组语境及 96 条续句，侧重日期时间、购物售后和日常沟通，
+并补齐常用英文动词词形。先前 `fallback`、`conversation` 层和旧语境保持不变，
+仍覆盖确认/求助、离线故障提示、联系安排、工作协作、出行、点餐和家务。
+日文数据保持不变。扩充不更改旧英文词的基础权重或旧拼音同音项的顺序。
+
 ## 格式版本 1
 
 UTF-8 JSON。必填 `format_version: 1` 和 `language`；其余顶层数组默认空。
@@ -65,10 +80,15 @@ UTF-8 JSON。必填 `format_version: 1` 和 `language`；其余顶层数组默�
 cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
 cargo test --locked --all-features languages:: -- --test-threads=1
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
+cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 ```
 
 [数据契约回归](../../tests/lexicon_resources.rs)覆盖格式、边界、同音和层顺序；
 迁移指纹从原 Rust 表生成，锁定原 5,251 个英文词的索引权重、1,143 条拼音以及 26 条日文
 读音的完整顺序和标记。后续扩充不得以盲目重录指纹来掩盖旧词重排。
-配合[安装版编辑器检查](../../scripts/test-linux-vocabulary.py)和
-[原生 IBus 回归](../../scripts/test-native-sync.py)校验词句采用、撤回、续写与提交。
+第二轮扩充另保留第一轮 5,410 项英文索引和 1,254 条中文读音的指纹，不替换原迁移指纹。
+第三轮再锁定第二轮 5,607 项英文索引权重与 1,428 条中文读音，保留全部早期指纹。
+[兜底场景回归](../../tests/fallback_vocabulary.rs)区分关闭模型、类型化提供器错误与长草稿；
+其合成错误并非真实网络请求。配合[隔离编辑器检查](../../scripts/test-linux-vocabulary.py)和
+[原生 IBus 回归](../../scripts/test-native-sync.py)校验词句采用、撤回、续写与提交，
+后者用任务拥有的回环 HTTP 服务单独检查 503 和实际请求超时。

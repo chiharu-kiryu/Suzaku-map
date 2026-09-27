@@ -1144,7 +1144,495 @@
     {"reading": "shi'yong", "text": "食用", "kind": "word"},
     {"reading": "shi'yong", "text": "实用", "kind": "word"},
     {"reading": "shi'yong", "text": "适用", "kind": "word"},
-    {"reading": "dian'liang", "text": "点亮", "kind": "word"}
+    {"reading": "dian'liang", "text": "点亮", "kind": "word"},
+    {"reading": "reng'ran", "text": "仍然", "kind": "word"},
+    {"reading": "fou'ze", "text": "否则", "kind": "word"},
+    {"reading": "chu'fei", "text": "除非", "kind": "word"},
+    {"reading": "bu'yong'xie", "text": "不用谢", "kind": "word"},
+    {"reading": "mei'ting'qing", "text": "没听清", "kind": "word"},
+    {"reading": "zai'shuo'yi'bian", "text": "再说一遍", "kind": "word"},
+    {"reading": "qing'shao'deng", "text": "请稍等", "kind": "word"},
+    {"reading": "ting'bu'qing", "text": "听不清", "kind": "word"},
+    {"reading": "kan'bu'qing", "text": "看不清", "kind": "word"},
+    {"reading": "bu'tai'que'ding", "text": "不太确定", "kind": "word"},
+    {"reading": "ming'bai'le", "text": "明白了", "kind": "word"},
+    {"reading": "zhi'dao'le", "text": "知道了", "kind": "word"},
+    {"reading": "mei'shou'dao", "text": "没收到", "kind": "word"},
+    {"reading": "shou'dao'le", "text": "收到了", "kind": "word"},
+    {"reading": "ke'yi'ma", "text": "可以吗", "kind": "sentence"},
+    {"reading": "fang'bian'ma", "text": "方便吗", "kind": "sentence"},
+    {"reading": "xin'ku'ni'le", "text": "辛苦你了", "kind": "word"},
+    {"reading": "xie'xie'ti'xing", "text": "谢谢提醒", "kind": "word"},
+    {"reading": "bu'yong'zhao'ji", "text": "不用着急", "kind": "word"},
+    {"reading": "deng'ni'xiao'xi", "text": "等你消息", "kind": "word"},
+    {"reading": "ma'shang'dao", "text": "马上到", "kind": "word"},
+    {"reading": "dao'le", "text": "到了", "kind": "word"},
+    {"reading": "zai'lu'shang", "text": "在路上", "kind": "word"},
+    {"reading": "kuai'dao'le", "text": "快到了", "kind": "word"},
+    {"reading": "hui'tou'jian", "text": "回头见", "kind": "word"},
+    {"reading": "xia'ci'jian", "text": "下次见", "kind": "word"},
+    {"reading": "qing'hui'fu", "text": "请回复", "kind": "word"},
+    {"reading": "qing'que'ren", "text": "请确认", "kind": "word"},
+    {"reading": "qing'chong'fa", "text": "请重发", "kind": "word"},
+    {"reading": "zai'shi'yi'ci", "text": "再试一次", "kind": "word"},
+    {"reading": "chong'xin'lian'jie", "text": "重新连接", "kind": "word"},
+    {"reading": "wang'luo'lian'jie", "text": "网络连接", "kind": "word"},
+    {"reading": "wang'luo'duan'kai", "text": "网络断开", "kind": "word"},
+    {"reading": "wang'luo'gu'zhang", "text": "网络故障", "kind": "word"},
+    {"reading": "li'xian'mo'shi", "text": "离线模式", "kind": "word"},
+    {"reading": "fu'wu'bu'ke'yong", "text": "服务不可用", "kind": "word"},
+    {"reading": "shao'hou'chong'shi", "text": "稍后重试", "kind": "word"},
+    {"reading": "zheng'zai'jia'zai", "text": "正在加载", "kind": "word"},
+    {"reading": "zi'dong'bao'cun", "text": "自动保存", "kind": "word"},
+    {"reading": "wei'bao'cun", "text": "未保存", "kind": "word"},
+    {"reading": "bao'cun'shi'bai", "text": "保存失败", "kind": "word"},
+    {"reading": "hui'fu'cao'gao", "text": "恢复草稿", "kind": "word"},
+    {"reading": "bao'liu'yuan'wen", "text": "保留原文", "kind": "word"},
+    {"reading": "hou'xuan'ju", "text": "候选句", "kind": "word"},
+    {"reading": "ben'di'ci'ku", "text": "本地词库", "kind": "word"},
+    {"reading": "pin'xie", "text": "拼写", "kind": "word"},
+    {"reading": "quan'jiao", "text": "全角", "kind": "word"},
+    {"reading": "ban'jiao", "text": "半角", "kind": "word"},
+    {"reading": "da'xie", "text": "大写", "kind": "word"},
+    {"reading": "xiao'xie", "text": "小写", "kind": "word"},
+    {"reading": "chong'zuo", "text": "重做", "kind": "word"},
+    {"reading": "zhi'du", "text": "只读", "kind": "word"},
+    {"reading": "fu'gai", "text": "覆盖", "kind": "word"},
+    {"reading": "xia'zai'shi'bai", "text": "下载失败", "kind": "word"},
+    {"reading": "shang'chuan'shi'bai", "text": "上传失败", "kind": "word"},
+    {"reading": "jie'tu", "text": "截图", "kind": "word"},
+    {"reading": "ya'suo'bao", "text": "压缩包", "kind": "word"},
+    {"reading": "jie'ya", "text": "解压", "kind": "word"},
+    {"reading": "fu'zhi'lian'jie", "text": "复制链接", "kind": "word"},
+    {"reading": "jie'zhi'shi'jian", "text": "截止时间", "kind": "word"},
+    {"reading": "gong'zuo'an'pai", "text": "工作安排", "kind": "word"},
+    {"reading": "chu'fa'shi'jian", "text": "出发时间", "kind": "word"},
+    {"reading": "dao'da'shi'jian", "text": "到达时间", "kind": "word"},
+    {"reading": "ji'he'di'dian", "text": "集合地点", "kind": "word"},
+    {"reading": "shang'che'di'dian", "text": "上车地点", "kind": "word"},
+    {"reading": "xia'che'di'dian", "text": "下车地点", "kind": "word"},
+    {"reading": "chu'ru'kou", "text": "出入口", "kind": "word"},
+    {"reading": "lou'shang", "text": "楼上", "kind": "word"},
+    {"reading": "lou'xia", "text": "楼下", "kind": "word"},
+    {"reading": "zi'dong'fu'ti", "text": "自动扶梯", "kind": "word"},
+    {"reading": "xi'shou'jian", "text": "洗手间", "kind": "word"},
+    {"reading": "wei'sheng'jian", "text": "卫生间", "kind": "word"},
+    {"reading": "yin'yong'shui", "text": "饮用水", "kind": "word"},
+    {"reading": "shi'wu'zhao'ling", "text": "失物招领", "kind": "word"},
+    {"reading": "shen'fen'zheng", "text": "身份证", "kind": "word"},
+    {"reading": "zheng'jian", "text": "证件", "kind": "word"},
+    {"reading": "hu'zhao", "text": "护照", "kind": "word"},
+    {"reading": "yin'hang'ka", "text": "银行卡", "kind": "word"},
+    {"reading": "gong'jiao'ka", "text": "公交卡", "kind": "word"},
+    {"reading": "hou'che'shi", "text": "候车室", "kind": "word"},
+    {"reading": "shou'piao'chu", "text": "售票处", "kind": "word"},
+    {"reading": "che'fei", "text": "车费", "kind": "word"},
+    {"reading": "dan'cheng", "text": "单程", "kind": "word"},
+    {"reading": "wang'fan", "text": "往返", "kind": "word"},
+    {"reading": "zuo'wei", "text": "座位", "kind": "word"},
+    {"reading": "kao'chuang", "text": "靠窗", "kind": "word"},
+    {"reading": "guo'dao", "text": "过道", "kind": "word"},
+    {"reading": "cha'tou", "text": "插头", "kind": "word"},
+    {"reading": "cha'zuo", "text": "插座", "kind": "word"},
+    {"reading": "shi'pei'qi", "text": "适配器", "kind": "word"},
+    {"reading": "shu'ju'xian", "text": "数据线", "kind": "word"},
+    {"reading": "dian'yuan", "text": "电源", "kind": "word"},
+    {"reading": "zhi'shi'deng", "text": "指示灯", "kind": "word"},
+    {"reading": "yi'dong'wang'luo", "text": "移动网络", "kind": "word"},
+    {"reading": "fei'xing'mo'shi", "text": "飞行模式", "kind": "word"},
+    {"reading": "yong'hu'ming", "text": "用户名", "kind": "word"},
+    {"reading": "yan'zheng'ma", "text": "验证码", "kind": "word"},
+    {"reading": "deng'lu'shi'bai", "text": "登录失败", "kind": "word"},
+    {"reading": "wang'ji'mi'ma", "text": "忘记密码", "kind": "word"},
+    {"reading": "chong'zhi'mi'ma", "text": "重置密码", "kind": "word"},
+    {"reading": "yun'xu", "text": "允许", "kind": "word"},
+    {"reading": "ju'jue", "text": "拒绝", "kind": "word"},
+    {"reading": "quan'xian'bu'zu", "text": "权限不足", "kind": "word"},
+    {"reading": "tui'kuan'jin'du", "text": "退款进度", "kind": "word"},
+    {"reading": "fa'piao'tai'tou", "text": "发票抬头", "kind": "word"},
+    {"reading": "song'huo'shang'men", "text": "送货上门", "kind": "word"},
+    {"reading": "bu'yao'la", "text": "不要辣", "kind": "word"},
+    {"reading": "shao'fang'tang", "text": "少放糖", "kind": "word"},
+    {"reading": "wen'shui", "text": "温水", "kind": "word"},
+    {"reading": "dai'zou", "text": "带走", "kind": "word"},
+    {"reading": "tang'shi", "text": "堂食", "kind": "word"},
+    {"reading": "bu'fang'bian", "text": "不方便", "kind": "word"},
+    {"reading": "mei'kong", "text": "没空", "kind": "word"},
+    {"reading": "zai'mang", "text": "在忙", "kind": "word"},
+    {"reading": "mang'wan", "text": "忙完", "kind": "word"},
+    {"reading": "dou'ke'yi", "text": "都可以", "kind": "word"},
+    {"reading": "sui'shi", "text": "随时", "kind": "word"},
+    {"reading": "gai'tian", "text": "改天", "kind": "word"},
+    {"reading": "xia'ci", "text": "下次", "kind": "word"},
+    {"reading": "ji'ran", "text": "既然", "kind": "word"},
+    {"reading": "huo'xu", "text": "或许", "kind": "word"},
+    {"reading": "yao'bu", "text": "要不", "kind": "word"},
+    {"reading": "bu'ru", "text": "不如", "kind": "word"},
+    {"reading": "zui'wan", "text": "最晚", "kind": "word"},
+    {"reading": "zui'zao", "text": "最早", "kind": "word"},
+    {"reading": "zao'dian", "text": "早点", "kind": "word"},
+    {"reading": "shao'dian", "text": "少点", "kind": "word"},
+    {"reading": "duo'dian", "text": "多点", "kind": "word"},
+    {"reading": "ke'xi", "text": "可惜", "kind": "word"},
+    {"reading": "qi'ta", "text": "其他", "kind": "word"},
+    {"reading": "zhu'yao", "text": "主要", "kind": "word"},
+    {"reading": "ji'ben", "text": "基本", "kind": "word"},
+    {"reading": "ji'hu", "text": "几乎", "kind": "word"},
+    {"reading": "tong'chang", "text": "通常", "kind": "word"},
+    {"reading": "zhi'yao", "text": "只要", "kind": "word"},
+    {"reading": "mian'fei", "text": "免费", "kind": "word"},
+    {"reading": "duan'wang", "text": "断网", "kind": "word"},
+    {"reading": "lian'bu'shang", "text": "连不上", "kind": "word"},
+    {"reading": "bu'wen'ding", "text": "不稳定", "kind": "word"},
+    {"reading": "wang'luo'bu'wen'ding", "text": "网络不稳定", "kind": "word"},
+    {"reading": "chong'xin'deng'lu", "text": "重新登录", "kind": "word"},
+    {"reading": "hui'yi'lian'jie", "text": "会议链接", "kind": "word"},
+    {"reading": "hui'yi'yao'qing", "text": "会议邀请", "kind": "word"},
+    {"reading": "kai'hui'shi'jian", "text": "开会时间", "kind": "word"},
+    {"reading": "shi'jian'an'pai", "text": "时间安排", "kind": "word"},
+    {"reading": "shi'jian'chong'tu", "text": "时间冲突", "kind": "word"},
+    {"reading": "shi'qu", "text": "时区", "kind": "word"},
+    {"reading": "ben'di'shi'jian", "text": "本地时间", "kind": "word"},
+    {"reading": "gong'zuo'shi'jian", "text": "工作时间", "kind": "word"},
+    {"reading": "xiu'xi'shi'jian", "text": "休息时间", "kind": "word"},
+    {"reading": "fei'gong'zuo'ri", "text": "非工作日", "kind": "word"},
+    {"reading": "jie'jia'ri", "text": "节假日", "kind": "word"},
+    {"reading": "qing'jia'shen'qing", "text": "请假申请", "kind": "word"},
+    {"reading": "bao'xiao'shen'qing", "text": "报销申请", "kind": "word"},
+    {"reading": "yan'qi", "text": "延期", "kind": "word"},
+    {"reading": "yan'qi'shen'qing", "text": "延期申请", "kind": "word"},
+    {"reading": "dai'que'ren", "text": "待确认", "kind": "word"},
+    {"reading": "yi'que'ren", "text": "已确认", "kind": "word"},
+    {"reading": "dai'chu'li", "text": "待处理", "kind": "word"},
+    {"reading": "yi'wan'cheng", "text": "已完成", "kind": "word"},
+    {"reading": "wei'wan'cheng", "text": "未完成", "kind": "word"},
+    {"reading": "jin'du'an'pai", "text": "进度安排", "kind": "word"},
+    {"reading": "ren'wu'jin'du", "text": "任务进度", "kind": "word"},
+    {"reading": "ren'wu'fen'gong", "text": "任务分工", "kind": "word"},
+    {"reading": "xing'dong'xiang", "text": "行动项", "kind": "word"},
+    {"reading": "jiao'fu'shi'jian", "text": "交付时间", "kind": "word"},
+    {"reading": "yan'shou'biao'zhun", "text": "验收标准", "kind": "word"},
+    {"reading": "fen'gong'an'pai", "text": "分工安排", "kind": "word"},
+    {"reading": "xin'zeng", "text": "新增", "kind": "word"},
+    {"reading": "bao'liu", "text": "保留", "kind": "word"},
+    {"reading": "geng'zheng", "text": "更正", "kind": "word"},
+    {"reading": "bian'geng", "text": "变更", "kind": "word"},
+    {"reading": "yi'wen", "text": "疑问", "kind": "word"},
+    {"reading": "shang'liang", "text": "商量", "kind": "word"},
+    {"reading": "da'duan", "text": "打断", "kind": "word"},
+    {"reading": "shi'qing", "text": "事情", "kind": "word"},
+    {"reading": "li'jie", "text": "理解", "kind": "word"},
+    {"reading": "dui'qi", "text": "对齐", "kind": "word"},
+    {"reading": "dui'qi'jin'du", "text": "对齐进度", "kind": "word"},
+    {"reading": "bu'chong'shuo'ming", "text": "补充说明", "kind": "word"},
+    {"reading": "wen'ti'lie'biao", "text": "问题列表", "kind": "word"},
+    {"reading": "cuo'wu'ti'shi", "text": "错误提示", "kind": "word"},
+    {"reading": "yi'lou", "text": "遗漏", "kind": "word"},
+    {"reading": "fu'jian'xia'zai", "text": "附件下载", "kind": "word"},
+    {"reading": "wen'jian'quan'xian", "text": "文件权限", "kind": "word"},
+    {"reading": "fang'wen'quan'xian", "text": "访问权限", "kind": "word"},
+    {"reading": "dai'shen'he", "text": "待审核", "kind": "word"},
+    {"reading": "yi'tong'guo", "text": "已通过", "kind": "word"},
+    {"reading": "wei'tong'guo", "text": "未通过", "kind": "word"},
+    {"reading": "zi'dong'tong'bu", "text": "自动同步", "kind": "word"},
+    {"reading": "shou'dong'tong'bu", "text": "手动同步", "kind": "word"},
+    {"reading": "jin'gong'can'kao", "text": "仅供参考", "kind": "word"},
+    {"reading": "zi'xing'que'ren", "text": "自行确认", "kind": "word"},
+    {"reading": "gong'xiang", "text": "共享", "kind": "word"},
+    {"reading": "gui'dang", "text": "归档", "kind": "word"},
+    {"reading": "xia'yi'bu", "text": "下一步", "kind": "word"},
+    {"reading": "shang'yi'bu", "text": "上一步", "kind": "word"},
+    {"reading": "fen'bu", "text": "分步", "kind": "word"},
+    {"reading": "cha'kan", "text": "查看", "kind": "word"},
+    {"reading": "zui'xin'ban'ben", "text": "最新版本", "kind": "word"},
+    {"reading": "yu'ji'dao'da", "text": "预计到达", "kind": "word"},
+    {"reading": "hang'ban'hao", "text": "航班号", "kind": "word"},
+    {"reading": "hou'ji'ting", "text": "候机厅", "kind": "word"},
+    {"reading": "zhi'ji", "text": "值机", "kind": "word"},
+    {"reading": "ban'li'zhi'ji", "text": "办理值机", "kind": "word"},
+    {"reading": "xing'li'tuo'yun", "text": "行李托运", "kind": "word"},
+    {"reading": "sui'shen'xing'li", "text": "随身行李", "kind": "word"},
+    {"reading": "qu'xing'li", "text": "取行李", "kind": "word"},
+    {"reading": "xing'cheng'an'pai", "text": "行程安排", "kind": "word"},
+    {"reading": "xing'cheng'dan", "text": "行程单", "kind": "word"},
+    {"reading": "dan'cheng'piao", "text": "单程票", "kind": "word"},
+    {"reading": "wang'fan'piao", "text": "往返票", "kind": "word"},
+    {"reading": "tui'piao'fei", "text": "退票费", "kind": "word"},
+    {"reading": "shou'xu'fei", "text": "手续费", "kind": "word"},
+    {"reading": "huan'cheng'shi'jian", "text": "换乘时间", "kind": "word"},
+    {"reading": "gong'jiao'zhan", "text": "公交站", "kind": "word"},
+    {"reading": "di'tie'zhan", "text": "地铁站", "kind": "word"},
+    {"reading": "wang'yue'che", "text": "网约车", "kind": "word"},
+    {"reading": "jie'bo'che", "text": "接驳车", "kind": "word"},
+    {"reading": "shang'che'dian", "text": "上车点", "kind": "word"},
+    {"reading": "xia'che'dian", "text": "下车点", "kind": "word"},
+    {"reading": "hong'lv'deng", "text": "红绿灯", "kind": "word"},
+    {"reading": "ren'xing'dao", "text": "人行道", "kind": "word"},
+    {"reading": "ban'ma'xian", "text": "斑马线", "kind": "word"},
+    {"reading": "guo'ma'lu", "text": "过马路", "kind": "word"},
+    {"reading": "rao'lu", "text": "绕路", "kind": "word"},
+    {"reading": "dan'xing'dao", "text": "单行道", "kind": "word"},
+    {"reading": "shi'zi'lu'kou", "text": "十字路口", "kind": "word"},
+    {"reading": "zhi'lu", "text": "指路", "kind": "word"},
+    {"reading": "di'zhi'bu'dui", "text": "地址不对", "kind": "word"},
+    {"reading": "ding'wei", "text": "定位", "kind": "word"},
+    {"reading": "fa'ding'wei", "text": "发定位", "kind": "word"},
+    {"reading": "jiu'jin", "text": "就近", "kind": "word"},
+    {"reading": "gong'li", "text": "公里", "kind": "word"},
+    {"reading": "mi", "text": "米", "kind": "word"},
+    {"reading": "zuo'ce", "text": "左侧", "kind": "word"},
+    {"reading": "you'ce", "text": "右侧", "kind": "word"},
+    {"reading": "zhi'zou", "text": "直走", "kind": "word"},
+    {"reading": "zuo'zhuan", "text": "左转", "kind": "word"},
+    {"reading": "you'zhuan", "text": "右转", "kind": "word"},
+    {"reading": "kai'men'shi'jian", "text": "开门时间", "kind": "word"},
+    {"reading": "guan'men'shi'jian", "text": "关门时间", "kind": "word"},
+    {"reading": "ying'ye'shi'jian", "text": "营业时间", "kind": "word"},
+    {"reading": "ying'ye", "text": "营业", "kind": "word"},
+    {"reading": "wai'dai", "text": "外带", "kind": "word"},
+    {"reading": "can'ju", "text": "餐具", "kind": "word"},
+    {"reading": "kuai'zi", "text": "筷子", "kind": "word"},
+    {"reading": "shao'zi", "text": "勺子", "kind": "word"},
+    {"reading": "cha'zi", "text": "叉子", "kind": "word"},
+    {"reading": "shao'bing", "text": "少冰", "kind": "word"},
+    {"reading": "qu'bing", "text": "去冰", "kind": "word"},
+    {"reading": "wei'la", "text": "微辣", "kind": "word"},
+    {"reading": "bu'la", "text": "不辣", "kind": "word"},
+    {"reading": "qing'dan", "text": "清淡", "kind": "word"},
+    {"reading": "shao'yan", "text": "少盐", "kind": "word"},
+    {"reading": "shao'you", "text": "少油", "kind": "word"},
+    {"reading": "wu'tang", "text": "无糖", "kind": "word"},
+    {"reading": "ban'tang", "text": "半糖", "kind": "word"},
+    {"reading": "bu'yao'xiang'cai", "text": "不要香菜", "kind": "word"},
+    {"reading": "bu'yao'cong", "text": "不要葱", "kind": "word"},
+    {"reading": "shi'wu'guo'min", "text": "食物过敏", "kind": "word"},
+    {"reading": "pei'liao", "text": "配料", "kind": "word"},
+    {"reading": "pei'liao'biao", "text": "配料表", "kind": "word"},
+    {"reading": "su'shi", "text": "素食", "kind": "word"},
+    {"reading": "nai'zhi'pin", "text": "奶制品", "kind": "word"},
+    {"reading": "hua'sheng", "text": "花生", "kind": "word"},
+    {"reading": "hai'xian", "text": "海鲜", "kind": "word"},
+    {"reading": "zhang'dan'ming'xi", "text": "账单明细", "kind": "word"},
+    {"reading": "xia'dan", "text": "下单", "kind": "word"},
+    {"reading": "qu'can", "text": "取餐", "kind": "word"},
+    {"reading": "yu'yue'shi'jian", "text": "预约时间", "kind": "word"},
+    {"reading": "chu'fang", "text": "厨房", "kind": "word"},
+    {"reading": "shai'yi'fu", "text": "晒衣服", "kind": "word"},
+    {"reading": "shou'yi'fu", "text": "收衣服", "kind": "word"},
+    {"reading": "xi'yi'ji", "text": "洗衣机", "kind": "word"},
+    {"reading": "bing'xiang", "text": "冰箱", "kind": "word"},
+    {"reading": "bing'gui", "text": "冰柜", "kind": "word"},
+    {"reading": "leng'dong", "text": "冷冻", "kind": "word"},
+    {"reading": "leng'cang", "text": "冷藏", "kind": "word"},
+    {"reading": "gou'wu'qing'dan", "text": "购物清单", "kind": "word"},
+    {"reading": "ri'yong'pin", "text": "日用品", "kind": "word"},
+    {"reading": "ke'hui'shou", "text": "可回收", "kind": "word"},
+    {"reading": "fen'lei'hui'shou", "text": "分类回收", "kind": "word"},
+    {"reading": "sheng'huo'yong'pin", "text": "生活用品", "kind": "word"},
+    {"reading": "shui'dian'fei", "text": "水电费", "kind": "word"},
+    {"reading": "zuo'wan", "text": "昨晚", "kind": "word"},
+    {"reading": "da'hou'tian", "text": "大后天", "kind": "word"},
+    {"reading": "bang'wan", "text": "傍晚", "kind": "word"},
+    {"reading": "ling'chen", "text": "凌晨", "kind": "word"},
+    {"reading": "zheng'wu", "text": "正午", "kind": "word"},
+    {"reading": "ban'ye", "text": "半夜", "kind": "word"},
+    {"reading": "shen'ye", "text": "深夜", "kind": "word"},
+    {"reading": "jin'tian'xia'wu", "text": "今天下午", "kind": "word"},
+    {"reading": "ming'tian'shang'wu", "text": "明天上午", "kind": "word"},
+    {"reading": "ming'tian'xia'wu", "text": "明天下午", "kind": "word"},
+    {"reading": "hou'tian'zao'shang", "text": "后天早上", "kind": "word"},
+    {"reading": "jin'wan'you'kong", "text": "今晚有空", "kind": "word"},
+    {"reading": "zhe'zhou", "text": "这周", "kind": "word"},
+    {"reading": "zhe'zhou'mo", "text": "这周末", "kind": "word"},
+    {"reading": "xia'zhou'mo", "text": "下周末", "kind": "word"},
+    {"reading": "xia'zhou'yi", "text": "下周一", "kind": "word"},
+    {"reading": "xia'zhou'er", "text": "下周二", "kind": "word"},
+    {"reading": "xia'zhou'san", "text": "下周三", "kind": "word"},
+    {"reading": "xia'zhou'si", "text": "下周四", "kind": "word"},
+    {"reading": "xia'zhou'wu", "text": "下周五", "kind": "word"},
+    {"reading": "ben'zhou'wu", "text": "本周五", "kind": "word"},
+    {"reading": "xing'qi'ri", "text": "星期日", "kind": "word"},
+    {"reading": "zhou'yi", "text": "周一", "kind": "word"},
+    {"reading": "zhou'er", "text": "周二", "kind": "word"},
+    {"reading": "zhou'san", "text": "周三", "kind": "word"},
+    {"reading": "zhou'si", "text": "周四", "kind": "word"},
+    {"reading": "zhou'wu", "text": "周五", "kind": "word"},
+    {"reading": "zhou'liu", "text": "周六", "kind": "word"},
+    {"reading": "zhou'ri", "text": "周日", "kind": "word"},
+    {"reading": "nong'li", "text": "农历", "kind": "word"},
+    {"reading": "yang'li", "text": "阳历", "kind": "word"},
+    {"reading": "gong'li", "text": "公历", "kind": "word"},
+    {"reading": "ri'cheng'an'pai", "text": "日程安排", "kind": "word"},
+    {"reading": "ri'cheng'ti'xing", "text": "日程提醒", "kind": "word"},
+    {"reading": "sheng'ri'kuai'le", "text": "生日快乐", "kind": "word"},
+    {"reading": "jie'ri'kuai'le", "text": "节日快乐", "kind": "word"},
+    {"reading": "chang'jia", "text": "长假", "kind": "word"},
+    {"reading": "ji'nian'ri", "text": "纪念日", "kind": "word"},
+    {"reading": "miao'zhong", "text": "秒钟", "kind": "word"},
+    {"reading": "liang'xiao'shi", "text": "两小时", "kind": "word"},
+    {"reading": "shi'fen'zhong", "text": "十分钟", "kind": "word"},
+    {"reading": "wu'fen'zhong", "text": "五分钟", "kind": "word"},
+    {"reading": "ban'nian", "text": "半年", "kind": "word"},
+    {"reading": "yi'zheng'tian", "text": "一整天", "kind": "word"},
+    {"reading": "mei'tian", "text": "每天", "kind": "word"},
+    {"reading": "mei'zhou", "text": "每周", "kind": "word"},
+    {"reading": "mei'yue", "text": "每月", "kind": "word"},
+    {"reading": "mei'nian", "text": "每年", "kind": "word"},
+    {"reading": "ding'qi", "text": "定期", "kind": "word"},
+    {"reading": "lin'shi'an'pai", "text": "临时安排", "kind": "word"},
+    {"reading": "ti'qian'tong'zhi", "text": "提前通知", "kind": "word"},
+    {"reading": "ti'qian'yu'yue", "text": "提前预约", "kind": "word"},
+    {"reading": "ru'qi", "text": "如期", "kind": "word"},
+    {"reading": "ti'qian'dao", "text": "提前到", "kind": "word"},
+    {"reading": "wan'yi'dian", "text": "晚一点", "kind": "word"},
+    {"reading": "zao'yi'dian", "text": "早一点", "kind": "word"},
+    {"reading": "cha'yi'dian", "text": "差一点", "kind": "word"},
+    {"reading": "da'yue", "text": "大约", "kind": "word"},
+    {"reading": "da'gai'shi'jian", "text": "大概时间", "kind": "word"},
+    {"reading": "ju'ti'shi'jian", "text": "具体时间", "kind": "word"},
+    {"reading": "que'qie'shi'jian", "text": "确切时间", "kind": "word"},
+    {"reading": "kai'shi'shi'jian", "text": "开始时间", "kind": "word"},
+    {"reading": "jie'shu'shi'jian", "text": "结束时间", "kind": "word"},
+    {"reading": "ting'liu'shi'jian", "text": "停留时间", "kind": "word"},
+    {"reading": "deng'dai'shi'jian", "text": "等待时间", "kind": "word"},
+    {"reading": "zui'jin'ji'tian", "text": "最近几天", "kind": "word"},
+    {"reading": "he'shi", "text": "何时", "kind": "word"},
+    {"reading": "dao'qi'shi'jian", "text": "到期时间", "kind": "word"},
+    {"reading": "guo'qi", "text": "过期", "kind": "word"},
+    {"reading": "xu'qi", "text": "续期", "kind": "word"},
+    {"reading": "zi'dong'xu'fei", "text": "自动续费", "kind": "word"},
+    {"reading": "qu'xiao'ding'yue", "text": "取消订阅", "kind": "word"},
+    {"reading": "ding'yue'dao'qi", "text": "订阅到期", "kind": "word"},
+    {"reading": "shi'yong'qi", "text": "试用期", "kind": "word"},
+    {"reading": "shi'yong'ban", "text": "试用版", "kind": "word"},
+    {"reading": "mian'fei'shi'yong", "text": "免费试用", "kind": "word"},
+    {"reading": "fu'fei", "text": "付费", "kind": "word"},
+    {"reading": "yi'fu'kuan", "text": "已付款", "kind": "word"},
+    {"reading": "wei'fu'kuan", "text": "未付款", "kind": "word"},
+    {"reading": "dai'fu'kuan", "text": "待付款", "kind": "word"},
+    {"reading": "zhi'fu'fang'shi", "text": "支付方式", "kind": "word"},
+    {"reading": "zhi'fu'shi'bai", "text": "支付失败", "kind": "word"},
+    {"reading": "zhi'fu'cheng'gong", "text": "支付成功", "kind": "word"},
+    {"reading": "chong'fu'kou'kuan", "text": "重复扣款", "kind": "word"},
+    {"reading": "kou'kuan", "text": "扣款", "kind": "word"},
+    {"reading": "yu'e'bu'zu", "text": "余额不足", "kind": "word"},
+    {"reading": "jia'cha", "text": "价差", "kind": "word"},
+    {"reading": "cha'jia", "text": "差价", "kind": "word"},
+    {"reading": "zong'jia", "text": "总价", "kind": "word"},
+    {"reading": "dan'jia", "text": "单价", "kind": "word"},
+    {"reading": "xiao'ji", "text": "小计", "kind": "word"},
+    {"reading": "zong'ji", "text": "总计", "kind": "word"},
+    {"reading": "he'ji", "text": "合计", "kind": "word"},
+    {"reading": "shu'liang", "text": "数量", "kind": "word"},
+    {"reading": "gui'ge", "text": "规格", "kind": "word"},
+    {"reading": "xing'hao", "text": "型号", "kind": "word"},
+    {"reading": "cai'zhi", "text": "材质", "kind": "word"},
+    {"reading": "yuan'jia", "text": "原价", "kind": "word"},
+    {"reading": "cu'xiao", "text": "促销", "kind": "word"},
+    {"reading": "huo'dong'jia", "text": "活动价", "kind": "word"},
+    {"reading": "dao'shou'jia", "text": "到手价", "kind": "word"},
+    {"reading": "bao'zhuang'fei", "text": "包装费", "kind": "word"},
+    {"reading": "fu'wu'fei", "text": "服务费", "kind": "word"},
+    {"reading": "fu'kuan'ji'lu", "text": "付款记录", "kind": "word"},
+    {"reading": "dian'zi'fa'piao", "text": "电子发票", "kind": "word"},
+    {"reading": "kai'ju'fa'piao", "text": "开具发票", "kind": "word"},
+    {"reading": "zhi'zhi'fa'piao", "text": "纸质发票", "kind": "word"},
+    {"reading": "ding'dan'hao", "text": "订单号", "kind": "word"},
+    {"reading": "ding'dan'zhuang'tai", "text": "订单状态", "kind": "word"},
+    {"reading": "qu'xiao'ding'dan", "text": "取消订单", "kind": "word"},
+    {"reading": "xiu'gai'ding'dan", "text": "修改订单", "kind": "word"},
+    {"reading": "xiu'gai'di'zhi", "text": "修改地址", "kind": "word"},
+    {"reading": "geng'huan'di'zhi", "text": "更换地址", "kind": "word"},
+    {"reading": "pei'song'shi'jian", "text": "配送时间", "kind": "word"},
+    {"reading": "pei'song'fan'wei", "text": "配送范围", "kind": "word"},
+    {"reading": "wu'liu'xin'xi", "text": "物流信息", "kind": "word"},
+    {"reading": "wu'liu'dan'hao", "text": "物流单号", "kind": "word"},
+    {"reading": "kuai'di'gui", "text": "快递柜", "kind": "word"},
+    {"reading": "zi'ti'dian", "text": "自提点", "kind": "word"},
+    {"reading": "dai'fa'huo", "text": "待发货", "kind": "word"},
+    {"reading": "yi'fa'huo", "text": "已发货", "kind": "word"},
+    {"reading": "wei'fa'huo", "text": "未发货", "kind": "word"},
+    {"reading": "fa'huo'shi'jian", "text": "发货时间", "kind": "word"},
+    {"reading": "dao'huo'shi'jian", "text": "到货时间", "kind": "word"},
+    {"reading": "dao'huo", "text": "到货", "kind": "word"},
+    {"reading": "shou'hou'fu'wu", "text": "售后服务", "kind": "word"},
+    {"reading": "shou'hou'shen'qing", "text": "售后申请", "kind": "word"},
+    {"reading": "tui'huo'di'zhi", "text": "退货地址", "kind": "word"},
+    {"reading": "tui'huo'liu'cheng", "text": "退货流程", "kind": "word"},
+    {"reading": "tui'kuan'shen'qing", "text": "退款申请", "kind": "word"},
+    {"reading": "tui'kuan'dao'zhang", "text": "退款到账", "kind": "word"},
+    {"reading": "tui'kuan'jin'e", "text": "退款金额", "kind": "word"},
+    {"reading": "yuan'lu'tui'hui", "text": "原路退回", "kind": "word"},
+    {"reading": "bao'xiu'qi", "text": "保修期", "kind": "word"},
+    {"reading": "bao'xiu'fan'wei", "text": "保修范围", "kind": "word"},
+    {"reading": "zhi'liang'wen'ti", "text": "质量问题", "kind": "word"},
+    {"reading": "shang'pin'po'sun", "text": "商品破损", "kind": "word"},
+    {"reading": "pei'jian", "text": "配件", "kind": "word"},
+    {"reading": "lou'fa", "text": "漏发", "kind": "word"},
+    {"reading": "cuo'fa", "text": "错发", "kind": "word"},
+    {"reading": "bu'fa", "text": "补发", "kind": "word"},
+    {"reading": "huan'xin", "text": "换新", "kind": "word"},
+    {"reading": "wei'xiu'jin'du", "text": "维修进度", "kind": "word"},
+    {"reading": "wan'hao", "text": "完好", "kind": "word"},
+    {"reading": "wei'shi'yong", "text": "未使用", "kind": "word"},
+    {"reading": "wei'chai'feng", "text": "未拆封", "kind": "word"},
+    {"reading": "chai'feng", "text": "拆封", "kind": "word"},
+    {"reading": "chong'xin'xia'dan", "text": "重新下单", "kind": "word"},
+    {"reading": "zhi'neng'ke'fu", "text": "智能客服", "kind": "word"},
+    {"reading": "ren'gong'ke'fu", "text": "人工客服", "kind": "word"},
+    {"reading": "zhuan'ren'gong", "text": "转人工", "kind": "word"},
+    {"reading": "ren'gong'fu'wu", "text": "人工服务", "kind": "word"},
+    {"reading": "xie'xie'guan'xin", "text": "谢谢关心", "kind": "word"},
+    {"reading": "duo'xie'ti'xing", "text": "多谢提醒", "kind": "word"},
+    {"reading": "qing'duo'guan'zhao", "text": "请多关照", "kind": "word"},
+    {"reading": "yi'lu'ping'an", "text": "一路平安", "kind": "word"},
+    {"reading": "lu'shang'xiao'xin", "text": "路上小心", "kind": "word"},
+    {"reading": "dao'jia'gao'su'wo", "text": "到家告诉我", "kind": "word"},
+    {"reading": "hui'jia'lu'shang", "text": "回家路上", "kind": "word"},
+    {"reading": "wan'quan'mei'wen'ti", "text": "完全没问题", "kind": "word"},
+    {"reading": "ming'tian'jian", "text": "明天见", "kind": "word"},
+    {"reading": "yi'hui'er'jian", "text": "一会儿见", "kind": "word"},
+    {"reading": "xia'zhou'jian", "text": "下周见", "kind": "word"},
+    {"reading": "zhao'ji", "text": "着急", "kind": "word"},
+    {"reading": "qi'dai", "text": "期待", "kind": "word"},
+    {"reading": "man'yi", "text": "满意", "kind": "word"},
+    {"reading": "shi'wang", "text": "失望", "kind": "word"},
+    {"reading": "gan'ji", "text": "感激", "kind": "word"},
+    {"reading": "gan'dong", "text": "感动", "kind": "word"},
+    {"reading": "yi'han", "text": "遗憾", "kind": "word"},
+    {"reading": "jin'zhang", "text": "紧张", "kind": "word"},
+    {"reading": "fang'song", "text": "放松", "kind": "word"},
+    {"reading": "an'xin", "text": "安心", "kind": "word"},
+    {"reading": "que'ren'yi'xia", "text": "确认一下", "kind": "word"},
+    {"reading": "shao'deng'yi'xia", "text": "稍等一下", "kind": "word"},
+    {"reading": "you'shi'lian'xi", "text": "有事联系", "kind": "word"},
+    {"reading": "sui'shi'lian'xi", "text": "随时联系", "kind": "word"},
+    {"reading": "zhu'yi'xiu'xi", "text": "注意休息", "kind": "word"},
+    {"reading": "bie'zhao'ji", "text": "别着急", "kind": "word"},
+    {"reading": "zhi'dao'la", "text": "知道啦", "kind": "word"},
+    {"reading": "shou'dao'la", "text": "收到啦", "kind": "word"},
+    {"reading": "ke'yi'de", "text": "可以的", "kind": "word"},
+    {"reading": "hai'ke'yi", "text": "还可以", "kind": "word"},
+    {"reading": "mei'ban'fa", "text": "没办法", "kind": "word"},
+    {"reading": "kan'qing'kuang", "text": "看情况", "kind": "word"},
+    {"reading": "bu'yi'ding", "text": "不一定", "kind": "word"},
+    {"reading": "hai'mei'xiang'hao", "text": "还没想好", "kind": "word"},
+    {"reading": "zai'kao'lv'yi'xia", "text": "再考虑一下", "kind": "word"},
+    {"reading": "dui'wo'lai'shuo", "text": "对我来说", "kind": "word"},
+    {"reading": "wo'jue'de", "text": "我觉得", "kind": "word"},
+    {"reading": "wo'yi'wei", "text": "我以为", "kind": "word"},
+    {"reading": "wo'xiang'xiang", "text": "我想想", "kind": "word"},
+    {"reading": "wo'ming'bai", "text": "我明白", "kind": "word"},
+    {"reading": "wo'zhi'dao", "text": "我知道", "kind": "word"},
+    {"reading": "wo'tong'yi", "text": "我同意", "kind": "word"},
+    {"reading": "wo'bu'tong'yi", "text": "我不同意", "kind": "word"},
+    {"reading": "you'dao'li", "text": "有道理", "kind": "word"},
+    {"reading": "bu'zhi'dao", "text": "不知道", "kind": "word"},
+    {"reading": "bu'que'ding", "text": "不确定", "kind": "word"},
+    {"reading": "zhen'de'ma", "text": "真的吗", "kind": "sentence"},
+    {"reading": "shen'me'yi'si", "text": "什么意思", "kind": "sentence"},
+    {"reading": "wei'shen'me", "text": "为什么", "kind": "sentence"},
+    {"reading": "zen'me'ban", "text": "怎么办", "kind": "sentence"}
   ],
   "continuations": [
     [
@@ -2046,6 +2534,958 @@
       [
         "关机之前先保存文件。",
         "关机后再收起来吧。"
+      ]
+    ],
+    [
+      "稍后",
+      [
+        "稍后我再回复你。",
+        "稍后方便的时候联系我。"
+      ]
+    ],
+    [
+      "马上",
+      [
+        "马上就到，请稍等。",
+        "马上帮你确认一下。"
+      ]
+    ],
+    [
+      "等一下",
+      [
+        "等一下，我再确认一下。",
+        "等一下，我马上回来。"
+      ]
+    ],
+    [
+      "等会儿",
+      [
+        "等会儿再联系。",
+        "等会儿我把地址发给你。"
+      ]
+    ],
+    [
+      "对不起",
+      [
+        "对不起，我刚才没听清。",
+        "对不起，让你久等了。"
+      ]
+    ],
+    [
+      "不用谢",
+      [
+        "不用谢，能帮上忙就好。",
+        "不用谢，下次有需要再联系。"
+      ]
+    ],
+    [
+      "不客气",
+      [
+        "不客气，这是我应该做的。",
+        "不客气，有问题随时说。"
+      ]
+    ],
+    [
+      "没听清",
+      [
+        "没听清，可以再说一遍吗？",
+        "没听清最后几个字。"
+      ]
+    ],
+    [
+      "再说一遍",
+      [
+        "再说一遍可以吗？",
+        "再说一遍地址好吗？"
+      ]
+    ],
+    [
+      "请稍等",
+      [
+        "请稍等，我查一下。",
+        "请稍等，正在确认结果。"
+      ]
+    ],
+    [
+      "不太确定",
+      [
+        "不太确定，我再核对一下。",
+        "不太确定具体时间。"
+      ]
+    ],
+    [
+      "明白了",
+      [
+        "明白了，谢谢你的解释。",
+        "明白了，我按这个安排。"
+      ]
+    ],
+    [
+      "知道了",
+      [
+        "知道了，我会留意。",
+        "知道了，谢谢提醒。"
+      ]
+    ],
+    [
+      "没收到",
+      [
+        "没收到，可以重新发一下吗？",
+        "没收到确认消息。"
+      ]
+    ],
+    [
+      "收到了",
+      [
+        "收到了，谢谢。",
+        "收到了，我稍后确认。"
+      ]
+    ],
+    [
+      "可以吗",
+      [
+        "可以吗，不方便的话我们再商量。",
+        "可以吗，麻烦确认一下。"
+      ]
+    ],
+    [
+      "方便吗",
+      [
+        "方便吗，我想确认一下时间。",
+        "方便吗，我们简单聊一下。"
+      ]
+    ],
+    [
+      "麻烦你",
+      [
+        "麻烦你再确认一下地址。",
+        "麻烦你把附件重新发一下。"
+      ]
+    ],
+    [
+      "谢谢提醒",
+      [
+        "谢谢提醒，我已经记下了。",
+        "谢谢提醒，我现在就处理。"
+      ]
+    ],
+    [
+      "等你消息",
+      [
+        "等你消息，不用着急。",
+        "等你消息，确定后告诉我。"
+      ]
+    ],
+    [
+      "在路上",
+      [
+        "在路上，预计十分钟后到。",
+        "在路上，到了再联系你。"
+      ]
+    ],
+    [
+      "快到了",
+      [
+        "快到了，请稍等一下。",
+        "快到了，你在门口等我吧。"
+      ]
+    ],
+    [
+      "请回复",
+      [
+        "请回复确认是否收到。",
+        "请回复你方便的时间。"
+      ]
+    ],
+    [
+      "请确认",
+      [
+        "请确认一下时间和地点。",
+        "请确认附件是否完整。"
+      ]
+    ],
+    [
+      "请重发",
+      [
+        "请重发一下刚才的消息。",
+        "请重发附件，我这边没收到。"
+      ]
+    ],
+    [
+      "再试一次",
+      [
+        "再试一次看看能否连接。",
+        "再试一次，不行的话稍后再处理。"
+      ]
+    ],
+    [
+      "离线模式",
+      [
+        "离线模式下仍然可以输入。",
+        "离线模式下暂时无法同步。"
+      ]
+    ],
+    [
+      "连接失败",
+      [
+        "连接失败，请检查网络。",
+        "连接失败，可以稍后再试。"
+      ]
+    ],
+    [
+      "连接超时",
+      [
+        "连接超时，请稍后重试。",
+        "连接超时，本地输入仍然可用。"
+      ]
+    ],
+    [
+      "服务不可用",
+      [
+        "服务不可用，请稍后再试。",
+        "服务不可用，先保留当前草稿。"
+      ]
+    ],
+    [
+      "自动保存",
+      [
+        "自动保存已经开启。",
+        "自动保存暂时不可用。"
+      ]
+    ],
+    [
+      "保存失败",
+      [
+        "保存失败，请先保留草稿。",
+        "保存失败，请检查是否有写入权限。"
+      ]
+    ],
+    [
+      "保留原文",
+      [
+        "保留原文，不要自动替换。",
+        "保留原文，稍后再修改。"
+      ]
+    ],
+    [
+      "本地词库",
+      [
+        "本地词库提供基础词句候选。",
+        "本地词库不需要连接模型服务。"
+      ]
+    ],
+    [
+      "洗手间",
+      [
+        "洗手间在哪里？",
+        "洗手间在走廊尽头。"
+      ]
+    ],
+    [
+      "前台",
+      [
+        "前台可以帮忙寄存行李吗？",
+        "前台在入口右边。"
+      ]
+    ],
+    [
+      "失物招领",
+      [
+        "失物招领处在哪里？",
+        "失物招领信息可以在哪里查看？"
+      ]
+    ],
+    [
+      "充电器",
+      [
+        "充电器可以借用一下吗？",
+        "充电器放在包里了。"
+      ]
+    ],
+    [
+      "退款",
+      [
+        "退款大概需要多久？",
+        "退款进度可以在哪里查看？"
+      ]
+    ],
+    [
+      "收据",
+      [
+        "收据可以发给我吗？",
+        "收据请帮我保留一下。"
+      ]
+    ],
+    [
+      "方便",
+      [
+        "方便的时候回我一下。",
+        "方便的话我们明天再聊。"
+      ]
+    ],
+    [
+      "有空",
+      [
+        "有空一起吃个饭。",
+        "有空的时候帮我看一下。"
+      ]
+    ],
+    [
+      "不方便",
+      [
+        "不方便的话我们改天再约。",
+        "不方便接电话，可以发消息。"
+      ]
+    ],
+    [
+      "没空",
+      [
+        "没空的话不用着急回复。",
+        "没空参加，我们下次再约。"
+      ]
+    ],
+    [
+      "忙完",
+      [
+        "忙完了给我发个消息。",
+        "忙完这件事我就过去。"
+      ]
+    ],
+    [
+      "没关系",
+      [
+        "没关系，我们可以再商量。",
+        "没关系，慢慢来。"
+      ]
+    ],
+    [
+      "都可以",
+      [
+        "都可以，你来决定吧。",
+        "都可以，我这边时间比较灵活。"
+      ]
+    ],
+    [
+      "改天",
+      [
+        "改天我们再约个时间。",
+        "改天有空一起吃饭。"
+      ]
+    ],
+    [
+      "顺便",
+      [
+        "顺便帮我带一瓶水。",
+        "顺便确认一下明天的安排。"
+      ]
+    ],
+    [
+      "最近",
+      [
+        "最近有空吗？",
+        "最近比较忙，晚点再回复你。"
+      ]
+    ],
+    [
+      "时间安排",
+      [
+        "时间安排可以再调整一下。",
+        "时间安排确认后发给大家。"
+      ]
+    ],
+    [
+      "时间冲突",
+      [
+        "时间冲突了，可以换个时间吗？",
+        "时间冲突的话我们再协调。"
+      ]
+    ],
+    [
+      "会议链接",
+      [
+        "会议链接已经发到群里了。",
+        "会议链接打不开，麻烦重新发一下。"
+      ]
+    ],
+    [
+      "会议邀请",
+      [
+        "会议邀请已经发送，请查收。",
+        "会议邀请里有具体时间和地点。"
+      ]
+    ],
+    [
+      "待办事项",
+      [
+        "待办事项我会逐项确认。",
+        "待办事项按优先级处理。"
+      ]
+    ],
+    [
+      "任务进度",
+      [
+        "任务进度我会及时同步。",
+        "任务进度需要再确认一下。"
+      ]
+    ],
+    [
+      "任务分工",
+      [
+        "任务分工已经更新了。",
+        "任务分工我们开会确认。"
+      ]
+    ],
+    [
+      "交付时间",
+      [
+        "交付时间需要再协调一下。",
+        "交付时间确定后请通知我。"
+      ]
+    ],
+    [
+      "优先级",
+      [
+        "优先级请再确认一下。",
+        "优先级较高的事项先处理。"
+      ]
+    ],
+    [
+      "验收标准",
+      [
+        "验收标准已经补充到文档里了。",
+        "验收标准需要双方确认。"
+      ]
+    ],
+    [
+      "补充说明",
+      [
+        "补充说明已经放在附件里了。",
+        "补充说明请参考文档最后一节。"
+      ]
+    ],
+    [
+      "问题列表",
+      [
+        "问题列表已经整理好了。",
+        "问题列表里还有几项待确认。"
+      ]
+    ],
+    [
+      "访问权限",
+      [
+        "访问权限不足，麻烦帮我开通。",
+        "访问权限已经申请了。"
+      ]
+    ],
+    [
+      "待审核",
+      [
+        "待审核的内容我已经提交了。",
+        "待审核事项请抽空看一下。"
+      ]
+    ],
+    [
+      "最新版本",
+      [
+        "最新版本已经上传了。",
+        "最新版本请从共享链接下载。"
+      ]
+    ],
+    [
+      "错误提示",
+      [
+        "错误提示能发个截图吗？",
+        "错误提示我已经记录下来了。"
+      ]
+    ],
+    [
+      "网络不稳定",
+      [
+        "网络不稳定，我重新连接一下。",
+        "网络不稳定，可能回复得比较慢。"
+      ]
+    ],
+    [
+      "重新登录",
+      [
+        "重新登录后再试一下。",
+        "重新登录前请先保存草稿。"
+      ]
+    ],
+    [
+      "航班",
+      [
+        "航班延误了，我会晚一点到。",
+        "航班信息确认后发给你。"
+      ]
+    ],
+    [
+      "登机口",
+      [
+        "登机口有变更，请留意通知。",
+        "登机口在哪里？"
+      ]
+    ],
+    [
+      "行李托运",
+      [
+        "行李托运在哪里办理？",
+        "行李托运的费用包含在票价里吗？"
+      ]
+    ],
+    [
+      "随身行李",
+      [
+        "随身行李有重量限制吗？",
+        "随身行李请自己保管好。"
+      ]
+    ],
+    [
+      "换乘时间",
+      [
+        "换乘时间够用吗？",
+        "换乘时间最好再确认一下。"
+      ]
+    ],
+    [
+      "上车点",
+      [
+        "上车点在入口右边。",
+        "上车点的定位发给我一下。"
+      ]
+    ],
+    [
+      "下车点",
+      [
+        "下车点离目的地远吗？",
+        "下车点就在前面的路口。"
+      ]
+    ],
+    [
+      "发定位",
+      [
+        "发定位给我，我跟着导航走。",
+        "发定位后我再确认路线。"
+      ]
+    ],
+    [
+      "营业时间",
+      [
+        "营业时间是几点到几点？",
+        "营业时间需要提前确认一下。"
+      ]
+    ],
+    [
+      "少冰",
+      [
+        "少冰就可以，谢谢。",
+        "少冰，糖放少一点。"
+      ]
+    ],
+    [
+      "无糖",
+      [
+        "无糖的可以吗？",
+        "无糖就好，谢谢。"
+      ]
+    ],
+    [
+      "不要香菜",
+      [
+        "不要香菜，谢谢。",
+        "不要香菜，葱也少放一点。"
+      ]
+    ],
+    [
+      "配料表",
+      [
+        "配料表可以给我看一下吗？",
+        "配料表里有奶制品吗？"
+      ]
+    ],
+    [
+      "打包",
+      [
+        "打包带走，谢谢。",
+        "打包需要另外收费吗？"
+      ]
+    ],
+    [
+      "外带",
+      [
+        "外带的话大概需要等多久？",
+        "外带餐具请给我一套。"
+      ]
+    ],
+    [
+      "取餐",
+      [
+        "取餐的位置在哪里？",
+        "取餐码已经发给你了。"
+      ]
+    ],
+    [
+      "购物清单",
+      [
+        "购物清单我已经列好了。",
+        "购物清单里还有什么要补充的吗？"
+      ]
+    ],
+    [
+      "冰箱",
+      [
+        "冰箱里还有一些蔬菜。",
+        "冰箱里的剩菜记得放好。"
+      ]
+    ],
+    [
+      "洗衣机",
+      [
+        "洗衣机里的衣服洗好了。",
+        "洗衣机用完后记得关电源。"
+      ]
+    ],
+    [
+      "水电费",
+      [
+        "水电费这个月已经交了。",
+        "水电费的账单发给我一下。"
+      ]
+    ],
+    [
+      "今天下午",
+      [
+        "今天下午有空吗？",
+        "今天下午我会把资料发给你。"
+      ]
+    ],
+    [
+      "明天上午",
+      [
+        "明天上午我们再确认一下。",
+        "明天上午方便见面吗？"
+      ]
+    ],
+    [
+      "明天下午",
+      [
+        "明天下午可以安排。",
+        "明天下午我会提前到。"
+      ]
+    ],
+    [
+      "这周末",
+      [
+        "这周末有什么安排？",
+        "这周末有空一起吃饭。"
+      ]
+    ],
+    [
+      "下周一",
+      [
+        "下周一我们再联系。",
+        "下周一之前可以完成。"
+      ]
+    ],
+    [
+      "具体时间",
+      [
+        "具体时间确定后告诉我。",
+        "具体时间还需要再协调。"
+      ]
+    ],
+    [
+      "开始时间",
+      [
+        "开始时间请再确认一下。",
+        "开始时间改到明天下午了。"
+      ]
+    ],
+    [
+      "结束时间",
+      [
+        "结束时间大概是几点？",
+        "结束时间确定后我再安排。"
+      ]
+    ],
+    [
+      "日程安排",
+      [
+        "日程安排已经更新了。",
+        "日程安排可以发给我一下吗？"
+      ]
+    ],
+    [
+      "提前通知",
+      [
+        "提前通知我一下就好。",
+        "提前通知大家，方便安排时间。"
+      ]
+    ],
+    [
+      "临时安排",
+      [
+        "临时安排有变，我晚一点到。",
+        "临时安排我们再协调一下。"
+      ]
+    ],
+    [
+      "生日快乐",
+      [
+        "生日快乐，祝你每天开心。",
+        "生日快乐，希望你一切顺利。"
+      ]
+    ],
+    [
+      "自动续费",
+      [
+        "自动续费可以关闭吗？",
+        "自动续费的日期在哪里查看？"
+      ]
+    ],
+    [
+      "取消订阅",
+      [
+        "取消订阅后请发确认消息。",
+        "取消订阅的入口在哪里？"
+      ]
+    ],
+    [
+      "有效期",
+      [
+        "有效期到什么时候？",
+        "有效期请再帮我确认一下。"
+      ]
+    ],
+    [
+      "付款方式",
+      [
+        "付款方式可以更换吗？",
+        "付款方式有哪些可以选择？"
+      ]
+    ],
+    [
+      "支付失败",
+      [
+        "支付失败了，请帮我确认一下。",
+        "支付失败的原因在哪里查看？"
+      ]
+    ],
+    [
+      "重复扣款",
+      [
+        "重复扣款了，请帮我核对。",
+        "重复扣款的问题已经反馈了。"
+      ]
+    ],
+    [
+      "余额不足",
+      [
+        "余额不足，我换一种支付方式。",
+        "余额不足的提示一直出现。"
+      ]
+    ],
+    [
+      "订单号",
+      [
+        "订单号已经发给你了。",
+        "订单号在哪里可以查看？"
+      ]
+    ],
+    [
+      "订单状态",
+      [
+        "订单状态一直没有更新。",
+        "订单状态麻烦帮我查询一下。"
+      ]
+    ],
+    [
+      "修改地址",
+      [
+        "修改地址还来得及吗？",
+        "修改地址后请帮我确认一下。"
+      ]
+    ],
+    [
+      "配送时间",
+      [
+        "配送时间可以调整吗？",
+        "配送时间确定后请通知我。"
+      ]
+    ],
+    [
+      "物流信息",
+      [
+        "物流信息暂时没有更新。",
+        "物流信息可以发给我一下吗？"
+      ]
+    ],
+    [
+      "快递柜",
+      [
+        "快递柜在哪里？",
+        "快递柜的取件码还没收到。"
+      ]
+    ],
+    [
+      "发货时间",
+      [
+        "发货时间大概是什么时候？",
+        "发货时间请帮我确认一下。"
+      ]
+    ],
+    [
+      "到货时间",
+      [
+        "到货时间能再确认一下吗？",
+        "到货时间比预计晚了一些。"
+      ]
+    ],
+    [
+      "售后服务",
+      [
+        "售后服务在哪里申请？",
+        "售后服务的联系方式发给我一下。"
+      ]
+    ],
+    [
+      "退货地址",
+      [
+        "退货地址请发给我一下。",
+        "退货地址和寄出地址一样吗？"
+      ]
+    ],
+    [
+      "退款申请",
+      [
+        "退款申请已经提交了。",
+        "退款申请的进度在哪里查看？"
+      ]
+    ],
+    [
+      "退款到账",
+      [
+        "退款到账后我再确认一下。",
+        "退款到账的时间可以查询吗？"
+      ]
+    ],
+    [
+      "电子发票",
+      [
+        "电子发票请发到我的邮箱。",
+        "电子发票的抬头需要修改。"
+      ]
+    ],
+    [
+      "保修期",
+      [
+        "保修期还有多久？",
+        "保修期内需要提供哪些材料？"
+      ]
+    ],
+    [
+      "质量问题",
+      [
+        "质量问题已经拍照记录了。",
+        "质量问题可以申请换货吗？"
+      ]
+    ],
+    [
+      "商品破损",
+      [
+        "商品破损了，我把照片发给你。",
+        "商品破损的情况已经反馈了。"
+      ]
+    ],
+    [
+      "人工客服",
+      [
+        "人工客服现在方便处理吗？",
+        "人工客服的入口在哪里？"
+      ]
+    ],
+    [
+      "谢谢关心",
+      [
+        "谢谢关心，我这边一切都好。",
+        "谢谢关心，我会注意的。"
+      ]
+    ],
+    [
+      "请多关照",
+      [
+        "请多关照，以后一起努力。",
+        "请多关照，有问题我会及时沟通。"
+      ]
+    ],
+    [
+      "一路平安",
+      [
+        "一路平安，到了发个消息。",
+        "一路平安，下次再见。"
+      ]
+    ],
+    [
+      "路上小心",
+      [
+        "路上小心，不用着急。",
+        "路上小心，到家告诉我。"
+      ]
+    ],
+    [
+      "明天见",
+      [
+        "明天见，记得带上资料。",
+        "明天见，早点休息。"
+      ]
+    ],
+    [
+      "下周见",
+      [
+        "下周见，我们到时再聊。",
+        "下周见，时间确定后联系。"
+      ]
+    ],
+    [
+      "有事联系",
+      [
+        "有事联系我就好。",
+        "有事联系，不用客气。"
+      ]
+    ],
+    [
+      "注意休息",
+      [
+        "注意休息，别太累了。",
+        "注意休息，有空再回复就好。"
+      ]
+    ],
+    [
+      "我觉得",
+      [
+        "我觉得这个安排可以。",
+        "我觉得还需要再确认一下。"
+      ]
+    ],
+    [
+      "我同意",
+      [
+        "我同意这个方案。",
+        "我同意，我们按这个安排。"
+      ]
+    ],
+    [
+      "再考虑一下",
+      [
+        "再考虑一下，确定后告诉你。",
+        "再考虑一下也没关系。"
+      ]
+    ],
+    [
+      "不确定",
+      [
+        "不确定的话我们再核对一下。",
+        "不确定具体情况，我先确认一下。"
       ]
     ]
   ]

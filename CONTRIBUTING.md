@@ -57,6 +57,7 @@ Run the paired offline input-quality gates without a model:
 ```bash
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
 cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
+cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 ```
 
 The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
@@ -72,7 +73,13 @@ spellings, straight/curly-apostrophe contractions, five Pinyin spellings, same-s
 short/long adopted drafts with literal padding. Synthetic tone digits test boundaries, not
 pronunciation; numeric key entry still follows the IME's literal-digit path. Lexicon unit checks
 retain every pre-expansion English rank and
-validate authored table uniqueness and reachability. Use `--all-features`
+validate authored table uniqueness and reachability. The fallback gate checks 36 English and
+36 Chinese everyday scenarios (Chinese in four spellings), 30 standalone English word forms,
+four unfinished Pinyin syllables, case/spacing/apostrophe variants, long drafts and synthetic
+typed provider errors.
+The native gate separately exercises actual loopback HTTP 503/deadline failures in both
+languages: local candidates stay available while pending and after failure, with numeric adoption,
+undo, Space continuity and exact commits. No live model quality is inferred. Use `--all-features`
 for these project checks, matching CI; bare `cargo test` does not enable the required GPU/platform
 modules. If a restricted agent session reports an unconfigured Rust installation, first compare
 `rustup show` and `cargo --version` with the host terminal before reinstalling or changing defaults.
@@ -157,7 +164,7 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
-The `vocabulary` gate exercises twelve offline English/Chinese writing workflows in the real
+The `vocabulary` gate exercises thirty-six offline English/Chinese writing workflows in the real
 GTK editor: physical spelling, word/sentence labels, numeric adoption, exact undo, Space
 continuation and saved word/sentence commits. It uses no companion-seeded text or live model.
 To validate a user-local installation instead of rebuilding debug binaries, set

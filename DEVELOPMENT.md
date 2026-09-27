@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.7.3 — Vocabulary resources and in-memory candidate preferences**.
+Current source version: **0.7.4 — Reliable model fallback and broader bilingual vocabulary**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -18,10 +18,47 @@ equate eight interface languages with eight complete native input systems. Mixed
 broader vocabulary and real-model latency/quality still need work. Treat input-state correctness,
 authored offline examples and real-model quality as separate acceptance gates.
 
+The [local lexicon](data/lexicons/README.md) is the fallback when model capabilities are
+unavailable, not a substitute for open-ended model generation. Publish local candidates immediately,
+including while prediction is pending; disabled, missing, failed, timed-out or empty providers must
+not block basic word/sentence adoption, editing or exact commits. Prioritize high-frequency gaps
+over corpus size, preserve old ranks, and keep vocabulary data independent of model and host code.
+
 The paired [English](tests/english_completion_quality.rs) and
 [Chinese](tests/chinese_completion_quality.rs) regression suites provide a reproducible starting point,
 not a general language-quality score. The first follow-up fixes separated Pinyin within existing
 dictionary entries; see the [N47 audit](docs/bug-audit-bilingual-core-2026-09-24.md).
+
+## Release requirement starting with 0.8.0
+
+Version releases starting with **0.8.0** must include downloadable Linux packages in the
+corresponding GitHub Release, not only source tags or expiring CI artifacts. Initially target
+the validated Ubuntu 24.04 / amd64 baseline: attach the `.deb`, binary `.tar.gz` and matching
+SHA-256 checksum files, with installation/upgrade instructions and known limitations.
+Build from the exact, clean tagged source; require the same commit's CI, package-content
+checks and clean-container installation checks to pass before publication. Other platforms
+are added only after their own acceptance, not implied by the shared version number.
+This is a release requirement, not a claim that automatic publication is implemented or
+that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.7.4 — Reliable model fallback and broader bilingual vocabulary
+
+- Adds three independent fallback vocabulary layers: 658 explicit English forms, 488 Chinese
+  readings and 272 short sentences in each language. The English index grows to 5,934 forms;
+  Chinese reaches 1,631 readings. Old base ranks, homophone order and Japanese data are preserved.
+- Covers everyday clarification, work/travel, time arrangements, shopping/after-sales and common
+  verb forms. Local candidates appear immediately with or without a model; this is bounded authored
+  fallback, not open-ended generation, a downloaded corpus or runtime dictionary import.
+- Fixes N57: a full model response could discard a learned local sentence before applying its
+  preference bonus. Ranking now precedes the final cutoff within the existing bounded merge pool;
+  final capacity, word/sentence quotas, typing anchors and explicit selection locks stay unchanged.
+- Extends offline regression cases to 36 per language, real GTK vocabulary workflows to 36, and
+  actual HTTP 503/deadline cases to 12 per native mode. Tests retain literal spacing, adoption undo,
+  continued drafts and exact commits without changing the original suite deadlines.
+
+See the [0.7.4 release notes](docs/releases/0.7.4.md),
+[fallback vocabulary record](docs/ibus-candidates.md#模型不可用时的本地兜底词库) and
+[N57 preference/model audit](docs/bug-audit-preference-model-2026-09-27.md).
 
 ### 0.7.3 — Vocabulary resources and in-memory candidate preferences
 

@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.7.3 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.7.4 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **In-memory candidate preferences (0.7.3):** Linux/IBus now ranks existing
@@ -9,6 +9,9 @@ does not imply cross-platform stability. Keep another input method available.
   forgets them. Private fields bypass learning/ranking, and the tray can clear the cache.
   Other hosts retain their existing candidate policy. No installation is changed by this source
   addition. See [frequency cache](ibus-candidates.md#偏好频率缓存).
+  0.7.4 fixes early removal of learned local sentences when a full model response arrives;
+  the bounded merge pool is ranked before its final cutoff. This does not broaden cache scope,
+  persist preferences or qualify actual model quality. See the [N57 audit](bug-audit-preference-model-2026-09-27.md).
 
 - **App compatibility:** focus/preedit behavior needs broader desktop testing. Do not rely on an
   Alpha input method as the only way to enter essential credentials.
@@ -96,6 +99,12 @@ does not imply cross-platform stability. Keep another input method available.
   resources behind a model/platform-independent data interface. Resources are still embedded:
   editing them requires rebuilding/reinstalling, not hot reload or personal-dictionary import.
   See the [data contract](../data/lexicons/README.md).
+  0.7.4 adds three fallback expansions, bringing the totals to 5,934 indexed English forms,
+  1,631 Chinese readings and 510 / 528 authored English / Chinese sentences. Disabled, absent
+  or failing models do not block these local choices. The 36 real GTK workflows use source-built
+  programs in private sessions, not the older personal installation or an independent language
+  benchmark. Japanese data, old ranks and input/model budgets remain unchanged; see
+  [fallback vocabulary](ibus-candidates.md#模型不可用时的本地兜底词库).
   Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
   Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,

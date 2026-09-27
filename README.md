@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.7.3 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.7.4 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -15,6 +15,9 @@ as a fallback. Other platforms remain experimental.
 - English-first completion, Chinese Pinyin and Japanese Romaji/Kana with small offline vocabularies.
   Word and phrase/sentence candidates appear together when available; English continuations use
   the preceding phrase and preserve straight/curly apostrophes.
+- The [local vocabulary](data/lexicons/README.md) is an immediate fallback when optional models
+  are disabled, missing or failing. It covers common words and authored short sentences, not
+  open-ended generation; local choices remain usable while model requests are pending.
 - Continuous drafts: spaces and punctuation keep writing open; Enter or a candidate click submits.
   Labels distinguish candidate type, model origin and ranking weight, not confidence.
 - Linux dead-key/Compose sequences produce editable accents and symbols using the system Compose
@@ -28,12 +31,13 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.7.3 expands everyday English/Chinese vocabulary and separates vocabulary data from decoders
-and model providers. **In-memory candidate preferences** learn confirmed choices, decay over time,
-and can be cleared from the tray; private fields neither learn nor use them. No typed history is
-saved, and restarting the host forgets preferences. Ctrl+Shift+Space language switching, Space
-continuity and explicit submission remain unchanged. See the [release notes](docs/releases/0.7.3.md)
-for validation, vocabulary counts and scope.
+0.7.4 expands the model-independent local fallback to **5,934 indexed English forms and 1,631
+Chinese readings**, with more everyday word and sentence choices. It also keeps learned local
+sentences available when a full model response arrives: preference ranking happens before the
+final candidate cutoff. **In-memory candidate preferences** still learn only confirmed choices,
+decay over time and can be cleared from the tray; no typed history is saved. Ctrl+Shift+Space,
+Space continuity and explicit submission remain unchanged. See the [release notes](docs/releases/0.7.4.md)
+for validation and scope.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -41,12 +45,14 @@ speech and application compatibility. This is not a replacement for a full Chine
 ## Install the Linux preview
 
 Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu-kiryu/Suzaku-map/releases).
-Source tags can precede downloadable packages; use a release with attached packages or build from
-source. Once the matching 0.7.3 package is available, in the download directory on Ubuntu 24.04 amd64:
+For 0.7.x, source tags can precede downloadable packages; use a release with attached packages or
+build from source. Starting with **0.8.0**, downloadable Linux packages and checksums are a
+[release requirement](docs/linux-packaging-data.md#从-080-开始的发布要求).
+Once the matching 0.7.4 package is available, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.7.3_amd64.deb.sha256
-sudo apt install ./suzaku_0.7.3_amd64.deb
+sha256sum -c suzaku_0.7.4_amd64.deb.sha256
+sudo apt install ./suzaku_0.7.4_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -140,12 +146,12 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.3 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.4 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — EN/ZH toggle, opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.7.3 release notes](docs/releases/0.7.3.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.7.4 release notes](docs/releases/0.7.4.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

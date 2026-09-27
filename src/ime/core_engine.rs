@@ -646,7 +646,11 @@ impl XRTabletImeEngine {
                 &self.state.seed_text,
                 local,
                 completions,
-                self.config.max_candidates,
+                // Merge at most 12 local candidates plus six model replies
+                // and their derived words. Keep that whole bounded pool until
+                // preferences are applied, or a learned sentence can vanish
+                // before its bonus gets a chance to affect the final cutoff.
+                usize::MAX,
             );
             self.prediction_status = if accepted {
                 PredictionStatus::Ready
@@ -755,6 +759,7 @@ impl XRTabletImeEngine {
             &self.state.seed_text,
             std::mem::take(&mut self.state.candidates),
             freeze_anchors,
+            self.config.max_candidates,
             |candidate| {
                 self.preferences.bonus(
                     &self.state.active_language,

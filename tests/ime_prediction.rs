@@ -159,6 +159,176 @@ fn learned_chinese_anchor_is_the_model_prefix_and_explicit_selection_stays_froze
     assert_eq!(engine.candidates(), frozen);
 }
 
+fn assert_learned_sentence_survives_model_batch(
+    language: &str,
+    seed: &str,
+    target: &str,
+    completions: &[&str],
+) {
+    use suzaku_map::ime::candidate_mix::{CandidateKind, CandidateSource, PAGE_SIZE};
+    let mut engine = XRTabletImeEngine::new(EngineConfig {
+        default_language: language.into(),
+        ..Default::default()
+    });
+    engine.enable_ibus_candidate_mix();
+    for _ in 0..8 {
+        engine.seed(seed);
+        let index = engine
+            .candidates()
+            .iter()
+            .position(|c| c.text == target && c.kind == CandidateKind::Sentence)
+            .unwrap();
+        engine.select_candidate(index);
+        assert!(engine.commit(CommitOptions { force: true }).ok);
+        engine.clear_session_context();
+    }
+    assert_eq!(engine.preference_count(), 1);
+    let (requests_tx, requests) = mpsc::channel();
+    let (replies, replies_rx) = mpsc::channel();
+    engine.configure_prediction(Some(Arc::new(ControlledProvider {
+        requests: requests_tx,
+        replies: Mutex::new(replies_rx),
+    })));
+    engine.seed(seed);
+    let anchors: Vec<_> = engine.candidates()[..if language == "en" { 2 } else { 1 }]
+        .iter()
+        .map(|c| c.text.clone())
+        .collect();
+    assert!(
+        engine.candidates()[..PAGE_SIZE]
+            .iter()
+            .any(|c| c.text == target)
+    );
+    requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(completions.len(), 6);
+    replies
+        .send(
+            completions
+                .iter()
+                .map(|text| LlmCompletion {
+                    text: (*text).into(),
+                    kind: Some(CandidateKind::Sentence),
+                    score_bias: 1.0,
+                })
+                .collect(),
+        )
+        .unwrap();
+    settle(&mut engine);
+    assert_eq!(engine.prediction_status(), PredictionStatus::Ready);
+    assert!(
+        engine
+            .candidates()
+            .iter()
+            .take(PAGE_SIZE)
+            .any(|c| c.text == target),
+        "learned {language} sentence vanished from page one after a full model batch: {:?}",
+        engine.candidates()
+    );
+    assert_eq!(
+        engine
+            .candidates()
+            .iter()
+            .find(|c| c.kind == CandidateKind::Sentence)
+            .unwrap()
+            .text,
+        target
+    );
+    for (index, anchor) in anchors.iter().enumerate() {
+        assert_eq!(&engine.candidates()[index].text, anchor);
+    }
+    assert!(engine.candidates().iter().any(|c| c.text == seed));
+    assert!(engine.candidates().len() <= 12);
+    assert!(
+        engine
+            .candidates()
+            .iter()
+            .all(|c| (0.0..=100.0).contains(&c.score))
+    );
+    let page = &engine.candidates()[..PAGE_SIZE];
+    for kind in [CandidateKind::Word, CandidateKind::Sentence] {
+        assert!(page.iter().filter(|c| c.kind == kind).count() >= 2);
+    }
+    assert!(page.iter().any(|c| c.source == CandidateSource::Model));
+    assert_eq!(
+        engine.preference_count(),
+        1,
+        "displaying results must not learn"
+    );
+}
+
+#[test]
+fn learned_english_sentence_survives_full_model_batch() {
+    assert_learned_sentence_survives_model_batch(
+        "en",
+        "hel",
+        "hello, nice to meet you.",
+        &[
+            "hello from the new model.",
+            "help with the new task.",
+            "helmet straps should be secure.",
+            "held a meeting yesterday.",
+            "helium is lighter than air.",
+            "helicopter flights need careful planning.",
+        ],
+    );
+}
+
+#[test]
+fn learned_chinese_sentence_survives_full_model_batch() {
+    assert_learned_sentence_survives_model_batch(
+        "zh-Hans",
+        "nihao",
+        "你好，请问有什么可以帮忙？",
+        &[
+            "你好，今天有什么安排？",
+            "你好，我们明天再联系。",
+            "你好，资料已经收到了。",
+            "你好，请确认一下时间。",
+            "你好，欢迎参加这次会议。",
+            "你好，祝你今天一切顺利。",
+        ],
+    );
+}
+
+#[test]
+fn unlearned_model_batches_keep_the_existing_bounded_candidate_policy() {
+    use suzaku_map::ime::candidate_mix::{CandidateKind, merge_model};
+    for (language, seed, prefix) in [
+        ("en", "hel", "hello"),
+        ("en", "qzx", "qzx"),
+        ("zh-Hans", "nihao", "你好"),
+        ("zh-Hans", "shijian", "时间"),
+        ("ja", "nihongo", "日本語"),
+    ] {
+        let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
+            default_language: language.into(),
+            ..Default::default()
+        });
+        engine.enable_ibus_candidate_mix();
+        engine.seed(seed);
+        let batch: Vec<_> = (0..6)
+            .map(|index| LlmCompletion {
+                text: format!("{prefix} model sentence {index}."),
+                kind: Some(CandidateKind::Sentence),
+                score_bias: index as f32 / 5.0,
+            })
+            .collect();
+        let (expected, accepted) = merge_model(
+            language,
+            seed,
+            engine.candidates().to_vec(),
+            batch.clone(),
+            12,
+        );
+        assert!(accepted);
+        requests.recv_timeout(Duration::from_secs(2)).unwrap();
+        replies.send(batch).unwrap();
+        settle(&mut engine);
+        assert_eq!(engine.candidates(), expected, "{language} {seed}");
+        assert_eq!(engine.preference_count(), 0);
+    }
+}
+
 #[test]
 fn slow_model_does_not_block_typing_and_never_replaces_primary_candidate() {
     let (mut engine, requests, replies) = controlled();

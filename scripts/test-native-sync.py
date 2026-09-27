@@ -33,6 +33,17 @@ processes = []
 watchers = []
 model_requests = []
 model_reply_gates = {}
+preference_sentence_batches = {
+    "en": ("hel", "hello, nice to meet you.", [
+        "hello from the new model.", "help with the new task.",
+        "helmet straps should be secure.", "held a meeting yesterday.",
+        "helium is lighter than air.", "helicopter flights need careful planning.",
+    ]),
+    "zh-Hans": ("nihao", "你好，请问有什么可以帮忙？", [
+        "你好，今天有什么安排？", "你好，我们明天再联系。", "你好，资料已经收到了。",
+        "你好，请确认一下时间。", "你好，欢迎参加这次会议。", "你好，祝你今天一切顺利。",
+    ]),
+}
 
 
 class ModelFixture(BaseHTTPRequestHandler):
@@ -53,6 +64,19 @@ class ModelFixture(BaseHTTPRequestHandler):
                     gate["cancelled_at"] = time.monotonic()
                     gate["finished"].set()
                     return
+        if request["model"].startswith("synthetic-fallback-"):
+            # The same gate exposes Pending first. Releasing it returns a real
+            # HTTP error; leaving it closed must expire the provider's deadline.
+            try:
+                self.send_response(503)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                if gate is not None:
+                    gate["finished"].set()
+            return
         time.sleep(0.08)
         candidates = [
             {"text": text, "kind": kind} for text, kind in [
@@ -88,6 +112,9 @@ class ModelFixture(BaseHTTPRequestHandler):
             candidates = [{"text": text, "kind": "sentence"} for text in [
                 local, local.strip() + suffix, local + suffix + "  ", local + "新" * 161,
             ]]
+        if request["model"] == "synthetic-preference-batch":
+            candidates = [{"text": text, "kind": "sentence"}
+                          for text in preference_sentence_batches[input_data["language"]][2]]
         body = json.dumps({"choices": [{"message": {"content": json.dumps({"candidates": candidates})}}]}).encode()
         try:
             self.send_response(200)
@@ -3172,6 +3199,177 @@ def check_preference_learning(context, watch, commits):
     print("PASS: memory-only frequency learning: numeric/Shift+Enter/Space/companion adoption, undo/cancel/focus/privacy, exact commit, ranking, identifier boundaries and no-I/O clear")
 
 
+def check_preference_model_batches(context, watch, commits, lookup):
+    """Learned local sentences compete before the bounded model/display cutoff."""
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+
+    def start(seed):
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "preference/model draft reset")
+        type_seed(context, seed)
+        wait(lambda: watch.latest["seed"] == seed, "preference/model spelling")
+
+    def adopt(target):
+        index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == target)
+        assert index < 6, (target, watch.latest)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == target, "learned sentence remains editable")
+
+    def model_ready(seed):
+        return (watch.latest["seed"] == seed
+                and any(c["source"] == "model" for c in watch.latest["candidates"]))
+
+    try:
+        for language, (seed, target, _) in preference_sentence_batches.items():
+            assert json.loads(command("P0"))["ok"]
+            assert json.loads(command("L" + language))["ok"]
+            assert json.loads(command("F"))["ok"]
+            for _ in range(8):
+                start(seed)
+                before = len(commits)
+                adopt(target)
+                assert len(commits) == before
+                assert context.process_key_event(IBus.KEY_Return, 0, 0)
+                wait(lambda: commits[before:] == [target] and not watch.latest["seed"],
+                     "exact offline preference training commit")
+            assert json.loads(command("S"))["preferences"]["entries"] == 1
+            start(seed)
+            anchors = [c["text"] for c in watch.latest["candidates"][:2 if language == "en" else 1]]
+            settings = dict(saved, language=language, llm_enabled=True,
+                            llm_model="synthetic-preference-batch", llm_timeout_ms=2000,
+                            llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+            config.write_text(json.dumps(settings))
+            assert json.loads(command("R"))["ok"]
+            wait(lambda: model_ready(seed), "full model batch after offline preference training")
+            candidates = watch.latest["candidates"]
+            assert len(candidates) <= 12
+            assert [c["text"] for c in candidates[:len(anchors)]] == anchors
+            assert any(c["text"] == seed for c in candidates)
+            assert next(c["text"] for c in candidates if c["kind"] == "sentence") == target, candidates
+            for kind in ["word", "sentence"]:
+                assert sum(c["kind"] == kind for c in candidates[:6]) >= 2
+            check_candidate_presentation(watch, lookup)
+            before = len(commits)
+            adopt(target)
+            assert len(commits) == before
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: model_ready(seed), "model batch after exact learned-sentence undo")
+            assert len(commits) == before
+            assert json.loads(command("S"))["preferences"]["entries"] == 1
+            adopt(target)
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [target] and not watch.latest["seed"],
+                 "learned sentence sends exact text, never labels or weights")
+            assert json.loads(command("F"))["ok"]
+            start(seed)
+            wait(lambda: model_ready(seed), "default full model batch after clearing preferences")
+            assert next(c["text"] for c in watch.latest["candidates"]
+                        if c["kind"] == "sentence") != target
+            assert json.loads(command("S"))["preferences"]["entries"] == 0
+            print(f"PASS: {language} learned sentence survives a full HTTP model batch; anchors, quotas, numeric adoption, undo, exact commit and clear")
+    finally:
+        context.reset()
+        config.write_text(json.dumps(saved))
+        assert json.loads(command("R"))["ok"]
+        assert json.loads(command("F"))["ok"]
+
+
+def check_model_unavailable_vocabulary(context, watch, commits, lookup):
+    """Real HTTP failures/timeouts keep the immediate local input path usable."""
+    saved = json.loads(command("S"))["settings"]
+    assert not saved["llm_enabled"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    cases = [
+        ("en", "could you speak more slo", "could you speak more slowly",
+         "could you speak more slowly?"),
+        ("zh-Hans", "qing shao deng", "请稍等", "请稍等，我查一下。"),
+        ("en", "please grant me acc", "please grant me access",
+         "please grant me access to this document."),
+        ("zh-Hans", "shi jian an pai", "时间安排", "时间安排可以再调整一下。"),
+        ("en", "when does the subscription exp", "when does the subscription expire",
+         "when does the subscription expire?"),
+        ("zh-Hans", "dian zi fa piao", "电子发票", "电子发票请发到我的邮箱。"),
+    ]
+
+    def start(seed):
+        context.reset()
+        wait(lambda: not watch.latest["seed"], "fallback draft reset")
+        type_seed(context, seed)
+        wait(lambda: watch.latest["seed"] == seed, "fallback physical spelling")
+
+    def adopt(target):
+        index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == target)
+        assert index < 6, (target, watch.latest)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == target, "fallback numeric adoption stays editable")
+
+    try:
+        for language, seed, word, sentence in cases:
+            for failure in ["http-503", "timeout"]:
+                name = f"synthetic-fallback-{language}-{failure}"
+                gate = {key: threading.Event() for key in ["received", "release", "finished"]}
+                model_reply_gates[name] = gate
+                try:
+                    assert json.loads(command("P0"))["ok"]
+                    assert json.loads(command("L" + language))["ok"]
+                    assert json.loads(command("F"))["ok"]
+                    start(seed)
+                    local = watch.latest["candidates"]
+                    for target, kind in [(word, "word"), (sentence, "sentence")]:
+                        assert any(c["text"] == target and c["kind"] == kind
+                                   for c in local[:6]), (seed, target, local)
+                    assert all(c["source"] == "local" for c in local)
+                    before = len(commits)
+                    settings = dict(saved, language=language, llm_enabled=True, llm_model=name,
+                                    llm_timeout_ms=500,
+                                    llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+                    config.write_text(json.dumps(settings))
+                    assert json.loads(command("R"))["ok"]
+                    wait(gate["received"].is_set, "fallback request reached the HTTP fixture")
+                    assert json.loads(command("S"))["prediction"] == "Pending"
+                    assert watch.latest["seed"] == seed and watch.latest["candidates"] == local
+                    if failure == "http-503":
+                        gate["release"].set()
+                    wait(lambda: json.loads(command("S"))["prediction"] == "Unavailable",
+                         "failed model publishes Unavailable without removing local candidates")
+                    error = json.loads(command("S"))["prediction_error"]
+                    assert ("超时" if failure == "timeout" else "返回错误") in error, error
+                    wait(gate["finished"].is_set, "failed HTTP fixture completed")
+                    if failure == "timeout":
+                        assert "cancelled_at" in gate, "deadline did not close the HTTP socket"
+                    assert watch.latest["seed"] == seed and watch.latest["candidates"] == local
+                    check_candidate_presentation(watch, lookup)
+                    adopt(word)
+                    assert len(commits) == before
+                    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                    wait(lambda: watch.latest["seed"] == seed, "exact fallback spelling undo")
+                    adopt(sentence)
+                    assert len(commits) == before
+                    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+                    wait(lambda: commits[before:] == [sentence] and not watch.latest["seed"],
+                         "unavailable model cannot block exact fallback sentence commit")
+                    start(seed)
+                    adopt(word)
+                    assert context.process_key_event(IBus.KEY_space, 0, 0)
+                    wait(lambda: watch.latest["seed"] == word + " ", "fallback Space preserves the stream")
+                    assert commits[before:] == [sentence]
+                    assert context.process_key_event(IBus.KEY_Return, 0, 0)
+                    wait(lambda: commits[before:] == [sentence, word + " "] and not watch.latest["seed"],
+                         "fallback word and literal Space commit exactly")
+                    print(f"PASS: {language} {failure}: immediate local word/sentence candidates survive Pending/Unavailable; numeric adoption, undo, Space and exact commits")
+                finally:
+                    assert json.loads(command("P0"))["ok"]
+                    gate["release"].set()
+                    model_reply_gates.pop(name, None)
+    finally:
+        context.reset()
+        config.write_text(json.dumps(saved))
+        assert json.loads(command("R"))["ok"]
+        assert json.loads(command("F"))["ok"]
+
+
 def check_bilingual_literal_boundaries(context, watch, commits):
     """N48/N51: preserve literal text, numbers and punctuation around Pinyin."""
     assert not json.loads(command("S"))["settings"]["llm_enabled"]
@@ -4459,6 +4657,8 @@ try:
     check_english_writing_flow(other, watch, other_commits, other_lookup)
     check_numeric_field_routing(other, watch, other_commits)
     check_preference_learning(other, watch, other_commits)
+    check_preference_model_batches(other, watch, other_commits, other_lookup)
+    check_model_unavailable_vocabulary(other, watch, other_commits, other_lookup)
     type_seed(other, "hel")
     # A deterministic local model fixture tests asynchronous publication, not model quality.
     settings = json.loads(command("S"))["settings"]

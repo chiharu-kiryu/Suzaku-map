@@ -309,11 +309,14 @@ pub fn merge_model(
 
 /// Preferences only rank candidates already supplied by a decoder/provider.
 /// Literal input, word/sentence quotas and async typing anchors remain intact.
+/// Apply the display limit after the bonus, never before a learned choice can
+/// compete with the rest of the bounded provider pool.
 pub(crate) fn personalize(
     language: &str,
     seed: &str,
     mut pool: Vec<Candidate>,
     freeze_anchors: bool,
+    limit: usize,
     bonus: impl Fn(&Candidate) -> f32,
 ) -> Vec<Candidate> {
     let mut changed = false;
@@ -325,7 +328,12 @@ pub(crate) fn personalize(
         }
     }
     if !changed {
-        return pool;
+        return if pool.len() > limit {
+            let pinned = pinned_count(language, &pool);
+            balance(pool, pinned, limit)
+        } else {
+            pool
+        };
     }
     if !freeze_anchors {
         // English preserves the literal row; CJK may learn a preferred word
@@ -345,7 +353,6 @@ pub(crate) fn personalize(
         }
     }
     let pinned = pinned_count(language, &pool);
-    let limit = pool.len();
     let mut pool = balance(pool, pinned, limit);
     // Sort with the full bonus first, then clamp presentation weights. Otherwise
     // a default weight of 100 could never be displaced by a learned conversion.

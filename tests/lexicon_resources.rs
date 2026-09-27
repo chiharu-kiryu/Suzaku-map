@@ -153,15 +153,20 @@ fn resource_and_text_limits_are_checked_before_consumption() {
 #[test]
 fn migrated_readings_preserve_every_original_position_and_flag() {
     // FNV-1a snapshots taken from the original Rust tables, not the loader's
-    // output. Reordering homophones or losing mandatory boundaries must fail.
+    // output. New readings can be appended; reordering the original homophones
+    // or losing mandatory boundaries must still fail against the old hashes.
     for (language, count, expected) in [
         ("zh-Hans", 1143, 0x6e3c269b699b4a76_u64),
+        // Also freeze the first fallback expansion before appending conversation data.
+        ("zh-Hans", 1254, 0xfbccf5600288d524_u64),
+        // And freeze conversation before appending the essentials expansion.
+        ("zh-Hans", 1428, 0x07099ff30fb19027_u64),
         ("ja", 26, 0xf2e1aa0ec03a7e38_u64),
     ] {
         let entries = builtin(language).unwrap().readings();
-        assert_eq!(entries.len(), count);
+        assert!(entries.len() >= count);
         let mut hash = 0xcbf29ce484222325_u64;
-        for entry in entries {
+        for entry in entries.iter().take(count) {
             let kind = match entry.kind {
                 EntryKind::Word => "word",
                 EntryKind::Sentence => "sentence",
@@ -180,18 +185,21 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
         }
         assert_eq!(
             hash, expected,
-            "{language} migration changed existing data/rank"
+            "{language} first {count} readings changed existing data/rank"
         );
     }
-    assert_eq!(builtin("en").unwrap().next_words().count(), 137);
-    assert_eq!(builtin("en").unwrap().sentences().count(), 238);
+    assert_eq!(builtin("en").unwrap().next_words().count(), 273);
+    assert_eq!(builtin("en").unwrap().sentences().count(), 510);
+    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 1631);
+    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 265);
     assert_eq!(
         builtin("zh-Hans")
             .unwrap()
             .continuations()
             .map(|(_, values)| values.len())
             .sum::<usize>(),
-        256
+        528
     );
+    assert_eq!(builtin("ja").unwrap().readings().len(), 26);
     assert_eq!(builtin("ja").unwrap().continuations().count(), 14);
 }
