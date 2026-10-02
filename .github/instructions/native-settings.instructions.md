@@ -14,3 +14,7 @@ Treat an empty acknowledgement as unconfirmed, not as proof of an outdated host 
 
 Native chords arrive as modifier presses, the command key, repeats and releases, not just a single key plus a modifier mask: test both complete-chord IBus calls and physical XTest sequences on an owned display.
 For example, pure Ctrl/Shift presses must leave a pending Compose sequence intact until the command key is known, and a held Ctrl+Shift+Space must remain one-shot even after Ctrl/Shift are released first; never change the desktop keymap or lock LEDs to implement this.
+
+In native fixtures, an already-empty draft is not acknowledgement of an asynchronous IBus `Reset`.
+Capture the previous companion context and require both its increase and an empty draft before sending a replacement over the separate companion socket; otherwise a pending reset can erase the new prefix.
+Keep the existing deadline and exact-text assertions instead of adding sleeps or retries; see the [English boundary audit](../../docs/bug-audit-english-context-2026-09-28.md).

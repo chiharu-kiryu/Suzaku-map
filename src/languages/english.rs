@@ -171,14 +171,29 @@ fn case_completion(word: &str, prefix: &str) -> String {
     )
 }
 
+// Horizontal padding can join authored words; a new line or paragraph cannot.
+// Keep byte boundaries correct for NEL / Unicode line and paragraph separators.
+fn current_line(text: &str) -> &str {
+    text.char_indices()
+        .rfind(|(_, ch)| {
+            matches!(
+                ch,
+                '\n' | '\r' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+            )
+        })
+        .map_or(text, |(index, ch)| &text[index + ch.len_utf8()..])
+}
+
 fn context_word_match(context: &str) -> (usize, &'static [String]) {
-    let boundary = context
-        .rfind(['.', '?', '!', ';', '\n', '\r'])
-        .map_or(0, |i| i + 1);
-    let normalized = context[boundary..]
+    let normalized = current_line(context)
         .split_whitespace()
         .map(|word| {
-            canonical_word(word.trim_matches(|c: char| !c.is_alphabetic() && c != '\'' && c != '’'))
+            // Only ordinary phrase wrappers/separators may be ignored. Keeping
+            // digits, symbols and sentence punctuation also prevents a period
+            // inside `example.hello` from exposing a false `hello` collocation.
+            canonical_word(
+                word.trim_matches(['(', ')', '[', ']', '{', '}', '"', '“', '”', '‘', ',', ':']),
+            )
         })
         .collect::<Vec<_>>()
         .join(" ");
@@ -200,7 +215,14 @@ fn bounded_context(context: &str) -> &str {
         .rev()
         .nth(159)
         .map_or(0, |(index, _)| index);
-    &context[start..]
+    let tail = &context[start..];
+    if start == 0 || context[..start].ends_with(char::is_whitespace) {
+        tail
+    } else {
+        // Discard a token cut by the 160-scalar budget instead of treating its
+        // suffix as a fresh word. Preserve any following whitespace/line break.
+        &tail[tail.find(char::is_whitespace).unwrap_or(tail.len())..]
+    }
 }
 
 fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
@@ -365,6 +387,7 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
         return Vec::new();
     }
     let combined = format!("{} {seed}", bounded_context(context));
+    let combined = current_line(&combined);
     let mut boundary = true;
     let starts: Vec<_> = combined
         .char_indices()
@@ -809,7 +832,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 912);
-        assert_eq!(dictionary().len(), 5934);
+        assert_eq!(dictionary().len(), 6004);
     }
 
     #[test]
@@ -844,7 +867,7 @@ mod tests {
             );
         }
         assert_eq!(additions.len(), 419);
-        assert_eq!(dictionary().len(), 5934);
+        assert_eq!(dictionary().len(), 6004);
         for invented in [
             "sweeped",
             "oversleeped",
@@ -883,7 +906,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 153);
-        assert_eq!(dictionary().len(), 5934);
+        assert_eq!(dictionary().len(), 6004);
         let layer = &vocabulary().word_layers()[4];
         assert_eq!(layer.id, "fallback");
         assert_eq!(layer.next_words.len(), 40);
@@ -939,7 +962,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 184);
-        assert_eq!(dictionary().len(), 5934);
+        assert_eq!(dictionary().len(), 6004);
         let layer = &vocabulary().word_layers()[5];
         assert_eq!(layer.id, "conversation");
         assert_eq!(layer.next_words.len(), 48);
@@ -992,11 +1015,64 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 321);
-        assert_eq!(dictionary().len(), 5934);
+        assert_eq!(dictionary().len(), 6004);
         let layer = &vocabulary().word_layers()[6];
         assert_eq!(layer.id, "essentials");
         assert_eq!(layer.next_words.len(), 48);
         assert_eq!(layer.sentences.len(), 96);
+    }
+
+    #[test]
+    fn clarity_tier_preserves_essentials_ranks_and_explicit_word_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..7]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 5934);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured from the complete 0.7.4 index before this append-only layer.
+        // Keep all earlier snapshots rather than replacing their baselines.
+        assert_eq!(count, 5934);
+        assert_eq!(hash, 0x9155820a5fb26b42);
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("clarity") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate clarity word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 58);
+        assert_eq!(dictionary().len(), 6004);
+        let layer = &vocabulary().word_layers()[7];
+        assert_eq!(layer.id, "clarity");
+        assert_eq!(layer.next_words.len(), 40);
+        assert_eq!(layer.sentences.len(), 80);
     }
 
     #[test]
@@ -1038,8 +1114,8 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 273);
-        assert_eq!(sentences.len(), 510);
+        assert_eq!(keys.len(), 313);
+        assert_eq!(sentences.len(), 590);
     }
 
     #[test]

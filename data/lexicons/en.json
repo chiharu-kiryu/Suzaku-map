@@ -8472,6 +8472,432 @@
         "please tell me if anything changes.",
         "please tell me if you need help."
       ]
+    },
+    {
+      "id": "clarity",
+      "words": [
+        "fluently",
+        "tutors",
+        "tutored",
+        "textbook",
+        "textbooks",
+        "workbook",
+        "workbooks",
+        "grammatically",
+        "idiomatic",
+        "punctuates",
+        "alphabetical",
+        "alphabetically",
+        "alphabet",
+        "capitalization",
+        "capitalisation",
+        "comparative",
+        "comparatives",
+        "superlative",
+        "superlatives",
+        "literally",
+        "figurative",
+        "figuratively",
+        "brief",
+        "interprets",
+        "interpreters",
+        "simplifies",
+        "simplified",
+        "simplifying",
+        "simplification",
+        "understandable",
+        "misinterpret",
+        "misinterpreted",
+        "misinterpreting",
+        "misinterpretation",
+        "unambiguously",
+        "contexts",
+        "contextual",
+        "nuance",
+        "nuances",
+        "standpoint",
+        "respectful",
+        "apologetically",
+        "bothers",
+        "bothered",
+        "bothering",
+        "reassess",
+        "reassesses",
+        "reassessed",
+        "reassessing",
+        "reassessment",
+        "investigates",
+        "investigations",
+        "concerned",
+        "concerns",
+        "progresses",
+        "proceeding",
+        "proceeds",
+        "proceeded"
+      ],
+      "next_words": [
+        [
+          "what does this",
+          [
+            "mean",
+            "refer"
+          ]
+        ],
+        [
+          "how do you",
+          [
+            "pronounce",
+            "spell"
+          ]
+        ],
+        [
+          "could you explain that",
+          [
+            "again",
+            "briefly"
+          ]
+        ],
+        [
+          "could you give me another",
+          [
+            "example",
+            "explanation"
+          ]
+        ],
+        [
+          "let me make",
+          [
+            "sure",
+            "a"
+          ]
+        ],
+        [
+          "if i understand",
+          [
+            "correctly",
+            "you"
+          ]
+        ],
+        [
+          "what's the difference",
+          [
+            "between",
+            "here"
+          ]
+        ],
+        [
+          "i'm not familiar with",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "how should i",
+          [
+            "phrase",
+            "respond"
+          ]
+        ],
+        [
+          "could you check the",
+          [
+            "spelling",
+            "grammar"
+          ]
+        ],
+        [
+          "please correct my",
+          [
+            "pronunciation",
+            "spelling"
+          ]
+        ],
+        [
+          "i'm trying to",
+          [
+            "understand",
+            "learn"
+          ]
+        ],
+        [
+          "that makes",
+          [
+            "sense",
+            "a"
+          ]
+        ],
+        [
+          "i see what you",
+          [
+            "mean",
+            "need"
+          ]
+        ],
+        [
+          "let me put it",
+          [
+            "another",
+            "simply"
+          ]
+        ],
+        [
+          "in other",
+          [
+            "words"
+          ]
+        ],
+        [
+          "as far as i",
+          [
+            "know",
+            "understand"
+          ]
+        ],
+        [
+          "from my",
+          [
+            "perspective",
+            "experience"
+          ]
+        ],
+        [
+          "in my",
+          [
+            "opinion",
+            "experience"
+          ]
+        ],
+        [
+          "to be",
+          [
+            "honest",
+            "clear"
+          ]
+        ],
+        [
+          "could you be more",
+          [
+            "specific",
+            "precise"
+          ]
+        ],
+        [
+          "would it help to",
+          [
+            "summarize",
+            "compare"
+          ]
+        ],
+        [
+          "what do you think",
+          [
+            "about",
+            "of"
+          ]
+        ],
+        [
+          "do you have any",
+          [
+            "questions",
+            "concerns"
+          ]
+        ],
+        [
+          "i have a question",
+          [
+            "about",
+            "regarding"
+          ]
+        ],
+        [
+          "could you elaborate",
+          [
+            "on",
+            "a"
+          ]
+        ],
+        [
+          "let's focus on",
+          [
+            "one",
+            "the"
+          ]
+        ],
+        [
+          "we can discuss this",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ],
+        [
+          "i'll look into",
+          [
+            "this",
+            "it"
+          ]
+        ],
+        [
+          "let me get back to you",
+          [
+            "after",
+            "once"
+          ]
+        ],
+        [
+          "i'm still working on",
+          [
+            "this",
+            "the"
+          ]
+        ],
+        [
+          "i'll let you know",
+          [
+            "once",
+            "as"
+          ]
+        ],
+        [
+          "please feel free to",
+          [
+            "ask",
+            "suggest"
+          ]
+        ],
+        [
+          "thanks for pointing",
+          [
+            "that",
+            "this"
+          ]
+        ],
+        [
+          "sorry to",
+          [
+            "interrupt",
+            "bother"
+          ]
+        ],
+        [
+          "could you give us",
+          [
+            "a",
+            "some"
+          ]
+        ],
+        [
+          "please summarize the",
+          [
+            "main",
+            "key"
+          ]
+        ],
+        [
+          "let's compare the",
+          [
+            "two",
+            "options"
+          ]
+        ],
+        [
+          "we may need to",
+          [
+            "revise",
+            "reconsider"
+          ]
+        ],
+        [
+          "please keep this",
+          [
+            "concise",
+            "simple"
+          ]
+        ]
+      ],
+      "sentences": [
+        "what does this mean in this context?",
+        "what does this refer to?",
+        "how do you pronounce this word?",
+        "how do you spell your name?",
+        "could you explain that again?",
+        "could you explain that briefly?",
+        "could you give me another example?",
+        "could you give me another explanation?",
+        "let me make sure i understand.",
+        "let me make a note of that.",
+        "if i understand correctly, we should wait.",
+        "if i understand you correctly, the date has changed.",
+        "what's the difference between these two words?",
+        "what's the difference here?",
+        "i'm not familiar with this expression.",
+        "i'm not familiar with that term.",
+        "how should i phrase this sentence?",
+        "how should i respond to this message?",
+        "could you check the spelling?",
+        "could you check the grammar?",
+        "please correct my pronunciation.",
+        "please correct my spelling.",
+        "i'm trying to understand this example.",
+        "i'm trying to learn the basics.",
+        "that makes sense now.",
+        "that makes a big difference.",
+        "i see what you mean.",
+        "i see what you need now.",
+        "let me put it another way.",
+        "let me put it simply.",
+        "in other words, we need more time.",
+        "in other words, nothing has changed.",
+        "as far as i know, everything is ready.",
+        "as far as i understand, we can continue.",
+        "from my perspective, this is reasonable.",
+        "from my experience, it helps to practice.",
+        "in my opinion, this is clearer.",
+        "in my experience, this usually works.",
+        "to be honest, i'm not sure.",
+        "to be clear, this is only a suggestion.",
+        "could you be more specific?",
+        "could you be more precise?",
+        "would it help to summarize the main points?",
+        "would it help to compare both options?",
+        "what do you think about this approach?",
+        "what do you think of this suggestion?",
+        "do you have any questions before we start?",
+        "do you have any concerns about this plan?",
+        "i have a question about this example.",
+        "i have a question regarding the instructions.",
+        "could you elaborate on that point?",
+        "could you elaborate a little more?",
+        "let's focus on one thing at a time.",
+        "let's focus on the main question.",
+        "we can discuss this later.",
+        "we can discuss this tomorrow.",
+        "i'll look into this today.",
+        "i'll look into it and get back to you.",
+        "let me get back to you after i check.",
+        "let me get back to you once i know more.",
+        "i'm still working on this.",
+        "i'm still working on the details.",
+        "i'll let you know once it's ready.",
+        "i'll let you know as soon as i can.",
+        "please feel free to ask questions.",
+        "please feel free to suggest changes.",
+        "thanks for pointing that out.",
+        "thanks for pointing this out.",
+        "sorry to interrupt you.",
+        "sorry to bother you again.",
+        "could you give us a moment?",
+        "could you give us some feedback?",
+        "please summarize the main points.",
+        "please summarize the key differences.",
+        "let's compare the two versions.",
+        "let's compare the options carefully.",
+        "we may need to revise the wording.",
+        "we may need to reconsider this approach.",
+        "please keep this concise.",
+        "please keep this simple."
+      ]
     }
   ],
   "phrase_endings": [

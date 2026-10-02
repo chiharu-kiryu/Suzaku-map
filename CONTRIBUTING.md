@@ -58,9 +58,14 @@ Run the paired offline input-quality gates without a model:
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
 cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
+cargo test --locked --all-features --test chinese_sentence_continuation -- --test-threads=1
 ```
 
-The English gate covers 40 authored word/sentence scenarios; Chinese covers 40 known word/phrase
+The English gate covers 40 authored word/sentence scenarios plus short/long draft line boundaries,
+protected tokens, committed-context truncation and literal horizontal spacing. Eight further native
+workflows and two physical GTK workflows check protected English context, fresh phrases,
+adoption/undo and exact commits; see the [N59 audit](docs/bug-audit-english-context-2026-09-28.md).
+Chinese covers 40 known word/phrase
 cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
 commit checks. These are project-authored regressions, not independent corpus accuracy. The native
 `ibus` gate adds 76 bilingual numeric-adoption/undo/continuation/explicit-commit workflows, plus
@@ -73,10 +78,11 @@ spellings, straight/curly-apostrophe contractions, five Pinyin spellings, same-s
 short/long adopted drafts with literal padding. Synthetic tone digits test boundaries, not
 pronunciation; numeric key entry still follows the IME's literal-digit path. Lexicon unit checks
 retain every pre-expansion English rank and
-validate authored table uniqueness and reachability. The fallback gate checks 36 English and
-36 Chinese everyday scenarios (Chinese in four spellings), 30 standalone English word forms,
-four unfinished Pinyin syllables, case/spacing/apostrophe variants, long drafts and synthetic
-typed provider errors.
+validate authored table uniqueness and reachability. The fallback gate checks 44 English and
+44 Chinese everyday scenarios (Chinese in four spellings), 40 standalone English word forms,
+eight unfinished Pinyin syllables, case/spacing/apostrophe variants, long drafts and synthetic
+typed provider errors. Explanation/learning/follow-up cases also check adopted-word sentence
+continuations with literal padding and subsequent partial English words in uncommitted drafts.
 The native gate separately exercises actual loopback HTTP 503/deadline failures in both
 languages: local candidates stay available while pending and after failure, with numeric adoption,
 undo, Space continuity and exact commits. No live model quality is inferred. Use `--all-features`
@@ -164,9 +170,13 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
-The `vocabulary` gate exercises thirty-six offline English/Chinese writing workflows in the real
+The `vocabulary` gate exercises forty offline English/Chinese vocabulary workflows and two
+multi-word Chinese sentence-progress workflows in the real
 GTK editor: physical spelling, word/sentence labels, numeric adoption, exact undo, Space
-continuation and saved word/sentence commits. It uses no companion-seeded text or live model.
+continuation and saved word/sentence commits. Authored sentence continuations must remain on
+page one after Space where a continuation exists. It uses no companion-seeded text or live model.
+The private IBus gate also checks sentence progress in short, threshold-crossing and long drafts,
+including consecutive numeric adoptions, valid homophones, exact undo and one explicit commit.
 To validate a user-local installation instead of rebuilding debug binaries, set
 `SUZAKU_APP_QA_BIN_DIR="$HOME/.local/libexec/suzaku"`; the directory must contain `panel` and
 `linux_ime_host`. This still uses a private display/bus and is not personal-desktop acceptance.

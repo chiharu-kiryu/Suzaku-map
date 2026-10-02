@@ -184,30 +184,97 @@ pub(crate) fn is_dictionary_word(text: &str) -> bool {
         .any(|word| word.text == text && word.kind == EntryKind::Word)
 }
 
-/// Match the same authored tail on both sides of the local-window threshold.
-/// Keep literal padding, reject protected tokens and prefer the longest phrase.
-fn authored_continuation(seed: &str) -> Option<(&str, &'static [String])> {
-    let phrase_end = seed.trim_end_matches(is_pinyin_spacing);
-    let (phrase, values) = vocabulary()
-        .continuations()
-        .filter(|(phrase, _)| phrase_end.ends_with(phrase))
-        .max_by_key(|(phrase, _)| phrase.len())?;
-    let start = phrase_end.len() - phrase.len();
-    let token = seed[..start]
-        .rsplit(char::is_whitespace)
-        .next()
-        .unwrap_or("");
-    if token.contains(['/', '\\', '_', '@']) {
-        return None;
+/// Match already converted text without erasing its literal horizontal padding.
+/// The optional reading tail is only a routing hint for the long-draft window:
+/// emitted sentences must match an actual decoder result, never this hint.
+fn authored_sentence_suffix<'a>(
+    input: &str,
+    sentence: &'a str,
+    allow_reading_tail: bool,
+) -> Option<&'a str> {
+    let mut expected = sentence.char_indices().peekable();
+    let mut consumed = 0;
+    for (offset, ch) in input.char_indices() {
+        if is_pinyin_spacing(ch) {
+            // Respect authored spaces when present, but preserve the user's
+            // exact spacing in the prefix used to construct the candidate.
+            while let Some(&(index, next)) = expected.peek()
+                && is_pinyin_spacing(next)
+            {
+                consumed = index + next.len_utf8();
+                expected.next();
+            }
+            continue;
+        }
+        let (index, next) = expected.next()?;
+        if ch != next {
+            if allow_reading_tail && (ch.is_ascii_alphabetic() || matches!(ch, 'ü' | 'Ü')) {
+                let reading = normalize_pinyin(&input[offset..]);
+                if reading
+                    .chars()
+                    .all(|ch| ch.is_ascii_lowercase() || is_pinyin_separator(ch))
+                    && pinyin_candidates(&input[offset..])
+                        .iter()
+                        .take(5)
+                        .any(|converted| {
+                            authored_sentence_suffix(converted, &sentence[index..], false).is_some()
+                        })
+                {
+                    return Some(&sentence[index..]);
+                }
+            }
+            return None;
+        }
+        consumed = index + ch.len_utf8();
     }
-    Some((&seed[start..], values))
+    (consumed < sentence.len()).then_some(&sentence[consumed..])
 }
 
-/// Retain a complete authored Han phrase when a long draft has just adopted it.
+/// Prefer the longest matching sentence progress, not merely the last word.
+/// Both converted text and raw long-draft routing search the same bounded tail.
+fn authored_continuation(
+    seed: &str,
+    allow_reading_tail: bool,
+) -> Option<(&str, &'static [String])> {
+    let window_start = seed
+        .char_indices()
+        .rev()
+        .nth(super::draft::LOCAL_TAIL_CHARS - 1)
+        .map_or(0, |(index, _)| index);
+    let mut best = None;
+    let mut best_key = (0, 0);
+    for (phrase, values) in vocabulary().continuations() {
+        for (offset, _) in seed[window_start..].match_indices(phrase) {
+            let start = window_start + offset;
+            let tail = &seed[start..];
+            let key = (tail.len(), phrase.len());
+            if key <= best_key {
+                continue;
+            }
+            let token = seed[..start]
+                .rsplit(char::is_whitespace)
+                .next()
+                .unwrap_or("");
+            if token.contains(['/', '\\', '_', '@']) {
+                continue;
+            }
+            if values
+                .iter()
+                .any(|text| authored_sentence_suffix(tail, text, allow_reading_tail).is_some())
+            {
+                best_key = key;
+                best = Some((tail, values));
+            }
+        }
+    }
+    best
+}
+
+/// Retain authored Han sentence progress, including an unfinished Pinyin tail.
 /// Horizontal padding belongs to the draft; line boundaries and punctuation
 /// are not discarded to force a continuation.
 pub(crate) fn adopted_continuation_tail(seed: &str) -> Option<&str> {
-    authored_continuation(seed).map(|(tail, _)| tail)
+    authored_continuation(seed, true).map(|(tail, _)| tail)
 }
 
 pub(crate) fn mixed_candidates(
@@ -231,18 +298,20 @@ pub(crate) fn mixed_candidates(
             ));
         }
     }
-    if let Some(primary) = pinyin_candidates(seed).first()
-        && let Some((tail, values)) = authored_continuation(primary)
-    {
-        let phrase_bytes = tail.trim_end_matches(is_pinyin_spacing).len();
-        output.extend(values.iter().map(|text| {
-            // Keep the full primary conversion and all literal spacing. An
-            // adopted word shrinking below 257 scalars must keep its sentence.
-            (
-                format!("{primary}{}", &text[phrase_bytes..]),
-                CandidateKind::Sentence,
-            )
-        }));
+    // A valid homophone may continue the authored sentence even if the primary
+    // conversion does not. Keep that primary untouched; only add suggestions
+    // from the bounded decoder paths, never rewrite literal adopted Han text.
+    for converted in pinyin_candidates(seed).iter().take(5) {
+        if let Some((tail, values)) = authored_continuation(converted, false) {
+            for text in values {
+                if let Some(suffix) = authored_sentence_suffix(tail, text, false) {
+                    let continuation = format!("{converted}{suffix}");
+                    if !output.iter().any(|(text, _)| *text == continuation) {
+                        output.push((continuation, CandidateKind::Sentence));
+                    }
+                }
+            }
+        }
     }
     output
 }
@@ -259,7 +328,7 @@ fn pinyin_choices(seed: &str) -> Vec<(String, CandidateKind)> {
         return Vec::new();
     }
     let input_chars = seed.chars().count();
-    if input_chars > 256 {
+    if input_chars > super::draft::LOCAL_TAIL_CHARS {
         return vec![(seed.into(), CandidateKind::Literal)];
     }
     let normalized = normalize_pinyin(seed);
@@ -482,7 +551,7 @@ mod tests {
 
     #[test]
     fn authored_continuations_are_unique_complete_and_preserve_padding() {
-        assert_eq!(pinyin().len(), 1631);
+        assert_eq!(pinyin().len(), 1806);
         let mut phrases = std::collections::HashSet::new();
         let mut sentences = std::collections::HashSet::new();
         for (phrase, values) in vocabulary().continuations() {

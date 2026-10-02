@@ -2,7 +2,7 @@
 //! provider: model requests retain their independent whole-draft limit.
 use super::{BuiltinLanguage, chinese};
 
-const LOCAL_TAIL_CHARS: usize = 256;
+pub(crate) const LOCAL_TAIL_CHARS: usize = 256;
 
 pub(crate) fn long_local_tail<'a>(language: &str, seed: &'a str) -> Option<(&'a str, &'a str)> {
     seed.chars().nth(LOCAL_TAIL_CHARS)?;
@@ -15,7 +15,7 @@ pub(crate) fn long_local_tail<'a>(language: &str, seed: &'a str) -> Option<(&'a 
             .filter(|(_, ch)| ch.is_whitespace())
             .map(|(index, ch)| index + ch.len_utf8())
             .last()?,
-        // Keep an adopted authored phrase available for sentence continuation;
+        // Keep an adopted authored phrase and its in-progress continuation;
         // otherwise only a Han / CJK punctuation boundary can freeze a prefix.
         // Spaces and apostrophes may still join unconverted Pinyin syllables.
         BuiltinLanguage::ChineseSimplified => {

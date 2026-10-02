@@ -344,3 +344,195 @@ fn sentence_only_model_replies_also_offer_one_word_without_losing_the_sentence()
         );
     }
 }
+
+fn candidate_signature(
+    ime: &XRTabletImeEngine,
+    frozen_prefix: &str,
+) -> Vec<(String, CandidateKind)> {
+    assert!(ime.candidates().len() <= 12);
+    ime.candidates()
+        .iter()
+        .map(|candidate| {
+            assert_eq!(candidate.source, CandidateSource::Local);
+            (
+                candidate
+                    .text
+                    .strip_prefix(frozen_prefix)
+                    .unwrap()
+                    .to_owned(),
+                candidate.kind,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn new_lines_and_paragraphs_start_fresh_english_context_without_losing_the_draft() {
+    for earlier in [String::new(), "Earlier café 😀. ".repeat(40)] {
+        for boundary in [
+            "\n", "\r", "\r\n", "\u{b}", "\u{c}", "\u{85}", "\u{2028}", "\u{2029}",
+        ] {
+            for (previous, tail) in [
+                ("good", "m"),
+                ("please", "send m"),
+                ("please", "send "),
+                ("how can", "I "),
+                ("how can", "I"),
+                ("good", "please sen"),
+            ] {
+                let prefix = format!("{earlier}{previous}{boundary}");
+                let seed = format!("{prefix}{tail}");
+                let ime = engine(&seed);
+                assert_eq!(ime.candidates()[0].text, seed);
+                assert!(ime.snapshot().committed_text.is_empty());
+                assert_eq!(
+                    candidate_signature(&ime, &prefix),
+                    candidate_signature(&engine(tail), ""),
+                    "context crossed {boundary:?}: {previous:?} / {tail:?}"
+                );
+            }
+            let seed = format!("{earlier}please send{boundary}  ");
+            assert_eq!(candidate_signature(&engine(&seed), "").len(), 1, "{seed:?}");
+        }
+    }
+}
+
+#[test]
+fn english_context_does_not_strip_identifier_symbols_or_digits_into_known_words() {
+    for earlier in [String::new(), "Earlier café 😀. ".repeat(40)] {
+        for token in [
+            "hello123",
+            "123hello",
+            "#hello",
+            "@hello",
+            "_hello",
+            "hello_",
+            "/hello",
+            "\\hello",
+            "hello/",
+            "hello-",
+            "hello😀",
+            "👋hello",
+            "example.hello",
+            "user@example.hello",
+            ".hello",
+            "hello。",
+            "hello！",
+            "hello?",
+            "hello!",
+            "hello;",
+            "hello.",
+        ] {
+            for gap in [" ", "  ", "\u{3000}"] {
+                let seed = format!("{earlier}{token}{gap}");
+                let ime = engine(&seed);
+                assert_eq!(ime.candidates()[0].text, seed);
+                assert_eq!(
+                    ime.candidates().len(),
+                    1,
+                    "{seed:?}: {:?}",
+                    ime.candidates()
+                );
+                // A later real word can still complete independently of the protected token.
+                let draft = format!("{seed}w");
+                assert_eq!(
+                    candidate_signature(&engine(&draft), &seed),
+                    candidate_signature(&engine("w"), ""),
+                    "identifier supplied a false context: {token:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn committed_context_keeps_line_and_token_boundaries() {
+    for context in [
+        "good\n".to_owned(),
+        "good\u{85}".to_owned(),
+        "good\u{2028}".to_owned(),
+        "good\u{2029}".to_owned(),
+        "123good".to_owned(),
+        "good123".to_owned(),
+        "@good".to_owned(),
+        "example.good".to_owned(),
+    ] {
+        let mut ime = XRTabletImeEngine::new(EngineConfig {
+            initial_text: context.clone(),
+            ..Default::default()
+        });
+        ime.enable_ibus_candidate_mix();
+        ime.seed("m");
+        assert_eq!(ime.snapshot().committed_text, context);
+        assert_eq!(
+            candidate_signature(&ime, ""),
+            candidate_signature(&engine("m"), ""),
+            "{context:?}"
+        );
+    }
+}
+
+#[test]
+fn bounded_committed_context_does_not_invent_a_word_from_a_truncated_token() {
+    // Cutting 160 Unicode scalars out of a larger token must not turn `notgood`
+    // into the independent collocation `good`, even with long literal padding.
+    for spaces in 155..=161 {
+        let context = format!("前文 notgood{}", " ".repeat(spaces));
+        let mut ime = XRTabletImeEngine::new(EngineConfig {
+            initial_text: context.clone(),
+            ..Default::default()
+        });
+        ime.enable_ibus_candidate_mix();
+        ime.seed("m");
+        assert_eq!(ime.snapshot().committed_text, context);
+        assert_eq!(
+            candidate_signature(&ime, ""),
+            candidate_signature(&engine("m"), ""),
+            "{context:?}"
+        );
+    }
+    // A complete token exactly inside the same budget must retain its context.
+    for context in [
+        "good".to_owned(),
+        format!("Earlier words. good{}", " ".repeat(156)),
+    ] {
+        let mut ime = XRTabletImeEngine::new(EngineConfig {
+            initial_text: context,
+            ..Default::default()
+        });
+        ime.enable_ibus_candidate_mix();
+        ime.seed("m");
+        assert_eq!(ime.candidates()[1].text, "morning");
+    }
+}
+
+#[test]
+fn horizontal_spacing_quotes_and_contractions_still_continue_losslessly() {
+    for gap in [" ", "  ", "\t", "\u{a0}", "\u{2003}", "\u{3000}"] {
+        for (start, partial, word, rest) in [
+            ("He said 'Please", "sen", "send", " me the details."),
+            ("We’re", "wor", "working", " on it."),
+            ("(GOOD", "MOR", "MORNING", ", how are you?"),
+        ] {
+            let seed = format!("{start}{gap}{partial}");
+            let word = format!("{start}{gap}{word}");
+            let sentence = format!("{word}{rest}");
+            let ime = engine(&seed);
+            assert_eq!(ime.candidates()[0].text, seed);
+            assert!(ime.candidates().iter().all(|c| c.text.starts_with(&seed)));
+            for (expected, kind) in [
+                (word, CandidateKind::Word),
+                (sentence, CandidateKind::Sentence),
+            ] {
+                assert!(
+                    ime.candidates()
+                        .iter()
+                        .take(PAGE_SIZE)
+                        .any(|c| c.text == expected && c.kind == kind),
+                    "{seed:?}: {:?}",
+                    ime.candidates()
+                );
+            }
+        }
+    }
+}

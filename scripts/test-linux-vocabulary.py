@@ -50,6 +50,8 @@ CASES = [
     ("en", "i was charged tw", "i was charged twice", "i was charged twice for this order."),
     ("en", "could you send me a rep", "could you send me a replacement",
      "could you send me a replacement?"),
+    ("en", "what does this me", "what does this mean", "what does this mean in this context?"),
+    ("en", "how do you pron", "how do you pronounce", "how do you pronounce this word?"),
     ("zh-Hans", "hui yi ji yao", "会议纪要", "会议纪要已经发到群里了。"),
     ("zh-Hans", "gai'qi", "改期", "改期后的时间我再确认一下。"),
     ("zh-Hans", "zao'an", "早安", "早安，今天也要加油。"),
@@ -68,6 +70,8 @@ CASES = [
     ("zh-Hans", "zi dong xu fei", "自动续费", "自动续费可以关闭吗？"),
     ("zh-Hans", "chong fu kou kuan", "重复扣款", "重复扣款了，请帮我核对。"),
     ("zh-Hans", "dian zi fa piao", "电子发票", "电子发票请发到我的邮箱。"),
+    ("zh-Hans", "fa yin", "发音", "发音可以再示范一下吗？"),
+    ("zh-Hans", "ju ge li zi", "举个例子", "举个例子会更容易理解。"),
 ]
 
 
@@ -101,9 +105,19 @@ def check_vocabulary(bus, x):
             apps.wait(lambda: apps.seed_is(reading), "exact spelling restored after adoption")
 
         apps.choose_number(x, word)
-        suffix = " today" if language == "en" else " de"
+        x.key(IBus.KEY_space)
+        apps.wait(lambda: apps.seed_is(word + " "), "Space keeps the adopted draft editable")
+        if language == "zh-Hans" or sentence.startswith(word + " "):
+            remainder = sentence[len(word):]
+            if language == "en":
+                remainder = remainder.lstrip()
+            expected_sentence = word + " " + remainder
+            assert any(c["text"] == expected_sentence and c["kind"] == "sentence"
+                       and c["source"] == "local" for c in apps.watch.latest["candidates"][:6]), (
+                           reading, expected_sentence, apps.watch.latest)
+        suffix = "today" if language == "en" else "de"
         x.type(suffix)
-        apps.wait(lambda: apps.seed_is(word + suffix), "Space continues adopted vocabulary")
+        apps.wait(lambda: apps.seed_is(word + " " + suffix), "Space continues adopted vocabulary")
         continued = word + (" today" if language == "en" else " 的")
         if language == "zh-Hans":
             apps.choose_number(x, continued)
@@ -123,6 +137,52 @@ def check_vocabulary(bus, x):
               flush=True)
 
     print(f"PASS: all {len(CASES)} offline vocabulary workflows", flush=True)
+
+    # N58: keep a finite authored sentence through multiple physical word adoptions.
+    # No companion-injected draft, actual editor contents observed on every save.
+    progress_cases = [
+        ("fa yin", "发音", "ke yi", "可以", "zai", "再示范一下吗？"),
+        ("shu ru fa", "输入法", "zhi chi", "支持", "", "多种语言。"),
+    ]
+    for reading, word, next_reading, next_word, last_reading, remainder in progress_cases:
+        apps.clear_document(x, document)
+        revision = apps.watch.latest["revision"]
+        assert json.loads(apps.command("Lzh-Hans"))["ok"]
+        apps.wait(lambda: apps.watch.latest["revision"] > revision, "sentence progress language")
+        x.type(reading)
+        apps.wait(lambda: apps.seed_is(reading), "sentence progress physical reading")
+        apps.choose_number(x, word)
+        x.type(" " + next_reading)
+        raw = word + " " + next_reading
+        apps.wait(lambda: apps.seed_is(raw), "sentence progress second reading")
+        converted = word + " " + next_word
+        assert any(c["text"] == converted + remainder and c["kind"] == "sentence"
+                   for c in apps.watch.latest["candidates"][:6]), apps.watch.latest
+        apps.choose_number(x, converted)
+        apps.save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        apps.wait(lambda: apps.seed_is(raw), "second-word adoption undo keeps its original spelling")
+        apps.choose_number(x, converted)
+        x.key(IBus.KEY_space)
+        draft = converted + " "
+        apps.wait(lambda: apps.seed_is(draft), "sentence progress literal Space")
+        sentence = draft + remainder
+        assert any(c["text"] == sentence and c["kind"] == "sentence"
+                   for c in apps.watch.latest["candidates"][:6]), apps.watch.latest
+        if last_reading:
+            x.type(last_reading)
+            draft += last_reading
+            apps.wait(lambda: apps.seed_is(draft), "sentence progress homophone reading")
+        apps.choose_number(x, sentence)
+        apps.save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        apps.wait(lambda: apps.seed_is(draft), "sentence progress sentence undo")
+        apps.choose_number(x, sentence)
+        apps.commit(x)
+        apps.save_document(x, document, sentence + "\n")
+        print(f"PASS: sentence progress {reading!r}: consecutive words, Space, homophones, undo and exact saved sentence",
+              flush=True)
+    print(f"PASS: all {len(CASES) + len(progress_cases)} vocabulary and sentence-progress workflows", flush=True)
 
 
 if __name__ == "__main__":

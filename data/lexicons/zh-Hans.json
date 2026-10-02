@@ -1632,7 +1632,182 @@
     {"reading": "zhen'de'ma", "text": "真的吗", "kind": "sentence"},
     {"reading": "shen'me'yi'si", "text": "什么意思", "kind": "sentence"},
     {"reading": "wei'shen'me", "text": "为什么", "kind": "sentence"},
-    {"reading": "zen'me'ban", "text": "怎么办", "kind": "sentence"}
+    {"reading": "zen'me'ban", "text": "怎么办", "kind": "sentence"},
+    {"reading": "yi'si", "text": "意思", "kind": "word"},
+    {"reading": "han'yi", "text": "含义", "kind": "word"},
+    {"reading": "ci'yi", "text": "词义", "kind": "word"},
+    {"reading": "shi'yi", "text": "释义", "kind": "word"},
+    {"reading": "xiang'xi'shuo'ming", "text": "详细说明", "kind": "word"},
+    {"reading": "jian'dan'shuo'ming", "text": "简单说明", "kind": "word"},
+    {"reading": "ju'li", "text": "举例", "kind": "word"},
+    {"reading": "ju'ge'li'zi", "text": "举个例子", "kind": "word"},
+    {"reading": "li'zi", "text": "例子", "kind": "word"},
+    {"reading": "shi'li", "text": "实例", "kind": "word"},
+    {"reading": "li'ru", "text": "例如", "kind": "word"},
+    {"reading": "ju'ti'lai'shuo", "text": "具体来说", "kind": "word"},
+    {"reading": "ye'jiu'shi'shuo", "text": "也就是说", "kind": "word"},
+    {"reading": "huan'ju'hua'shuo", "text": "换句话说", "kind": "word"},
+    {"reading": "huan'ge'shuo'fa", "text": "换个说法", "kind": "word"},
+    {"reading": "huan'yi'zhong'shuo'fa", "text": "换一种说法", "kind": "word"},
+    {"reading": "shuo'qing'chu", "text": "说清楚", "kind": "word"},
+    {"reading": "shuo'xiang'xi'yi'dian", "text": "说详细一点", "kind": "word"},
+    {"reading": "ju'ti'yi'dian", "text": "具体一点", "kind": "word"},
+    {"reading": "jian'dan'yi'dian", "text": "简单一点", "kind": "word"},
+    {"reading": "man'yi'dian", "text": "慢一点", "kind": "word"},
+    {"reading": "zai'jie'shi'yi'xia", "text": "再解释一下", "kind": "word"},
+    {"reading": "ting'ming'bai'le", "text": "听明白了", "kind": "sentence"},
+    {"reading": "mei'tai'ming'bai", "text": "没太明白", "kind": "sentence"},
+    {"reading": "bu'tai'li'jie", "text": "不太理解", "kind": "word"},
+    {"reading": "wo'li'jie'le", "text": "我理解了", "kind": "word"},
+    {"reading": "wo'de'yi'si'shi", "text": "我的意思是", "kind": "word"},
+    {"reading": "ni'de'yi'si'shi", "text": "你的意思是", "kind": "word"},
+    {"reading": "shi'bu'shi'shuo", "text": "是不是说", "kind": "sentence"},
+    {"reading": "ke'yi'li'jie'wei", "text": "可以理解为", "kind": "sentence"},
+    {"reading": "zen'me'li'jie", "text": "怎么理解", "kind": "sentence"},
+    {"reading": "zen'me'biao'da", "text": "怎么表达", "kind": "sentence"},
+    {"reading": "zen'me'shuo", "text": "怎么说", "kind": "sentence"},
+    {"reading": "zen'me'du", "text": "怎么读", "kind": "sentence"},
+    {"reading": "zen'me'pin", "text": "怎么拼", "kind": "sentence"},
+    {"reading": "zhe'ge'ci", "text": "这个词", "kind": "word"},
+    {"reading": "zhe'ju'hua", "text": "这句话", "kind": "word"},
+    {"reading": "zhe'ge'yi'si", "text": "这个意思", "kind": "word"},
+    {"reading": "biao'da'fang'shi", "text": "表达方式", "kind": "word"},
+    {"reading": "biao'da'qing'chu", "text": "表达清楚", "kind": "word"},
+    {"reading": "biao'da'zhun'que", "text": "表达准确", "kind": "word"},
+    {"reading": "zi'ran'biao'da", "text": "自然表达", "kind": "word"},
+    {"reading": "shu'mian'biao'da", "text": "书面表达", "kind": "word"},
+    {"reading": "kou'yu'biao'da", "text": "口语表达", "kind": "word"},
+    {"reading": "yong'fa", "text": "用法", "kind": "word"},
+    {"reading": "yong'ci", "text": "用词", "kind": "word"},
+    {"reading": "cuo'ci", "text": "措辞", "kind": "word"},
+    {"reading": "yu'jing", "text": "语境", "kind": "word"},
+    {"reading": "tong'yi'ci", "text": "同义词", "kind": "word"},
+    {"reading": "fan'yi'ci", "text": "反义词", "kind": "word"},
+    {"reading": "jin'yi'ci", "text": "近义词", "kind": "word"},
+    {"reading": "duo'yi'ci", "text": "多义词", "kind": "word"},
+    {"reading": "duan'yu", "text": "短语", "kind": "word"},
+    {"reading": "xi'yu", "text": "习语", "kind": "word"},
+    {"reading": "cheng'yu", "text": "成语", "kind": "word"},
+    {"reading": "su'yu", "text": "俗语", "kind": "word"},
+    {"reading": "ci'xing", "text": "词性", "kind": "word"},
+    {"reading": "ming'ci", "text": "名词", "kind": "word"},
+    {"reading": "dong'ci", "text": "动词", "kind": "word"},
+    {"reading": "xing'rong'ci", "text": "形容词", "kind": "word"},
+    {"reading": "fu'ci", "text": "副词", "kind": "word"},
+    {"reading": "dai'ci", "text": "代词", "kind": "word"},
+    {"reading": "jie'ci", "text": "介词", "kind": "word"},
+    {"reading": "lian'ci", "text": "连词", "kind": "word"},
+    {"reading": "dan'shu", "text": "单数", "kind": "word"},
+    {"reading": "fu'shu", "text": "复数", "kind": "word"},
+    {"reading": "shi'tai", "text": "时态", "kind": "word"},
+    {"reading": "guo'qu'shi", "text": "过去式", "kind": "word"},
+    {"reading": "xian'zai'shi", "text": "现在时", "kind": "word"},
+    {"reading": "jiang'lai'shi", "text": "将来时", "kind": "word"},
+    {"reading": "zhu'yu", "text": "主语", "kind": "word"},
+    {"reading": "wei'yu", "text": "谓语", "kind": "word"},
+    {"reading": "bin'yu", "text": "宾语", "kind": "word"},
+    {"reading": "ding'yu", "text": "定语", "kind": "word"},
+    {"reading": "zhuang'yu", "text": "状语", "kind": "word"},
+    {"reading": "yu'fa", "text": "语法", "kind": "word"},
+    {"reading": "yu'fa'cuo'wu", "text": "语法错误", "kind": "word"},
+    {"reading": "yu'fa'jian'cha", "text": "语法检查", "kind": "word"},
+    {"reading": "pin'xie'cuo'wu", "text": "拼写错误", "kind": "word"},
+    {"reading": "pin'xie'jian'cha", "text": "拼写检查", "kind": "word"},
+    {"reading": "fa'yin", "text": "发音", "kind": "word"},
+    {"reading": "du'yin", "text": "读音", "kind": "word"},
+    {"reading": "yin'jie", "text": "音节", "kind": "word"},
+    {"reading": "yin'biao", "text": "音标", "kind": "word"},
+    {"reading": "zhong'yin", "text": "重音", "kind": "word"},
+    {"reading": "lian'du", "text": "连读", "kind": "word"},
+    {"reading": "yu'diao", "text": "语调", "kind": "word"},
+    {"reading": "yu'su", "text": "语速", "kind": "word"},
+    {"reading": "liu'li", "text": "流利", "kind": "word"},
+    {"reading": "shu'lian", "text": "熟练", "kind": "word"},
+    {"reading": "jing'que", "text": "精确", "kind": "word"},
+    {"reading": "qing'xi", "text": "清晰", "kind": "word"},
+    {"reading": "lian'guan", "text": "连贯", "kind": "word"},
+    {"reading": "qi'yi", "text": "歧义", "kind": "word"},
+    {"reading": "biao'dian'fu'hao", "text": "标点符号", "kind": "word"},
+    {"reading": "da'xiao'xie", "text": "大小写", "kind": "word"},
+    {"reading": "shou'zi'mu", "text": "首字母", "kind": "word"},
+    {"reading": "da'xie'zi'mu", "text": "大写字母", "kind": "word"},
+    {"reading": "xiao'xie'zi'mu", "text": "小写字母", "kind": "word"},
+    {"reading": "shu'xie", "text": "书写", "kind": "word"},
+    {"reading": "gai'xie", "text": "改写", "kind": "word"},
+    {"reading": "guan'jian'dian", "text": "关键点", "kind": "word"},
+    {"reading": "zhu'yao'nei'rong", "text": "主要内容", "kind": "word"},
+    {"reading": "he'xin'wen'ti", "text": "核心问题", "kind": "word"},
+    {"reading": "duan'luo'da'yi", "text": "段落大意", "kind": "word"},
+    {"reading": "wen'zhang", "text": "文章", "kind": "word"},
+    {"reading": "zuo'wen", "text": "作文", "kind": "word"},
+    {"reading": "chu'gao", "text": "初稿", "kind": "word"},
+    {"reading": "ding'gao", "text": "定稿", "kind": "word"},
+    {"reading": "xiu'ding", "text": "修订", "kind": "word"},
+    {"reading": "xiu'ding'ban", "text": "修订版", "kind": "word"},
+    {"reading": "jiao'gao", "text": "校稿", "kind": "word"},
+    {"reading": "xue'xi'ji'hua", "text": "学习计划", "kind": "word"},
+    {"reading": "xue'xi'jin'du", "text": "学习进度", "kind": "word"},
+    {"reading": "xue'xi'fang'fa", "text": "学习方法", "kind": "word"},
+    {"reading": "fu'xi", "text": "复习", "kind": "word"},
+    {"reading": "yu'xi", "text": "预习", "kind": "word"},
+    {"reading": "lian'xi'ti", "text": "练习题", "kind": "word"},
+    {"reading": "ke'hou'lian'xi", "text": "课后练习", "kind": "word"},
+    {"reading": "zuo'bi'ji", "text": "做笔记", "kind": "word"},
+    {"reading": "ji'bi'ji", "text": "记笔记", "kind": "word"},
+    {"reading": "zheng'li'bi'ji", "text": "整理笔记", "kind": "word"},
+    {"reading": "ke'ben", "text": "课本", "kind": "word"},
+    {"reading": "jiao'cai", "text": "教材", "kind": "word"},
+    {"reading": "jia'ting'zuo'ye", "text": "家庭作业", "kind": "word"},
+    {"reading": "ke'biao", "text": "课表", "kind": "word"},
+    {"reading": "ke'tang", "text": "课堂", "kind": "word"},
+    {"reading": "shang'ke", "text": "上课", "kind": "word"},
+    {"reading": "xia'ke", "text": "下课", "kind": "word"},
+    {"reading": "jiang'jie", "text": "讲解", "kind": "word"},
+    {"reading": "da'yi", "text": "答疑", "kind": "word"},
+    {"reading": "ti'wen", "text": "提问", "kind": "word"},
+    {"reading": "hui'da", "text": "回答", "kind": "word"},
+    {"reading": "you'ge'wen'ti", "text": "有个问题", "kind": "word"},
+    {"reading": "ti'ge'wen'ti", "text": "提个问题", "kind": "word"},
+    {"reading": "qing'jiao", "text": "请教", "kind": "word"},
+    {"reading": "qing'jiao'yi'xia", "text": "请教一下", "kind": "word"},
+    {"reading": "qing'ju'li", "text": "请举例", "kind": "word"},
+    {"reading": "qing'jie'shi", "text": "请解释", "kind": "word"},
+    {"reading": "qing'shuo'ming", "text": "请说明", "kind": "word"},
+    {"reading": "bu'chong'yi'xia", "text": "补充一下", "kind": "word"},
+    {"reading": "shuo'dao'zhe'li", "text": "说到这里", "kind": "word"},
+    {"reading": "shun'bian'wen'yi'xia", "text": "顺便问一下", "kind": "word"},
+    {"reading": "wo'xiang'que'ren'yi'xia", "text": "我想确认一下", "kind": "word"},
+    {"reading": "cong'wo'de'jiao'du", "text": "从我的角度", "kind": "word"},
+    {"reading": "ge'ren'kan'fa", "text": "个人看法", "kind": "word"},
+    {"reading": "wo'de'kan'fa", "text": "我的看法", "kind": "word"},
+    {"reading": "wo'de'jian'yi", "text": "我的建议", "kind": "word"},
+    {"reading": "ti'chu'jian'yi", "text": "提出建议", "kind": "word"},
+    {"reading": "fan'kui'yi'jian", "text": "反馈意见", "kind": "word"},
+    {"reading": "gan'xie'zhi'chu", "text": "感谢指出", "kind": "word"},
+    {"reading": "ti'xing'yi'xia", "text": "提醒一下", "kind": "word"},
+    {"reading": "da'rao'yi'xia", "text": "打扰一下", "kind": "word"},
+    {"reading": "da'duan'yi'xia", "text": "打断一下", "kind": "word"},
+    {"reading": "shao'wei'deng'yi'xia", "text": "稍微等一下", "kind": "word"},
+    {"reading": "zheng'zai'chu'li", "text": "正在处理", "kind": "word"},
+    {"reading": "hai'zai'chu'li", "text": "还在处理", "kind": "word"},
+    {"reading": "chu'li'zhong", "text": "处理中", "kind": "word"},
+    {"reading": "jin'yi'bu'que'ren", "text": "进一步确认", "kind": "word"},
+    {"reading": "he'shi'yi'xia", "text": "核实一下", "kind": "word"},
+    {"reading": "diao'cha'yi'xia", "text": "调查一下", "kind": "word"},
+    {"reading": "gen'jin'yi'xia", "text": "跟进一下", "kind": "word"},
+    {"reading": "shao'hou'hui'fu", "text": "稍后回复", "kind": "word"},
+    {"reading": "jin'kuai'hui'fu", "text": "尽快回复", "kind": "word"},
+    {"reading": "you'xiao'xi'tong'zhi'wo", "text": "有消息通知我", "kind": "word"},
+    {"reading": "yi'you'xiao'xi", "text": "一有消息", "kind": "word"},
+    {"reading": "deng'que'ren'hou", "text": "等确认后", "kind": "word"},
+    {"reading": "que'ding'zhi'hou", "text": "确定之后", "kind": "word"},
+    {"reading": "shao'hou'tao'lun", "text": "稍后讨论", "kind": "word"},
+    {"reading": "zai'tao'lun'yi'xia", "text": "再讨论一下", "kind": "word"},
+    {"reading": "chong'xin'kao'lv", "text": "重新考虑", "kind": "word"},
+    {"reading": "chong'xin'ping'gu", "text": "重新评估", "kind": "word"},
+    {"reading": "zan'shi'bao'liu", "text": "暂时保留", "kind": "word"},
+    {"reading": "zan'bu'que'ding", "text": "暂不确定", "kind": "word"},
+    {"reading": "zai", "text": "再", "kind": "word"}
   ],
   "continuations": [
     [
@@ -3486,6 +3661,286 @@
       [
         "不确定的话我们再核对一下。",
         "不确定具体情况，我先确认一下。"
+      ]
+    ],
+    [
+      "这个词",
+      [
+        "这个词是什么意思？",
+        "这个词应该怎么用？"
+      ]
+    ],
+    [
+      "这句话",
+      [
+        "这句话可以换个说法吗？",
+        "这句话的意思我还没太明白。"
+      ]
+    ],
+    [
+      "发音",
+      [
+        "发音可以再示范一下吗？",
+        "发音需要多练习。"
+      ]
+    ],
+    [
+      "拼写",
+      [
+        "拼写请再检查一下。",
+        "拼写不确定的话可以再核对一下。"
+      ]
+    ],
+    [
+      "语法",
+      [
+        "语法方面需要调整一下。",
+        "语法规则我还在学习。"
+      ]
+    ],
+    [
+      "语法错误",
+      [
+        "语法错误已经改好了。",
+        "语法错误请帮我指出来。"
+      ]
+    ],
+    [
+      "拼写错误",
+      [
+        "拼写错误已经修正了。",
+        "拼写错误请帮我标出来。"
+      ]
+    ],
+    [
+      "表达方式",
+      [
+        "表达方式可以再自然一些。",
+        "表达方式要结合语境。"
+      ]
+    ],
+    [
+      "举个例子",
+      [
+        "举个例子会更容易理解。",
+        "举个例子说明一下可以吗？"
+      ]
+    ],
+    [
+      "换句话说",
+      [
+        "换句话说，我们还需要一些时间。",
+        "换句话说，目前还不能确定。"
+      ]
+    ],
+    [
+      "换个说法",
+      [
+        "换个说法可能更清楚。",
+        "换个说法再试一下。"
+      ]
+    ],
+    [
+      "我的意思是",
+      [
+        "我的意思是先确认再安排。",
+        "我的意思是可以再讨论一下。"
+      ]
+    ],
+    [
+      "不太理解",
+      [
+        "不太理解的地方可以再问。",
+        "不太理解，能再解释一下吗？"
+      ]
+    ],
+    [
+      "我理解了",
+      [
+        "我理解了，谢谢你的说明。",
+        "我理解了，我们按这个安排。"
+      ]
+    ],
+    [
+      "我想确认一下",
+      [
+        "我想确认一下具体要求。",
+        "我想确认一下是不是这个意思。"
+      ]
+    ],
+    [
+      "请解释",
+      [
+        "请解释一下这个词的用法。",
+        "请解释一下主要区别。"
+      ]
+    ],
+    [
+      "请举例",
+      [
+        "请举例说明一下。",
+        "请举例帮助我理解。"
+      ]
+    ],
+    [
+      "具体一点",
+      [
+        "具体一点会更好理解。",
+        "具体一点的要求可以发给我吗？"
+      ]
+    ],
+    [
+      "简洁",
+      [
+        "简洁一点就好。",
+        "简洁的表达更容易看懂。"
+      ]
+    ],
+    [
+      "重点",
+      [
+        "重点可以再总结一下。",
+        "重点我已经记下来了。"
+      ]
+    ],
+    [
+      "主要内容",
+      [
+        "主要内容已经整理好了。",
+        "主要内容可以先发给我。"
+      ]
+    ],
+    [
+      "段落",
+      [
+        "段落之间需要加个过渡。",
+        "段落的顺序可以再调整一下。"
+      ]
+    ],
+    [
+      "学习计划",
+      [
+        "学习计划需要定期调整。",
+        "学习计划我已经列好了。"
+      ]
+    ],
+    [
+      "学习进度",
+      [
+        "学习进度还算顺利。",
+        "学习进度我们下次再确认。"
+      ]
+    ],
+    [
+      "复习",
+      [
+        "复习一下之前的内容。",
+        "复习的时候可以整理笔记。"
+      ]
+    ],
+    [
+      "预习",
+      [
+        "预习一下明天的内容。",
+        "预习时不懂的地方先记下来。"
+      ]
+    ],
+    [
+      "练习",
+      [
+        "练习可以分几次完成。",
+        "练习之后记得核对答案。"
+      ]
+    ],
+    [
+      "做笔记",
+      [
+        "做笔记有助于整理思路。",
+        "做笔记的时候先抓重点。"
+      ]
+    ],
+    [
+      "教材",
+      [
+        "教材可以借我看一下吗？",
+        "教材的电子版在哪里下载？"
+      ]
+    ],
+    [
+      "作业",
+      [
+        "作业已经完成了。",
+        "作业的要求请再说一遍。"
+      ]
+    ],
+    [
+      "有个问题",
+      [
+        "有个问题想请教一下。",
+        "有个问题需要再确认。"
+      ]
+    ],
+    [
+      "请教一下",
+      [
+        "请教一下这个词怎么读。",
+        "请教一下这里应该怎么表达。"
+      ]
+    ],
+    [
+      "从我的角度",
+      [
+        "从我的角度看，这样更清楚。",
+        "从我的角度看，可以再简化一些。"
+      ]
+    ],
+    [
+      "我的建议",
+      [
+        "我的建议是先试一下。",
+        "我的建议已经写在备注里了。"
+      ]
+    ],
+    [
+      "感谢指出",
+      [
+        "感谢指出，我马上修改。",
+        "感谢指出这个问题。"
+      ]
+    ],
+    [
+      "打扰一下",
+      [
+        "打扰一下，现在方便吗？",
+        "打扰一下，我有个问题。"
+      ]
+    ],
+    [
+      "正在处理",
+      [
+        "正在处理中，请稍等。",
+        "正在处理，有结果会及时回复。"
+      ]
+    ],
+    [
+      "跟进一下",
+      [
+        "跟进一下这个问题的进展。",
+        "跟进一下后我再回复你。"
+      ]
+    ],
+    [
+      "稍后回复",
+      [
+        "稍后回复你具体结果。",
+        "稍后回复，感谢理解。"
+      ]
+    ],
+    [
+      "重新考虑",
+      [
+        "重新考虑一下也没关系。",
+        "重新考虑之后我们再决定。"
       ]
     ]
   ]

@@ -3291,6 +3291,8 @@ def check_model_unavailable_vocabulary(context, watch, commits, lookup):
         ("en", "when does the subscription exp", "when does the subscription expire",
          "when does the subscription expire?"),
         ("zh-Hans", "dian zi fa piao", "电子发票", "电子发票请发到我的邮箱。"),
+        ("en", "how do you pron", "how do you pronounce", "how do you pronounce this word?"),
+        ("zh-Hans", "fa yin", "发音", "发音可以再示范一下吗？"),
     ]
 
     def start(seed):
@@ -3354,6 +3356,14 @@ def check_model_unavailable_vocabulary(context, watch, commits, lookup):
                     adopt(word)
                     assert context.process_key_event(IBus.KEY_space, 0, 0)
                     wait(lambda: watch.latest["seed"] == word + " ", "fallback Space preserves the stream")
+                    if language == "zh-Hans" or sentence.startswith(word + " "):
+                        suffix = sentence[len(word):]
+                        if language == "en":
+                            suffix = suffix.lstrip()
+                        continued = word + " " + suffix
+                        assert any(c["text"] == continued and c["kind"] == "sentence"
+                                   and c["source"] == "local"
+                                   for c in watch.latest["candidates"][:6]), (seed, watch.latest)
                     assert commits[before:] == [sentence]
                     assert context.process_key_event(IBus.KEY_Return, 0, 0)
                     wait(lambda: commits[before:] == [sentence, word + " "] and not watch.latest["seed"],
@@ -3610,6 +3620,64 @@ def check_long_adopted_sentence_continuity(context, watch, commits, lookup):
                 checked += 1
     assert json.loads(command("Len"))["ok"]
     print(f"PASS: N54/N55 {checked} adopted English/Chinese word-to-sentence workflows preserve threshold crossings, Space, punctuation edits, exact undo and explicit single commit")
+
+
+def check_chinese_sentence_progress(context, watch, commits, lookup):
+    """N58: consecutive word adoptions retain the sentence, not just the last word."""
+    assert not json.loads(command("S"))["settings"]["llm_enabled"]
+    revision = watch.latest["revision"]
+    assert json.loads(command("Lzh-Hans"))["ok"]
+    wait(lambda: watch.latest["revision"] > revision, "sentence progress language applied")
+
+    def sentence_visible(text):
+        assert any(c["text"] == text and c["kind"] == "sentence" and c["source"] == "local"
+                   for c in watch.latest["candidates"][:6]), (text, watch.latest)
+
+    def adopt(text):
+        index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == text)
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        wait(lambda: watch.latest["seed"] == text, "sentence progress numeric adoption")
+
+    for prefix in ["", "你" * 250, "前文。" * 100]:
+        revision = watch.latest["revision"]
+        assert action(watch.latest, "X")
+        wait(lambda: watch.latest["revision"] > revision and not watch.latest["seed"],
+             "sentence progress acknowledged clear")
+        if prefix:
+            assert action(watch.latest, "T" + prefix)
+            wait(lambda: watch.latest["seed"] == prefix, "sentence progress owned long prefix")
+        before = len(commits)
+        type_seed(context, "fa yin")
+        wait(lambda: watch.latest["seed"] == prefix + "fa yin", "sentence progress physical reading")
+        adopt(prefix + "发音")
+        type_seed(context, " ke yi")
+        wait(lambda: watch.latest["seed"] == prefix + "发音 ke yi", "sentence progress second word")
+        sentence_visible(prefix + "发音 可以再示范一下吗？")
+        adopt(prefix + "发音 可以")
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == prefix + "发音 ke yi", "second adoption exact reading undo")
+        adopt(prefix + "发音 可以")
+        type_seed(context, " ")
+        wait(lambda: watch.latest["seed"] == prefix + "发音 可以 ", "continued sentence Space")
+        sentence = prefix + "发音 可以 再示范一下吗？"
+        sentence_visible(sentence)
+        type_seed(context, "zai")
+        raw = prefix + "发音 可以 zai"
+        wait(lambda: watch.latest["seed"] == raw, "sentence progress third word")
+        assert watch.latest["candidates"][0]["text"] == prefix + "发音 可以 在"
+        sentence_visible(sentence)
+        check_candidate_presentation(watch, lookup, require_mix=False)
+        adopt(sentence)
+        assert len(commits) == before
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == raw, "sentence progress exact sentence undo")
+        adopt(sentence)
+        assert len(commits) == before
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: commits[before:] == [sentence] and not watch.latest["seed"],
+             "sentence progress exact single commit")
+    assert json.loads(command("Len"))["ok"]
+    print("PASS: N58 3 short/threshold/long Chinese sentence-progress workflows retain context, homophones, Space, numeric adoption, exact undo and single commits")
 
 
 def check_literal_choice_publication(context, watch, commits, lookup):
@@ -4403,6 +4471,53 @@ def check_english_compose_boundaries(context, watch, commits, lookup):
     print("PASS: dead-key/Compose cancellation, modifiers, invalid sequences, panel edits, draft-only commit and reset/privacy boundaries")
 
 
+def check_english_context_boundaries(context, watch, commits, lookup):
+    revision = watch.latest["revision"]
+    assert json.loads(command("Len"))["ok"]
+    wait(lambda: watch.latest["revision"] > revision, "English boundary language applied")
+    for prefix in ["", "note " * 60]:
+        for token in ["hello123", "example.hello", "user_hello", "hello!"]:
+            previous_context = watch.latest["context"]
+            context.reset()
+            # The previous commit already left an empty draft. Observe Reset's
+            # context transition before sending T on the separate companion
+            # socket, or the pending Reset can clear the freshly injected prefix.
+            wait(lambda: watch.latest["context"] > previous_context and not watch.latest["seed"],
+                 "acknowledged English boundary Reset")
+            before = len(commits)
+            if prefix:
+                assert action(watch.latest, "T" + prefix)
+                wait(lambda: watch.latest["seed"] == prefix, "owned long English prefix")
+            type_seed(context, token + " ")
+            literal = prefix + token + " "
+            wait(lambda: watch.latest["seed"] == literal, "physical protected token and Space")
+            assert [c["text"] for c in watch.latest["candidates"]] == [literal], watch.latest
+            check_candidate_presentation(watch, lookup, require_mix=False)
+            type_seed(context, "please sen")
+            seed = literal + "please sen"
+            word = literal + "please send"
+            sentence = word + " me the details."
+            wait(lambda: watch.latest["seed"] == seed, "new phrase after protected token")
+            first = watch.latest["candidates"][:6]
+            assert any(c["text"] == sentence and c["kind"] == "sentence" for c in first), first
+            index = next(i for i, c in enumerate(first) if c["text"] == word and c["kind"] == "word")
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+            wait(lambda: watch.latest["seed"] == word, "adopt after protected context")
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == seed, "undo preserves protected context")
+            assert len(commits) == before
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+            assert context.process_key_event(IBus.KEY_space, 0, 0)
+            wait(lambda: watch.latest["seed"] == word + " ", "Space keeps the new phrase editable")
+            assert any(c["text"] == sentence and c["kind"] == "sentence"
+                       for c in watch.latest["candidates"][:6]), watch.latest
+            assert len(commits) == before
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before:] == [word + " "] and not watch.latest["seed"],
+                 "protected prefix is committed exactly once without normalization")
+    print("PASS: N59 8 English context-boundary workflows: literal symbols/digits, short/long prefixes, new phrase, adoption/undo, Space and exact commit")
+
+
 def check_english_writing_flow(context, watch, commits, lookup):
     assert json.loads(command("Len"))["ok"]
     for seed, expected, kind in [
@@ -4649,11 +4764,13 @@ try:
     check_bilingual_literal_boundaries(other, watch, other_commits)
     check_long_local_continuations(other, watch, other_commits, other_lookup)
     check_long_adopted_sentence_continuity(other, watch, other_commits, other_lookup)
+    check_chinese_sentence_progress(other, watch, other_commits, other_lookup)
     check_home_row_shortcuts(other, watch, other_commits, other_lookup)
     check_adoption_key_repeats(other, watch, other_commits)
     check_literal_choice_publication(other, watch, other_commits, other_lookup)
     check_unchanged_input_controls(other, watch, other_commits, other_lookup)
     check_unchanged_control_failures(other, watch, other_commits, other_lookup)
+    check_english_context_boundaries(other, watch, other_commits, other_lookup)
     check_english_writing_flow(other, watch, other_commits, other_lookup)
     check_numeric_field_routing(other, watch, other_commits)
     check_preference_learning(other, watch, other_commits)

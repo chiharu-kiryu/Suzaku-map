@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.7.4 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.7.5 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -31,13 +31,15 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.7.4 expands the model-independent local fallback to **5,934 indexed English forms and 1,631
-Chinese readings**, with more everyday word and sentence choices. It also keeps learned local
-sentences available when a full model response arrives: preference ranking happens before the
-final candidate cutoff. **In-memory candidate preferences** still learn only confirmed choices,
-decay over time and can be cleared from the tray; no typed history is saved. Ctrl+Shift+Space,
-Space continuity and explicit submission remain unchanged. See the [release notes](docs/releases/0.7.4.md)
-for validation and scope.
+0.7.5 expands the model-independent local fallback to **6,004 indexed English forms and 1,806
+Chinese readings**, including explanation, learning and follow-up vocabulary. Chinese sentence
+choices now retain matching context across consecutive word adoptions and valid Pinyin tails;
+English no longer invents context from line breaks, identifiers or clipped word fragments.
+Literal spacing, adopted text, Ctrl+Shift+Space and explicit submission remain unchanged.
+**In-memory candidate preferences** still learn only confirmed choices and keep learned local
+sentences available during model refreshes; no typed history is saved. See the
+[release notes](docs/releases/0.7.5.md) and [lexicon scope](data/lexicons/README.md).
+Publishing source does not update an existing installation.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
 speech and application compatibility. This is not a replacement for a full Chinese/Japanese dictionary.
@@ -48,11 +50,11 @@ Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu
 For 0.7.x, source tags can precede downloadable packages; use a release with attached packages or
 build from source. Starting with **0.8.0**, downloadable Linux packages and checksums are a
 [release requirement](docs/linux-packaging-data.md#从-080-开始的发布要求).
-Once the matching 0.7.4 package is available, in the download directory on Ubuntu 24.04 amd64:
+Once the matching 0.7.5 package is available, in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.7.4_amd64.deb.sha256
-sudo apt install ./suzaku_0.7.4_amd64.deb
+sha256sum -c suzaku_0.7.5_amd64.deb.sha256
+sudo apt install ./suzaku_0.7.5_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -146,12 +148,12 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.4 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.5 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — EN/ZH toggle, opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.7.4 release notes](docs/releases/0.7.4.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.7.5 release notes](docs/releases/0.7.5.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

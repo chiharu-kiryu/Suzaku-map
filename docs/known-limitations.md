@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.7.4 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.7.5 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **In-memory candidate preferences (0.7.3):** Linux/IBus now ranks existing
@@ -105,6 +105,14 @@ does not imply cross-platform stability. Keep another input method available.
   programs in private sessions, not the older personal installation or an independent language
   benchmark. Japanese data, old ranks and input/model budgets remain unchanged; see
   [fallback vocabulary](ibus-candidates.md#模型不可用时的本地兜底词库).
+  0.7.5 adds explanation/learning/follow-up data: 6,004 English forms,
+  1,806 Chinese readings and 590 / 608 authored sentences (including the later 再 homophone).
+  Its source-build checks are separate
+  from installation acceptance. Authored continuations remain finite; this is not unrestricted
+  sentence generation or automatic adaptation to every partially typed Chinese sentence.
+  N58 keeps a matching authored sentence across subsequent word adoptions and valid Pinyin
+  homophones within the existing local window; literal adopted Han text is not autocorrected.
+  See the [sentence-progress audit](bug-audit-sentence-progress-2026-09-27.md).
   Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
   Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,
@@ -117,6 +125,10 @@ does not imply cross-platform stability. Keep another input method available.
   N50 in 0.6.8 fixes English one-word classification and model-derived next-word choices before
   a typed Space. This uses the existing known-word guard, not arbitrary grammar or vocabulary
   inference; see the [next-word audit](bug-audit-english-next-word-2026-09-24.md).
+  N59 in 0.7.5 keeps English local collocations/sentences within the current line and prevents
+  symbols, digits, domains or a clipped committed-context token from becoming false words.
+  This does not add general tokenization, change model prompts or permit native multiline input;
+  the personal installation is unchanged. See the [context-boundary audit](bug-audit-english-context-2026-09-28.md).
   N51 in 0.6.8 fixes optional Pinyin tone digits before sentence punctuation/closing delimiters,
   with guards for decimals, time and grouped numeric forms. It does not add tone-sensitive ranking,
   accented-vowel Pinyin, broader vocabulary or a general mixed-text parser; see the

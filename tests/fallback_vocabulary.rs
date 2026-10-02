@@ -253,6 +253,68 @@ const ESSENTIALS_CHINESE: &[(&str, &str, &str)] = &[
     ("lu'shang'xiao'xin", "路上小心", "路上小心，不用着急。"),
 ];
 
+const CLARITY_ENGLISH: &[(&str, &str, &str)] = &[
+    (
+        "what does this me",
+        "what does this mean",
+        "what does this mean in this context?",
+    ),
+    (
+        "how do you pron",
+        "how do you pronounce",
+        "how do you pronounce this word?",
+    ),
+    (
+        "could you be more spec",
+        "could you be more specific",
+        "could you be more specific?",
+    ),
+    (
+        "could you check the gram",
+        "could you check the grammar",
+        "could you check the grammar?",
+    ),
+    (
+        "let me put it an",
+        "let me put it another",
+        "let me put it another way.",
+    ),
+    (
+        "if i understand corr",
+        "if i understand correctly",
+        "if i understand correctly, we should wait.",
+    ),
+    (
+        "thanks for pointing th",
+        "thanks for pointing that",
+        "thanks for pointing that out.",
+    ),
+    (
+        "please summarize the ma",
+        "please summarize the main",
+        "please summarize the main points.",
+    ),
+];
+
+const CLARITY_CHINESE: &[(&str, &str, &str)] = &[
+    ("zhe'ge'ci", "这个词", "这个词是什么意思？"),
+    ("fa'yin", "发音", "发音可以再示范一下吗？"),
+    ("yu'fa'cuo'wu", "语法错误", "语法错误已经改好了。"),
+    ("ju'ge'li'zi", "举个例子", "举个例子会更容易理解。"),
+    (
+        "huan'ju'hua'shuo",
+        "换句话说",
+        "换句话说，我们还需要一些时间。",
+    ),
+    (
+        "wo'xiang'que'ren'yi'xia",
+        "我想确认一下",
+        "我想确认一下具体要求。",
+    ),
+    ("gen'jin'yi'xia", "跟进一下", "跟进一下这个问题的进展。"),
+    ("shao'hou'hui'fu", "稍后回复", "稍后回复你具体结果。"),
+];
+
 fn engine(language: &str) -> XRTabletImeEngine {
     let mut engine = XRTabletImeEngine::new(EngineConfig {
         default_language: language.into(),
@@ -303,6 +365,7 @@ fn offline_english_fallback_keeps_words_sentences_and_exact_commits() {
         .iter()
         .chain(CONVERSATION_ENGLISH)
         .chain(ESSENTIALS_ENGLISH)
+        .chain(CLARITY_ENGLISH)
     {
         let mut ime = engine("en");
         ime.seed(seed);
@@ -319,6 +382,7 @@ fn offline_chinese_fallback_preserves_spelling_forms_and_exact_commits() {
         .iter()
         .chain(CONVERSATION_CHINESE)
         .chain(ESSENTIALS_CHINESE)
+        .chain(CLARITY_CHINESE)
     {
         for seed in [
             reading.replace('\'', ""),
@@ -360,14 +424,27 @@ fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallba
         Some(LlmProviderError::HttpStatus(503)),
         None,
     ] {
-        for (language, cases, added, latest) in [
-            ("en", ENGLISH, CONVERSATION_ENGLISH, ESSENTIALS_ENGLISH),
-            ("zh-Hans", CHINESE, CONVERSATION_CHINESE, ESSENTIALS_CHINESE),
+        for (language, cases, added, essentials, latest) in [
+            (
+                "en",
+                ENGLISH,
+                CONVERSATION_ENGLISH,
+                ESSENTIALS_ENGLISH,
+                CLARITY_ENGLISH,
+            ),
+            (
+                "zh-Hans",
+                CHINESE,
+                CONVERSATION_CHINESE,
+                ESSENTIALS_CHINESE,
+                CLARITY_CHINESE,
+            ),
         ] {
             for &(seed, word, sentence) in cases
                 .iter()
                 .take(2)
                 .chain(added.iter().take(1))
+                .chain(essentials.iter().take(1))
                 .chain(latest.iter().take(1))
             {
                 let mut ime = engine(language);
@@ -398,13 +475,14 @@ fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallba
 
 #[test]
 fn long_fallback_drafts_keep_the_prefix_and_do_not_require_a_model() {
-    for (language, prefix, cases, added, latest) in [
+    for (language, prefix, cases, added, essentials, latest) in [
         (
             "en",
             "note ".repeat(60),
             ENGLISH,
             CONVERSATION_ENGLISH,
             ESSENTIALS_ENGLISH,
+            CLARITY_ENGLISH,
         ),
         (
             "zh-Hans",
@@ -412,12 +490,14 @@ fn long_fallback_drafts_keep_the_prefix_and_do_not_require_a_model() {
             CHINESE,
             CONVERSATION_CHINESE,
             ESSENTIALS_CHINESE,
+            CLARITY_CHINESE,
         ),
     ] {
         for &(seed, word, sentence) in cases
             .iter()
             .take(2)
             .chain(added.iter().take(2))
+            .chain(essentials.iter().take(2))
             .chain(latest.iter().take(2))
         {
             let mut ime = engine(language);
@@ -465,6 +545,16 @@ fn standalone_fallback_word_forms_are_visible_without_sentence_context() {
         ("withdra", "withdrawn"),
         ("detachab", "detachable"),
         ("stripe", "striped"),
+        ("fluentl", "fluently"),
+        ("textbo", "textbook"),
+        ("workbo", "workbook"),
+        ("grammaticall", "grammatically"),
+        ("alphabeti", "alphabetical"),
+        ("comparati", "comparative"),
+        ("literall", "literally"),
+        ("misinterprete", "misinterpreted"),
+        ("reassessm", "reassessment"),
+        ("contextu", "contextual"),
     ] {
         let mut ime = engine("en");
         ime.seed(seed);
@@ -515,6 +605,16 @@ fn conversation_fallback_retains_literal_spacing_case_and_apostrophes() {
             "I’d like to change the delivery",
             "I’d like to change the delivery address.",
         ),
+        (
+            "  If  I  understand  corr",
+            "  If  I  understand  correctly",
+            "  If  I  understand  correctly, we should wait.",
+        ),
+        (
+            "I’m not familiar with th",
+            "I’m not familiar with that",
+            "I’m not familiar with that term.",
+        ),
     ] {
         let mut ime = engine("en");
         ime.seed(seed);
@@ -530,10 +630,123 @@ fn everyday_chinese_unfinished_syllables_offer_words_and_sentences() {
         ("dian zi fa p", "电子发票", "电子发票请发到我的邮箱。"),
         ("chong fu kou k", "重复扣款", "重复扣款了，请帮我核对。"),
         ("zi dong xu f", "自动续费", "自动续费可以关闭吗？"),
+        ("zhe ge c", "这个词", "这个词是什么意思？"),
+        ("yu fa cuo w", "语法错误", "语法错误已经改好了。"),
+        ("ju ge li z", "举个例子", "举个例子会更容易理解。"),
+        ("shao hou hui f", "稍后回复", "稍后回复你具体结果。"),
     ] {
         let mut ime = engine("zh-Hans");
         ime.seed(seed);
         assert_fallback(&ime, seed, word, sentence);
         confirm(&mut ime, sentence);
+    }
+}
+
+#[test]
+fn clarity_words_keep_sentence_continuations_after_adoption_and_literal_spaces() {
+    // Reseeding represents the editable draft after host adoption, not a commit.
+    // Actual numeric adoption/Backspace/Space is covered by the private IBus/GTK gates.
+    for (language, cases) in [("en", CLARITY_ENGLISH), ("zh-Hans", CLARITY_CHINESE)] {
+        // An all-ASCII Chinese draft may still be one unconverted Pinyin span;
+        // only a Han/CJK boundary safely freezes its long prefix (draft.rs).
+        let long_prefix = if language == "en" {
+            "note ".repeat(60)
+        } else {
+            "前文。".repeat(90)
+        };
+        for prefix in [String::new(), long_prefix, "前文 café 😀。  ".repeat(40)] {
+            for &(reading, word, sentence) in cases {
+                // English words immediately followed by punctuation have no next
+                // sentence token after Space. Chinese keeps authored padding verbatim.
+                if language == "en" && !sentence[word.len()..].starts_with(' ') {
+                    continue;
+                }
+                for padding in [" ", "  ", "\u{3000}"] {
+                    let mut ime = engine(language);
+                    ime.seed(format!("{prefix}{reading}"));
+                    let adopted = format!("{prefix}{word}");
+                    assert!(
+                        ime.candidates().iter().any(|c| c.text == adopted),
+                        "{language} {reading:?} -> {adopted:?}: {:?}",
+                        ime.candidates()
+                    );
+                    let seed = format!("{adopted}{padding}");
+                    ime.seed(&seed);
+                    assert!(ime.snapshot().committed_text.is_empty());
+                    assert!(ime.candidates().len() <= 12);
+                    assert!(ime.candidates().iter().any(|c| c.text == seed));
+                    let suffix = &sentence[word.len()..];
+                    let suffix = if language == "en" {
+                        suffix.trim_start()
+                    } else {
+                        suffix
+                    };
+                    let expected = format!("{seed}{suffix}");
+                    assert!(
+                        ime.candidates().iter().take(PAGE_SIZE).any(|c| {
+                            c.text == expected
+                                && c.kind == CandidateKind::Sentence
+                                && c.source == CandidateSource::Local
+                        }),
+                        "{language} {seed:?} -> {expected:?}: {:?}",
+                        ime.candidates()
+                    );
+                    confirm(&mut ime, &expected);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn clarity_english_keeps_completing_the_next_word_in_an_uncommitted_draft() {
+    for prefix in [String::new(), "前文 café 😀。  ".repeat(40)] {
+        for (reading, adopted, next, word, sentence) in [
+            (
+                "How do you pron",
+                "How do you pronounce",
+                " this w",
+                "How do you pronounce this word",
+                "How do you pronounce this word?",
+            ),
+            (
+                "what does this me",
+                "what does this mean",
+                " in this cont",
+                "what does this mean in this context",
+                "what does this mean in this context?",
+            ),
+            (
+                "let me put it an",
+                "let me put it another",
+                "  w",
+                "let me put it another  way",
+                "let me put it another  way.",
+            ),
+            (
+                "please summarize the ma",
+                "please summarize the main",
+                " poi",
+                "please summarize the main points",
+                "please summarize the main points.",
+            ),
+        ] {
+            let mut ime = engine("en");
+            ime.seed(format!("{prefix}{reading}"));
+            let adopted = format!("{prefix}{adopted}");
+            assert!(
+                ime.candidates()
+                    .iter()
+                    .take(PAGE_SIZE)
+                    .any(|c| c.text == adopted)
+            );
+            let seed = format!("{adopted}{next}");
+            ime.seed(&seed);
+            assert!(ime.snapshot().committed_text.is_empty());
+            let word = format!("{prefix}{word}");
+            let sentence = format!("{prefix}{sentence}");
+            assert_fallback(&ime, &seed, &word, &sentence);
+            confirm(&mut ime, &sentence);
+        }
     }
 }

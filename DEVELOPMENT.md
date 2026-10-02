@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.7.4 — Reliable model fallback and broader bilingual vocabulary**.
+Current source version: **0.7.5 — Bilingual sentence continuity and safer English context**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -40,6 +40,28 @@ checks and clean-container installation checks to pass before publication. Other
 are added only after their own acceptance, not implied by the shared version number.
 This is a release requirement, not a claim that automatic publication is implemented or
 that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.7.5 — Bilingual sentence continuity and safer English context
+
+- Adds an independent `clarity` vocabulary layer: 58 explicit English forms (70 indexed forms
+  including sentence projections), 175 Chinese readings including the additional 再 homophone,
+  and 80 authored sentences per language. Totals are 6,004 English forms and 1,806 Chinese readings;
+  prior ranks, homophone order, Japanese data and budgets remain protected by existing fingerprints.
+- Fixes N58: Chinese authored sentence suggestions retain the full matching progress across
+  word adoption and verified Pinyin tails within the existing 256-character local window.
+  Same-sound alternatives can supply a sentence without replacing the primary conversion or
+  already adopted Han text. Literal spacing and exact adoption/undo/commit behavior remain.
+- Fixes N59: English local collocations and sentences no longer cross real line/paragraph
+  boundaries or normalize identifiers, domains, digits and clipped context fragments into words.
+  Horizontal spacing, case, contractions and valid new phrases after protected text remain usable.
+- Expands fallback checks to 44 authored scenarios per language and real GTK vocabulary checks
+  to 42 workflows, including Chinese multi-word sentence progress. Native modes each include
+  16 actual loopback HTTP 503/deadline cases, three N58 workflows and eight N59 workflows.
+  The basic GTK gate adds two physical English boundary/edit-recovery workflows.
+
+See the [0.7.5 release notes](docs/releases/0.7.5.md),
+[Chinese sentence-progress audit](docs/bug-audit-sentence-progress-2026-09-27.md) and
+[English context audit](docs/bug-audit-english-context-2026-09-28.md).
 
 ### 0.7.4 — Reliable model fallback and broader bilingual vocabulary
 

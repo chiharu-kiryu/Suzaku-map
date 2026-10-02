@@ -411,6 +411,48 @@ def check_gtk(bus, x):
         save_document(x, document, word + " today\n")
     print("PASS: N50 complete-word prefixes retain word/sentence labels, adoption, exact undo and continuation")
 
+    for token in ["hello123", "example.hello"]:
+        clear_document(x, document)
+        for char in token + " ":
+            if char.isdigit():
+                x.key(ord(char), IBus.KEY_Alt_L)
+            else:
+                x.type(char)
+        literal = token + " "
+        wait(lambda: seed_is(literal), "physical English protected context")
+        assert [c["text"] for c in watch.latest["candidates"]] == [literal], watch.latest
+        if token == "hello123":
+            # Removing the literal digits restores the ordinary `hello` context.
+            for _ in "123 ":
+                x.key(IBus.KEY_BackSpace)
+            wait(lambda: seed_is("hello"), "editing removes the identifier suffix")
+            assert any(c["text"] == "hello world" and c["kind"] == "word"
+                       for c in watch.latest["candidates"][:6]), watch.latest
+            for digit in "123":
+                x.key(ord(digit), IBus.KEY_Alt_L)
+            x.key(IBus.KEY_space)
+            wait(lambda: seed_is(literal), "restore the exact literal identifier")
+            assert [c["text"] for c in watch.latest["candidates"]] == [literal], watch.latest
+        x.type("please sen")
+        seed = literal + "please sen"
+        word = literal + "please send"
+        sentence = word + " me the details."
+        wait(lambda: seed_is(seed), "physical new phrase after an identifier")
+        assert any(c["text"] == sentence and c["kind"] == "sentence"
+                   for c in watch.latest["candidates"][:6]), watch.latest
+        choose_number(x, word)
+        save_document(x, document, "")
+        x.key(IBus.KEY_BackSpace)
+        wait(lambda: seed_is(seed), "undo restores the whole identifier and new phrase")
+        choose_number(x, word)
+        x.key(IBus.KEY_space)
+        wait(lambda: seed_is(word + " "), "Space continues without committing the identifier")
+        choose_number(x, sentence)
+        save_document(x, document, "")
+        commit(x)
+        save_document(x, document, sentence + "\n")
+    print("PASS: N59 2 physical English context-boundary workflows: symbols/digits, edit recovery, fresh phrases, word/sentence adoption, undo and exact saved text")
+
     revision = watch.latest["revision"]
     assert json.loads(command("Lzh-Hans"))["ok"]
     wait(lambda: watch.latest["revision"] > revision, "Chinese tone-boundary language")
