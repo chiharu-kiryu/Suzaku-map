@@ -165,6 +165,12 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
         ("zh-Hans", 1631, 0xef71941ba6109809_u64),
         // Keep the clarity batch unchanged when appending the missing 再 homophone.
         ("zh-Hans", 1805, 0xd6baee17d78df81c_u64),
+        // Freeze all 0.7.5 entries, including 再, before digital-life vocabulary.
+        ("zh-Hans", 1806, 0x7af33f71531104b6_u64),
+        // Freeze the digital-life entries before appending the home layer.
+        ("zh-Hans", 1931, 0xa9f2649daf9ddc84_u64),
+        // Freeze home-life readings before adding the errands layer.
+        ("zh-Hans", 1984, 0xe19cee5e8babbc73_u64),
         ("ja", 26, 0xf2e1aa0ec03a7e38_u64),
     ] {
         let entries = builtin(language).unwrap().readings();
@@ -192,17 +198,17 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
             "{language} first {count} readings changed existing data/rank"
         );
     }
-    assert_eq!(builtin("en").unwrap().next_words().count(), 313);
-    assert_eq!(builtin("en").unwrap().sentences().count(), 590);
-    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 1806);
-    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 305);
+    assert_eq!(builtin("en").unwrap().next_words().count(), 377);
+    assert_eq!(builtin("en").unwrap().sentences().count(), 718);
+    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2043);
+    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 369);
     assert_eq!(
         builtin("zh-Hans")
             .unwrap()
             .continuations()
             .map(|(_, values)| values.len())
             .sum::<usize>(),
-        608
+        736
     );
     assert_eq!(builtin("ja").unwrap().readings().len(), 26);
     assert_eq!(builtin("ja").unwrap().continuations().count(), 14);

@@ -12,6 +12,7 @@ import select
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -22,15 +23,21 @@ gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import IBus, GLib, Gio, Pango, PangoCairo
 
+sys.dont_write_bytecode = True
+from fixtures.compose_fixture import require_private_compose
+from fixtures.ibus_signal_lifetime import IBusSignalObjects
+
 runtime = Path(os.environ["XDG_RUNTIME_DIR"])
 assert os.environ.get("SUZAKU_NATIVE_SYNC_QA") == "1"
 assert str(runtime).startswith("/tmp/suzaku-sync-qa.")
 assert os.environ["IBUS_ADDRESS"] == f"unix:path={runtime}/ibus.sock"
 assert not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY")
+require_private_compose(runtime, os.environ)
 host_path = Path(__file__).resolve().parents[1] / "target/debug/linux_ime_host"
 host_socket = runtime / "suzaku-ime/host.sock"
 processes = []
 watchers = []
+signal_objects = IBusSignalObjects()
 model_requests = []
 model_reply_gates = {}
 preference_sentence_batches = {
@@ -171,8 +178,7 @@ class Watch:
 
 
 def pump():
-    while GLib.MainContext.default().iteration(False):
-        pass
+    signal_objects.drain(GLib.MainContext.default())
     for watcher in watchers:
         watcher.drain()
 
@@ -215,6 +221,7 @@ def type_seed(context, seed):
 
 def create_context(bus, name):
     context = bus.create_input_context(name)
+    signal_objects.watch(context)
     context.set_capabilities(IBus.Capabilite.FOCUS | IBus.Capabilite.PREEDIT_TEXT | IBus.Capabilite.LOOKUP_TABLE | IBus.Capabilite.AUXILIARY_TEXT)
     return context
 
@@ -3293,6 +3300,12 @@ def check_model_unavailable_vocabulary(context, watch, commits, lookup):
         ("zh-Hans", "dian zi fa piao", "电子发票", "电子发票请发到我的邮箱。"),
         ("en", "how do you pron", "how do you pronounce", "how do you pronounce this word?"),
         ("zh-Hans", "fa yin", "发音", "发音可以再示范一下吗？"),
+        ("en", "please save a co", "please save a copy", "please save a copy before closing."),
+        ("zh-Hans", "ping mu jie tu", "屏幕截图", "屏幕截图稍后发给你。"),
+        ("en", "please close the win", "please close the window", "please close the window before leaving."),
+        ("zh-Hans", "bei yong yao shi", "备用钥匙", "备用钥匙放在抽屉里。"),
+        ("en", "please print it on bo", "please print it on both", "please print it on both sides."),
+        ("zh-Hans", "xu jie tu shu", "续借图书", "续借图书可以在网上办理吗？"),
     ]
 
     def start(seed):
@@ -4630,10 +4643,95 @@ def check_english_writing_flow(context, watch, commits, lookup):
     print("PASS: English word/sentence continuity, readable long previews, lossless acceptance/undo and draft-only Ctrl+Backspace")
 
 
+def prepare_offline_pack_fixture(environment):
+    """Only CLI-managed data inside the fresh private IBus runtime directory."""
+    directory = runtime / "packs"
+    environment["SUZAKU_LEXICON_DIR"] = str(directory)
+    tool = host_path.with_name("suzaku_tool")
+    for identifier in ["org.suzaku.en.outdoors", "org.suzaku.zh-hans.outdoors", "org.suzaku.ja.rail"]:
+        destination = runtime / (identifier + ".json")
+        for args in [["export", identifier, str(destination)], ["install", str(destination)]]:
+            subprocess.run([str(tool), "pack", *args], env=environment,
+                           check=True, capture_output=True, text=True, timeout=10)
+    # Syntactically valid registry, damaged independent record: valid packs must load.
+    registry = directory / "registry.json"
+    raw = json.loads(registry.read_text())
+    raw["packages"].insert(0, {"broken": True})
+    registry.write_text(json.dumps(raw))
+
+
+def check_offline_packs(bus, environment):
+    context = create_context(bus, "suzaku-offline-pack-qa")
+    commits = []
+    lookup = observe_lookup(context)
+    context.connect("commit-text", lambda _, text: commits.append(text.get_text()))
+    context.focus_in()
+    assert bus.set_global_engine("dev.suzaku.linux.ime")
+    watch = Watch()
+    wait(lambda: watch.latest is not None and watch.latest["focused"], "offline pack focus")
+    assert json.loads(command("P0"))["ok"]
+    cases = [
+        ("en", "please bring your bino", "please bring your binoculars", "please bring your binoculars."),
+        ("zh-Hans", "xing kong guan ce", "星空观测", "星空观测安排在周末晚上。"),
+        ("ja", "kaisatsu", "改札", "改札はどこですか。"),
+    ]
+    try:
+        for language, seed, word, sentence in cases:
+            assert json.loads(command("L" + language))["ok"]
+            wait(lambda: watch.latest["language"] == language, "pack language acknowledgement")
+            type_seed(context, seed)
+            wait(lambda: watch.latest["seed"] == seed, "pack spelling via native keys")
+            choices = watch.latest["candidates"][:6]
+            for text, kind in [(word, "word"), (sentence, "sentence")]:
+                assert any(c["text"] == text and c["kind"] == kind and c["source"] == "local"
+                           for c in choices), (language, choices)
+            check_candidate_presentation(watch, lookup)
+            before = len(commits)
+            index = next(i for i, c in enumerate(choices) if c["text"] == word)
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+            wait(lambda: watch.latest["seed"] == word, "pack word adoption")
+            type_seed(context, " ")
+            wait(lambda: watch.latest["seed"] == word + " ", "Space does not submit pack text")
+            assert len(commits) == before
+            # Japanese conversion intentionally joins reading separators. To
+            # submit padding literally, explicitly adopt the exact raw choice.
+            # Keep the byte-exact assertion instead of accepting a trimmed result.
+            literal = next(i for i, c in enumerate(watch.latest["candidates"][:6])
+                           if c["text"] == word + " ")
+            assert context.process_key_event(IBus.KEY_1 + literal, 0, 0)
+            wait(lambda: watch.latest["seed"] == word + " ", "literal pack adoption")
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: len(commits) > before and not watch.latest["seed"], "pack commit acknowledgement")
+            assert commits[before:] == [word + " "], (language, commits[before:], word, watch.latest)
+            type_seed(context, seed)
+            wait(lambda: watch.latest["seed"] == seed, "pack sentence spelling")
+            index = next(i for i, c in enumerate(watch.latest["candidates"][:6]) if c["text"] == sentence)
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+            wait(lambda: watch.latest["seed"] == sentence, "pack sentence adoption")
+            assert len(commits) == before + 1
+            assert context.process_key_event(IBus.KEY_Return, 0, 0)
+            wait(lambda: commits[before + 1:] == [sentence] and not watch.latest["seed"], "exact pack sentence commit")
+        # The host uses its immutable snapshot even if the registry is corrupted
+        # after startup; no disk reads or failures on subsequent native keys.
+        Path(environment["SUZAKU_LEXICON_DIR"], "registry.json").write_text("damaged after startup")
+        assert json.loads(command("Len"))["ok"]
+        wait(lambda: watch.latest["language"] == "en", "return to English")
+        type_seed(context, "stargaz")
+        wait(lambda: watch.latest["seed"] == "stargaz", "snapshot spelling")
+        assert any(c["text"] == "stargazing" for c in watch.latest["candidates"])
+        print("PASS: offline packs EN/ZH/JA native words/sentences, labels, numeric adoption, Space, exact commits and immutable startup snapshot")
+    finally:
+        context.focus_out()
+        watchers.remove(watch)
+        watch.sock.close()
+
+
 try:
     processes.append(subprocess.Popen(["ibus-daemon", "--single", "--address=" + os.environ["IBUS_ADDRESS"], "--cache=none"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
     wait(lambda: (runtime / "ibus.sock").exists(), "isolated IBus did not start")
     host_environment = dict(os.environ)
+    if os.environ.get("SUZAKU_NATIVE_PACKS_ONLY") == "1":
+        prepare_offline_pack_fixture(host_environment)
     if os.environ.get("SUZAKU_NATIVE_CONTROL_IO_ONLY") == "1":
         fixture = runtime / "slow-settings-fsync.so"
         subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
@@ -4645,6 +4743,9 @@ try:
     IBus.init()
     bus = IBus.Bus.new()
     assert bus.is_connected()
+    if os.environ.get("SUZAKU_NATIVE_PACKS_ONLY") == "1":
+        check_offline_packs(bus, host_environment)
+        raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_LANGUAGE_ONLY") == "1":
         check_language_shortcut(bus)
         raise SystemExit(0)

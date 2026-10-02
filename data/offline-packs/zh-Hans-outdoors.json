@@ -1,0 +1,33 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.zh-hans.outdoors", "version": "1.0.0",
+    "name": "户外 · 星空观测", "description": "可选的观星、设备和户外安排词句集合。",
+    "language": "zh-Hans", "topics": ["outdoors", "astronomy"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "zh-Hans",
+    "readings": [
+      {"reading":"xing'kong'guan'ce", "text":"星空观测", "kind":"word"},
+      {"reading":"guan'xing", "text":"观星", "kind":"word"},
+      {"reading":"xing'zuo", "text":"星座", "kind":"word"},
+      {"reading":"wang'yuan'jing", "text":"望远镜", "kind":"word"},
+      {"reading":"shuang'tong'wang'yuan'jing", "text":"双筒望远镜", "kind":"word"},
+      {"reading":"san'jiao'jia", "text":"三脚架", "kind":"word"},
+      {"reading":"liu'xing'yu", "text":"流星雨", "kind":"word"},
+      {"reading":"tian'wen'tai", "text":"天文台", "kind":"word"},
+      {"reading":"tou'deng", "text":"头灯", "kind":"word"},
+      {"reading":"yue'chu", "text":"月出", "kind":"word"},
+      {"reading":"yue'luo", "text":"月落", "kind":"word"},
+      {"reading":"jin'wan'qu'guan'xing", "text":"今晚去观星", "kind":"word"}
+    ],
+    "continuations": [
+      ["星空观测", ["星空观测安排在周末晚上。", "星空观测需要提前查看天气。"]],
+      ["今晚去观星", ["今晚去观星，记得带上望远镜。", "今晚去观星，一起出发吧。"]],
+      ["双筒望远镜", ["双筒望远镜放在背包里了。"]],
+      ["流星雨", ["流星雨观测结束后一起回去。"]],
+      ["天文台", ["天文台的参观时间需要提前确认。"]],
+      ["三脚架", ["三脚架已经收进袋子里了。"]]
+    ]
+  }
+}

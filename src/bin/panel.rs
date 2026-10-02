@@ -203,6 +203,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         InstanceLaunch::Primary(instance) => Some(instance),
         InstanceLaunch::ExistingSignaled => return Ok(()),
     };
+    suzaku_map::lexicon::packs::initialize_current();
     let mut app = PanelApp::new(event_proxy, instance);
     event_loop.run_app(&mut app)?;
     Ok(())

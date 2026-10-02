@@ -57,9 +57,17 @@ Run the paired offline input-quality gates without a model:
 ```bash
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
 cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
+cargo test --locked --all-features --test offline_packs -- --test-threads=1
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test chinese_sentence_continuation -- --test-threads=1
 ```
+
+Offline-pack tests use owned data directories and fresh subprocesses, covering the CLI/SDK,
+schema/decoder profiles, append-only rank preservation, conflicts, limits, locks, malformed records,
+and frozen startup snapshots. Run `SUZAKU_NATIVE_PACKS_ONLY=1 bash scripts/test-linux-ci.sh ibus`
+for the real IBus EN/ZH/JA pack path (no desktop input or personal installation changes).
+The optional environment override `SUZAKU_LEXICON_DIR` must be removed or set to an owned
+absolute directory in fixtures; library tests do not auto-load personal packs.
 
 The English gate covers 40 authored word/sentence scenarios plus short/long draft line boundaries,
 protected tokens, committed-context truncation and literal horizontal spacing. Eight further native
@@ -78,11 +86,12 @@ spellings, straight/curly-apostrophe contractions, five Pinyin spellings, same-s
 short/long adopted drafts with literal padding. Synthetic tone digits test boundaries, not
 pronunciation; numeric key entry still follows the IME's literal-digit path. Lexicon unit checks
 retain every pre-expansion English rank and
-validate authored table uniqueness and reachability. The fallback gate checks 44 English and
-44 Chinese everyday scenarios (Chinese in four spellings), 40 standalone English word forms,
-eight unfinished Pinyin syllables, case/spacing/apostrophe variants, long drafts and synthetic
-typed provider errors. Explanation/learning/follow-up cases also check adopted-word sentence
-continuations with literal padding and subsequent partial English words in uncommitted drafts.
+validate authored table uniqueness and reachability. The fallback gate checks 68 English and
+68 Chinese everyday scenarios (Chinese in four spellings), 64 standalone English word forms,
+twenty unfinished Pinyin syllables, case/spacing/apostrophe variants, long drafts and synthetic
+typed provider errors. Explanation/learning/follow-up, digital-life, home-life and errands cases also check
+adopted-word sentence continuations with literal padding and subsequent partial English words
+in uncommitted drafts.
 The native gate separately exercises actual loopback HTTP 503/deadline failures in both
 languages: local candidates stay available while pending and after failure, with numeric adoption,
 undo, Space continuity and exact commits. No live model quality is inferred. Use `--all-features`
@@ -170,11 +179,14 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
-The `vocabulary` gate exercises forty offline English/Chinese vocabulary workflows and two
+The `vocabulary` gate exercises fifty-two offline English/Chinese vocabulary workflows and two
 multi-word Chinese sentence-progress workflows in the real
 GTK editor: physical spelling, word/sentence labels, numeric adoption, exact undo, Space
 continuation and saved word/sentence commits. Authored sentence continuations must remain on
 page one after Space where a continuation exists. It uses no companion-seeded text or live model.
+For a focused home-life diagnostic, set `SUZAKU_VOCABULARY_QA_SCOPE=home` with the `vocabulary`
+runner. This explicitly reports four vocabulary cases plus two sentence-progress cases, not a
+complete-gate pass. CI keeps the default `all` scope and the unchanged 240-second deadline.
 The private IBus gate also checks sentence progress in short, threshold-crossing and long drafts,
 including consecutive numeric adoptions, valid homophones, exact undo and one explicit commit.
 To validate a user-local installation instead of rebuilding debug binaries, set
@@ -297,6 +309,22 @@ See the [N44/N45 recovery audit](docs/bug-audit-engine-recovery-2026-09-24.md).
 FFI tests share process-wide state, so keep them serial. Native runners create private D-Bus/IBus/
 Xvfb sessions; never remove isolation guards or aim them at the real desktop. Regression tests
 must not connect a real microphone or cloud provider.
+The IBus and application runners copy the Compose fixture into their owned temporary directory:
+newer IBus can rewrite that file and create a backup. Never point `XCOMPOSEFILE` directly at the
+source fixture or personal configuration, even for read-only input checks. The Python preflight
+rejects shared paths, symlinks and hard links; `python3 scripts/test-native-ibus-trace.py` checks
+that isolation along with the activation diagnostic shim.
+
+The Python native observer also keeps borrowed IBus signal objects alive until each C dispatch
+returns. IBus checks the floating reference after emitting; a short-lived PyGObject callback
+can otherwise release the last wrapper too early. Drain `IBusSignalObjects` in the observer's
+non-reentrant main-loop pump, including after synchronous post-processing, rather than hiding
+GLib warnings or leaking a reference per event. `/usr/bin/python3 scripts/test-ibus-signal-lifetime.py`
+compiles a tiny GObject-only emitter and checks delivery, post-emission liveness and prompt release
+without connecting to any input bus. This regression is part of Linux CI.
+GTK editor observation reuses topology, roles and states only within one read; it starts fresh
+for every pre/post-save check. Preserve exact buffer, idle-progress and saved-file assertions,
+the single physical save, and the original native/application deadlines when optimizing QA.
 
 On hybrid NVIDIA/Mesa hosts, if private Xvfb cannot create EGL surfaces, prefix the UI runner with
 `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json` when that file exists.
@@ -322,10 +350,22 @@ large incremental trees. For an interactive debugger, temporarily use
 `CARGO_PROFILE_DEV_DEBUG=2` (or `CARGO_PROFILE_TEST_DEBUG=2` for tests). Return to the defaults
 afterwards; `CARGO_INCREMENTAL=1` explicitly opts back into the larger incremental cache.
 
-After stopping builds and test processes, `cargo clean --profile dev` and
-`cargo clean --profile release` remove only those Rust build profiles. Prefer these scoped
-commands to deleting all of `target/`: local IBus headers and extracted Qt/lint dependencies
-may be stored there. Android cross-target caches, `android/app/build/` and generated
+Version and feature changes can still leave several generations of project binaries and tests.
+After stopping builds and processes using those artifacts, first preview a package-scoped cleanup:
+
+```bash
+cargo clean --locked --offline -p suzaku-map --profile dev --dry-run
+cargo clean --locked --offline -p suzaku-map --profile release --dry-run
+```
+
+Inspect the previews, then repeat without `--dry-run` to remove the project's rebuildable
+artifacts while retaining third-party dependency caches. The next build/test run regenerates
+the removed artifacts; installed copies outside `target/` are unaffected.
+
+If more space is needed, `cargo clean --profile dev` and `cargo clean --profile release`
+also remove dependency caches for those profiles, at the cost of a fuller rebuild. Prefer
+these scoped commands to deleting all of `target/`: local IBus headers and extracted Qt/lint
+dependencies may be stored there. Android cross-target caches, `android/app/build/` and generated
 `android/app/src/main/jniLibs/` can be rebuilt when Android work resumes; do not remove shared
 SDKs, signing files or `android/local.properties` as build waste.
 

@@ -79,11 +79,13 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -m 700 "$suzaku_apps_tmp/runtime"
+# Newer IBus may rewrite Compose files and create adjacent backups.
+install -m 600 "$suzaku_apps_root/scripts/fixtures/compose.XCompose" "$suzaku_apps_tmp/compose.XCompose"
 suzaku_apps_screen=1920x1080x24
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_screen=800x600x24
 # shellcheck disable=SC2016 # Expand DISPLAY only after xvfb-run assigns the private display.
 timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
-  -u SUZAKU_IBUS_INLINE_PREEDIT \
+  -u SUZAKU_IBUS_INLINE_PREEDIT -u SUZAKU_LEXICON_DIR \
   -u VSCODE_IPC_HOOK_CLI -u VSCODE_IPC_HOOK -u VSCODE_PORTABLE -u ELECTRON_RUN_AS_NODE \
   -u AT_SPI_BUS_ADDRESS -u SESSION_MANAGER -u DBUS_STARTER_ADDRESS -u DBUS_STARTER_BUS_TYPE \
   XDG_RUNTIME_DIR="$suzaku_apps_tmp/runtime" XDG_CONFIG_HOME="$suzaku_apps_tmp/config" \
@@ -94,7 +96,7 @@ timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
   SUZAKU_IME_CONFIG="$suzaku_apps_tmp/ime.json" \
   SUZAKU_LINUX_IME_SOCKET="$suzaku_apps_tmp/runtime/suzaku-ime/host.sock" \
   IBUS_ADDRESS="unix:path=$suzaku_apps_tmp/runtime/ibus.sock" \
-  XCOMPOSEFILE="$suzaku_apps_root/scripts/fixtures/compose.XCompose" \
+  XCOMPOSEFILE="$suzaku_apps_tmp/compose.XCompose" \
   XLOCALEDIR=/usr/share/X11/locale GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
   GTK_IM_MODULE=ibus IBUS_ENABLE_SYNC_MODE=1 IBUS_DISCARD_PASSWORD=0 \
   GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 GTK_A11Y=none NO_AT_BRIDGE=1 \

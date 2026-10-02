@@ -146,7 +146,8 @@ sha256sum --quiet -c SHA256SUMS
 | 配置备份 | `~/.local/share/suzaku/backups/` |
 | 维护锁 | 输入法设置文件同目录的 `.suzaku-data.lock` |
 | 输入、候选、语音/手写草稿 | 仅内存，不进入备份 |
-| 内置词库 | 编译在程序内，暂无个人词库文件 |
+| 内置词库 | 编译在程序内，始终保留兜底 |
+| 可选离线包 | `~/.local/share/suzaku/lexicons/registry.json`；不进入配置备份 |
 | 模型权重 | 由外部 Llama/Ollama 服务管理，不由 Suzaku 搬移或清理 |
 
 遵循 [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/)：
@@ -210,6 +211,106 @@ suzaku-panel
 备份中 `null` 对应的项会删除那个设置文件并恢复默认值，预览会明确显示，其他文件不受影响。
 原配置损坏、不可读取时会安全拒绝应用，避免丢掉唯一副本。
 模型配置只备份密钥环境变量名、不备份密钥值；恢复会关闭云端发送授权，需重新明确授权。
+
+## 离线词库包与制包 SDK
+
+0.8.0 新增数据型插件包，不执行第三方脚本或加载动态库，不访问模型或自动下载。
+第一版提供命令行管理，**尚无设置面板中的导入/启停列表，也不是热更新**。
+推荐集合随程序提供：英文、中文的 `outdoors` / `astronomy` 观星集合，以及日文
+`travel` / `rail` 铁路出行集合；它们是可选小型示例，不是完整专业词典。
+按“一个语言 + 一组相关主题”制包，避免把无关领域塞进同一包；相同主题可发布不同语言包。
+
+`.deb` 使用 `suzaku-tool`，源码/压缩包使用 `suzaku_tool` / `./bin/suzaku_tool`：
+
+```bash
+suzaku-tool pack catalog --language en --topic outdoors
+suzaku-tool pack export org.suzaku.en.outdoors ./en-outdoors.json
+suzaku-tool pack validate ./en-outdoors.json
+suzaku-tool pack install ./en-outdoors.json
+suzaku-tool pack list
+suzaku-tool pack preview en "please bring your bino"
+suzaku-tool pack disable org.suzaku.en.outdoors
+suzaku-tool pack enable org.suzaku.en.outdoors
+# 显式更新；保留包原有位置和启用状态，不允许更换语言：
+suzaku-tool pack install ./en-outdoors.json --replace
+suzaku-tool pack remove org.suzaku.en.outdoors
+```
+
+`export` 不覆盖已有文件，导出不等于安装；安装新包默认启用，ID 重复需要 `--replace`。
+包版本采用三段非负数字，版本替换由使用者明确选择，不自动升级、降级或联网检查。
+`list` 和 `preview` 显示**新进程将使用的**磁盘状态，不表示个人桌面已经加载新包。
+包变更保存后，需要正常退出并重新启动面板及宿主。CLI 不擅自停止输入服务；只重启面板
+不会让旧宿主的词表同步更新。安装、禁用和移除不改当前进程，`remove` 的包可从原文件重装。
+
+注册表遵循 `XDG_DATA_HOME`；可用绝对路径 `SUZAKU_LEXICON_DIR` 覆盖，空/相对值报错。
+面板、宿主和管理命令必须使用相同目录；自定义 systemd 环境需由使用者自行配置。
+每次修改使用独立写锁和单文件原子替换；失败不覆盖已有注册表，不承诺跨文件或断电事务。
+损坏记录在启动时隔离并写日志，其他独立包仍加载；整体 JSON/格式损坏则保留内置兜底。
+管理写入遇损坏注册表拒绝修改，应先保存副本再人工修复，不会自动删除唯一的坏数据副本。
+个人包及其注册表不进 `data backup`；保留原始分发 JSON 以便恢复，也不会随卸载被清除。
+
+### 包格式与边界
+
+一个 UTF-8 JSON 文件，顶层为 `format_version: 1`、`manifest`、`lexicon`。
+`manifest` 必填 `id/version/name/description/language/topics/license/authors`。
+ID 为最长 64 字节的小写字母开头 slug，只含小写字母、数字、点、连字符，不是文件路径。
+语言与内部 `lexicon.language` 必须相同，当前只支持 `en`、`zh-Hans`、`ja`；增加语言数据
+不会自动增加转换算法。主题是 1–8 个短 slug，作者 1–8 个，必须说明来源和许可。
+署名和许可字段只是作者声明，**格式校验不等于签名验证、来源可信或许可审计**。
+
+`lexicon` 复用内置资源 v1：
+
+- 英文：`word_layers`，层内为 `id`、`words`、`next_words: [[语境,[下一词]]]`、
+  `sentences`；可用 `phrase_endings: [[语境,[句尾]]]`。单词显式列出字母/撇号词形。
+- 中文：`readings: [{reading,text,kind,require_separators}]`，读音用小写无调拼音，
+  音节以 ASCII 撇号分隔，`v` 表示 ü；`kind` 为 `word` 或 `sentence`，分隔标记默认 false。
+- 日文：同一 `readings` 结构，读音为平假名，不支持中文的强制分隔标记。
+- 中日续句：`continuations: [[语境,[完整句子]]]`，每句必须以该语境开头。
+
+只追加扩展层/读音，旧词库不被替换。已有语境如果值完全相同则跳过，不同则拒绝并提示
+使用更具体的语境；同读音/文本的类型或分隔标记不能冲突。词序、同音顺序由数组顺序决定。
+未知字段、版本及当前解码器不支持的字段拒绝；不静默忽略可能无效的数据。
+单包上限 **256 KiB、8 层、2,048 索引单元**，每语言启用扩展上限 **4,096 单元**，
+最多安装 **16 包**，注册表最多 **4 MiB**，合并后每语言最多 **64 层**。
+单元按词、读音、语境/续句及英文句子的词投影保守计数，不是唯一词数；`validate` 显示单元。
+只有安装/启用时才检查和其他活动包的组合冲突；候选窗口、混排数量和模型预算不变。
+
+### 小型 SDK
+
+Python 3.10+ 标准库即可；权威校验复用当前 Suzaku 的 `pack validate`，不另造一份易漂移的
+Python 词典算法。源码位置 `sdk/offline-packs/`；打包脚本把 SDK 放在
+`share/suzaku/offline-pack-sdk/`，三个示例 JSON 放在 `share/suzaku/offline-packs/`。
+`.deb` 安装后相应位置为 `/usr/share/suzaku/…`，无网络依赖或额外 pip 依赖。
+
+```bash
+# 源码：制出园艺示例包；不会安装，也不允许覆盖已存在的输出。
+python3 sdk/offline-packs/example.py ./garden.json ./target/debug/suzaku_tool
+# 或校验、规范化自己编写的 JSON：
+python3 sdk/offline-packs/suzaku_pack.py ./authored.json ./distribution.json --tool ./target/debug/suzaku_tool
+# 安装版示例：
+python3 /usr/share/suzaku/offline-pack-sdk/example.py ./garden.json /usr/bin/suzaku-tool
+```
+
+Python API 提供 `PackBuilder(...)`、`words(...)`、`reading(...)`、`continuation(...)`、
+`phrase_ending(...)`、`build(path, tool=...)`，见随附 `example.py`。
+输出先在同目录私有临时文件校验，再原子无覆盖发布；校验/工具失败不发布半成品。
+分发的 JSON 只有数据，消费者无需 Python SDK；不要在包中附带个人输入记录或复制无权分发的语料。
+
+### 开发阶段验证范围（2026-10-02）
+
+源码全量回归 992 项通过、27 项 opt-in 跳过；其后新增三个负向边界用例，离线包专项
+合计 15 项通过，严格全目标 Clippy 无警告。包专项原生 IBus 在默认/行内两种模式通过：
+中英日词句、标签、数字采用、空格不断流、精确提交，以及启动后损坏注册表仍使用冻结快照。
+未安装包的完整默认 IBus 流程也通过。首次包测试错误地假设日文转换候选保留读音分隔空格，
+诊断确认其既有转换会合并分隔符；改为显式采用原文字面候选后验证精确空白提交，并另测
+三语句子提交，没有放宽超时、断言或改动日文转换规则。
+
+日志保留在本轮任务目录 `/tmp/szpacks.VFlaRa/`，包括原始失败和诊断。
+本机是 Ubuntu 26.04，发布基线仍为 Ubuntu 24.04 amd64；打包脚本和 smoke 检查已纳入
+SDK/示例，ShellCheck、语法、图源和文档审计链接检查通过。该开发阶段**没有重建 release 包、
+运行容器安装、更新个人安装或验证 GUI 包管理**，不能据此宣称这些路径已经验收。
+后续 0.8.0 发版必须另通过同提交的 Ubuntu 24.04 CI、包校验和容器安装门禁；
+见 [0.8.0 发布说明](releases/0.8.0.md)。源码升版仍不会改动个人安装。
 
 ## 卸载与数据保留
 

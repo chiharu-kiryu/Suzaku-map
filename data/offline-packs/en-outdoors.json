@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.en.outdoors", "version": "1.0.0",
+    "name": "Outdoors · Night sky", "description": "An optional collection for stargazing, equipment and outdoor plans.",
+    "language": "en", "topics": ["outdoors", "astronomy"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "en",
+    "word_layers": [{
+      "id": "night-sky",
+      "words": ["stargazing", "stargazer", "stargazers", "constellation", "constellations", "binoculars", "tripod", "tripods", "moonrise", "moonset", "meteor", "meteors", "observatory", "observatories", "telescope", "telescopes", "starry", "headlamp", "headlamps"],
+      "next_words": [
+        ["let's go stargazing", ["tonight", "together"]],
+        ["please bring your", ["binoculars", "headlamp"]],
+        ["the observatory opens", ["after", "at"]],
+        ["we can watch the meteor", ["shower"]]
+      ],
+      "sentences": [
+        "let's go stargazing tonight.", "let's go stargazing together this weekend.",
+        "please bring your binoculars.", "please bring your headlamp for the walk back.",
+        "the observatory opens after sunset.", "we can watch the meteor shower tonight.",
+        "the constellation is visible above the trees.", "could you help me set up the telescope?"
+      ]
+    }]
+  }
+}

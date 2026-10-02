@@ -1,7 +1,21 @@
 # Alpha limitations and support
 
-0.7.5 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.8.0 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
+
+- **Ubuntu 26.04 development checks:** the initial home-life vocabulary run timed out after
+  44 of 50 GTK workflows and emitted Python IBus `g_object_is_floating` warnings; those failures
+  remain recorded. After system GLib/xkbcommon development libraries became available, a follow-up
+  fixed redundant per-observation accessibility queries and Python signal-payload lifetimes.
+  The complete home-life GTK gate then passed all 50 workflows in 194.7 seconds, within the same
+  240-second deadline. The later errands expansion also passes its full 54 workflows. Both
+  complete private IBus modes pass without those object warnings (28 HTTP failure/deadline
+  cases per mode after the errands expansion).
+  Compose fixtures also use private copies with shared/link-path rejection. IBus headers still
+  come from the task-local extracted package; this is not a clean Ubuntu 26.04 installation or
+  package qualification. Private desktop-portal inhibition warnings remain visible and are not
+  the signal-lifetime defect. None of these checks expands the Ubuntu 24.04 package baseline or
+  updates the personal installation; see [validation scope and retained failures](ibus-candidates.md#居家生活兜底词库未发布2026-10-02).
 
 - **In-memory candidate preferences (0.7.3):** Linux/IBus now ranks existing
   candidates using bounded, decaying feedback from confirmed choices. Preferences are scoped to
@@ -99,6 +113,13 @@ does not imply cross-platform stability. Keep another input method available.
   resources behind a model/platform-independent data interface. Resources are still embedded:
   editing them requires rebuilding/reinstalling, not hot reload or personal-dictionary import.
   See the [data contract](../data/lexicons/README.md).
+  0.8.0 adds opt-in, data-only offline packs and a small Python authoring
+  SDK. EN/ZH/JA packs are installed/enabled through a CLI, grouped by language/topic, and appended
+  to built-ins at host/panel startup. Both processes need a restart; there is no live reload,
+  settings-panel package manager, remote marketplace or authenticity/signature verification.
+  Package/aggregate budgets are bounded; installation rejects conflicting contexts. Damaged
+  startup entries fall back without replacing built-ins. User packs are excluded from settings
+  backups. See [pack lifecycle and SDK](linux-packaging-data.md#离线词库包与制包-sdk).
   0.7.4 adds three fallback expansions, bringing the totals to 5,934 indexed English forms,
   1,631 Chinese readings and 510 / 528 authored English / Chinese sentences. Disabled, absent
   or failing models do not block these local choices. The 36 real GTK workflows use source-built
@@ -113,6 +134,19 @@ does not imply cross-platform stability. Keep another input method available.
   N58 keeps a matching authored sentence across subsequent word adoptions and valid Pinyin
   homophones within the existing local window; literal adopted Han text is not autocorrected.
   See the [sentence-progress audit](bug-audit-sentence-progress-2026-09-27.md).
+  The digital-life vocabulary, now included in 0.8.0, adds account/file/call/display/offline presets:
+  6,041 English forms, 1,931 Chinese readings and 654 / 672 authored sentences. These examples
+  do not access or fill real credentials, verification codes or clipboard content. The existing
+  installation and released 0.7.5 resources are unchanged; see [vocabulary scope](../data/lexicons/README.md).
+  The subsequent home-life layer in 0.8.0 adds finding belongings, chores, tools and repairs:
+  6,074 English forms, 1,984 Chinese readings and 686 / 704 authored sentences in total.
+  Old layers, homophone order and existing contexts are retained. These are finite presets,
+  not automatic household actions, a repair advisory system or broader model capability.
+  The latest errands layer in 0.8.0 adds parcel collection, library loans, printing and queues:
+  6,102 English forms, 2,043 Chinese readings and 718 / 736 authored sentences in total.
+  Existing English ranks, Chinese homophone order, prior contexts and Japanese data are unchanged;
+  these presets do not look up real tracking/collection codes, library accounts or opening hours.
+  Resources still require a rebuild and reinstall; see [errands scope](ibus-candidates.md#日常办事兜底词库未发布2026-10-02).
   Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
   Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,

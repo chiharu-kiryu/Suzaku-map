@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Test the diagnostic shim with a fixed stub; never connect to any IBus bus."""
+"""Test native QA isolation and the diagnostic shim; never connect to an IBus bus."""
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+
+sys.dont_write_bytecode = True
+from fixtures.compose_fixture import require_private_compose
 
 
 class NativeTraceTests(unittest.TestCase):
@@ -74,6 +78,49 @@ class NativeTraceTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, "")
                 self.assertFalse(self.trace.exists())
+
+
+class ComposeIsolationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="suzaku-compose-qa.", dir="/tmp")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.source = self.root / "source.XCompose"
+        self.source.write_text("# synthetic source fixture\n")
+        self.private = self.root / "compose.XCompose"
+        self.environment = {"XCOMPOSEFILE": str(self.private)}
+
+    def test_private_copy_can_be_migrated_without_changing_source(self):
+        shutil.copyfile(self.source, self.private)
+        path = require_private_compose(self.root, self.environment)
+        path.write_text('# simulated IBus migration\ninclude "%L"\n')
+        self.assertEqual(self.source.read_text(), "# synthetic source fixture\n")
+
+    def test_missing_and_shared_source_paths_are_rejected(self):
+        for environment in [{}, self.environment, {"XCOMPOSEFILE": str(self.source)}]:
+            with self.subTest(environment=environment), self.assertRaises(ValueError):
+                require_private_compose(self.root, environment)
+
+    def test_symlink_and_hardlink_copies_are_rejected(self):
+        self.private.symlink_to(self.source)
+        with self.assertRaises(ValueError):
+            require_private_compose(self.root, self.environment)
+        self.private.unlink()
+        os.link(self.source, self.private)
+        with self.assertRaises(ValueError):
+            require_private_compose(self.root, self.environment)
+
+    def test_symlinked_and_non_tmp_roots_are_rejected(self):
+        shutil.copyfile(self.source, self.private)
+        alias = self.root.with_name(self.root.name + ".link")
+        alias.symlink_to(self.root, target_is_directory=True)
+        self.addCleanup(alias.unlink)
+        nested = self.root / "nested"
+        nested.mkdir()
+        shutil.copyfile(self.source, nested / "compose.XCompose")
+        for root in [alias, nested]:
+            with self.subTest(root=root), self.assertRaises(ValueError):
+                require_private_compose(root, {"XCOMPOSEFILE": str(root / "compose.XCompose")})
 
 
 if __name__ == "__main__":

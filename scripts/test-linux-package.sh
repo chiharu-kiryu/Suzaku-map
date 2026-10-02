@@ -59,6 +59,14 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   suzaku_package_test_version=$(jq -r '.version' "$suzaku_package_test_tree/manifest.json")
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_tree/bin/suzaku_tool" data --help
+  "$suzaku_package_test_tree/bin/suzaku_tool" pack --help
+  test -s "$suzaku_package_test_tree/share/suzaku/offline-pack-sdk/suzaku_pack.py"
+  for suzaku_package_test_pack in en-outdoors zh-Hans-outdoors ja-rail; do
+    "$suzaku_package_test_tree/bin/suzaku_tool" pack validate \
+      "$suzaku_package_test_tree/share/suzaku/offline-packs/$suzaku_package_test_pack.json"
+  done
+  PYTHONDONTWRITEBYTECODE=1 python3 "$suzaku_package_test_tree/share/suzaku/offline-pack-sdk/example.py" \
+    "$suzaku_package_test_extract/sdk-example.json" "$suzaku_package_test_tree/bin/suzaku_tool"
   desktop-file-validate "$suzaku_package_test_tree/share/applications/dev.suzaku.Suzaku.desktop"
 done
 for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
@@ -87,6 +95,14 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   suzaku_package_test_version=$(jq -r '.version' "$suzaku_package_test_extract/root/usr/share/doc/suzaku/manifest.json")
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" data --help
+  "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" pack --help
+  test -s "$suzaku_package_test_extract/root/usr/share/suzaku/offline-pack-sdk/suzaku_pack.py"
+  for suzaku_package_test_pack in en-outdoors zh-Hans-outdoors ja-rail; do
+    "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" pack validate \
+      "$suzaku_package_test_extract/root/usr/share/suzaku/offline-packs/$suzaku_package_test_pack.json"
+  done
+  PYTHONDONTWRITEBYTECODE=1 python3 "$suzaku_package_test_extract/root/usr/share/suzaku/offline-pack-sdk/example.py" \
+    "$suzaku_package_test_extract/sdk-example.json" "$suzaku_package_test_extract/root/usr/bin/suzaku-tool"
   desktop-file-validate "$suzaku_package_test_extract/root/usr/share/applications/dev.suzaku.Suzaku.desktop"
   test -x "$suzaku_package_test_extract/root/usr/bin/suzaku-panel"
   grep -Fx 'Exec=/usr/lib/suzaku/panel' "$suzaku_package_test_extract/root/usr/share/applications/dev.suzaku.Suzaku.desktop"

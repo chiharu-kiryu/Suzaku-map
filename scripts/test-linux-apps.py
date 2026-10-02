@@ -14,6 +14,7 @@ import time
 import gi
 
 sys.dont_write_bytecode = True
+from fixtures.compose_fixture import require_private_compose
 
 root = Path(os.environ["SUZAKU_APP_QA_ROOT"])
 runtime = root / "runtime"
@@ -25,6 +26,7 @@ assert os.environ["IBUS_ADDRESS"] == f"unix:path={runtime}/ibus.sock"
 assert os.environ.get("DISPLAY") == os.environ["SUZAKU_APP_QA_DISPLAY"]
 assert os.environ["DISPLAY"].startswith(":") and not os.environ.get("WAYLAND_DISPLAY")
 assert os.environ["SUZAKU_IME_CONFIG"] == str(root / "ime.json")
+require_private_compose(root, os.environ)
 gi.require_version("IBus", "1.0")
 from gi.repository import IBus, GLib
 

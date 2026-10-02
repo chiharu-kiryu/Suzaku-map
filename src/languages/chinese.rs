@@ -79,7 +79,7 @@ impl PinyinEntry {
 }
 
 fn vocabulary() -> &'static Lexicon {
-    crate::lexicon::builtin("zh-Hans").expect("Chinese vocabulary is registered")
+    crate::lexicon::active("zh-Hans").expect("Chinese vocabulary is registered")
 }
 
 fn pinyin() -> &'static [PinyinEntry] {
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn authored_continuations_are_unique_complete_and_preserve_padding() {
-        assert_eq!(pinyin().len(), 1806);
+        assert_eq!(pinyin().len(), 2043);
         let mut phrases = std::collections::HashSet::new();
         let mut sentences = std::collections::HashSet::new();
         for (phrase, values) in vocabulary().continuations() {

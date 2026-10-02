@@ -1,22 +1,24 @@
 //! Versioned vocabulary data, independent of decoders, IME hosts and model providers.
 //!
 //! Built-ins are embedded resources, parsed once per language. No filesystem or
-//! network reads occur on the input path. Parsing another resource is explicit;
-//! it does not replace a running engine's dictionary or change any settings.
-use serde::Deserialize;
+//! network reads occur on the input path. Optional data-only packs are frozen at
+//! process startup; parsing a resource alone never changes a running engine.
+pub mod packs;
+
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
 const MAX_RESOURCE_BYTES: usize = 2 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EntryKind {
     Word,
     Sentence,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Reading {
     pub reading: String,
@@ -28,7 +30,7 @@ pub struct Reading {
 
 /// Layer order is priority order. Append new layers instead of inserting ahead
 /// of existing ones. A decoder decides how to index these language-neutral data.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WordLayer {
     pub id: String,
@@ -40,7 +42,7 @@ pub struct WordLayer {
     pub sentences: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Lexicon {
     format_version: u32,
@@ -208,4 +210,10 @@ pub fn builtin(language: &str) -> Option<&'static Lexicon> {
         );
         lexicon
     }))
+}
+
+/// Resolve the startup snapshot. Without explicit initialization this freezes
+/// a built-in-only catalog, so library callers/tests never read personal files.
+pub fn active(language: &str) -> Option<&'static Lexicon> {
+    packs::runtime().get(language)
 }

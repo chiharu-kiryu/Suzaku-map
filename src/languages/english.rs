@@ -4,7 +4,7 @@ use crate::lexicon::{Lexicon, WordLayer};
 use std::sync::OnceLock;
 
 fn vocabulary() -> &'static Lexicon {
-    crate::lexicon::builtin("en").expect("English vocabulary is registered")
+    crate::lexicon::active("en").expect("English vocabulary is registered")
 }
 
 // Indexing is an English implementation concern; the data layer only supplies
@@ -832,7 +832,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 912);
-        assert_eq!(dictionary().len(), 6004);
+        assert_eq!(dictionary().len(), 6102);
     }
 
     #[test]
@@ -867,7 +867,7 @@ mod tests {
             );
         }
         assert_eq!(additions.len(), 419);
-        assert_eq!(dictionary().len(), 6004);
+        assert_eq!(dictionary().len(), 6102);
         for invented in [
             "sweeped",
             "oversleeped",
@@ -906,7 +906,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 153);
-        assert_eq!(dictionary().len(), 6004);
+        assert_eq!(dictionary().len(), 6102);
         let layer = &vocabulary().word_layers()[4];
         assert_eq!(layer.id, "fallback");
         assert_eq!(layer.next_words.len(), 40);
@@ -962,7 +962,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 184);
-        assert_eq!(dictionary().len(), 6004);
+        assert_eq!(dictionary().len(), 6102);
         let layer = &vocabulary().word_layers()[5];
         assert_eq!(layer.id, "conversation");
         assert_eq!(layer.next_words.len(), 48);
@@ -1015,7 +1015,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 321);
-        assert_eq!(dictionary().len(), 6004);
+        assert_eq!(dictionary().len(), 6102);
         let layer = &vocabulary().word_layers()[6];
         assert_eq!(layer.id, "essentials");
         assert_eq!(layer.next_words.len(), 48);
@@ -1068,11 +1068,169 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 58);
-        assert_eq!(dictionary().len(), 6004);
+        assert_eq!(dictionary().len(), 6102);
         let layer = &vocabulary().word_layers()[7];
         assert_eq!(layer.id, "clarity");
         assert_eq!(layer.next_words.len(), 40);
         assert_eq!(layer.sentences.len(), 80);
+    }
+
+    #[test]
+    fn digital_tier_preserves_clarity_ranks_and_explicit_word_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..8]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6004);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured from the complete 0.7.5 index before adding the digital layer.
+        // Earlier rank snapshots stay intact, not rerecorded after expansion.
+        assert_eq!(count, 6004);
+        assert_eq!(hash, 0xa8ce6407237cac70);
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("digital") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate digital word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 30);
+        assert_eq!(dictionary().len(), 6102);
+        let layer = &vocabulary().word_layers()[8];
+        assert_eq!(layer.id, "digital");
+        assert_eq!(layer.next_words.len(), 32);
+        assert_eq!(layer.sentences.len(), 64);
+    }
+
+    #[test]
+    fn home_tier_preserves_digital_ranks_and_explicit_word_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..9]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6041);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before appending home vocabulary. Keep all earlier snapshots
+        // and the complete digital layer, not just the originally migrated words.
+        assert_eq!(count, 6041);
+        assert_eq!(hash, 0x3321c9cc81a2e17e);
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("home") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate home word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 20);
+        assert_eq!(dictionary().len(), 6102);
+        let layer = &vocabulary().word_layers()[9];
+        assert_eq!(layer.id, "home");
+        assert_eq!(layer.next_words.len(), 16);
+        assert_eq!(layer.sentences.len(), 32);
+    }
+
+    #[test]
+    fn errands_tier_preserves_home_ranks_and_explicit_word_forms() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..10]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6074);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Taken before adding errands; never regenerate old snapshots to hide reordering.
+        assert_eq!(count, 6074);
+        assert_eq!(hash, 0xd2b2bfcaf0dc2a6c);
+        let mut additions = std::collections::HashSet::new();
+        for word in layer_words("errands") {
+            assert!(
+                word.bytes()
+                    .all(|ch| ch.is_ascii_lowercase() || ch == b'\'')
+            );
+            assert!(
+                !old_ranks.contains_key(word),
+                "duplicate earlier word: {word}"
+            );
+            assert!(additions.insert(word), "duplicate errands word: {word}");
+            assert!(is_known_english_word(word), "missing indexed word: {word}");
+        }
+        assert_eq!(additions.len(), 22);
+        assert_eq!(dictionary().len(), 6102);
+        let layer = &vocabulary().word_layers()[10];
+        assert_eq!(layer.id, "errands");
+        assert_eq!(layer.next_words.len(), 16);
+        assert_eq!(layer.sentences.len(), 32);
     }
 
     #[test]
@@ -1114,8 +1272,8 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 313);
-        assert_eq!(sentences.len(), 590);
+        assert_eq!(keys.len(), 377);
+        assert_eq!(sentences.len(), 718);
     }
 
     #[test]

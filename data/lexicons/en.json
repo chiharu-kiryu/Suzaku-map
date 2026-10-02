@@ -8898,6 +8898,681 @@
         "please keep this concise.",
         "please keep this simple."
       ]
+    },
+    {
+      "id": "digital",
+      "words": [
+        "grayscale",
+        "greyscale",
+        "fullscreen",
+        "voicemails",
+        "passkey",
+        "passkeys",
+        "thumbnail",
+        "thumbnails",
+        "redownload",
+        "redownloaded",
+        "redownloading",
+        "livestream",
+        "livestreams",
+        "livestreaming",
+        "captions",
+        "captioning",
+        "bookmarked",
+        "bookmarking",
+        "bookmarks",
+        "permalink",
+        "permalinks",
+        "spreadsheet",
+        "spreadsheets",
+        "signup",
+        "downloadable",
+        "scrollable",
+        "taskbar",
+        "taskbars",
+        "hyperlink",
+        "hyperlinks"
+      ],
+      "next_words": [
+        [
+          "i forgot my",
+          [
+            "password",
+            "username"
+          ]
+        ],
+        [
+          "i can't sign",
+          [
+            "in",
+            "out"
+          ]
+        ],
+        [
+          "please reset my",
+          [
+            "password",
+            "settings"
+          ]
+        ],
+        [
+          "the verification code has",
+          [
+            "expired",
+            "arrived"
+          ]
+        ],
+        [
+          "please don't share your",
+          [
+            "password",
+            "passcode"
+          ]
+        ],
+        [
+          "i'll send you a",
+          [
+            "screenshot",
+            "link"
+          ]
+        ],
+        [
+          "could you share your",
+          [
+            "screen",
+            "location"
+          ]
+        ],
+        [
+          "i can't open the",
+          [
+            "attachment",
+            "file"
+          ]
+        ],
+        [
+          "the file is too",
+          [
+            "large",
+            "big"
+          ]
+        ],
+        [
+          "please save a",
+          [
+            "copy",
+            "backup"
+          ]
+        ],
+        [
+          "please rename the",
+          [
+            "file",
+            "folder"
+          ]
+        ],
+        [
+          "where did you save the",
+          [
+            "document",
+            "screenshot"
+          ]
+        ],
+        [
+          "please copy the",
+          [
+            "link",
+            "text"
+          ]
+        ],
+        [
+          "please paste it",
+          [
+            "here",
+            "below"
+          ]
+        ],
+        [
+          "the download has",
+          [
+            "finished",
+            "stopped"
+          ]
+        ],
+        [
+          "the upload is",
+          [
+            "complete",
+            "paused"
+          ]
+        ],
+        [
+          "i'm running out of",
+          [
+            "storage",
+            "space"
+          ]
+        ],
+        [
+          "please check your",
+          [
+            "spam",
+            "connection"
+          ]
+        ],
+        [
+          "i can't hear",
+          [
+            "you",
+            "anything"
+          ]
+        ],
+        [
+          "your microphone is",
+          [
+            "muted",
+            "off"
+          ]
+        ],
+        [
+          "please turn on the",
+          [
+            "captions",
+            "subtitles"
+          ]
+        ],
+        [
+          "could you make the text",
+          [
+            "larger",
+            "smaller"
+          ]
+        ],
+        [
+          "the screen is too",
+          [
+            "bright",
+            "dim"
+          ]
+        ],
+        [
+          "please connect the",
+          [
+            "charger",
+            "headphones"
+          ]
+        ],
+        [
+          "my device keeps",
+          [
+            "disconnecting",
+            "restarting"
+          ]
+        ],
+        [
+          "the wireless connection is",
+          [
+            "unstable",
+            "slow"
+          ]
+        ],
+        [
+          "please open the",
+          [
+            "settings",
+            "link"
+          ]
+        ],
+        [
+          "where can i change the",
+          [
+            "language",
+            "password"
+          ]
+        ],
+        [
+          "please enable the",
+          [
+            "notifications",
+            "microphone"
+          ]
+        ],
+        [
+          "please disable the",
+          [
+            "notifications",
+            "camera"
+          ]
+        ],
+        [
+          "can i use this",
+          [
+            "offline",
+            "later"
+          ]
+        ],
+        [
+          "please wait until the",
+          [
+            "download",
+            "upload"
+          ]
+        ]
+      ],
+      "sentences": [
+        "i forgot my password.",
+        "i forgot my username.",
+        "i can't sign in to my account.",
+        "i can't sign out of this account.",
+        "please reset my password.",
+        "please reset my settings.",
+        "the verification code has expired.",
+        "the verification code has arrived.",
+        "please don't share your password.",
+        "please don't share your passcode.",
+        "i'll send you a screenshot.",
+        "i'll send you a link to the file.",
+        "could you share your screen?",
+        "could you share your location?",
+        "i can't open the attachment.",
+        "i can't open the file on my phone.",
+        "the file is too large to upload.",
+        "the file is too big for email.",
+        "please save a copy before closing.",
+        "please save a backup of this file.",
+        "please rename the file.",
+        "please rename the folder.",
+        "where did you save the document?",
+        "where did you save the screenshot?",
+        "please copy the link.",
+        "please copy the text below.",
+        "please paste it here.",
+        "please paste it below the title.",
+        "the download has finished.",
+        "the download has stopped unexpectedly.",
+        "the upload is complete.",
+        "the upload is paused for now.",
+        "i'm running out of storage.",
+        "i'm running out of space on my phone.",
+        "please check your spam folder.",
+        "please check your connection.",
+        "i can't hear you clearly.",
+        "i can't hear anything.",
+        "your microphone is muted.",
+        "your microphone is off.",
+        "please turn on the captions.",
+        "please turn on the subtitles.",
+        "could you make the text larger?",
+        "could you make the text smaller?",
+        "the screen is too bright.",
+        "the screen is too dim.",
+        "please connect the charger.",
+        "please connect the headphones.",
+        "my device keeps disconnecting.",
+        "my device keeps restarting.",
+        "the wireless connection is unstable.",
+        "the wireless connection is slow.",
+        "please open the settings.",
+        "please open the link in your browser.",
+        "where can i change the language?",
+        "where can i change the password?",
+        "please enable the notifications.",
+        "please enable the microphone for this call.",
+        "please disable the notifications during the meeting.",
+        "please disable the camera for now.",
+        "can i use this offline?",
+        "can i use this later?",
+        "please wait until the download finishes.",
+        "please wait until the upload is complete."
+      ]
+    },
+    {
+      "id": "home",
+      "words": [
+        "lightbulb",
+        "lightbulbs",
+        "screwdriver",
+        "screwdrivers",
+        "dripping",
+        "clogged",
+        "unclog",
+        "unclogged",
+        "unclogging",
+        "launder",
+        "laundered",
+        "laundering",
+        "clothespin",
+        "clothespins",
+        "clothesline",
+        "clotheslines",
+        "draught",
+        "draughts",
+        "keyring",
+        "keyrings"
+      ],
+      "next_words": [
+        [
+          "where did i leave my",
+          [
+            "keys",
+            "wallet"
+          ]
+        ],
+        [
+          "i left my umbrella",
+          [
+            "at",
+            "in"
+          ]
+        ],
+        [
+          "please close the",
+          [
+            "window",
+            "door"
+          ]
+        ],
+        [
+          "please switch off the",
+          [
+            "lights",
+            "heater"
+          ]
+        ],
+        [
+          "could you water the",
+          [
+            "plants",
+            "garden"
+          ]
+        ],
+        [
+          "please take out the",
+          [
+            "rubbish",
+            "trash"
+          ]
+        ],
+        [
+          "the kitchen tap is",
+          [
+            "leaking",
+            "dripping"
+          ]
+        ],
+        [
+          "the washing machine is",
+          [
+            "leaking",
+            "broken"
+          ]
+        ],
+        [
+          "the fridge is not",
+          [
+            "cooling",
+            "working"
+          ]
+        ],
+        [
+          "could you lend me a",
+          [
+            "screwdriver",
+            "torch"
+          ]
+        ],
+        [
+          "i need to replace the",
+          [
+            "lightbulb",
+            "filter"
+          ]
+        ],
+        [
+          "please hang up the",
+          [
+            "laundry",
+            "towels"
+          ]
+        ],
+        [
+          "the spare key is",
+          [
+            "under",
+            "in"
+          ]
+        ],
+        [
+          "the doorbell is",
+          [
+            "broken",
+            "ringing"
+          ]
+        ],
+        [
+          "when can the plumber",
+          [
+            "come",
+            "visit"
+          ]
+        ],
+        [
+          "please keep the receipt",
+          [
+            "for",
+            "until"
+          ]
+        ]
+      ],
+      "sentences": [
+        "where did i leave my keys?",
+        "where did i leave my wallet?",
+        "i left my umbrella at home.",
+        "i left my umbrella in the car.",
+        "please close the window before leaving.",
+        "please close the door quietly.",
+        "please switch off the lights before leaving.",
+        "please switch off the heater.",
+        "could you water the plants while i am away?",
+        "could you water the garden this evening?",
+        "please take out the rubbish before you leave.",
+        "please take out the trash tonight.",
+        "the kitchen tap is leaking.",
+        "the kitchen tap is dripping.",
+        "the washing machine is leaking.",
+        "the washing machine is broken.",
+        "the fridge is not cooling properly.",
+        "the fridge is not working.",
+        "could you lend me a screwdriver?",
+        "could you lend me a torch?",
+        "i need to replace the lightbulb.",
+        "i need to replace the filter.",
+        "please hang up the laundry outside.",
+        "please hang up the towels to dry.",
+        "the spare key is under the doormat.",
+        "the spare key is in the drawer.",
+        "the doorbell is broken.",
+        "the doorbell is ringing.",
+        "when can the plumber come?",
+        "when can the plumber visit?",
+        "please keep the receipt for the repair.",
+        "please keep the receipt until tomorrow."
+      ]
+    },
+    {
+      "id": "errands",
+      "words": [
+        "postmark",
+        "postmarks",
+        "postmarked",
+        "postbox",
+        "postboxes",
+        "mailer",
+        "mailers",
+        "mailroom",
+        "mailrooms",
+        "photocopier",
+        "photocopiers",
+        "photocopied",
+        "photocopying",
+        "printout",
+        "printouts",
+        "laminate",
+        "laminated",
+        "laminating",
+        "lamination",
+        "refillable",
+        "redelivery",
+        "uncollected"
+      ],
+      "next_words": [
+        [
+          "where is the nearest post",
+          [
+            "office",
+            "box"
+          ]
+        ],
+        [
+          "i need to send this",
+          [
+            "parcel",
+            "letter"
+          ]
+        ],
+        [
+          "could you weigh this",
+          [
+            "parcel",
+            "package"
+          ]
+        ],
+        [
+          "the tracking number is",
+          [
+            "missing",
+            "incorrect"
+          ]
+        ],
+        [
+          "can i collect it",
+          [
+            "tomorrow",
+            "today"
+          ]
+        ],
+        [
+          "the pickup point is",
+          [
+            "closed",
+            "nearby"
+          ]
+        ],
+        [
+          "the parcel locker is",
+          [
+            "full",
+            "broken"
+          ]
+        ],
+        [
+          "i'd like to renew this",
+          [
+            "book",
+            "membership"
+          ]
+        ],
+        [
+          "when is this book",
+          [
+            "due",
+            "available"
+          ]
+        ],
+        [
+          "is there a waiting",
+          [
+            "list",
+            "area"
+          ]
+        ],
+        [
+          "could you print this",
+          [
+            "form",
+            "document"
+          ]
+        ],
+        [
+          "please print it on",
+          [
+            "both",
+            "one"
+          ]
+        ],
+        [
+          "where can i refill my",
+          [
+            "bottle",
+            "flask"
+          ]
+        ],
+        [
+          "can i book an appointment",
+          [
+            "online",
+            "here"
+          ]
+        ],
+        [
+          "where is the lost",
+          [
+            "property",
+            "and"
+          ]
+        ],
+        [
+          "could you check the opening",
+          [
+            "hours",
+            "times"
+          ]
+        ]
+      ],
+      "sentences": [
+        "where is the nearest post office?",
+        "where is the nearest post box?",
+        "i need to send this parcel.",
+        "i need to send this letter.",
+        "could you weigh this parcel?",
+        "could you weigh this package?",
+        "the tracking number is missing.",
+        "the tracking number is incorrect.",
+        "can i collect it tomorrow afternoon?",
+        "can i collect it today?",
+        "the pickup point is closed today.",
+        "the pickup point is nearby.",
+        "the parcel locker is full.",
+        "the parcel locker is broken.",
+        "i'd like to renew this book.",
+        "i'd like to renew this membership.",
+        "when is this book due?",
+        "when is this book available?",
+        "is there a waiting list?",
+        "is there a waiting area?",
+        "could you print this form?",
+        "could you print this document?",
+        "please print it on both sides.",
+        "please print it on one side.",
+        "where can i refill my bottle?",
+        "where can i refill my flask?",
+        "can i book an appointment online?",
+        "can i book an appointment here?",
+        "where is the lost property office?",
+        "where is the lost and found?",
+        "could you check the opening hours?",
+        "could you check the opening times?"
+      ]
     }
   ],
   "phrase_endings": [

@@ -126,6 +126,25 @@ class SaveBarrierTests(unittest.TestCase):
         api.Text.get_text.assert_called_once_with(target, 0, -1)
         foreign.get_child_count.assert_not_called()
         desktop.clear_cache.assert_not_called()
+        # One observation may reuse its own topology/role/state reads, but the
+        # next observation must query again (including focus and save progress).
+        for value in [app, frame, background, target, progress]:
+            value.get_child_count.assert_called_once_with()
+            value.get_role.assert_called_once_with()
+        for value in [frame, background, target, progress]:
+            value.get_state_set.assert_called_once_with()
+        progress.get_state_set.return_value.contains.side_effect = lambda _: False
+        target.get_state_set.return_value.contains.side_effect = lambda state: state in ("showing", "multiline")
+        background.get_state_set.return_value.contains.side_effect = lambda state: state in ("showing", "multiline", "focused")
+        api.Text.get_text.return_value = "new buffer"
+        self.assertEqual(observer.state(), EditorState("new buffer", False))
+        api.Text.get_text.assert_called_with(background, 0, -1)
+        for value in [app, frame, background, target, progress]:
+            self.assertEqual(value.get_child_count.call_count, 2)
+            self.assertEqual(value.get_role.call_count, 2)
+        for value in [frame, background, target, progress]:
+            self.assertEqual(value.get_state_set.call_count, 2)
+        self.assertEqual(app.set_cache_mask.call_count, 2)
 
     def test_missing_owned_process_does_not_observe_foreign_text(self):
         foreign = Mock()

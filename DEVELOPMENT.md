@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.7.5 — Bilingual sentence continuity and safer English context**.
+Current source version: **0.8.0 — Offline vocabulary packs and authoring SDK**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -40,6 +40,28 @@ checks and clean-container installation checks to pass before publication. Other
 are added only after their own acceptance, not implied by the shared version number.
 This is a release requirement, not a claim that automatic publication is implemented or
 that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.8.0 — Offline vocabulary packs and authoring SDK
+
+- Introduces versioned, data-only offline packages independent of model providers. Language/topic
+  collections can be browsed/exported, installed, replaced, enabled, disabled and removed through
+  `suzaku_tool pack`. Built-ins stay available; conflicting contexts fail safely and damaged startup
+  records are isolated. Limits bound file sizes, package counts and per-language indexing work.
+- Freezes optional EN/ZH/JA vocabulary once at host/panel startup, keeping file I/O off the input
+  path. Changes require restarting both processes; no live reload or settings-panel manager yet.
+- Ships English/Chinese outdoors and Japanese rail collections plus a Python standard-library
+  authoring SDK. SDK outputs are validated by the Rust tool and published without overwriting.
+- Adds `digital`, `home` and `errands` built-in layers: 98 new indexed English forms, 237 Chinese
+  readings and 128 / 128 authored English / Chinese sentences. Totals are 6,102 / 2,043 forms/readings
+  and 718 / 736 sentences. Existing rank/order fingerprints, candidate and model budgets remain.
+- Improves isolated validation on newer GLib/PyGObject: retains borrowed signal payloads until C
+  dispatch returns, reuses accessibility observations only within one snapshot, and keeps Compose
+  fixture rewrites inside private copies. These are test-harness fixes, not desktop keymap changes.
+- Begins the required Linux Release asset policy: publish the exact clean source commit's `.deb`,
+  `.tar.gz` and checksums only after that commit's CI and clean-container install checks pass.
+
+See the [0.8.0 release notes](docs/releases/0.8.0.md) and
+[pack lifecycle and SDK](docs/linux-packaging-data.md#离线词库包与制包-sdk).
 
 ### 0.7.5 — Bilingual sentence continuity and safer English context
 

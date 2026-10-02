@@ -31,16 +31,18 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$suzaku_ci_mode" == ibus ]]; then
-  cargo build --locked --all-features --bin linux_ime_host --bin linux_ime_probe
+  cargo build --locked --all-features --bin linux_ime_host --bin linux_ime_probe --bin suzaku_tool
   suzaku_ci_panel_test=$(cargo test --locked --all-features --bin panel --no-run --message-format=json |
     jq -r 'select(.reason == "compiler-artifact" and .target.name == "panel" and .profile.test == true) | .executable // empty')
   [[ -x "$suzaku_ci_panel_test" ]] || { printf 'Missing panel test executable.\n' >&2; exit 1; }
   suzaku_ci_tmp="$(mktemp -d /tmp/suzaku-sync-qa.XXXXXX)"
-  timeout --kill-after=3s 120s env -u DISPLAY -u WAYLAND_DISPLAY dbus-run-session -- env \
+  # IBus may migrate Compose files in place. Never hand it the source fixture.
+  install -m 600 "$suzaku_ci_script_dir/fixtures/compose.XCompose" "$suzaku_ci_tmp/compose.XCompose"
+  timeout --kill-after=3s 120s env -u DISPLAY -u WAYLAND_DISPLAY -u SUZAKU_LEXICON_DIR dbus-run-session -- env \
     XDG_RUNTIME_DIR="$suzaku_ci_tmp" \
     XDG_CONFIG_HOME="$suzaku_ci_tmp/config" \
     XDG_DATA_HOME="$suzaku_ci_tmp/data" \
-    XCOMPOSEFILE="$suzaku_ci_script_dir/fixtures/compose.XCompose" \
+    XCOMPOSEFILE="$suzaku_ci_tmp/compose.XCompose" \
     XLOCALEDIR=/usr/share/X11/locale \
     GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
     SUZAKU_IME_CONFIG="$suzaku_ci_tmp/ime.json" \
@@ -99,7 +101,7 @@ else
       )
     fi
     timeout --kill-after=3s 90s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
-      -u SUZAKU_LINUX_IME_ACTIVE \
+      -u SUZAKU_LINUX_IME_ACTIVE -u SUZAKU_LEXICON_DIR \
       dbus-run-session -- env \
       "${suzaku_ci_probe_env[@]}" \
       XDG_RUNTIME_DIR="$suzaku_ci_tmp/runtime" \
@@ -124,7 +126,7 @@ else
     printf 'Required panel launch test is missing.\n' >&2
     exit 1
   }
-  timeout --kill-after=3s 90s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
+  timeout --kill-after=3s 90s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS -u SUZAKU_LEXICON_DIR \
     dbus-run-session -- env \
     XDG_RUNTIME_DIR="$suzaku_ci_tmp/runtime" \
     XDG_CONFIG_HOME="$suzaku_ci_tmp/launch/config" \

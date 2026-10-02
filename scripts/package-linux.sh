@@ -112,6 +112,13 @@ install -m 644 -- docs/linux-packaging-data.md docs/model-providers.md docs/ibus
 install -m 644 -- "docs/releases/$suzaku_package_version.md" "$suzaku_package_tree/share/doc/suzaku/docs/releases/"
 install -m 644 -- packaging/linux/dev.suzaku.Suzaku.desktop "$suzaku_package_tree/share/applications/"
 install -m 644 -- src/assets/icons/suzaku-bird.svg "$suzaku_package_tree/share/icons/hicolor/scalable/apps/dev.suzaku.Suzaku.svg"
+# Ship only authored SDK/examples, never the installed per-user pack registry.
+mkdir -p -- "$suzaku_package_tree/share/suzaku/offline-pack-sdk" \
+  "$suzaku_package_tree/share/suzaku/offline-packs"
+install -m 644 -- sdk/offline-packs/suzaku_pack.py sdk/offline-packs/example.py \
+  "$suzaku_package_tree/share/suzaku/offline-pack-sdk/"
+install -m 644 -- data/offline-packs/en-outdoors.json data/offline-packs/zh-Hans-outdoors.json \
+  data/offline-packs/ja-rail.json "$suzaku_package_tree/share/suzaku/offline-packs/"
 # Every guide also appears outside docs/. Resolve sibling documentation from
 # the canonical docs directory in both flat layouts, including model audits.
 for suzaku_package_guide in linux-packaging-data.md model-providers.md ibus-candidates.md translation.md interface-languages.md; do

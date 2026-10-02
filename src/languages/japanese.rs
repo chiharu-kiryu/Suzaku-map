@@ -5,7 +5,7 @@ use crate::ime::{Candidate, LanguagePlugin};
 use crate::lexicon::{EntryKind, Lexicon};
 
 fn vocabulary() -> &'static Lexicon {
-    crate::lexicon::builtin("ja").expect("Japanese vocabulary is registered")
+    crate::lexicon::active("ja").expect("Japanese vocabulary is registered")
 }
 
 fn kanji() -> impl DoubleEndedIterator<Item = (&'static str, &'static str)> {

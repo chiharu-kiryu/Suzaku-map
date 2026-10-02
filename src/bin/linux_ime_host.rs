@@ -7,6 +7,7 @@ fn main() {
             std::process::exit(1);
         }
     };
+    suzaku_map::lexicon::packs::initialize_current();
     if let Err(error) = suzaku_map::platform::linux_ibus_host::run() {
         eprintln!("{error}");
         std::process::exit(1);

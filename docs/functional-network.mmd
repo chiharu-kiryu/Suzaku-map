@@ -1,4 +1,10 @@
-%% Suzaku functional network: 2026-10-02 source snapshot for 0.7.5: independent bilingual fallback, Chinese sentence progress and English context boundaries. Source publication does not update the personal installation.
+%% Suzaku functional network: 2026-10-02 source snapshot for 0.8.0 including digital-life, home-life, errands vocabulary and F57-F59 offline data packs/SDK. Startup-only frozen catalogs, no executable plugins or hot reload; personal installation unchanged. Historical unreleased labels below record development stages; binary publication requires same-commit CI and installation acceptance.
+%% The errands layer reuses F16-F18/F20/F26-F28: 6,102 English forms, 2,043 Chinese readings, 718 English / 736 Chinese authored sentences. Old ten English layers, first 1,984 Chinese readings, 353 Chinese contexts and Japanese data remain intact; no algorithm/provider branch, larger budget or installation change.
+%% Errands validation: 980 Rust tests passed/27 opt-in skipped, strict Clippy, both complete private IBus modes (28 real HTTP failure/deadline cases each, no floating-object warnings), all 54 GTK workflows passed. Original 120/240-second deadlines and Ubuntu 24.04 package baseline retained; no release or personal installation change.
+%% The home layer reuses F16-F18/F20/F26-F28: 6,074 English forms, 1,984 Chinese readings, 686 English / 704 Chinese authored sentences. Earlier layers, contexts, Japanese data and budgets stay intact; Ubuntu 26.04 local QA does not expand the package baseline.
+%% Home validation: 979 Rust tests passed/27 opt-in skipped, strict Clippy, both complete private IBus modes (24 HTTP failure cases each), and 6 focused GTK workflows passed. Initial full GTK timed out after 44/50 and Python IBus object warnings were recorded. Follow-up with system GLib/xkbcommon fixes per-observation query duplication and Python signal lifetimes: full GTK 50/50 in 194.7 seconds, both full IBus modes without object warnings, four new lifecycle tests. Original deadlines, failures, private portal warnings and task-local IBus header dependency retained; no installation or platform-baseline change. Compose uses private copies with link/shared-path guards.
+%% The digital layer reuses F16-F18/F20/F26-F28: 6,041 English forms, 1,931 Chinese readings, 654 English / 672 Chinese authored sentences. No new route, defect ID, model coupling or larger budget.
+%% Digital validation: 978 Rust tests passed/27 opt-in skipped, strict Clippy, both complete private IBus modes (20 HTTP failure/deadline workflows each), and 46 source-build GTK workflows passed. Original deadlines retained; no version or installation update.
 %% Three fallback rounds reuse F16-F18/F20/F26-F28: 5,934 indexed English forms, 1,631 Pinyin entries, 510 English / 528 Chinese sentences; earlier ranks, homophones and input/model budgets remain unchanged.
 %% The clarity layer, now in 0.7.5, reuses the same routes: 6,004 English forms, 1,805 Pinyin entries before N58, 590 English / 608 Chinese sentences; explanation, learning and follow-up continuations. No new route or defect ID for vocabulary.
 %% Round 50 N58 then preserves Chinese authored sentence progress across word adoption and verified Pinyin tails within the existing local window. Adds the missing 再 homophone (1,806 readings); no route, model-budget, installation or release change.
@@ -56,6 +62,9 @@ flowchart TB
     UISET["外观、交互与界面语言设置"]
     DATA["配置备份 / 预览恢复"]
     PACKAGE["Linux 分发包：只提供程序文件"]
+    PACKSDK["语言/主题集合 + 纯数据制包 SDK"]
+    PACKSTORE["离线包 CLI：校验、启停、原子注册表"]
+    PACKSNAP["启动冻结词表：内置 + 有界扩展；坏包隔离"]
 
     APP -->|输入事件| INPUT
     INPUT -->|当前草稿| CORE
@@ -90,3 +99,8 @@ flowchart TB
     DATA -->|备份 / 显式恢复| UISET
     PACKAGE -->|提供宿主文件，不自动注册或启动| INPUT
     PACKAGE -->|提供启动器| PANEL
+    PACKAGE -->|附带 SDK 和示例，不自动安装个人包| PACKSDK
+    PACKSDK -->|用户显式安装| PACKSTORE
+    PACKSTORE -->|下一次启动读取；不是热更新| PACKSNAP
+    PACKSNAP -->|宿主进程快照| CORE
+    PACKSNAP -->|面板进程独立快照| LOCAL

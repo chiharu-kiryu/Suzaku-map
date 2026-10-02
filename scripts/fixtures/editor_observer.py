@@ -33,7 +33,11 @@ class EditorState:
         return self.text + "\n" if self.text and not self.text.endswith("\n") else self.text
 
 
-def nodes(root):
+def nodes(root, children=None):
+    # Optional topology reuse is scoped to ONE observation, never across input
+    # or saves. AT-SPI queries are synchronous D-Bus calls, not cheap fields.
+    if children is None:
+        children = {}
     pending = [root]
     seen = set()
     while pending:
@@ -45,7 +49,9 @@ def nodes(root):
         seen.add(node)
         assert len(seen) <= 1000, "unexpectedly large owned accessibility tree"
         yield node
-        pending.extend(node.get_child_at_index(i) for i in range(node.get_child_count()))
+        if node not in children:
+            children[node] = [node.get_child_at_index(i) for i in range(node.get_child_count())]
+        pending.extend(children[node])
 
 
 def visible_nodes(root, showing):
@@ -71,16 +77,17 @@ class GtkEditorObserver:
         # State/child caches can lag the actual save indicator or focus. Query
         # the owned application's current state, not last-delivered cache data.
         apps[0].set_cache_mask(api.Cache.NONE)
-        frames = [node for node in nodes(apps[0])
-                  if node.get_role() == api.Role.FRAME and self.path.name in node.get_name()]
+        children = {}
+        roles = {node: node.get_role() for node in nodes(apps[0], children)}
+        frames = [node for node, role in roles.items()
+                  if role == api.Role.FRAME and self.path.name in node.get_name()]
         assert len(frames) <= 1, "ambiguous owned editor document"
         if not frames:
             return None
-        visible = [node for node in nodes(frames[0])
-                   if node.get_state_set().contains(api.StateType.SHOWING)]
-        texts = [node for node in visible if node.get_role() == api.Role.TEXT and
-                 node.get_state_set().contains(api.StateType.MULTI_LINE) and
-                 node.get_state_set().contains(api.StateType.FOCUSED)]
+        states = {node: node.get_state_set() for node in nodes(frames[0], children)}
+        visible = {node: state for node, state in states.items() if state.contains(api.StateType.SHOWING)}
+        texts = [node for node, state in visible.items() if roles[node] == api.Role.TEXT and
+                 state.contains(api.StateType.MULTI_LINE) and state.contains(api.StateType.FOCUSED)]
         # Only the currently focused multiline editor is the physical key target.
         assert len(texts) <= 1, "ambiguous owned editor text view"
         if not texts:
@@ -88,7 +95,7 @@ class GtkEditorObserver:
         # The editor keeps its progress indicator visible until its asynchronous
         # load/save finishes (including metadata), then fades it out. File bytes
         # alone can appear earlier, while the Save action is still disabled.
-        busy = any(node.get_role() == api.Role.PROGRESS_BAR for node in visible)
+        busy = any(roles[node] == api.Role.PROGRESS_BAR for node in visible)
         # Accessible.get_text() is the deprecated interface getter in PyGObject;
         # call the Text interface explicitly to read its contents.
         return EditorState(api.Text.get_text(texts[0], 0, -1), busy)

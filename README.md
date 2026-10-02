@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.7.5 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.8.0 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -18,6 +18,9 @@ as a fallback. Other platforms remain experimental.
 - The [local vocabulary](data/lexicons/README.md) is an immediate fallback when optional models
   are disabled, missing or failing. It covers common words and authored short sentences, not
   open-ended generation; local choices remain usable while model requests are pending.
+- Optional data-only [offline packs and a small authoring SDK](docs/linux-packaging-data.md#离线词库包与制包-sdk),
+  grouped by language/topic. CLI installation and enable/disable apply at the next host/panel startup;
+  no executable plugins, live reload, automatic downloads or settings-panel package manager yet.
 - Continuous drafts: spaces and punctuation keep writing open; Enter or a candidate click submits.
   Labels distinguish candidate type, model origin and ranking weight, not confidence.
 - Linux dead-key/Compose sequences produce editable accents and symbols using the system Compose
@@ -31,14 +34,14 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.7.5 expands the model-independent local fallback to **6,004 indexed English forms and 1,806
-Chinese readings**, including explanation, learning and follow-up vocabulary. Chinese sentence
-choices now retain matching context across consecutive word adoptions and valid Pinyin tails;
-English no longer invents context from line breaks, identifiers or clipped word fragments.
-Literal spacing, adopted text, Ctrl+Shift+Space and explicit submission remain unchanged.
+0.8.0 adds model-independent offline packs, language/topic collections and a small Python SDK.
+Built-in fallback now contains **6,102 indexed English forms and 2,043 Chinese readings**, with
+718 / 736 English / Chinese authored sentences, including digital life, home and everyday errands.
+Optional packs append to built-ins at process startup; both host and panel need a restart after
+pack changes. Literal spacing, adopted text, Ctrl+Shift+Space and explicit submission remain unchanged.
 **In-memory candidate preferences** still learn only confirmed choices and keep learned local
 sentences available during model refreshes; no typed history is saved. See the
-[release notes](docs/releases/0.7.5.md) and [lexicon scope](data/lexicons/README.md).
+[release notes](docs/releases/0.8.0.md) and [lexicon scope](data/lexicons/README.md).
 Publishing source does not update an existing installation.
 
 Read [known limitations](docs/known-limitations.md), especially dead keys/Compose, native Wayland,
@@ -50,11 +53,11 @@ Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu
 For 0.7.x, source tags can precede downloadable packages; use a release with attached packages or
 build from source. Starting with **0.8.0**, downloadable Linux packages and checksums are a
 [release requirement](docs/linux-packaging-data.md#从-080-开始的发布要求).
-Once the matching 0.7.5 package is available, in the download directory on Ubuntu 24.04 amd64:
+Use the matching 0.8.0 Release assets in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.7.5_amd64.deb.sha256
-sudo apt install ./suzaku_0.7.5_amd64.deb
+sha256sum -c suzaku_0.8.0_amd64.deb.sha256
+sudo apt install ./suzaku_0.8.0_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -148,12 +151,12 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 
 ## Documentation
 
-- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.7.5 source snapshot and audited input paths
+- [Current functional network / 当前功能链路网络](docs/functional-network.md) — 0.8.0 source snapshot and audited input paths
 - [Input and candidates](docs/ibus-candidates.md) · [Model providers](docs/model-providers.md)
 - [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — EN/ZH toggle, opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.7.5 release notes](docs/releases/0.7.5.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.8.0 release notes](docs/releases/0.8.0.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

@@ -10,6 +10,14 @@ in memory. Suzaku does not persist input history. Backups include recognized set
 names, not key values, drafts, model weights or transcripts. Backups are unencrypted and may reveal
 provider addresses and preferences; review before sharing. See [data management](linux-packaging-data.md).
 
+Optional offline packs are explicitly imported vocabulary, not learned input history. Their manifests
+and text persist unencrypted in the user's `suzaku/lexicons/registry.json` data directory, outside
+settings backups. Pack tools do not collect drafts or access model services; example collections are
+authored by the project. Third-party content/author/license claims are unverified: review packs and
+never include private records in packages you distribute. Pack validation is not signature verification.
+Once a pack's suggestion is adopted into an ordinary draft, existing opt-in provider rules apply to
+that draft exactly as for manually typed text; importing vocabulary does not grant cloud consent.
+
 The 0.7.3 IBus frequency cache is separate from settings and dictionaries. It retains
 at most 2,048 salted fingerprints of language/query/candidate tuples and decaying counts, rather
 than draft text. Hashing is not encryption or an anonymity guarantee. Confirmed

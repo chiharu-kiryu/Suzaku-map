@@ -43,7 +43,7 @@ fn dispatch(args: &[String]) -> Result<(), String> {
                 );
             }
             println!(
-                "备份目录: {}\n词库: 内置于程序；暂无用户词库文件\n模型: 外部本地 / 云端服务管理，不复制或删除权重\n隐私: 不持久化输入历史、语音、手写草稿或模型密钥",
+                "备份目录: {}\n词库: 内置兜底 + 可选离线包；使用 suzaku_tool pack list 查看。配置备份不含离线包。\n模型: 外部本地 / 云端服务管理，不复制或删除权重\n隐私: 不持久化输入历史、语音、手写草稿或模型密钥",
                 paths.backups.display()
             );
             Backup::collect(&paths)?;

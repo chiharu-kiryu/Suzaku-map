@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.ja.rail", "version": "1.0.0",
+    "name": "旅行 · 鉄道", "description": "駅、切符、乗り換えの小さな会話集。",
+    "language": "ja", "topics": ["travel", "rail"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "ja",
+    "readings": [
+      {"reading":"えき", "text":"駅", "kind":"word"},
+      {"reading":"かいさつ", "text":"改札", "kind":"word"},
+      {"reading":"きっぷ", "text":"切符", "kind":"word"},
+      {"reading":"のりかえ", "text":"乗り換え", "kind":"word"},
+      {"reading":"かたみち", "text":"片道", "kind":"word"},
+      {"reading":"おうふく", "text":"往復", "kind":"word"},
+      {"reading":"しはつ", "text":"始発", "kind":"word"},
+      {"reading":"しゅうでん", "text":"終電", "kind":"word"}
+    ],
+    "continuations": [
+      ["改札", ["改札はどこですか。"]],
+      ["切符", ["切符を買いたいです。"]],
+      ["乗り換え", ["乗り換えは必要ですか。"]],
+      ["終電", ["終電は何時ですか。"]]
+    ]
+  }
+}

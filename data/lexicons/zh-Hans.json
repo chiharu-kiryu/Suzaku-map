@@ -1807,7 +1807,244 @@
     {"reading": "chong'xin'ping'gu", "text": "重新评估", "kind": "word"},
     {"reading": "zan'shi'bao'liu", "text": "暂时保留", "kind": "word"},
     {"reading": "zan'bu'que'ding", "text": "暂不确定", "kind": "word"},
-    {"reading": "zai", "text": "再", "kind": "word"}
+    {"reading": "zai", "text": "再", "kind": "word"},
+    {"reading": "shuang'chong'yan'zheng", "text": "双重验证", "kind": "word"},
+    {"reading": "ping'mu'jie'tu", "text": "屏幕截图", "kind": "word"},
+    {"reading": "ping'mu'gong'xiang", "text": "屏幕共享", "kind": "word"},
+    {"reading": "wen'jian'fu'jian", "text": "文件附件", "kind": "word"},
+    {"reading": "wen'jian'tai'da", "text": "文件太大", "kind": "word"},
+    {"reading": "ling'cun'wei", "text": "另存为", "kind": "word"},
+    {"reading": "wen'jian'ming'cheng", "text": "文件名称", "kind": "word"},
+    {"reading": "mu'biao'wen'jian'jia", "text": "目标文件夹", "kind": "word"},
+    {"reading": "xia'zai'wan'cheng", "text": "下载完成", "kind": "word"},
+    {"reading": "cun'chu'kong'jian", "text": "存储空间", "kind": "word"},
+    {"reading": "la'ji'you'jian", "text": "垃圾邮件", "kind": "word"},
+    {"reading": "ting'bu'dao'sheng'yin", "text": "听不到声音", "kind": "word"},
+    {"reading": "zi'mu", "text": "字幕", "kind": "word"},
+    {"reading": "zi'ti'da'xiao", "text": "字体大小", "kind": "word"},
+    {"reading": "ping'mu'liang'du", "text": "屏幕亮度", "kind": "word"},
+    {"reading": "she'bei'duan'kai", "text": "设备断开", "kind": "word"},
+    {"reading": "xi'tong'she'zhi", "text": "系统设置", "kind": "word"},
+    {"reading": "yu'yan'she'zhi", "text": "语言设置", "kind": "word"},
+    {"reading": "kai'qi'tong'zhi", "text": "开启通知", "kind": "word"},
+    {"reading": "guan'bi'tong'zhi", "text": "关闭通知", "kind": "word"},
+    {"reading": "li'xian'shi'yong", "text": "离线使用", "kind": "word"},
+    {"reading": "bei'fen'wen'jian", "text": "备份文件", "kind": "word"},
+    {"reading": "zhang'hu'ming", "text": "账户名", "kind": "word"},
+    {"reading": "zhang'hao'mi'ma", "text": "账号密码", "kind": "word"},
+    {"reading": "deng'lu'mi'ma", "text": "登录密码", "kind": "word"},
+    {"reading": "lin'shi'mi'ma", "text": "临时密码", "kind": "word"},
+    {"reading": "mi'ma'cuo'wu", "text": "密码错误", "kind": "word"},
+    {"reading": "mi'ma'chong'zhi", "text": "密码重置", "kind": "word"},
+    {"reading": "zhao'hui'mi'ma", "text": "找回密码", "kind": "word"},
+    {"reading": "geng'gai'mi'ma", "text": "更改密码", "kind": "word"},
+    {"reading": "an'quan'yan'zheng", "text": "安全验证", "kind": "word"},
+    {"reading": "shen'fen'yan'zheng", "text": "身份验证", "kind": "word"},
+    {"reading": "duan'xin'yan'zheng", "text": "短信验证", "kind": "word"},
+    {"reading": "you'xiang'yan'zheng", "text": "邮箱验证", "kind": "word"},
+    {"reading": "yan'zheng'shi'bai", "text": "验证失败", "kind": "word"},
+    {"reading": "yan'zheng'tong'guo", "text": "验证通过", "kind": "word"},
+    {"reading": "yan'zheng'ma'guo'qi", "text": "验证码过期", "kind": "word"},
+    {"reading": "chong'xin'fa'song", "text": "重新发送", "kind": "word"},
+    {"reading": "ji'zhu'mi'ma", "text": "记住密码", "kind": "word"},
+    {"reading": "tui'chu'deng'lu", "text": "退出登录", "kind": "word"},
+    {"reading": "quan'ping'jie'tu", "text": "全屏截图", "kind": "word"},
+    {"reading": "ping'mu'lu'zhi", "text": "屏幕录制", "kind": "word"},
+    {"reading": "gong'xiang'ping'mu", "text": "共享屏幕", "kind": "word"},
+    {"reading": "shi'pin'tong'hua", "text": "视频通话", "kind": "word"},
+    {"reading": "yu'yin'tong'hua", "text": "语音通话", "kind": "word"},
+    {"reading": "tong'hua'zhi'liang", "text": "通话质量", "kind": "word"},
+    {"reading": "yin'pin'she'bei", "text": "音频设备", "kind": "word"},
+    {"reading": "shu'ru'she'bei", "text": "输入设备", "kind": "word"},
+    {"reading": "shu'chu'she'bei", "text": "输出设备", "kind": "word"},
+    {"reading": "qian'zhi'she'xiang'tou", "text": "前置摄像头", "kind": "word"},
+    {"reading": "hou'zhi'she'xiang'tou", "text": "后置摄像头", "kind": "word"},
+    {"reading": "bei'jing'xu'hua", "text": "背景虚化", "kind": "word"},
+    {"reading": "xu'ni'bei'jing", "text": "虚拟背景", "kind": "word"},
+    {"reading": "guan'bi'mai'ke'feng", "text": "关闭麦克风", "kind": "word"},
+    {"reading": "da'kai'mai'ke'feng", "text": "打开麦克风", "kind": "word"},
+    {"reading": "qu'xiao'gong'xiang", "text": "取消共享", "kind": "word"},
+    {"reading": "shi'shi'zi'mu", "text": "实时字幕", "kind": "word"},
+    {"reading": "wen'jian'ge'shi", "text": "文件格式", "kind": "word"},
+    {"reading": "wen'jian'kuo'zhan'ming", "text": "文件扩展名", "kind": "word"},
+    {"reading": "wen'jian'lu'jing", "text": "文件路径", "kind": "word"},
+    {"reading": "wen'jian'da'xiao", "text": "文件大小", "kind": "word"},
+    {"reading": "wen'jian'lei'xing", "text": "文件类型", "kind": "word"},
+    {"reading": "wen'jian'sun'huai", "text": "文件损坏", "kind": "word"},
+    {"reading": "wen'jian'ya'suo", "text": "文件压缩", "kind": "word"},
+    {"reading": "jie'ya'suo", "text": "解压缩", "kind": "word"},
+    {"reading": "yuan'shi'wen'jian", "text": "原始文件", "kind": "word"},
+    {"reading": "wen'jian'fu'ben", "text": "文件副本", "kind": "word"},
+    {"reading": "chong'ming'ming", "text": "重命名", "kind": "word"},
+    {"reading": "tian'jia'fu'jian", "text": "添加附件", "kind": "word"},
+    {"reading": "yi'chu'fu'jian", "text": "移除附件", "kind": "word"},
+    {"reading": "xia'zai'lian'jie", "text": "下载链接", "kind": "word"},
+    {"reading": "fen'xiang'lian'jie", "text": "分享链接", "kind": "word"},
+    {"reading": "jian'tie'ban", "text": "剪贴板", "kind": "word"},
+    {"reading": "qing'kong'jian'tie'ban", "text": "清空剪贴板", "kind": "word"},
+    {"reading": "chun'wen'ben", "text": "纯文本", "kind": "word"},
+    {"reading": "xia'zai'jin'du", "text": "下载进度", "kind": "word"},
+    {"reading": "shang'chuan'jin'du", "text": "上传进度", "kind": "word"},
+    {"reading": "zan'ting'xia'zai", "text": "暂停下载", "kind": "word"},
+    {"reading": "hui'fu'xia'zai", "text": "恢复下载", "kind": "word"},
+    {"reading": "chong'xin'xia'zai", "text": "重新下载", "kind": "word"},
+    {"reading": "shang'chuan'wan'cheng", "text": "上传完成", "kind": "word"},
+    {"reading": "shang'chuan'zhong", "text": "上传中", "kind": "word"},
+    {"reading": "xia'zai'zhong", "text": "下载中", "kind": "word"},
+    {"reading": "ke'yong'kong'jian", "text": "可用空间", "kind": "word"},
+    {"reading": "sheng'yu'kong'jian", "text": "剩余空间", "kind": "word"},
+    {"reading": "qing'li'kong'jian", "text": "清理空间", "kind": "word"},
+    {"reading": "lian'jie'zhong'duan", "text": "连接中断", "kind": "word"},
+    {"reading": "zi'dong'lian'jie", "text": "自动连接", "kind": "word"},
+    {"reading": "ben'di'bei'fen", "text": "本地备份", "kind": "word"},
+    {"reading": "hui'fu'bei'fen", "text": "恢复备份", "kind": "word"},
+    {"reading": "wei'du'you'jian", "text": "未读邮件", "kind": "word"},
+    {"reading": "yi'du'you'jian", "text": "已读邮件", "kind": "word"},
+    {"reading": "biao'ji'yi'du", "text": "标记已读", "kind": "word"},
+    {"reading": "biao'ji'wei'du", "text": "标记未读", "kind": "word"},
+    {"reading": "xin'you'jian", "text": "新邮件", "kind": "word"},
+    {"reading": "you'jian'tong'zhi", "text": "邮件通知", "kind": "word"},
+    {"reading": "tong'zhi'she'zhi", "text": "通知设置", "kind": "word"},
+    {"reading": "tong'zhi'lan", "text": "通知栏", "kind": "word"},
+    {"reading": "mian'da'rao", "text": "免打扰", "kind": "word"},
+    {"reading": "mian'da'rao'mo'shi", "text": "免打扰模式", "kind": "word"},
+    {"reading": "ping'mu'suo'fang", "text": "屏幕缩放", "kind": "word"},
+    {"reading": "xian'shi'bi'li", "text": "显示比例", "kind": "word"},
+    {"reading": "zi'ti'suo'fang", "text": "字体缩放", "kind": "word"},
+    {"reading": "an'se'mo'shi", "text": "暗色模式", "kind": "word"},
+    {"reading": "qian'se'mo'shi", "text": "浅色模式", "kind": "word"},
+    {"reading": "quan'ping'mo'shi", "text": "全屏模式", "kind": "word"},
+    {"reading": "shi'ying'ping'mu", "text": "适应屏幕", "kind": "word"},
+    {"reading": "gun'dong'tiao", "text": "滚动条", "kind": "word"},
+    {"reading": "gong'ju'lan", "text": "工具栏", "kind": "word"},
+    {"reading": "ren'wu'lan", "text": "任务栏", "kind": "word"},
+    {"reading": "ce'bian'lan", "text": "侧边栏", "kind": "word"},
+    {"reading": "suo'lve'tu", "text": "缩略图", "kind": "word"},
+    {"reading": "chao'lian'jie", "text": "超链接", "kind": "word"},
+    {"reading": "shu'qian'lan", "text": "书签栏", "kind": "word"},
+    {"reading": "dian'zi'biao'ge", "text": "电子表格", "kind": "word"},
+    {"reading": "du'ping'ruan'jian", "text": "读屏软件", "kind": "word"},
+    {"reading": "yu'yin'liu'yan", "text": "语音留言", "kind": "word"},
+    {"reading": "tong'xing'mi'yue", "text": "通行密钥", "kind": "word"},
+    {"reading": "ying'yong'quan'xian", "text": "应用权限", "kind": "word"},
+    {"reading": "xiang'ji'quan'xian", "text": "相机权限", "kind": "word"},
+    {"reading": "mai'ke'feng'quan'xian", "text": "麦克风权限", "kind": "word"},
+    {"reading": "li'xian'wen'jian", "text": "离线文件", "kind": "word"},
+    {"reading": "chong'dian'zhuang'tai", "text": "充电状态", "kind": "word"},
+    {"reading": "dian'chi'jian'kang", "text": "电池健康", "kind": "word"},
+    {"reading": "dian'yuan'shi'pei'qi", "text": "电源适配器", "kind": "word"},
+    {"reading": "bei'yong'yao'shi", "text": "备用钥匙", "kind": "word"},
+    {"reading": "yao'shi'diu'le", "text": "钥匙丢了", "kind": "word"},
+    {"reading": "wang'dai'yu'san", "text": "忘带雨伞", "kind": "word"},
+    {"reading": "guan'hao'men'chuang", "text": "关好门窗", "kind": "word"},
+    {"reading": "chu'men'zhi'qian", "text": "出门之前", "kind": "word"},
+    {"reading": "gei'hua'jiao'shui", "text": "给花浇水", "kind": "word"},
+    {"reading": "dao'la'ji", "text": "倒垃圾", "kind": "word"},
+    {"reading": "shui'long'tou'lou'shui", "text": "水龙头漏水", "kind": "word"},
+    {"reading": "bing'xiang'bu'zhi'leng", "text": "冰箱不制冷", "kind": "word"},
+    {"reading": "jie'ge'luo'si'dao", "text": "借个螺丝刀", "kind": "word"},
+    {"reading": "huan'ge'deng'pao", "text": "换个灯泡", "kind": "word"},
+    {"reading": "men'ling'huai'le", "text": "门铃坏了", "kind": "word"},
+    {"reading": "yu'yue'wei'xiu", "text": "预约维修", "kind": "word"},
+    {"reading": "bao'liu'shou'ju", "text": "保留收据", "kind": "word"},
+    {"reading": "bei'yong", "text": "备用", "kind": "word"},
+    {"reading": "yao'shi", "text": "钥匙", "kind": "word"},
+    {"reading": "diu'le", "text": "丢了", "kind": "word"},
+    {"reading": "wang'dai", "text": "忘带", "kind": "word"},
+    {"reading": "yu'san", "text": "雨伞", "kind": "word"},
+    {"reading": "men'chuang", "text": "门窗", "kind": "word"},
+    {"reading": "guan'hao", "text": "关好", "kind": "word"},
+    {"reading": "la'ji", "text": "垃圾", "kind": "word"},
+    {"reading": "shui'long'tou", "text": "水龙头", "kind": "word"},
+    {"reading": "lou'shui", "text": "漏水", "kind": "word"},
+    {"reading": "zhi'leng", "text": "制冷", "kind": "word"},
+    {"reading": "luo'si'dao", "text": "螺丝刀", "kind": "word"},
+    {"reading": "deng'pao", "text": "灯泡", "kind": "word"},
+    {"reading": "men'ling", "text": "门铃", "kind": "word"},
+    {"reading": "di'dian", "text": "地垫", "kind": "word"},
+    {"reading": "chou'ti", "text": "抽屉", "kind": "word"},
+    {"reading": "gui'zi", "text": "柜子", "kind": "word"},
+    {"reading": "qian'bao", "text": "钱包", "kind": "word"},
+    {"reading": "yang'tai", "text": "阳台", "kind": "word"},
+    {"reading": "liang'gan", "text": "晾干", "kind": "word"},
+    {"reading": "yi'jia", "text": "衣架", "kind": "word"},
+    {"reading": "yu'bao", "text": "预报", "kind": "word"},
+    {"reading": "du'se", "text": "堵塞", "kind": "word"},
+    {"reading": "pai'shui", "text": "排水", "kind": "word"},
+    {"reading": "chu'shuang", "text": "除霜", "kind": "word"},
+    {"reading": "lou'dian", "text": "漏电", "kind": "word"},
+    {"reading": "duan'dian", "text": "断电", "kind": "word"},
+    {"reading": "dian'gong", "text": "电工", "kind": "word"},
+    {"reading": "shui'guan", "text": "水管", "kind": "word"},
+    {"reading": "bao'xiu", "text": "报修", "kind": "word"},
+    {"reading": "shang'men", "text": "上门", "kind": "word"},
+    {"reading": "gong'ju'xiang", "text": "工具箱", "kind": "word"},
+    {"reading": "chuang'lian", "text": "窗帘", "kind": "word"},
+    {"reading": "chuang'hu", "text": "窗户", "kind": "word"},
+    {"reading": "dao'le'la'ji", "text": "倒了垃圾", "kind": "word"},
+    {"reading": "fang'zai", "text": "放在", "kind": "word"},
+    {"reading": "wo'jia", "text": "我家", "kind": "word"},
+    {"reading": "xia'yu", "text": "下雨", "kind": "word"},
+    {"reading": "xi'yi'ji'lou'shui", "text": "洗衣机漏水", "kind": "word"},
+    {"reading": "ji'ge'kuai'di", "text": "寄个快递", "kind": "word"},
+    {"reading": "qu'jian'ma", "text": "取件码", "kind": "word"},
+    {"reading": "kuai'di'gui'man'le", "text": "快递柜满了", "kind": "word"},
+    {"reading": "qu'jian'dian", "text": "取件点", "kind": "word"},
+    {"reading": "chong'xin'pai'song", "text": "重新派送", "kind": "word"},
+    {"reading": "tu'shu'dao'qi", "text": "图书到期", "kind": "word"},
+    {"reading": "xu'jie'tu'shu", "text": "续借图书", "kind": "word"},
+    {"reading": "gui'huan'tu'shu", "text": "归还图书", "kind": "word"},
+    {"reading": "jie'shu'zheng", "text": "借书证", "kind": "word"},
+    {"reading": "da'yin'wen'jian", "text": "打印文件", "kind": "word"},
+    {"reading": "shuang'mian'da'yin", "text": "双面打印", "kind": "word"},
+    {"reading": "fu'yin'cai'liao", "text": "复印材料", "kind": "word"},
+    {"reading": "pai'dui'deng'hou", "text": "排队等候", "kind": "word"},
+    {"reading": "ren'ling'shi'wu", "text": "认领失物", "kind": "word"},
+    {"reading": "zhou'mo'ying'ye", "text": "周末营业", "kind": "word"},
+    {"reading": "you'ju", "text": "邮局", "kind": "word"},
+    {"reading": "you'ji", "text": "邮寄", "kind": "word"},
+    {"reading": "you'piao", "text": "邮票", "kind": "word"},
+    {"reading": "you'chuo", "text": "邮戳", "kind": "word"},
+    {"reading": "xin'feng", "text": "信封", "kind": "word"},
+    {"reading": "xin'xiang", "text": "信箱", "kind": "word"},
+    {"reading": "ji'jian'ren", "text": "寄件人", "kind": "word"},
+    {"reading": "kuai'di'dan", "text": "快递单", "kind": "word"},
+    {"reading": "qu'jian'gui", "text": "取件柜", "kind": "word"},
+    {"reading": "pai'song", "text": "派送", "kind": "word"},
+    {"reading": "bao'zhuang'dai", "text": "包装袋", "kind": "word"},
+    {"reading": "zhong'liang", "text": "重量", "kind": "word"},
+    {"reading": "cheng'zhong", "text": "称重", "kind": "word"},
+    {"reading": "tu'shu", "text": "图书", "kind": "word"},
+    {"reading": "tu'shu'guan", "text": "图书馆", "kind": "word"},
+    {"reading": "jie'shu", "text": "借书", "kind": "word"},
+    {"reading": "huan'shu", "text": "还书", "kind": "word"},
+    {"reading": "huan'shu'xiang", "text": "还书箱", "kind": "word"},
+    {"reading": "xu'jie", "text": "续借", "kind": "word"},
+    {"reading": "jie'yue", "text": "借阅", "kind": "word"},
+    {"reading": "gui'huan", "text": "归还", "kind": "word"},
+    {"reading": "jie'yue'qi'xian", "text": "借阅期限", "kind": "word"},
+    {"reading": "yu'yue'jie'yue", "text": "预约借阅", "kind": "word"},
+    {"reading": "guan'cang", "text": "馆藏", "kind": "word"},
+    {"reading": "fu'yin", "text": "复印", "kind": "word"},
+    {"reading": "fu'yin'ji", "text": "复印机", "kind": "word"},
+    {"reading": "da'yin'ji", "text": "打印机", "kind": "word"},
+    {"reading": "shuang'mian", "text": "双面", "kind": "word"},
+    {"reading": "dan'mian", "text": "单面", "kind": "word"},
+    {"reading": "ye'ma", "text": "页码", "kind": "word"},
+    {"reading": "fen'shu", "text": "份数", "kind": "word"},
+    {"reading": "zhuang'ding", "text": "装订", "kind": "word"},
+    {"reading": "su'feng", "text": "塑封", "kind": "word"},
+    {"reading": "pai'hao", "text": "排号", "kind": "word"},
+    {"reading": "jiao'hao", "text": "叫号", "kind": "word"},
+    {"reading": "deng'hou'qu", "text": "等候区", "kind": "word"},
+    {"reading": "fu'wu'tai", "text": "服务台", "kind": "word"},
+    {"reading": "gui'tai", "text": "柜台", "kind": "word"},
+    {"reading": "kai'men", "text": "开门", "kind": "word"},
+    {"reading": "guan'men", "text": "关门", "kind": "word"},
+    {"reading": "ren'ling", "text": "认领", "kind": "word"},
+    {"reading": "shi'wu", "text": "失物", "kind": "word"},
+    {"reading": "yi'shi", "text": "遗失", "kind": "word"},
+    {"reading": "wu'pin", "text": "物品", "kind": "word"}
   ],
   "continuations": [
     [
@@ -3941,6 +4178,454 @@
       [
         "重新考虑一下也没关系。",
         "重新考虑之后我们再决定。"
+      ]
+    ],
+    [
+      "验证码",
+      [
+        "验证码已经过期了。",
+        "验证码请不要转发给别人。"
+      ]
+    ],
+    [
+      "重置密码",
+      [
+        "重置密码的邮件还没收到。",
+        "重置密码后请重新登录。"
+      ]
+    ],
+    [
+      "忘记密码",
+      [
+        "忘记密码了，怎么找回？",
+        "忘记密码的话可以申请重置。"
+      ]
+    ],
+    [
+      "登录失败",
+      [
+        "登录失败，请检查账号和密码。",
+        "登录失败后可以再试一次。"
+      ]
+    ],
+    [
+      "双重验证",
+      [
+        "双重验证已经开启了。",
+        "双重验证需要再确认一下。"
+      ]
+    ],
+    [
+      "屏幕截图",
+      [
+        "屏幕截图稍后发给你。",
+        "屏幕截图里可以看到错误提示。"
+      ]
+    ],
+    [
+      "屏幕共享",
+      [
+        "屏幕共享已经打开了。",
+        "屏幕共享的时候请关闭无关窗口。"
+      ]
+    ],
+    [
+      "文件附件",
+      [
+        "文件附件已经上传了。",
+        "文件附件暂时打不开。"
+      ]
+    ],
+    [
+      "文件太大",
+      [
+        "文件太大，可以先压缩一下。",
+        "文件太大，暂时无法上传。"
+      ]
+    ],
+    [
+      "另存为",
+      [
+        "另存为新的文件就可以了。",
+        "另存为之前请确认文件名称。"
+      ]
+    ],
+    [
+      "文件名称",
+      [
+        "文件名称可以再改一下。",
+        "文件名称请保留原来的日期。"
+      ]
+    ],
+    [
+      "目标文件夹",
+      [
+        "目标文件夹在哪里？",
+        "目标文件夹已经创建好了。"
+      ]
+    ],
+    [
+      "复制链接",
+      [
+        "复制链接后发给我就好。",
+        "复制链接时请确认内容完整。"
+      ]
+    ],
+    [
+      "粘贴",
+      [
+        "粘贴到这里就可以了。",
+        "粘贴之前请检查一下内容。"
+      ]
+    ],
+    [
+      "下载完成",
+      [
+        "下载完成后请打开文件。",
+        "下载完成了，可以离线查看。"
+      ]
+    ],
+    [
+      "上传失败",
+      [
+        "上传失败，请检查网络连接。",
+        "上传失败后文件仍保留在本地。"
+      ]
+    ],
+    [
+      "存储空间",
+      [
+        "存储空间不足，请先检查一下。",
+        "存储空间还剩多少？"
+      ]
+    ],
+    [
+      "垃圾邮件",
+      [
+        "垃圾邮件文件夹也检查一下。",
+        "垃圾邮件可以单独标记。"
+      ]
+    ],
+    [
+      "听不到声音",
+      [
+        "听不到声音，请检查麦克风。",
+        "听不到声音，可以再说一遍吗？"
+      ]
+    ],
+    [
+      "麦克风",
+      [
+        "麦克风现在是静音状态。",
+        "麦克风的音量可以调高一点吗？"
+      ]
+    ],
+    [
+      "字幕",
+      [
+        "字幕可以打开吗？",
+        "字幕的字体可以调大一点。"
+      ]
+    ],
+    [
+      "字体大小",
+      [
+        "字体大小可以在设置里调整。",
+        "字体大小需要再调大一点。"
+      ]
+    ],
+    [
+      "屏幕亮度",
+      [
+        "屏幕亮度可以调低一点。",
+        "屏幕亮度会自动调整。"
+      ]
+    ],
+    [
+      "充电线",
+      [
+        "充电线已经插好了。",
+        "充电线可以借我用一下吗？"
+      ]
+    ],
+    [
+      "设备断开",
+      [
+        "设备断开后请重新连接。",
+        "设备断开了，稍等一下。"
+      ]
+    ],
+    [
+      "无线网络",
+      [
+        "无线网络暂时连接不上。",
+        "无线网络的密码在哪里？"
+      ]
+    ],
+    [
+      "系统设置",
+      [
+        "系统设置里可以修改语言。",
+        "系统设置已经保存了。"
+      ]
+    ],
+    [
+      "语言设置",
+      [
+        "语言设置可以随时修改。",
+        "语言设置已经切换好了。"
+      ]
+    ],
+    [
+      "开启通知",
+      [
+        "开启通知后就能收到提醒。",
+        "开启通知之前请确认权限。"
+      ]
+    ],
+    [
+      "关闭通知",
+      [
+        "关闭通知后可以继续使用。",
+        "关闭通知可以减少打扰。"
+      ]
+    ],
+    [
+      "离线使用",
+      [
+        "离线使用时不需要连接网络。",
+        "离线使用需要先保存文件。"
+      ]
+    ],
+    [
+      "备份文件",
+      [
+        "备份文件已经保存到本地。",
+        "备份文件请保留一份。"
+      ]
+    ],
+    [
+      "备用钥匙",
+      [
+        "备用钥匙放在抽屉里。",
+        "备用钥匙可以借我一下吗？"
+      ]
+    ],
+    [
+      "钥匙丢了",
+      [
+        "钥匙丢了，我再找一找。",
+        "钥匙丢了，可能忘在家里了。"
+      ]
+    ],
+    [
+      "忘带雨伞",
+      [
+        "忘带雨伞了，可以借我一把吗？",
+        "忘带雨伞了，我回去拿一下。"
+      ]
+    ],
+    [
+      "关好门窗",
+      [
+        "关好门窗再出门。",
+        "关好门窗，外面快下雨了。"
+      ]
+    ],
+    [
+      "出门之前",
+      [
+        "出门之前记得关灯。",
+        "出门之前请检查一下门窗。"
+      ]
+    ],
+    [
+      "给花浇水",
+      [
+        "给花浇水的事就拜托你了。",
+        "给花浇水时别倒太多。"
+      ]
+    ],
+    [
+      "倒垃圾",
+      [
+        "倒垃圾的时候顺便带上这个袋子。",
+        "倒垃圾的时间到了。"
+      ]
+    ],
+    [
+      "水龙头漏水",
+      [
+        "水龙头漏水了，需要预约维修。",
+        "水龙头漏水的问题还没解决。"
+      ]
+    ],
+    [
+      "洗衣机漏水",
+      [
+        "洗衣机漏水了，需要请人检查。",
+        "洗衣机漏水的问题已经报修了。"
+      ]
+    ],
+    [
+      "冰箱不制冷",
+      [
+        "冰箱不制冷了，麻烦检查一下。",
+        "冰箱不制冷的问题需要报修。"
+      ]
+    ],
+    [
+      "借个螺丝刀",
+      [
+        "借个螺丝刀可以吗？",
+        "借个螺丝刀，用完就还给你。"
+      ]
+    ],
+    [
+      "换个灯泡",
+      [
+        "换个灯泡就能用了。",
+        "换个灯泡之前请先断电。"
+      ]
+    ],
+    [
+      "晾衣服",
+      [
+        "晾衣服之前看一下天气预报。",
+        "晾衣服可以用阳台上的衣架。"
+      ]
+    ],
+    [
+      "门铃坏了",
+      [
+        "门铃坏了，到了请给我打电话。",
+        "门铃坏了，需要找人维修。"
+      ]
+    ],
+    [
+      "预约维修",
+      [
+        "预约维修的时间已经确认了。",
+        "预约维修需要提前联系。"
+      ]
+    ],
+    [
+      "保留收据",
+      [
+        "保留收据，之后可能用得上。",
+        "保留收据方便核对费用。"
+      ]
+    ],
+    [
+      "寄个快递",
+      [
+        "寄个快递，需要填哪些信息？",
+        "寄个快递，请帮我称一下重量。"
+      ]
+    ],
+    [
+      "快递单号",
+      [
+        "快递单号可以发给我吗？",
+        "快递单号我已经记下来了。"
+      ]
+    ],
+    [
+      "取件码",
+      [
+        "取件码还没有收到。",
+        "取件码可以再发一次吗？"
+      ]
+    ],
+    [
+      "快递柜满了",
+      [
+        "快递柜满了，可以放到取件点吗？",
+        "快递柜满了，请明天再送。"
+      ]
+    ],
+    [
+      "取件点",
+      [
+        "取件点今天几点关门？",
+        "取件点明天还营业吗？"
+      ]
+    ],
+    [
+      "重新派送",
+      [
+        "重新派送可以安排在明天吗？",
+        "重新派送的时间我再确认一下。"
+      ]
+    ],
+    [
+      "图书到期",
+      [
+        "图书到期之前可以续借吗？",
+        "图书到期后应该在哪里归还？"
+      ]
+    ],
+    [
+      "续借图书",
+      [
+        "续借图书可以在网上办理吗？",
+        "续借图书需要带借书证吗？"
+      ]
+    ],
+    [
+      "归还图书",
+      [
+        "归还图书可以放进还书箱。",
+        "归还图书后再借新的。"
+      ]
+    ],
+    [
+      "借书证",
+      [
+        "借书证忘带了，可以用电子版吗？",
+        "借书证可以在这里办理吗？"
+      ]
+    ],
+    [
+      "打印文件",
+      [
+        "打印文件需要多长时间？",
+        "打印文件请保留原来的格式。"
+      ]
+    ],
+    [
+      "双面打印",
+      [
+        "双面打印可以节省纸张。",
+        "双面打印后请检查页码。"
+      ]
+    ],
+    [
+      "复印材料",
+      [
+        "复印材料需要几份？",
+        "复印材料之前请确认内容。"
+      ]
+    ],
+    [
+      "排队等候",
+      [
+        "排队等候大概需要多久？",
+        "排队等候时请留意叫号。"
+      ]
+    ],
+    [
+      "认领失物",
+      [
+        "认领失物需要提供哪些信息？",
+        "认领失物可以去服务台登记。"
+      ]
+    ],
+    [
+      "周末营业",
+      [
+        "周末营业的时间和平时一样吗？",
+        "周末营业吗，我想过去一趟。"
       ]
     ]
   ]

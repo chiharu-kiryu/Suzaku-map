@@ -315,6 +315,192 @@ const CLARITY_CHINESE: &[(&str, &str, &str)] = &[
     ("shao'hou'hui'fu", "稍后回复", "稍后回复你具体结果。"),
 ];
 
+const DIGITAL_ENGLISH: &[(&str, &str, &str)] = &[
+    (
+        "i forgot my pass",
+        "i forgot my password",
+        "i forgot my password.",
+    ),
+    (
+        "i'll send you a scre",
+        "i'll send you a screenshot",
+        "i'll send you a screenshot.",
+    ),
+    (
+        "please save a co",
+        "please save a copy",
+        "please save a copy before closing.",
+    ),
+    (
+        "please turn on the cap",
+        "please turn on the captions",
+        "please turn on the captions.",
+    ),
+    (
+        "could you make the text lar",
+        "could you make the text larger",
+        "could you make the text larger?",
+    ),
+    (
+        "i'm running out of st",
+        "i'm running out of storage",
+        "i'm running out of storage.",
+    ),
+    (
+        "the verification code has exp",
+        "the verification code has expired",
+        "the verification code has expired.",
+    ),
+    (
+        "i can't sign i",
+        "i can't sign in",
+        "i can't sign in to my account.",
+    ),
+];
+
+const DIGITAL_CHINESE: &[(&str, &str, &str)] = &[
+    ("ping'mu'jie'tu", "屏幕截图", "屏幕截图稍后发给你。"),
+    ("chong'zhi'mi'ma", "重置密码", "重置密码的邮件还没收到。"),
+    ("yan'zheng'ma", "验证码", "验证码已经过期了。"),
+    ("wen'jian'fu'jian", "文件附件", "文件附件已经上传了。"),
+    ("fu'zhi'lian'jie", "复制链接", "复制链接后发给我就好。"),
+    (
+        "cun'chu'kong'jian",
+        "存储空间",
+        "存储空间不足，请先检查一下。",
+    ),
+    ("zi'ti'da'xiao", "字体大小", "字体大小可以在设置里调整。"),
+    ("li'xian'shi'yong", "离线使用", "离线使用时不需要连接网络。"),
+];
+
+const HOME_ENGLISH: &[(&str, &str, &str)] = &[
+    (
+        "where did i leave my ke",
+        "where did i leave my keys",
+        "where did i leave my keys?",
+    ),
+    (
+        "please close the win",
+        "please close the window",
+        "please close the window before leaving.",
+    ),
+    (
+        "please take out the rub",
+        "please take out the rubbish",
+        "please take out the rubbish before you leave.",
+    ),
+    (
+        "the kitchen tap is lea",
+        "the kitchen tap is leaking",
+        "the kitchen tap is leaking.",
+    ),
+    (
+        "could you lend me a scre",
+        "could you lend me a screwdriver",
+        "could you lend me a screwdriver?",
+    ),
+    (
+        "i need to replace the lightb",
+        "i need to replace the lightbulb",
+        "i need to replace the lightbulb.",
+    ),
+    (
+        "please hang up the lau",
+        "please hang up the laundry",
+        "please hang up the laundry outside.",
+    ),
+    (
+        "the spare key is un",
+        "the spare key is under",
+        "the spare key is under the doormat.",
+    ),
+];
+
+const HOME_CHINESE: &[(&str, &str, &str)] = &[
+    ("bei'yong'yao'shi", "备用钥匙", "备用钥匙放在抽屉里。"),
+    (
+        "wang'dai'yu'san",
+        "忘带雨伞",
+        "忘带雨伞了，可以借我一把吗？",
+    ),
+    ("guan'hao'men'chuang", "关好门窗", "关好门窗再出门。"),
+    (
+        "shui'long'tou'lou'shui",
+        "水龙头漏水",
+        "水龙头漏水了，需要预约维修。",
+    ),
+    (
+        "xi'yi'ji'lou'shui",
+        "洗衣机漏水",
+        "洗衣机漏水了，需要请人检查。",
+    ),
+    ("jie'ge'luo'si'dao", "借个螺丝刀", "借个螺丝刀可以吗？"),
+    (
+        "men'ling'huai'le",
+        "门铃坏了",
+        "门铃坏了，到了请给我打电话。",
+    ),
+    ("yu'yue'wei'xiu", "预约维修", "预约维修的时间已经确认了。"),
+];
+
+const ERRANDS_ENGLISH: &[(&str, &str, &str)] = &[
+    (
+        "where is the nearest post off",
+        "where is the nearest post office",
+        "where is the nearest post office?",
+    ),
+    (
+        "the pickup point is clo",
+        "the pickup point is closed",
+        "the pickup point is closed today.",
+    ),
+    (
+        "i'd like to renew this bo",
+        "i'd like to renew this book",
+        "i'd like to renew this book.",
+    ),
+    (
+        "when is this book du",
+        "when is this book due",
+        "when is this book due?",
+    ),
+    (
+        "could you print this fo",
+        "could you print this form",
+        "could you print this form?",
+    ),
+    (
+        "please print it on bo",
+        "please print it on both",
+        "please print it on both sides.",
+    ),
+    (
+        "can i collect it tom",
+        "can i collect it tomorrow",
+        "can i collect it tomorrow afternoon?",
+    ),
+    (
+        "where is the lost pro",
+        "where is the lost property",
+        "where is the lost property office?",
+    ),
+];
+
+const ERRANDS_CHINESE: &[(&str, &str, &str)] = &[
+    ("ji'ge'kuai'di", "寄个快递", "寄个快递，需要填哪些信息？"),
+    ("qu'jian'ma", "取件码", "取件码还没有收到。"),
+    (
+        "chong'xin'pai'song",
+        "重新派送",
+        "重新派送可以安排在明天吗？",
+    ),
+    ("xu'jie'tu'shu", "续借图书", "续借图书可以在网上办理吗？"),
+    ("gui'huan'tu'shu", "归还图书", "归还图书可以放进还书箱。"),
+    ("jie'shu'zheng", "借书证", "借书证忘带了，可以用电子版吗？"),
+    ("shuang'mian'da'yin", "双面打印", "双面打印可以节省纸张。"),
+    ("ren'ling'shi'wu", "认领失物", "认领失物需要提供哪些信息？"),
+];
+
 fn engine(language: &str) -> XRTabletImeEngine {
     let mut engine = XRTabletImeEngine::new(EngineConfig {
         default_language: language.into(),
@@ -366,6 +552,9 @@ fn offline_english_fallback_keeps_words_sentences_and_exact_commits() {
         .chain(CONVERSATION_ENGLISH)
         .chain(ESSENTIALS_ENGLISH)
         .chain(CLARITY_ENGLISH)
+        .chain(DIGITAL_ENGLISH)
+        .chain(HOME_ENGLISH)
+        .chain(ERRANDS_ENGLISH)
     {
         let mut ime = engine("en");
         ime.seed(seed);
@@ -383,6 +572,9 @@ fn offline_chinese_fallback_preserves_spelling_forms_and_exact_commits() {
         .chain(CONVERSATION_CHINESE)
         .chain(ESSENTIALS_CHINESE)
         .chain(CLARITY_CHINESE)
+        .chain(DIGITAL_CHINESE)
+        .chain(HOME_CHINESE)
+        .chain(ERRANDS_CHINESE)
     {
         for seed in [
             reading.replace('\'', ""),
@@ -424,13 +616,16 @@ fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallba
         Some(LlmProviderError::HttpStatus(503)),
         None,
     ] {
-        for (language, cases, added, essentials, latest) in [
+        for (language, cases, added, essentials, clarity, latest, home, errands) in [
             (
                 "en",
                 ENGLISH,
                 CONVERSATION_ENGLISH,
                 ESSENTIALS_ENGLISH,
                 CLARITY_ENGLISH,
+                DIGITAL_ENGLISH,
+                HOME_ENGLISH,
+                ERRANDS_ENGLISH,
             ),
             (
                 "zh-Hans",
@@ -438,6 +633,9 @@ fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallba
                 CONVERSATION_CHINESE,
                 ESSENTIALS_CHINESE,
                 CLARITY_CHINESE,
+                DIGITAL_CHINESE,
+                HOME_CHINESE,
+                ERRANDS_CHINESE,
             ),
         ] {
             for &(seed, word, sentence) in cases
@@ -445,7 +643,10 @@ fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallba
                 .take(2)
                 .chain(added.iter().take(1))
                 .chain(essentials.iter().take(1))
+                .chain(clarity.iter().take(1))
                 .chain(latest.iter().take(1))
+                .chain(home.iter().take(1))
+                .chain(errands.iter().take(1))
             {
                 let mut ime = engine(language);
                 ime.configure_prediction(Some(Arc::new(UnavailableProvider(error.clone()))));
@@ -475,7 +676,7 @@ fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallba
 
 #[test]
 fn long_fallback_drafts_keep_the_prefix_and_do_not_require_a_model() {
-    for (language, prefix, cases, added, essentials, latest) in [
+    for (language, prefix, cases, added, essentials, clarity, latest, home, errands) in [
         (
             "en",
             "note ".repeat(60),
@@ -483,6 +684,9 @@ fn long_fallback_drafts_keep_the_prefix_and_do_not_require_a_model() {
             CONVERSATION_ENGLISH,
             ESSENTIALS_ENGLISH,
             CLARITY_ENGLISH,
+            DIGITAL_ENGLISH,
+            HOME_ENGLISH,
+            ERRANDS_ENGLISH,
         ),
         (
             "zh-Hans",
@@ -491,6 +695,9 @@ fn long_fallback_drafts_keep_the_prefix_and_do_not_require_a_model() {
             CONVERSATION_CHINESE,
             ESSENTIALS_CHINESE,
             CLARITY_CHINESE,
+            DIGITAL_CHINESE,
+            HOME_CHINESE,
+            ERRANDS_CHINESE,
         ),
     ] {
         for &(seed, word, sentence) in cases
@@ -498,7 +705,10 @@ fn long_fallback_drafts_keep_the_prefix_and_do_not_require_a_model() {
             .take(2)
             .chain(added.iter().take(2))
             .chain(essentials.iter().take(2))
+            .chain(clarity.iter().take(2))
             .chain(latest.iter().take(2))
+            .chain(home.iter().take(2))
+            .chain(errands.iter().take(2))
         {
             let mut ime = engine(language);
             let seed = format!("{prefix}{seed}");
@@ -555,6 +765,30 @@ fn standalone_fallback_word_forms_are_visible_without_sentence_context() {
         ("misinterprete", "misinterpreted"),
         ("reassessm", "reassessment"),
         ("contextu", "contextual"),
+        ("graysca", "grayscale"),
+        ("greysca", "greyscale"),
+        ("passk", "passkey"),
+        ("thumbna", "thumbnail"),
+        ("redownlo", "redownload"),
+        ("livestrea", "livestream"),
+        ("permali", "permalink"),
+        ("spreadsh", "spreadsheet"),
+        ("scrollab", "scrollable"),
+        ("taskb", "taskbar"),
+        ("lightbu", "lightbulb"),
+        ("screwdr", "screwdriver"),
+        ("clothespi", "clothespin"),
+        ("clothesli", "clothesline"),
+        ("unclogg", "unclogged"),
+        ("keyri", "keyring"),
+        ("postmarke", "postmarked"),
+        ("postbo", "postbox"),
+        ("mailroo", "mailroom"),
+        ("photocopie", "photocopier"),
+        ("printou", "printout"),
+        ("laminati", "laminating"),
+        ("refilla", "refillable"),
+        ("redeliv", "redelivery"),
     ] {
         let mut ime = engine("en");
         ime.seed(seed);
@@ -615,6 +849,31 @@ fn conversation_fallback_retains_literal_spacing_case_and_apostrophes() {
             "I’m not familiar with that",
             "I’m not familiar with that term.",
         ),
+        (
+            "  Please  save  a  co",
+            "  Please  save  a  copy",
+            "  Please  save  a  copy before closing.",
+        ),
+        (
+            "I’ll send you a scre",
+            "I’ll send you a screenshot",
+            "I’ll send you a screenshot.",
+        ),
+        (
+            "I can’t sign i",
+            "I can’t sign in",
+            "I can’t sign in to my account.",
+        ),
+        (
+            "  Please  close  the  win",
+            "  Please  close  the  window",
+            "  Please  close  the  window before leaving.",
+        ),
+        (
+            "  Where  did  I  leave  my  ke",
+            "  Where  did  I  leave  my  keys",
+            "  Where  did  I  leave  my  keys?",
+        ),
     ] {
         let mut ime = engine("en");
         ime.seed(seed);
@@ -634,6 +893,22 @@ fn everyday_chinese_unfinished_syllables_offer_words_and_sentences() {
         ("yu fa cuo w", "语法错误", "语法错误已经改好了。"),
         ("ju ge li z", "举个例子", "举个例子会更容易理解。"),
         ("shao hou hui f", "稍后回复", "稍后回复你具体结果。"),
+        ("ping mu jie t", "屏幕截图", "屏幕截图稍后发给你。"),
+        ("chong zhi mi m", "重置密码", "重置密码的邮件还没收到。"),
+        ("wen jian fu j", "文件附件", "文件附件已经上传了。"),
+        ("zi ti da x", "字体大小", "字体大小可以在设置里调整。"),
+        ("bei yong yao sh", "备用钥匙", "备用钥匙放在抽屉里。"),
+        ("guan hao men ch", "关好门窗", "关好门窗再出门。"),
+        (
+            "shui long tou lou sh",
+            "水龙头漏水",
+            "水龙头漏水了，需要预约维修。",
+        ),
+        ("yu yue wei x", "预约维修", "预约维修的时间已经确认了。"),
+        ("ji ge kuai d", "寄个快递", "寄个快递，需要填哪些信息？"),
+        ("xu jie tu sh", "续借图书", "续借图书可以在网上办理吗？"),
+        ("shuang mian da y", "双面打印", "双面打印可以节省纸张。"),
+        ("ren ling shi w", "认领失物", "认领失物需要提供哪些信息？"),
     ] {
         let mut ime = engine("zh-Hans");
         ime.seed(seed);
@@ -643,10 +918,19 @@ fn everyday_chinese_unfinished_syllables_offer_words_and_sentences() {
 }
 
 #[test]
-fn clarity_words_keep_sentence_continuations_after_adoption_and_literal_spaces() {
+fn expanded_words_keep_sentence_continuations_after_adoption_and_literal_spaces() {
     // Reseeding represents the editable draft after host adoption, not a commit.
     // Actual numeric adoption/Backspace/Space is covered by the private IBus/GTK gates.
-    for (language, cases) in [("en", CLARITY_ENGLISH), ("zh-Hans", CLARITY_CHINESE)] {
+    for (language, cases) in [
+        ("en", CLARITY_ENGLISH),
+        ("zh-Hans", CLARITY_CHINESE),
+        ("en", DIGITAL_ENGLISH),
+        ("zh-Hans", DIGITAL_CHINESE),
+        ("en", HOME_ENGLISH),
+        ("zh-Hans", HOME_CHINESE),
+        ("en", ERRANDS_ENGLISH),
+        ("zh-Hans", ERRANDS_CHINESE),
+    ] {
         // An all-ASCII Chinese draft may still be one unconverted Pinyin span;
         // only a Han/CJK boundary safely freezes its long prefix (draft.rs).
         let long_prefix = if language == "en" {
@@ -699,9 +983,51 @@ fn clarity_words_keep_sentence_continuations_after_adoption_and_literal_spaces()
 }
 
 #[test]
-fn clarity_english_keeps_completing_the_next_word_in_an_uncommitted_draft() {
+fn expanded_english_keeps_completing_the_next_word_in_an_uncommitted_draft() {
     for prefix in [String::new(), "前文 café 😀。  ".repeat(40)] {
         for (reading, adopted, next, word, sentence) in [
+            (
+                "Please print it on bo",
+                "Please print it on both",
+                "  si",
+                "Please print it on both  sides",
+                "Please print it on both  sides.",
+            ),
+            (
+                "can i collect it tom",
+                "can i collect it tomorrow",
+                " after",
+                "can i collect it tomorrow afternoon",
+                "can i collect it tomorrow afternoon?",
+            ),
+            (
+                "Please close the win",
+                "Please close the window",
+                "  before lea",
+                "Please close the window  before leaving",
+                "Please close the window  before leaving.",
+            ),
+            (
+                "the spare key is un",
+                "the spare key is under",
+                " the door",
+                "the spare key is under the doormat",
+                "the spare key is under the doormat.",
+            ),
+            (
+                "Please save a co",
+                "Please save a copy",
+                "  before clo",
+                "Please save a copy  before closing",
+                "Please save a copy  before closing.",
+            ),
+            (
+                "I can’t sign i",
+                "I can’t sign in",
+                " to my acc",
+                "I can’t sign in to my account",
+                "I can’t sign in to my account.",
+            ),
             (
                 "How do you pron",
                 "How do you pronounce",
