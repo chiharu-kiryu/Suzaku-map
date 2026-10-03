@@ -19,6 +19,7 @@ assert qa.os.environ["SUZAKU_APP_QA_SUITE"] == "bus-restart"
 
 popup = None
 subscription = None
+tray_watcher = None
 passed = 0
 
 
@@ -38,7 +39,134 @@ def host_ready():
 def companion_shows(frame):
     # The opt-in fixture log observes the selected preview, not raw pinyin/romaji.
     text = frame["candidates"][frame["selected"]]["text"]
-    return qa.companion_frame().get("draft") == text
+    rendered = qa.companion_frame()
+    return rendered.get("runtime_font") and rendered.get("draft") == text
+
+
+def expect_native_page(frame):
+    qa.wait(lambda: companion_shows(frame), "owned companion renders the current draft", timeout=30)
+    popup.expect_hidden()
+    assert companion.poll() is None and x.focused() == window
+    assert qa.watch.latest == frame, "presentation ownership must not change the draft"
+
+
+def expect_pending_compose(frame):
+    qa.wait(lambda: any("Compose…" in node.get_name() for node in popup.visible()),
+            "bus loss must see a real unfinished Compose sequence")
+    assert not any(node.get_name().startswith(tuple(n + " " for n in ui.ORDINALS))
+                   for node in popup.visible()), "Compose exposed selectable candidates"
+    popup.expect_bounds()
+    assert qa.watch.latest == frame and x.focused() == window
+
+
+def expect_empty_document(state):
+    if state != "compose":
+        qa.save_document(x, document, "")
+        return
+    # Ctrl+S cancels Compose, so observe the exact owned editor buffer and file
+    # without sending another key. All explicit commits still use real saves.
+    def empty_and_idle():
+        observed = qa.editor_observers[document].state()
+        return (observed is not None and not observed.busy and
+                observed.text == "" and document.read_text() == "")
+
+    qa.wait(empty_and_idle, "pending Compose must not enter the owned buffer or saved document")
+    expect_pending_compose(qa.watch.latest.copy())
+
+
+class PrivateStatusNotifierWatcher:
+    """Supply only the private desktop watcher; the item/menu remain the real panel."""
+
+    NAME = "org.kde.StatusNotifierWatcher"
+    PATH = "/StatusNotifierWatcher"
+
+    def __init__(self):
+        self.items = []
+        self.connection = ui.Gio.bus_get_sync(ui.Gio.BusType.SESSION, None)
+        self.info = ui.Gio.DBusNodeInfo.new_for_xml("""
+            <node><interface name="org.kde.StatusNotifierWatcher">
+              <method name="RegisterStatusNotifierItem"><arg type="s" direction="in"/></method>
+              <property name="RegisteredStatusNotifierItems" type="as" access="read"/>
+              <property name="IsStatusNotifierHostRegistered" type="b" access="read"/>
+              <property name="ProtocolVersion" type="i" access="read"/>
+            </interface></node>
+        """)
+        # ksni registers and checks the host property before exposing its menu.
+        self.registration = self.connection.register_object(
+            self.PATH, self.info.interfaces[0], self.register_item, self.get_property, None)
+        assert self.registration, "could not export the private tray watcher"
+        result = self.connection.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "RequestName", qa.GLib.Variant("(su)", (self.NAME, 4)), None,
+            ui.Gio.DBusCallFlags.NONE, 700, None).unpack()[0]
+        if result != 1:
+            self.connection.unregister_object(self.registration)
+            raise AssertionError("private bus unexpectedly has another tray watcher")
+
+    def register_item(self, _connection, _sender, _path, _interface, method, parameters,
+                      invocation):
+        if method != "RegisterStatusNotifierItem":
+            invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod", method)
+            return
+        service = parameters.unpack()[0]
+        if service not in self.items:
+            self.items.append(service)
+        invocation.return_value(qa.GLib.Variant("()", ()))
+
+    def get_property(self, _connection, _sender, _path, _interface, name):
+        return {
+            "RegisteredStatusNotifierItems": qa.GLib.Variant(
+                "as", [service + "/StatusNotifierItem" for service in self.items]),
+            "IsStatusNotifierHostRegistered": qa.GLib.Variant("b", True),
+            "ProtocolVersion": qa.GLib.Variant("i", 0),
+        }.get(name)
+
+    def close(self):
+        self.connection.unregister_object(self.registration)
+        self.connection.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "ReleaseName", qa.GLib.Variant("(s)", (self.NAME,)), None,
+            ui.Gio.DBusCallFlags.NONE, 700, None)
+
+
+def owned_tray_action(labels):
+    """Use only the live companion's real menu on the private session bus."""
+    session = ui.Gio.bus_get_sync(ui.Gio.BusType.SESSION, None)
+    target = None
+    shown = set()
+
+    def call(destination, path, interface, method, arguments=None):
+        return session.call_sync(destination, path, interface, method, arguments, None,
+                                 ui.Gio.DBusCallFlags.NONE, 700, None).unpack()
+
+    def ready():
+        nonlocal target
+        assert companion.poll() is None and x.focused() == window
+        names = call("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                     "org.freedesktop.DBus", "ListNames")[0]
+        names = [name for name in names
+                 if name.startswith(f"org.kde.StatusNotifierItem-{companion.pid}-")]
+        assert len(names) <= 1, "owned companion exported ambiguous tray services"
+        if not names:
+            return False
+        destination = names[0]
+        if destination not in shown:
+            call(destination, "/MenuBar", "com.canonical.dbusmenu", "AboutToShow",
+                 qa.GLib.Variant("(i)", (0,)))
+            shown.add(destination)
+        layout = call(destination, "/MenuBar", "com.canonical.dbusmenu", "GetLayout",
+                      qa.GLib.Variant("(iias)", (0, 1, ["label", "enabled"])))[1]
+        actions = [child for child in layout[2] if child[1].get("label") in labels]
+        assert len(actions) <= 1, "owned tray action is ambiguous"
+        if not actions or not actions[0][1].get("enabled", True):
+            return False
+        target = destination, actions[0][0]
+        return True
+
+    qa.wait(ready, "owned panel's enabled menu action: " + repr(labels))
+    destination, item = target
+    call(destination, "/MenuBar", "com.canonical.dbusmenu", "Event",
+         qa.GLib.Variant("(isvu)", (item, "clicked", qa.GLib.Variant("i", 0), 0)))
 
 
 try:
@@ -68,6 +196,7 @@ try:
     assert bus.set_global_engine("dev.suzaku.linux.ime")
     qa.settle_input(bus, x, window)
     qa.prepare_editor(x, document)
+    tray_watcher = PrivateStatusNotifierWatcher()
     companion = qa.spawn([str(qa.bins / "panel")])
 
     cases = [(language, state, "terminate") for language in ["en", "zh-Hans", "ja"]
@@ -79,7 +208,7 @@ try:
         seed = {"en": "hel", "zh-Hans": "nihao", "ja": "nihongo"}[language]
         x.type(seed)
         qa.wait(lambda: qa.seed_is(seed), "draft before bus loss")
-        popup.expect_page()
+        expect_native_page(qa.watch.latest.copy())
         if state == "adopted":
             expected = qa.watch.latest["candidates"][1]["text"]
             x.key(qa.IBus.KEY_2)
@@ -89,10 +218,14 @@ try:
             x.key(qa.IBus.KEY_apostrophe)
             qa.wait(lambda: any("Compose…" in node.get_name() for node in popup.visible()),
                     "unfinished Compose before bus loss")
-        qa.save_document(x, document, "")
+        expect_empty_document(state)
         old = qa.watch.latest.copy()
         qa.wait(lambda: companion_shows(old),
                 "companion has the draft before bus loss", timeout=30)
+        if state != "compose":
+            expect_native_page(old)
+        else:
+            expect_pending_compose(old)
 
         subscription = qa.watch.sock
         qa.watch = None
@@ -175,13 +308,18 @@ try:
         qa.clear_document(x, document)
         x.type("fresh")
         qa.wait(lambda: qa.seed_is("fresh"), "running GTK application reconnected without Compose residue")
-        popup.expect_page()
         fresh = qa.watch.latest.copy()
-        qa.wait(lambda: companion_shows(fresh), "running companion reconnects without restart")
+        expect_native_page(fresh)
         assert qa.command(f'A{old["host"]} {fresh["revision"]} K0') == b"0"
         qa.save_document(x, document, "")
         assert qa.watch.latest == fresh and x.focused() == window
         if state == "compose":
+            # The recovered companion owns presentation by default. Exercise
+            # its real Hide action before testing the stock popup's glyph click;
+            # do not bypass the lease or stop the companion to make it visible.
+            owned_tray_action(("Hide panel", "隐藏面板"))
+            popup.expect_page()
+            assert qa.watch.latest == fresh and x.focused() == window
             expected = fresh["candidates"][0]["text"]
             clicks = len(popup.clicks)
             popup.click(ui.row_text(fresh, 0), character=0)
@@ -194,6 +332,10 @@ try:
         popup.expect_hidden()
         qa.save_document(x, document, expected + "\n")
         assert editor.poll() is None and companion.poll() is None and x.focused() == window
+        if state == "compose":
+            finished = qa.watch.latest.copy()
+            owned_tray_action(("Show panel", "显示面板"))
+            assert qa.watch.latest == finished and x.focused() == window
         passed_case("private bus loss, literal fallback and explicit recovery", language, state, stop)
 
     assert passed == 13
@@ -210,4 +352,8 @@ finally:
         subscription.close()
     if popup is not None:
         popup.close()
-    qa.close()
+    try:
+        qa.close()
+    finally:
+        if tray_watcher is not None:
+            tray_watcher.close()

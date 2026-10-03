@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owned GTK document and stock candidate UI across native lifecycle boundaries."""
+"""Owned GTK document and exclusive candidate UI across native lifecycle boundaries."""
 import importlib.util
 import json
 from pathlib import Path
@@ -14,6 +14,7 @@ qa = ui.qa
 assert qa.os.environ["SUZAKU_APP_QA_SUITE"] == "lifecycle"
 
 popup = None
+companion = None
 passed = 0
 
 
@@ -50,13 +51,53 @@ try:
         current = bus.get_global_engine()
         return current is not None and current.get_name() == name
 
+    def expect_surface(state="draft"):
+        """Observe real rendered/stock surfaces, never claim a lease from the test."""
+        before = qa.watch.latest.copy()
+        if companion is not None:
+            assert companion.poll() is None, "owned companion exited unexpectedly"
+            # Keep the existing 30-second companion-render startup budget. The
+            # diagnostic is emitted only after present(), from this live PID.
+            qa.wait(lambda: qa.companion_frame().get("runtime_font") and
+                    qa.companion_frame().get("draft") == before["seed"],
+                    "owned companion presents the current lifecycle draft", timeout=30)
+        if state == "compose":
+            # Compose is deliberately ineligible for a presentation lease. Its
+            # system hint stays visible even while a companion mirrors the draft.
+            qa.wait(lambda: any("Compose…" in node.get_name() for node in popup.visible()),
+                    "incomplete Compose keeps its actual system hint")
+            assert not any(node.get_name().startswith(tuple(n + " " for n in ui.ORDINALS))
+                           for node in popup.visible()), "Compose exposed selectable candidates"
+            popup.expect_bounds()
+        elif companion is None:
+            popup.expect_page()
+        else:
+            popup.expect_hidden()
+        assert qa.watch.latest == before, "presentation changed native draft/revision/selection"
+        assert x.focused() == window, "candidate presentation stole the owned editor focus"
+
+    def expect_empty_document(state):
+        if state != "compose":
+            qa.save_document(x, document, "")
+            return
+        # Ctrl+S legitimately cancels Compose. Observe the exact owned buffer
+        # and already-empty file instead, so the lifecycle boundary really sees
+        # an unfinished sequence. Explicit commits still use physical saves.
+        def empty_and_idle():
+            observed = qa.editor_observers[document].state()
+            return (observed is not None and not observed.busy and
+                    observed.text == "" and document.read_text() == "")
+
+        qa.wait(empty_and_idle, "pending Compose must not enter the owned buffer or saved document")
+        expect_surface(state)
+
     def setup(language, state):
         assert json.loads(qa.command("L" + language))["ok"]
         qa.clear_document(x, document)
         seed = {"en": "hel", "zh-Hans": "nihao", "ja": "nihongo"}[language]
         x.type(seed)
         qa.wait(lambda: qa.seed_is(seed), "draft before lifecycle boundary")
-        popup.expect_page()
+        expect_surface()
         if state == "adopted":
             expected = qa.watch.latest["candidates"][1]["text"]
             x.key(qa.IBus.KEY_2)
@@ -64,17 +105,15 @@ try:
         elif state == "compose":
             x.key(qa.IBus.KEY_Multi_key)
             x.key(qa.IBus.KEY_apostrophe)
-            qa.wait(lambda: popup.named("Compose… · Esc / Backspace 取消") or
-                    any("Compose…" in node.get_name() for node in popup.visible()),
-                    "incomplete Compose before lifecycle boundary")
-        qa.save_document(x, document, "")
+        expect_surface(state)
+        expect_empty_document(state)
         return qa.watch.latest.copy()
 
     def fresh_input():
         assert qa.seed_is("")
         x.type("fresh")
         qa.wait(lambda: qa.seed_is("fresh"), "no draft or Compose leaks into resumed input")
-        popup.expect_page()
+        expect_surface()
         frame = qa.watch.latest
         expected = frame["candidates"][frame["selected"]]["text"]
         x.key(qa.IBus.KEY_Return)
@@ -144,18 +183,22 @@ try:
         fresh_input()
         passed_case("password focus hides actual popup, rejects old sends and restores public input", state)
 
-    companion = None
     for state in ["draft", "adopted", "compose"]:
         old = setup("en", state)
         for _ in range(2):
             companion = qa.spawn([str(qa.bins / "panel")])
-            qa.wait(lambda: qa.companion_frame().get("draft") == old["seed"],
-                    "new companion receives current draft without another key", timeout=30)
+            expect_surface(state)
             assert x.focused() == window and qa.watch.latest == old
-            qa.save_document(x, document, "")
+            expect_empty_document(state)
             companion.terminate()
             companion.wait(timeout=3)
             qa.wait(lambda: x.window("Suzaku · Input") is None, "owned companion closed")
+            companion = None
+            # No key or synthetic display command: expiry must restore the
+            # existing stock candidates (or Compose hint) for exactly this draft.
+            expect_surface(state)
+            assert qa.watch.latest == old
+            expect_empty_document(state)
         x.key(qa.IBus.KEY_Escape)
         if state == "compose":
             x.key(qa.IBus.KEY_Escape)
@@ -167,8 +210,7 @@ try:
     companion = qa.spawn([str(qa.bins / "panel")])
     for state in ["draft", "adopted", "compose"]:
         old = setup("en", state)
-        qa.wait(lambda: qa.companion_frame().get("draft") == old["seed"],
-                "companion mirrors draft before host exit", timeout=30)
+        expect_surface(state)
         qa.watch.sock.close()
         qa.watch = None
         host.terminate()
@@ -191,8 +233,7 @@ try:
         qa.wait(lambda: qa.seed_is(""), "host reactivation does not replay the crashed draft")
         x.type("fresh")
         qa.wait(lambda: qa.seed_is("fresh"), "real application reconnected to new host")
-        popup.expect_page()
-        qa.wait(lambda: qa.companion_frame().get("draft") == "fresh", "running companion reconnects without restart")
+        expect_surface()
         fresh = qa.watch.latest.copy()
         forged = f'A{old["host"]} {fresh["revision"]} K0'
         assert qa.command(forged) == b"0", "an earlier host token was accepted"
