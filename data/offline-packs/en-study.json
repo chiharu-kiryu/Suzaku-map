@@ -1,0 +1,62 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.en.study", "version": "1.0.0",
+    "name": "Study · Reading and writing", "description": "Authored vocabulary for annotations, revision, references and study plans; no course material or personal notes.",
+    "language": "en", "topics": ["study", "writing"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "en",
+    "word_layers": [{
+      "id": "reading-writing",
+      "words": [
+        "annotate", "annotated", "annotates", "annotating", "annotation", "annotations",
+        "paraphrase", "paraphrased", "paraphrases", "paraphrasing",
+        "proofread", "proofreads", "proofreading", "proofreader", "proofreaders",
+        "bibliography", "bibliographies", "bibliographic", "citation", "citations",
+        "footnote", "footnotes", "endnote", "endnotes", "thesaurus", "thesauruses",
+        "glossary", "glossaries", "flashcard", "flashcards", "outline", "outlines", "outlined", "outlining",
+        "rubric", "rubrics", "syllabus", "syllabi", "coursework", "worksheet", "worksheets",
+        "abstract", "abstracts", "readability", "legibility", "plagiarism",
+        "rephrase", "rephrased", "rephrases", "rephrasing", "mnemonic", "mnemonics",
+        "excerpt", "excerpts", "appendix", "appendices", "italic", "italics", "semicolon", "semicolons"
+      ],
+      "next_words": [
+        ["please annotate this", ["paragraph", "passage"]],
+        ["could you proofread my", ["draft", "essay"]],
+        ["let's revise the", ["introduction", "conclusion"]],
+        ["please include a bibliography", ["at", "with"]],
+        ["please check each", ["citation", "footnote"]],
+        ["can you paraphrase this", ["sentence", "passage"]],
+        ["let's make some", ["flashcards", "notes"]],
+        ["the glossary explains", ["these", "the"]],
+        ["please follow the", ["rubric", "outline"]],
+        ["i need a clearer", ["outline", "summary"]],
+        ["please number the", ["footnotes", "endnotes"]],
+        ["let's compare these", ["excerpts", "examples"]],
+        ["please upload the completed", ["worksheet", "assignment"]],
+        ["could you explain the grading", ["criteria", "rubric"]],
+        ["please keep the original", ["quotation", "wording"]],
+        ["the revision checklist includes", ["spelling", "punctuation"]]
+      ],
+      "sentences": [
+        "please annotate this paragraph before our discussion.", "please annotate this passage in your own words.",
+        "could you proofread my draft before i submit it?", "could you proofread my essay for punctuation?",
+        "let's revise the introduction together.", "let's revise the conclusion after our discussion.",
+        "please include a bibliography at the end.", "please include a bibliography with your essay.",
+        "please check each citation against the original source.", "please check each footnote before submitting.",
+        "can you paraphrase this sentence in simpler language?", "can you paraphrase this passage without changing its meaning?",
+        "let's make some flashcards for the new vocabulary.", "let's make some notes while we read.",
+        "the glossary explains these terms with examples.", "the glossary explains the abbreviations used here.",
+        "please follow the rubric when revising your draft.", "please follow the outline we agreed on.",
+        "i need a clearer outline before i start writing.", "i need a clearer summary of this chapter.",
+        "please number the footnotes in order.", "please number the endnotes before the final review.",
+        "let's compare these excerpts during our discussion.", "let's compare these examples after class.",
+        "please upload the completed worksheet before class.", "please upload the completed assignment when you are ready.",
+        "could you explain the grading criteria again?", "could you explain the grading rubric with an example?",
+        "please keep the original quotation inside quotation marks.", "please keep the original wording in this example.",
+        "the revision checklist includes spelling and grammar.", "the revision checklist includes punctuation and citations."
+      ]
+    }]
+  }
+}

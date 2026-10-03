@@ -5,6 +5,7 @@ Use test-linux-apps.sh vocabulary; never run against the personal desktop.
 The shared harness enforces private display/bus/configuration and observes both
 the real editor buffer and completed save. No companion-seeded draft is used.
 """
+from collections import Counter
 import importlib.util
 import json
 from pathlib import Path
@@ -91,12 +92,73 @@ ERRANDS_CASES = [
     ("zh-Hans", "xu jie tu shu", "续借图书", "续借图书可以在网上办理吗？"),
     ("zh-Hans", "qu jian ma", "取件码", "取件码还没有收到。"),
 ]
+DAILY_CASES = [
+    ("en", "that's really imp", "that's really impressive", "that's really impressive."),
+    ("en", "i'm almost th", "i'm almost there", "i'm almost there."),
+    ("en", "let's take a br", "let's take a break", "let's take a break."),
+    ("zh-Hans", "zhen bu cuo", "真不错", "真不错，下次还想再来。"),
+    ("zh-Hans", "dao jia le", "到家了", "到家了，给你报个平安。"),
+    ("zh-Hans", "xiu xi yi xia", "休息一下", "休息一下，等会儿再继续。"),
+]
+
+DAILY_NEEDS_CASES = [
+    ("en", "please make it mi", "please make it mild", "please make it mild."),
+    ("en", "it's getting co", "it's getting cold", "it's getting cold outside."),
+    ("en", "can we change the ti", "can we change the time", "can we change the time?"),
+    ("zh-Hans", "shao tang", "少糖", "少糖就好，谢谢。"),
+    ("zh-Hans", "dai san", "带伞", "带伞出门，免得淋雨。"),
+    ("zh-Hans", "lin shi you shi", "临时有事", "临时有事，可能要晚一点。"),
+]
+
+PACK_CASES = [
+    ("en", "please annotate this para", "please annotate this paragraph",
+     "please annotate this paragraph before our discussion."),
+    ("zh-Hans", "yue du pi zhu", "阅读批注", "阅读批注请写在页边空白处。"),
+    ("en", "please pass me the col", "please pass me the colander",
+     "please pass me the colander from the cupboard."),
+    ("zh-Hans", "shi cai qing dan", "食材清单", "食材清单先按菜谱整理一下。"),
+    ("en", "could you store our lugg", "could you store our luggage",
+     "could you store our luggage until this afternoon?"),
+    ("zh-Hans", "xing li ji cun", "行李寄存", "行李寄存可以到下午吗？"),
+    ("en", "please update the project road", "please update the project roadmap",
+     "please update the project roadmap before our next meeting."),
+    ("zh-Hans", "xiang mu lu xian tu", "项目路线图", "项目路线图请在下次会议前更新。"),
+]
 # A focused diagnostic never replaces the default complete CI gate. Reject
 # misspellings rather than silently running no cases or claiming a full pass.
 scope = apps.os.environ.get("SUZAKU_VOCABULARY_QA_SCOPE", "all")
-if scope not in {"all", "home"}:
-    raise ValueError("SUZAKU_VOCABULARY_QA_SCOPE must be all or home")
-CASES = HOME_CASES if scope == "home" else CASES + HOME_CASES + ERRANDS_CASES
+if scope not in {"all", "home", "daily", "packs", "part-1", "part-2"}:
+    raise ValueError("SUZAKU_VOCABULARY_QA_SCOPE must be all, home, daily, packs, part-1 or part-2")
+ALL_CASES = CASES + HOME_CASES + ERRANDS_CASES + DAILY_CASES + DAILY_NEEDS_CASES
+PART_CASES = {"part-1": ALL_CASES[::2], "part-2": ALL_CASES[1::2]}
+# Compare whole case tuples, including repeated entries if ever intentional:
+# both partitions together must preserve the exact full gate, without omissions.
+assert Counter(PART_CASES["part-1"] + PART_CASES["part-2"]) == Counter(ALL_CASES)
+assert all(cases and {case[0] for case in cases} == {"en", "zh-Hans"}
+           for cases in PART_CASES.values()), "each vocabulary part must cover both languages"
+CASES = {"home": HOME_CASES, "daily": DAILY_CASES + DAILY_NEEDS_CASES,
+         "packs": PACK_CASES, **PART_CASES}.get(scope, ALL_CASES)
+
+
+def prepare_packs():
+    """Exercise the selected installed CLI, only in the harness's private data directory."""
+    assert apps.os.environ["XDG_DATA_HOME"] == str(apps.root / "data")
+    assert not apps.os.environ.get("SUZAKU_LEXICON_DIR")
+    tool = apps.bins / "suzaku_tool"
+    expected = [f"org.suzaku.{language}.{topic}" for topic in ("study", "cooking", "travel", "work")
+                for language in ("en", "zh-hans")]
+    for identifier in expected:
+        destination = apps.root / (identifier + ".json")
+        for arguments in [("export", identifier, str(destination)), ("install", str(destination))]:
+            apps.subprocess.run([str(tool), "pack", *arguments], check=True,
+                                capture_output=True, text=True, timeout=10)
+    result = apps.subprocess.run([str(tool), "pack", "list"], check=True,
+                                 capture_output=True, text=True, timeout=10)
+    report = json.loads(result.stdout)
+    assert not report["next_startup"]["errors"]
+    assert [p["manifest"]["id"] for p in report["packages"] if p["enabled"]] == expected
+    assert len(report["next_startup"]["loaded"]) == len(expected)
+    print("PASS: installed CLI exported and installed all 8 bilingual packs into private QA data", flush=True)
 
 
 def check_vocabulary(bus, x):
@@ -111,14 +173,24 @@ def check_vocabulary(bus, x):
     apps.settle_input(bus, x, editor_window)
     apps.prepare_editor(x, document)
     print(f"READY: offline vocabulary scope={scope} in the real GTK editor using {apps.bins}", flush=True)
+    panel = apps.spawn([str(apps.bins / "panel")]) if scope == "packs" else None
 
     for language, reading, word, sentence in CASES:
         apps.clear_document(x, document)
         revision = apps.watch.latest["revision"]
         assert json.loads(apps.command("L" + language))["ok"]
-        apps.wait(lambda: apps.watch.latest["revision"] > revision, "vocabulary language applied")
+        apps.wait(lambda: apps.watch.latest["revision"] > revision
+                  and apps.watch.latest["language"] == language, "vocabulary language applied")
         x.type(reading)
         apps.wait(lambda: apps.seed_is(reading), "physical vocabulary spelling")
+        if panel is not None:
+            # The companion previews the selected Chinese conversion, while
+            # the host's editable seed above must still be the exact pinyin.
+            preview = word if language == "zh-Hans" else reading
+            apps.wait(lambda: apps.companion_frame().get("runtime_font")
+                      and apps.companion_frame().get("draft") == preview,
+                      "installed companion renders the physical pack draft", timeout=30)
+            assert panel.poll() is None and x.focused() == editor_window
         candidates = apps.watch.latest["candidates"][:6]
         for text, kind, label in [(word, "word", "ᵂ"), (sentence, "sentence", "ˢ")]:
             assert any(c["text"] == text and c["kind"] == kind and c["source"] == "local"
@@ -167,7 +239,7 @@ def check_vocabulary(bus, x):
     progress_cases = [
         ("fa yin", "发音", "ke yi", "可以", "zai", "再示范一下吗？"),
         ("shu ru fa", "输入法", "zhi chi", "支持", "", "多种语言。"),
-    ]
+    ] if scope != "part-2" else []
     for reading, word, next_reading, next_word, last_reading, remainder in progress_cases:
         apps.clear_document(x, document)
         revision = apps.watch.latest["revision"]
@@ -211,6 +283,8 @@ def check_vocabulary(bus, x):
 
 if __name__ == "__main__":
     try:
+        if scope == "packs":
+            prepare_packs()
         bus, x = apps.start()
         check_vocabulary(bus, x)
     except Exception:

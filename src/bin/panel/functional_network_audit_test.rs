@@ -311,6 +311,7 @@ fn translation_requests_reject_stale_press_targets() {
                     panel.native = Default::default();
                     panel.chrome = PanelChromeState {
                         llm_enabled: false,
+                        input_focused: false,
                         ..Default::default()
                     };
                     panel.engine.configure_prediction(None);
@@ -327,6 +328,11 @@ fn translation_requests_reject_stale_press_targets() {
                         candidates: vec![],
                     };
                     panel.receive_native_frame(Some(initial.clone()));
+                    assert!(
+                        panel.native.showing,
+                        "native fixture did not enter its view"
+                    );
+                    assert_eq!(panel.chrome.seed_text, initial.seed);
                     if case.starts_with("local") {
                         panel.leave_native_view();
                         panel.chrome.set_seed_text("local draft".into());

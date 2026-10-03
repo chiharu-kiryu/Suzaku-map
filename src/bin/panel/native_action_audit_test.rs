@@ -110,8 +110,11 @@ fn prepare(app: &mut PanelApp, events: &ActiveEventLoop) -> mpsc::Receiver<Actio
     let state = app.panel.as_mut().unwrap();
     state.cancel_translation();
     state.native = Default::default();
-    state.chrome = PanelChromeState::default();
-    state.chrome.llm_enabled = false;
+    state.chrome = PanelChromeState {
+        llm_enabled: false,
+        input_focused: false,
+        ..Default::default()
+    };
     state.engine.configure_prediction(None);
     state.engine.seed("");
     state.runs_without_window_focus = true;
@@ -140,6 +143,8 @@ fn prepare(app: &mut PanelApp, events: &ActiveEventLoop) -> mpsc::Receiver<Actio
             ..Default::default()
         });
     publish_wake_frames(app, events, [Some(frame)]);
+    assert!(app.panel.as_ref().unwrap().native.showing);
+    assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, "hel");
     assert_panel_visibility(app, true);
     assert!(app.native_auto_shown);
     receiver

@@ -33,6 +33,13 @@ pub(super) fn handle_panel_window_event(
             }
             WindowEvent::Moved(_) => state.constrain_expanded_window_position(),
             WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
+            WindowEvent::Occluded(occluded) => {
+                state.native.occluded = occluded;
+                state.native.presented = None;
+                if !occluded {
+                    state.window.request_redraw();
+                }
+            }
             WindowEvent::Focused(focused) => {
                 state.set_window_focus(focused);
                 if focused {
@@ -441,6 +448,7 @@ fn event_is_safe_while_unfocused(event: &WindowEvent, non_focusing_panel: bool) 
             | WindowEvent::Moved(_)
             | WindowEvent::ScaleFactorChanged { .. }
             | WindowEvent::RedrawRequested
+            | WindowEvent::Occluded(_)
     ) || (non_focusing_panel
         && matches!(
             event,

@@ -1,0 +1,61 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.en.travel", "version": "1.0.0",
+    "name": "Travel · Transport and accommodation", "description": "Authored phrases for luggage, room facilities, itineraries and travel changes; no live schedules or booking records.",
+    "language": "en", "topics": ["travel", "lodging"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "en",
+    "word_layers": [{
+      "id": "transport-accommodation",
+      "words": [
+        "itinerary", "itineraries", "stopover", "stopovers", "layover", "layovers",
+        "rebook", "rebooks", "rebooked", "rebooking", "reschedule", "reschedules", "rescheduled", "rescheduling",
+        "reservation", "reservations", "luggage", "backpack", "backpacks", "suitcase", "suitcases",
+        "concierge", "concierges", "receptionist", "receptionists", "amenity", "amenities",
+        "launderette", "launderettes", "laundromat", "laundromats", "keycard", "keycards",
+        "kitchenette", "kitchenettes", "soundproof", "accessible", "accessibility", "refundable", "nonrefundable",
+        "boarding", "departure", "departures", "arrival", "arrivals", "terminal", "terminals",
+        "transfer", "transfers", "shuttle", "shuttles", "timetable", "timetables", "platform", "platforms",
+        "occupancy", "voucher", "vouchers", "cancellation", "cancellations"
+      ],
+      "next_words": [
+        ["could you store our", ["luggage", "suitcases"]],
+        ["is there a quieter", ["room", "floor"]],
+        ["could you replace my", ["keycard", "towel"]],
+        ["does the room have a", ["kitchenette", "balcony"]],
+        ["where does the airport", ["shuttle", "bus"]],
+        ["could you send our updated", ["itinerary", "reservation"]],
+        ["please confirm our arrival", ["time", "date"]],
+        ["can we extend our", ["stay", "reservation"]],
+        ["how long is the scheduled", ["layover", "stopover"]],
+        ["could you explain the cancellation", ["policy", "options"]],
+        ["where can we find the baggage", ["carousel", "counter"]],
+        ["the departure platform has", ["changed", "not"]],
+        ["could you tell us the breakfast", ["hours", "location"]],
+        ["is there a laundry", ["room", "service"]],
+        ["please keep our rooms", ["together", "nearby"]],
+        ["could you check the accessible", ["entrance", "route"]]
+      ],
+      "sentences": [
+        "could you store our luggage until this afternoon?", "could you store our suitcases while we wait?",
+        "is there a quieter room away from the lift?", "is there a quieter floor we could stay on?",
+        "could you replace my keycard at the front desk?", "could you replace my towel when you have a moment?",
+        "does the room have a kitchenette with a fridge?", "does the room have a balcony facing the courtyard?",
+        "where does the airport shuttle pick up passengers?", "where does the airport bus stop near the hotel?",
+        "could you send our updated itinerary by email?", "could you send our updated reservation confirmation?",
+        "please confirm our arrival time before we book the shuttle.", "please confirm our arrival date on the reservation.",
+        "can we extend our stay by one night?", "can we extend our reservation until tomorrow?",
+        "how long is the scheduled layover between flights?", "how long is the scheduled stopover on this route?",
+        "could you explain the cancellation policy before we book?", "could you explain the cancellation options for this reservation?",
+        "where can we find the baggage carousel for this flight?", "where can we find the baggage counter in this terminal?",
+        "the departure platform has changed according to the display.", "the departure platform has not been announced yet.",
+        "could you tell us the breakfast hours for tomorrow?", "could you tell us the breakfast location in the hotel?",
+        "is there a laundry room in this building?", "is there a laundry service available at the hotel?",
+        "please keep our rooms together on the same floor.", "please keep our rooms nearby if possible.",
+        "could you check the accessible entrance before we arrive?", "could you check the accessible route to the platform?"
+      ]
+    }]
+  }
+}

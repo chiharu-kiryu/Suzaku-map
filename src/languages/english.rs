@@ -513,6 +513,9 @@ pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'
 mod tests {
     use super::*;
 
+    // Current total, independent of the immutable per-layer historical baselines.
+    const EXPECTED_DICTIONARY_WORDS: usize = 6111;
+
     fn layer_words(id: &str) -> impl Iterator<Item = &'static str> {
         vocabulary()
             .word_layers()
@@ -738,10 +741,17 @@ mod tests {
             "src/please",
             "user_please",
             "please-send",
-            "don't",
+            "don't qzxv",
         ] {
             assert!(mixed_candidates(seed, "").is_empty(), "{seed}");
         }
+        // The daily-chat layer now deliberately covers this ordinary contraction.
+        // Keep the unknown suffix negative control above rather than forbidding
+        // all authored continuations that start with don't.
+        assert!(mixed_candidates("don't", "").iter().any(|(text, kind)| {
+            text == "don't worry about it."
+                && *kind == crate::ime::candidate_mix::CandidateKind::Sentence
+        }));
         assert!(mixed_candidates("x".repeat(5000).as_str(), "please").is_empty());
     }
 
@@ -832,7 +842,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 912);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
     }
 
     #[test]
@@ -867,7 +877,7 @@ mod tests {
             );
         }
         assert_eq!(additions.len(), 419);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         for invented in [
             "sweeped",
             "oversleeped",
@@ -906,7 +916,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 153);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[4];
         assert_eq!(layer.id, "fallback");
         assert_eq!(layer.next_words.len(), 40);
@@ -962,7 +972,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 184);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[5];
         assert_eq!(layer.id, "conversation");
         assert_eq!(layer.next_words.len(), 48);
@@ -1015,7 +1025,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 321);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[6];
         assert_eq!(layer.id, "essentials");
         assert_eq!(layer.next_words.len(), 48);
@@ -1068,7 +1078,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 58);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[7];
         assert_eq!(layer.id, "clarity");
         assert_eq!(layer.next_words.len(), 40);
@@ -1121,7 +1131,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 30);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[8];
         assert_eq!(layer.id, "digital");
         assert_eq!(layer.next_words.len(), 32);
@@ -1174,7 +1184,7 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 20);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[9];
         assert_eq!(layer.id, "home");
         assert_eq!(layer.next_words.len(), 16);
@@ -1226,11 +1236,86 @@ mod tests {
             assert!(is_known_english_word(word), "missing indexed word: {word}");
         }
         assert_eq!(additions.len(), 22);
-        assert_eq!(dictionary().len(), 6102);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
         let layer = &vocabulary().word_layers()[10];
         assert_eq!(layer.id, "errands");
         assert_eq!(layer.next_words.len(), 16);
         assert_eq!(layer.sentences.len(), 32);
+    }
+
+    #[test]
+    fn daily_chat_tier_preserves_all_previous_ranks() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..11]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6102);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured from all eleven layers before daily_chat was appended.
+        assert_eq!(count, 6102);
+        assert_eq!(hash, 0xeb278317cd907ded);
+        let layer = &vocabulary().word_layers()[11];
+        assert_eq!(layer.id, "daily_chat");
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
+        assert_eq!(dictionary().len(), EXPECTED_DICTIONARY_WORDS);
+    }
+
+    #[test]
+    fn daily_needs_tier_preserves_daily_chat_ranks() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..12]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6108);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before this batch, retaining all earlier snapshots unchanged.
+        assert_eq!(count, 6108);
+        assert_eq!(hash, 0xe7ff45518e731e05);
+        let layer = &vocabulary().word_layers()[12];
+        assert_eq!(layer.id, "daily_needs");
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
     }
 
     #[test]
@@ -1272,8 +1357,8 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 377);
-        assert_eq!(sentences.len(), 718);
+        assert_eq!(keys.len(), 425);
+        assert_eq!(sentences.len(), 814);
     }
 
     #[test]

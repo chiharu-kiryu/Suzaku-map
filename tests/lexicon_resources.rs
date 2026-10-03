@@ -171,6 +171,12 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
         ("zh-Hans", 1931, 0xa9f2649daf9ddc84_u64),
         // Freeze home-life readings before adding the errands layer.
         ("zh-Hans", 1984, 0xe19cee5e8babbc73_u64),
+        // Freeze errands before restoring missing everyday adjective forms.
+        ("zh-Hans", 2043, 0x7571270b8211ad24_u64),
+        // Freeze the basic 很强/很厉害 repair before adding daily conversation.
+        ("zh-Hans", 2047, 0x4f38a2847da90928_u64),
+        // Freeze daily chat before appending food/weather/arrangement expressions.
+        ("zh-Hans", 2111, 0x51d7947dfa3aed3a_u64),
         ("ja", 26, 0xf2e1aa0ec03a7e38_u64),
     ] {
         let entries = builtin(language).unwrap().readings();
@@ -198,17 +204,17 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
             "{language} first {count} readings changed existing data/rank"
         );
     }
-    assert_eq!(builtin("en").unwrap().next_words().count(), 377);
-    assert_eq!(builtin("en").unwrap().sentences().count(), 718);
-    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2043);
-    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 369);
+    assert_eq!(builtin("en").unwrap().next_words().count(), 425);
+    assert_eq!(builtin("en").unwrap().sentences().count(), 814);
+    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2175);
+    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 419);
     assert_eq!(
         builtin("zh-Hans")
             .unwrap()
             .continuations()
             .map(|(_, values)| values.len())
             .sum::<usize>(),
-        736
+        836
     );
     assert_eq!(builtin("ja").unwrap().readings().len(), 26);
     assert_eq!(builtin("ja").unwrap().continuations().count(), 14);

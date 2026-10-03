@@ -36,6 +36,8 @@ mod keyboard;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "panel/keyboard_native_test.rs"]
 mod keyboard_native_test;
+#[path = "panel/native_presentation.rs"]
+mod native_presentation;
 #[path = "panel/native_sync.rs"]
 mod native_sync;
 #[path = "panel/prediction_settings.rs"]
@@ -138,6 +140,7 @@ fn advance_commit_feedback_state(ticks: u8) -> (u8, bool) {
 enum PanelUserEvent {
     ShowPanel,
     HidePanel,
+    PrepareInputMethodActivation,
     OpenSettings,
     ResetPanelPosition,
     InputMethodSettingsChanged(suzaku_map::ime::settings::ImeSettings),
@@ -310,6 +313,7 @@ struct PanelApp {
     ime_settings_sync: prediction_settings::PanelImeSettingsSync,
     last_native_ime_settings: Option<suzaku_map::ime::settings::ImeSettings>,
     native_sync: Option<native_sync::NativeSync>,
+    native_presentation: Option<native_presentation::NativePresentation>,
     native_auto_shown: bool,
     native_hidden_context: Option<(String, u64)>,
 }
@@ -336,27 +340,37 @@ impl PanelApp {
             ime_settings_sync: Default::default(),
             last_native_ime_settings: None,
             native_sync: None,
+            native_presentation: None,
             native_auto_shown: false,
             native_hidden_context: None,
         }
     }
 
     fn set_panel_visible(&mut self, visible: bool) {
+        // Only an explicit user hide suppresses future updates from this field.
+        if !visible
+            && let Some(panel) = self.panel.as_ref()
+            && let Some(frame) = panel
+                .native
+                .frame
+                .as_ref()
+                .filter(|f| f.visible() || panel.native_composition_visible())
+        {
+            self.native_hidden_context = Some((frame.host.clone(), frame.context));
+        }
+        self.apply_panel_visibility(visible);
+    }
+
+    fn apply_panel_visibility(&mut self, visible: bool) {
         self.native_auto_shown = false;
         let Some(panel) = self.panel.as_mut() else {
             return;
         };
 
         panel.close_requested = false;
+        panel.native.presented = None;
         if visible {
             self.native_hidden_context = None;
-        } else if let Some(frame) = panel
-            .native
-            .frame
-            .as_ref()
-            .filter(|f| f.visible() || panel.native_composition_visible())
-        {
-            self.native_hidden_context = Some((frame.host.clone(), frame.context));
         }
         if !visible {
             panel.cancel_translation();
@@ -376,6 +390,35 @@ impl PanelApp {
         if let Some(tray) = self.tray.as_ref() {
             tray.set_panel_visible(visible);
         }
+    }
+
+    fn native_presentation_target(&self) -> Option<native_presentation::PresentationTarget> {
+        self.panel
+            .as_ref()
+            .filter(|_| self.panel_visible)
+            .and_then(PanelState::presented_native_target)
+    }
+
+    fn prepare_input_method_activation(&mut self) {
+        let Some(panel) = self.panel.as_ref() else {
+            return;
+        };
+        // Queued tray work must not interrupt a newer panel/settings edit.
+        if panel.has_local_panel_interaction() {
+            self.native_auto_shown = false;
+            return;
+        }
+        let manually_hidden = panel.native.frame.as_ref().is_some_and(|frame| {
+            self.native_hidden_context.as_ref() == Some(&(frame.host.clone(), frame.context))
+        });
+        let visible = panel.runs_without_window_focus
+            && panel.native_composition_visible()
+            && !manually_hidden;
+        // Native updates and tray events have independent producers. If a first
+        // draft has already arrived, keep it visible now rather than waiting for
+        // another key; otherwise wait for input without suppressing its context.
+        self.apply_panel_visibility(visible);
+        self.native_auto_shown = visible;
     }
 
     fn apply_native_settings(
@@ -579,6 +622,9 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             pollster::block_on(PanelState::new(window)).expect("initialize panel state");
         finish_main_window_creation(&state.window, event_loop);
         self.native_sync = native_sync::start(self.event_proxy.clone());
+        if self.native_sync.is_some() {
+            self.native_presentation = native_presentation::start();
+        }
         state.native.sender = self.native_sync.as_ref().map(|sync| sync.sender.clone());
         state.note_expanded_window_position();
         state.window.request_redraw();
@@ -613,6 +659,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         if let Some(settings) = self.settings.as_mut()
             && settings.window.id() == window_id
         {
+            self.native_auto_shown = false;
             match event {
                 WindowEvent::CloseRequested => {
                     panel.chrome.settings_open = false;
@@ -648,6 +695,12 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         }
 
         handle_panel_window_event(panel, event_loop, event, true);
+        // Opening settings or taking over the seed is an explicit interaction,
+        // not a transient candidate popup. Retain that ownership after editing
+        // ends as well, until the user explicitly hides the panel again.
+        if panel.has_local_panel_interaction() {
+            self.native_auto_shown = false;
+        }
         if panel.quit_requested {
             panel.quit_requested = false;
             self.request_quit(event_loop);
@@ -713,6 +766,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
         match event {
             PanelUserEvent::ShowPanel => self.set_panel_visible(true),
             PanelUserEvent::HidePanel => self.set_panel_visible(false),
+            PanelUserEvent::PrepareInputMethodActivation => self.prepare_input_method_activation(),
             PanelUserEvent::OpenSettings => self.open_settings(event_loop),
             PanelUserEvent::ResetPanelPosition => self.reset_panel_position(event_loop),
             PanelUserEvent::InputMethodSettingsChanged(ime_settings) => {
@@ -736,6 +790,11 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     .and_then(|sync| sync.take_update())
                     && let Some(panel) = self.panel.as_mut()
                 {
+                    // Capture local ownership before the snapshot updates view
+                    // state, including the gap before Focused(true) is delivered.
+                    if panel.has_local_panel_interaction() {
+                        self.native_auto_shown = false;
+                    }
                     panel.receive_native_frame(update);
                     // A public empty snapshot may only be the intermediate
                     // deletion/commit: queued screen-keyboard input can already
@@ -747,16 +806,15 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     });
                     let can_show = !manually_hidden
                         && panel.runs_without_window_focus
-                        && !panel.is_focused
-                        && !panel.chrome.settings_open;
+                        && !panel.has_local_panel_interaction();
                     // The mailbox can coalesce an empty transition between two
                     // fields. Wake from the current context, not an observed
                     // invisible-to-visible edge; manual hiding is context-bound.
                     if visible && !self.panel_visible && can_show {
-                        self.set_panel_visible(true);
+                        self.apply_panel_visibility(true);
                         self.native_auto_shown = true;
                     } else if !visible && self.native_auto_shown {
-                        self.set_panel_visible(false);
+                        self.apply_panel_visibility(false);
                     }
                 }
             }
@@ -774,6 +832,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.native_presentation = None;
         self.native_sync = None;
         if let Some(panel) = self.panel.as_mut() {
             panel.cancel_translation();
@@ -794,7 +853,17 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
             tray.set_theme(panel.chrome.theme_preset);
             tray.set_ui_language(panel.chrome.ui_language);
         }
+        // Only a successfully presented candidate frame may replace the system
+        // popup. The worker needs UI-thread heartbeats, so a stalled UI cannot
+        // keep renewing the lease just because its process/socket is alive.
+        let presentation_target = self.native_presentation_target();
         let mut tooltip_deadline = None;
+        if let Some(presentation) = &self.native_presentation {
+            if presentation_target.is_some() {
+                tooltip_deadline = Some(now + Duration::from_millis(200));
+            }
+            presentation.update(presentation_target);
+        }
         for state in self
             .panel
             .iter_mut()

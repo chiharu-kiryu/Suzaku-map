@@ -96,6 +96,8 @@ static gboolean suzaku_ibus_engine_is_focused(IBusEngine *engine) {
     return matches;
 }
 
+#include "ibus_presentation.inc.c"
+
 static size_t suzaku_ibus_candidate_page_start(void) {
     size_t selected = suzaku_host_ime_selected_index();
     return (selected / SUZAKU_LOOKUP_PAGE_SIZE) * SUZAKU_LOOKUP_PAGE_SIZE;
@@ -158,9 +160,13 @@ static void suzaku_ibus_engine_render_auxiliary(SuzakuIBusEngine *self, gboolean
     g_free(help);
 }
 
-static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
-    suzaku_companion_publish();
+static void suzaku_ibus_engine_render_presentation(SuzakuIBusEngine *self) {
     IBusEngine *engine = IBUS_ENGINE(self);
+    if (suzaku_presentation_active(self)) {
+        ibus_engine_hide_lookup_table(engine);
+        ibus_engine_hide_auxiliary_text(engine);
+        return;
+    }
     if (suzaku_ibus_engine_is_composing(self)) {
         /* Pending keysyms are not text: never put them in model requests or the
          * draft. Keep existing preedit visible, with a native composing hint. */
@@ -169,20 +175,14 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         return;
     }
     if (self->input->len == 0) {
-        suzaku_ibus_engine_hide(engine);
+        ibus_engine_hide_lookup_table(engine);
+        ibus_engine_hide_auxiliary_text(engine);
         if (self->language_feedback != NULL && !self->private_input) {
             suzaku_ibus_engine_render_auxiliary(self, FALSE);
         }
         return;
     }
 
-    if (self->inline_preedit) {
-        IBusText *preedit = ibus_text_new_from_string(self->input->str);
-        ibus_text_append_attribute(preedit, IBUS_ATTR_TYPE_UNDERLINE,
-                                   IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
-        ibus_engine_update_preedit_text(
-            engine, preedit, (guint)g_utf8_strlen(self->input->str, -1), TRUE);
-    }
     suzaku_ibus_engine_render_auxiliary(self, FALSE);
 
     size_t candidate_count = suzaku_host_ime_candidate_count();
@@ -216,6 +216,25 @@ static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
         ibus_lookup_table_append_label(table, ibus_text_new_from_string(""));
     }
     ibus_engine_update_lookup_table(engine, table, TRUE);
+}
+
+static void suzaku_ibus_engine_render(SuzakuIBusEngine *self) {
+    suzaku_companion_publish();
+    /* Inline preedit keeps its existing opt-in behavior, but presentation lease
+     * heartbeats/expiry must never emit new application-owned preedit updates. */
+    if (self->inline_preedit && !suzaku_ibus_engine_is_composing(self)) {
+        if (self->input->len == 0) {
+            ibus_engine_update_preedit_text(
+                IBUS_ENGINE(self), ibus_text_new_from_string(""), 0, FALSE);
+        } else {
+            IBusText *preedit = ibus_text_new_from_string(self->input->str);
+            ibus_text_append_attribute(preedit, IBUS_ATTR_TYPE_UNDERLINE,
+                                       IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
+            ibus_engine_update_preedit_text(IBUS_ENGINE(self), preedit,
+                (guint)g_utf8_strlen(self->input->str, -1), TRUE);
+        }
+    }
+    suzaku_ibus_engine_render_presentation(self);
 }
 
 static void suzaku_ibus_engine_sync_input(SuzakuIBusEngine *self) {
@@ -596,6 +615,7 @@ static gboolean suzaku_ibus_clear_focused_engine_if(IBusEngine *engine) {
     if (matches) {
         g_weak_ref_set(&suzaku_last_focused_engine, NULL);
         suzaku_companion_context++;
+        suzaku_presentation_clear();
     }
     g_clear_object(&focused);
     return matches;
@@ -844,7 +864,9 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
     }
 
     gboolean delivered = FALSE;
-    if (bytes_read > 1 && request[0] == 'A' &&
+    if (bytes_read > 0 && request[0] == 'V') {
+        delivered = suzaku_presentation_request(request, bytes_read);
+    } else if (bytes_read > 1 && request[0] == 'A' &&
         g_utf8_validate(request, (gssize)bytes_read, NULL)) {
         delivered = suzaku_companion_action(request + 1);
     } else if (bytes_read > 1 && request[0] == 'C' &&
@@ -915,6 +937,7 @@ static gboolean suzaku_ibus_start_ipc_service(void) {
 }
 
 static void suzaku_ibus_stop_ipc_service(void) {
+    suzaku_presentation_clear();
     suzaku_ipc_close_clients();
     g_clear_pointer(&suzaku_companion_subscribers, g_ptr_array_unref);
     g_clear_pointer(&suzaku_companion_host_id, g_free);

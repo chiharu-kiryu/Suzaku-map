@@ -70,6 +70,20 @@ pub(super) fn stdout(program: &str, args: &[&str], timeout: Duration) -> Option<
 /// Captures at most 64 KiB of stdout. Stdin/stderr are discarded; a timeout stops
 /// this command's process group and reaps its direct child, without retrying it.
 pub fn run(command: &mut Command, timeout: Duration) -> io::Result<Output> {
+    run_capture(command, timeout, false)
+}
+
+/// Opt-in diagnostic capture with a shared 64 KiB output limit and deadline.
+/// Stderr remains separate, so warnings cannot become successful query values.
+pub fn run_with_stderr(command: &mut Command, timeout: Duration) -> io::Result<Output> {
+    run_capture(command, timeout, true)
+}
+
+fn run_capture(
+    command: &mut Command,
+    timeout: Duration,
+    capture_stderr: bool,
+) -> io::Result<Output> {
     if timeout.is_zero() {
         return Err(io::Error::new(
             ErrorKind::TimedOut,
@@ -81,22 +95,31 @@ pub fn run(command: &mut Command, timeout: Duration) -> io::Result<Output> {
     // parent's end is nonblocking; subprocess stdout retains ordinary semantics.
     let (mut reader, writer) = UnixStream::pair()?;
     reader.set_nonblocking(true)?;
+    let (stderr, mut error_reader) = if capture_stderr {
+        let (reader, writer) = UnixStream::pair()?;
+        reader.set_nonblocking(true)?;
+        (Stdio::from(OwnedFd::from(writer)), Some(reader))
+    } else {
+        (Stdio::null(), None)
+    };
     let spawned = command
         .stdin(Stdio::null())
         .stdout(Stdio::from(OwnedFd::from(writer)))
-        .stderr(Stdio::null())
+        .stderr(stderr)
         .process_group(0)
         .spawn();
     // Command retains its configured fd after spawn. Close that parent copy so
     // EOF depends only on the child/descendants, even if the caller reuses Command.
-    command.stdout(Stdio::null());
+    command.stdout(Stdio::null()).stderr(Stdio::null());
     let mut child = ProbeChild {
         child: spawned?,
         complete: false,
     };
     let mut bytes = Vec::new();
+    let mut errors = Vec::new();
     let mut exited = false;
     let mut eof = false;
+    let mut error_eof = !capture_stderr;
     loop {
         if Instant::now() >= deadline {
             return Err(io::Error::new(
@@ -112,7 +135,7 @@ pub fn run(command: &mut Command, timeout: Duration) -> io::Result<Output> {
                     break;
                 }
                 Ok(count) => {
-                    if bytes.len() + count > MAX_OUTPUT_BYTES {
+                    if bytes.len() + errors.len() + count > MAX_OUTPUT_BYTES {
                         return Err(io::Error::new(
                             ErrorKind::InvalidData,
                             "Command output too large",
@@ -125,16 +148,39 @@ pub fn run(command: &mut Command, timeout: Duration) -> io::Result<Output> {
                 Err(error) => return Err(error),
             }
         }
+        if let Some(reader) = error_reader.as_mut() {
+            for _ in 0..4 {
+                let mut chunk = [0; 4096];
+                match reader.read(&mut chunk) {
+                    Ok(0) => {
+                        error_eof = true;
+                        break;
+                    }
+                    Ok(count) => {
+                        if bytes.len() + errors.len() + count > MAX_OUTPUT_BYTES {
+                            return Err(io::Error::new(
+                                ErrorKind::InvalidData,
+                                "Command output too large",
+                            ));
+                        }
+                        errors.extend_from_slice(&chunk[..count]);
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => break,
+                    Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
+                }
+            }
+        }
         if !exited {
             exited = child_exited(&child.child)?;
         }
-        if eof && exited {
+        if eof && error_eof && exited {
             child.complete = true;
             let status = child.child.wait()?;
             return Ok(Output {
                 status,
                 stdout: bytes,
-                stderr: Vec::new(),
+                stderr: errors,
             });
         }
         std::thread::sleep(
@@ -148,6 +194,36 @@ pub fn run(command: &mut Command, timeout: Duration) -> io::Result<Output> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_capture_keeps_streams_separate_and_honors_limits() {
+        let output = run_with_stderr(
+            Command::new("/bin/sh").args(["-c", "printf rime; printf warning >&2; exit 1"]),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(output.stdout, b"rime");
+        assert_eq!(output.stderr, b"warning");
+        assert_eq!(output.status.code(), Some(1));
+        let error = run_with_stderr(
+            Command::new("/bin/sh").args(["-c", "head -c 65537 /dev/zero >&2"]),
+            Duration::from_secs(1),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn diagnostic_capture_does_not_wait_on_inherited_stderr() {
+        let started = Instant::now();
+        let error = run_with_stderr(
+            Command::new("/bin/sh").args(["-c", "sleep 2 >/dev/null & exit 0"]),
+            Duration::from_millis(80),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
 
     #[test]
     fn command_probe_captures_unicode_and_rejects_failed_commands() {

@@ -99,6 +99,8 @@ jobs:
         run: shellcheck scripts/test-linux-ci.sh scripts/test-linux-apps.sh scripts/test-linux-service.sh scripts/test-tool-chain-audit.sh scripts/test-settings-chain-audit.sh scripts/test-data-chain-audit.sh scripts/package-linux.sh scripts/test-linux-package.sh scripts/test-linux-install.sh scripts/fixtures/linux-install-container.sh scripts/fixtures/trace-native-ibus.sh
       - name: Test strict editor observation and save barriers
         run: python3 scripts/test-editor-observer.py
+      - name: Test owned X11 focus ancestry without a display
+        run: python3 scripts/test-x11-focus.py
       - name: Test private IBus diagnostic isolation and failure propagation
         run: python3 scripts/test-native-ibus-trace.py
       - name: Test borrowed IBus signal payload lifetimes
@@ -126,6 +128,10 @@ jobs:
         run: bash scripts/test-linux-ci.sh ui
       - name: Test English and Chinese typing in real GTK applications on an isolated display
         run: bash scripts/test-linux-apps.sh
+      - name: Test GTK3 per-key drafts with default and synchronous IBus transport
+        run: |
+          bash scripts/test-linux-apps.sh gtk3
+          SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh gtk3
       - name: Test expanded bilingual vocabulary in real GTK input
         run: bash scripts/test-linux-apps.sh vocabulary
       - name: Test owned editor observation across two real windows

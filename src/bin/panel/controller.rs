@@ -725,6 +725,8 @@ impl PanelState {
     }
 
     pub(super) fn render(&mut self) -> Result<(), SurfaceError> {
+        // A failed surface acquisition/presentation must relinquish the popup.
+        self.native.presented = None;
         let snapshot = self.view_snapshot();
         let (scene, overlays) = self.current_frame_with_snapshot(&snapshot);
         let next_window_title = match self.kind {
@@ -883,6 +885,7 @@ impl PanelState {
 
         self.queue.submit([encoder.finish()]);
         output.present();
+        self.note_native_frame_presented();
         // Read-only QA observation belongs in explicitly enabled private fixture logs,
         // never in public window-manager metadata. Ordinary surface diagnostics omit text.
         let synthetic_qa = std::env::var("SUZAKU_APP_QA").as_deref() == Ok("1")

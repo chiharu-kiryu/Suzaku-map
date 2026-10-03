@@ -32,10 +32,20 @@ if command == "ibus":
     if args == ["engine"]:
         if state.get("slow_restore", False) and state["active"]:
             time.sleep(0.1)
-        output = state["engine"]
+        if state["active"] and state.get("restore_query_error"):
+            print(state["restore_query_error"], file=sys.stderr)
+            result = 1
+        elif (not state["engine"] and state.get("missing_engine_error")) or state.pop("confirmation_missing", False):
+            print("IBUS-WARNING: GDBus.Error:org.freedesktop.DBus.Error.Failed: No global engine.", file=sys.stderr)
+            print("No engine is set.", file=sys.stderr)
+            result = 1
+        else:
+            output = state["engine"]
     elif args[:1] == ["engine"] and len(args) == 2:
         if not state.get("ignore_engine_switch", False):
             state["engine"] = args[1]
+        if state.pop("missing_confirmation_once", False):
+            state["confirmation_missing"] = True
     elif args == ["list-engine"]:
         output = state.get("listed_engine", "dev.suzaku.linux.ime - Suzaku")
     elif args == ["address"]:
@@ -59,7 +69,7 @@ elif command == "systemctl":
     elif args[1:2] == ["restart"]:
         state["active"] = True
         # Reproduce a registration that changes the current engine temporarily.
-        state["engine"] = "dev.suzaku.linux.ime"
+        state["engine"] = state.get("restart_engine", "dev.suzaku.linux.ime")
     elif args[1:2] == ["disable"]:
         state["enabled"] = state["active"] = False
     elif args[1:2] == ["is-active"]:

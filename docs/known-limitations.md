@@ -1,6 +1,6 @@
 # Alpha limitations and support
 
-0.8.0 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
+0.8.1 targets Ubuntu 24.04 amd64, IBus and X11 / GNOME XWayland. Cross-platform architecture
 does not imply cross-platform stability. Keep another input method available.
 
 - **Ubuntu 26.04 development checks:** the initial home-life vocabulary run timed out after
@@ -147,6 +147,13 @@ does not imply cross-platform stability. Keep another input method available.
   Existing English ranks, Chinese homophone order, prior contexts and Japanese data are unchanged;
   these presets do not look up real tracking/collection codes, library accounts or opening hours.
   Resources still require a rebuild and reinstall; see [errands scope](ibus-candidates.md#日常办事兜底词库未发布2026-10-02).
+  0.8.1 extends everyday fallback to 6,111 English forms, 2,175 Chinese readings and
+  814 / 836 authored sentences, with eleven optional topic packs. These remain finite data,
+  not open-ended model generation. The native candidate surface suppresses system lookup UI
+  only while its host/context-bound display lease is valid; hidden/folded/local-edit panels
+  release it. Crash/stall recovery may take up to about 1.8 seconds from the last UI heartbeat.
+  Private GTK/Xvfb checks do not establish universal GNOME/Wayland focus or application behavior;
+  see [0.8.1 validation and limits](releases/0.8.1.md).
   Current input work prioritizes English and Simplified Chinese. N47 in 0.6.6 makes existing
   Chinese words match valid separated syllables (`shu ru fa` as well as `shurufa`), with fixed
   English/Chinese quality regressions. This does not provide a complete Pinyin dictionary,

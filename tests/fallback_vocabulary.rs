@@ -608,6 +608,82 @@ impl LlmCompletionProvider for UnavailableProvider {
 }
 
 #[test]
+fn daily_expressions_stay_available_when_models_are_missing_failed_or_empty() {
+    let cases = [
+        (
+            "en",
+            "that's really imp",
+            "that's really impressive",
+            "that's really impressive.",
+        ),
+        (
+            "en",
+            "I'm almost th",
+            "I'm almost there",
+            "I'm almost there.",
+        ),
+        ("zh-Hans", "zhenbucuo", "真不错", "真不错，下次还想再来。"),
+        ("zh-Hans", "daojiale", "到家了", "到家了，给你报个平安。"),
+        (
+            "en",
+            "please make it mi",
+            "please make it mild",
+            "please make it mild.",
+        ),
+        (
+            "en",
+            "it's getting co",
+            "it's getting cold",
+            "it's getting cold outside.",
+        ),
+        (
+            "en",
+            "can we change the ti",
+            "can we change the time",
+            "can we change the time?",
+        ),
+        ("zh-Hans", "shaotang", "少糖", "少糖就好，谢谢。"),
+        ("zh-Hans", "daisan", "带伞", "带伞出门，免得淋雨。"),
+        (
+            "zh-Hans",
+            "linshiyoushi",
+            "临时有事",
+            "临时有事，可能要晚一点。",
+        ),
+    ];
+    for error in [
+        Some(LlmProviderError::NoLocalModel),
+        Some(LlmProviderError::Unavailable),
+        Some(LlmProviderError::Timeout),
+        Some(LlmProviderError::HttpStatus(503)),
+        None,
+    ] {
+        for (language, seed, word, sentence) in cases {
+            let mut ime = engine(language);
+            ime.configure_prediction(Some(Arc::new(UnavailableProvider(error.clone()))));
+            ime.seed(seed);
+            assert_fallback(&ime, seed, word, sentence);
+            let local = ime.candidates().to_vec();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while ime.prediction_pending() && Instant::now() < deadline {
+                ime.poll_prediction();
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert_eq!(ime.prediction_status(), PredictionStatus::Unavailable);
+            assert_eq!(
+                ime.prediction_error(),
+                Some(&error.clone().unwrap_or(LlmProviderError::NoCandidates))
+            );
+            assert_eq!(ime.candidates(), local, "{language} {error:?}");
+            ime.configure_prediction(None);
+            assert_eq!(ime.prediction_status(), PredictionStatus::Disabled);
+            assert_fallback(&ime, seed, word, sentence);
+            confirm(&mut ime, sentence);
+        }
+    }
+}
+
+#[test]
 fn missing_failed_timed_out_and_empty_models_preserve_the_immediate_local_fallback() {
     for error in [
         Some(LlmProviderError::NoLocalModel),

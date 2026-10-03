@@ -58,6 +58,7 @@ Run the paired offline input-quality gates without a model:
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
 cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
 cargo test --locked --all-features --test offline_packs -- --test-threads=1
+cargo test --locked --all-features --test offline_pack_quality -- --test-threads=1
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test chinese_sentence_continuation -- --test-threads=1
 ```
@@ -66,6 +67,11 @@ Offline-pack tests use owned data directories and fresh subprocesses, covering t
 schema/decoder profiles, append-only rank preservation, conflicts, limits, locks, malformed records,
 and frozen startup snapshots. Run `SUZAKU_NATIVE_PACKS_ONLY=1 bash scripts/test-linux-ci.sh ibus`
 for the real IBus EN/ZH/JA pack path (no desktop input or personal installation changes).
+The pack-quality gate enables all eleven recommended collections in an owned registry, checking
+240 authored English forms, 144 Chinese readings, 32 paired scenarios per language (four Chinese
+spellings), long adopted drafts, literal spacing and synthetic provider failures. These are pack
+entry counts, not net additions after merging built-ins. The native pack gate includes study/cooking/travel/work,
+numeric adoption/undo and Space continuation; run it in both default and opt-in inline modes.
 The optional environment override `SUZAKU_LEXICON_DIR` must be removed or set to an owned
 absolute directory in fixtures; library tests do not auto-load personal packs.
 
@@ -141,6 +147,15 @@ immediately. The fixture retains real IBus command errors and exit codes for fai
 its isolation/failure-propagation checks run with `python3 scripts/test-native-ibus-trace.py`.
 See the [0.7.0 activation CI follow-up](docs/ci-activation-followup-2026-09-27.md).
 
+For the custom-candidate/default and IBus-fallback display handshake, run
+`SUZAKU_NATIVE_PRESENTATION_ONLY=1 bash scripts/test-linux-ci.sh ibus` (also part of the full gate).
+This checks exact frame/owner validation, renewal/expiry and unchanged input/undo/model state.
+The private GTK3 gate additionally observes actual lookup/auxiliary signals from the real host:
+an actually rendered companion must suppress both, Hide must restore them, Show must reacquire,
+and killing only the owned private companion must restore system candidates without another key.
+Default and synchronous GTK3 modes also type `henqiang` / `henlihai` with the model disabled,
+requiring local word/sentence choices, numeric adoption and an exact single commit.
+
 For slow settings persistence, run
 `SUZAKU_NATIVE_CONTROL_IO_ONLY=1 bash scripts/test-linux-ci.sh ibus`.
 Its bounded `fsync` barrier is injected into one private, display-free host only; nine cases check
@@ -163,8 +178,11 @@ Real application checks additionally need GTK input modules and Qt test bindings
 sudo apt install gnome-text-editor zenity x11-utils x11-xkb-utils libxtst6 ibus-gtk3 ibus-gtk4 \
   gir1.2-gtk-3.0 gir1.2-atspi-2.0 at-spi2-core python3-pyqt5 python3-pyqt6 qt6-qpa-plugins
 python3 scripts/test-editor-observer.py
+python3 scripts/test-x11-focus.py
 bash scripts/test-linux-apps.sh editor
 bash scripts/test-linux-apps.sh gtk
+bash scripts/test-linux-apps.sh gtk3
+SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh gtk3
 bash scripts/test-linux-apps.sh vocabulary
 bash scripts/test-linux-apps.sh keyboard
 bash scripts/test-linux-apps.sh popup
@@ -179,19 +197,63 @@ SUZAKU_IBUS_INLINE_PREEDIT=1 bash scripts/test-linux-ci.sh ibus
 executable selected by `SUZAKU_APP_QA_BROWSER`. It uses an owned temporary profile and local page,
 not personal browser tabs. CI runs GTK/Qt; browser/VS Code checks below are local, not CI gates.
 Application tests explicitly clear the inline-preedit opt-in to verify the default draft mode.
-The `vocabulary` gate exercises fifty-two offline English/Chinese vocabulary workflows and two
+The `gtk3` gate uses owned GTK3 TextViews and checks every physical key against the exact
+host seed and application buffer. It waits for a stable, non-placeholder IBus context and
+widget focus, without retyping a lost startup key. It covers repeated letters, Space,
+numeric adoption/undo, explicit commits, bilingual shortcuts, field changes and the companion.
+Run both the installed client's default IBus transport (unset sync override) and explicit
+`SUZAKU_GTK3_QA_SYNC_MODE=1`. Failures report the requested/observed key, expected/actual draft,
+buffer, widget/X11 focus and input context; deadlines remain four seconds per key. Focus
+ownership accepts the exact target window or a proved descendant (not a sibling sharing
+the root), while still requiring the active TextView. Bounded focus-transition and
+press/release logs retain timing and ancestry; `test-x11-focus.py` checks the ancestry
+boundaries without a display. These
+isolated checks do not establish the cause of an earlier under-instrumented desktop failure
+or replace GNOME/Wayland acceptance. The runner never changes the personal input module.
+The ten GTK3 workflows include a running panel, activation from the private US keyboard
+engine through the real tray menu, and a Chinese-to-English change before the original
+English phrase. An owned minimal StatusNotifierWatcher permits the actual panel to register
+its tray; it does not substitute a menu or engine. The driver opens that menu once and then
+only observes readiness, instead of repeatedly requesting refreshes while waiting. This is
+not acceptance of GNOME's tray extension, rendering or personal input-source switching.
+For a separately authorized personal-desktop check, XWayland's `-enable-ei-portal` may route
+XTest through desktop input authorization. A successful injection call is not proof that
+the widget received a key. Stop on focus loss or missing delivery; do not disable the
+portal, retry keys or count the private-display pass as desktop acceptance. Establish
+delivery independently of Suzaku before attributing a synthetic-input failure to the IME.
+The `vocabulary` gate exercises sixty-four offline English/Chinese vocabulary workflows and two
 multi-word Chinese sentence-progress workflows in the real
 GTK editor: physical spelling, word/sentence labels, numeric adoption, exact undo, Space
 continuation and saved word/sentence commits. Authored sentence continuations must remain on
 page one after Space where a continuation exists. It uses no companion-seeded text or live model.
 For a focused home-life diagnostic, set `SUZAKU_VOCABULARY_QA_SCOPE=home` with the `vocabulary`
 runner. This explicitly reports four vocabulary cases plus two sentence-progress cases, not a
-complete-gate pass. CI keeps the default `all` scope and the unchanged 240-second deadline.
+complete-gate pass. CI keeps the default `all` scope. As the corpus grows, the shell runner
+executes all cases in two sequential private sessions (`part-1` / `part-2`), with the original
+240-second deadline **per session**. Alternating case indices keep both languages in each part;
+the first part includes the two sentence-progress controls (34 + 32 workflows total).
+Only both successful parts count as the complete gate. No case or assertion is skipped;
+explicit `home`, `daily` and `packs` scopes still report only their own coverage.
+For daily reactions/meeting/rest and food/weather/arrangement expressions, use
+`SUZAKU_VOCABULARY_QA_SCOPE=daily`; this reports twelve vocabulary cases plus the two
+sentence-progress controls. The default gate includes these cases too. Independent
+fixed-expectation coverage lives in `tests/daily_english_vocabulary.rs`,
+`tests/daily_chinese_vocabulary.rs`, `tests/daily_needs_english.rs` and
+`tests/daily_needs_chinese.rs`; model-failure coverage
+uses typed synthetic errors in `tests/fallback_vocabulary.rs`, not live provider claims.
+For the optional bilingual study/cooking/travel/work packs, use
+`SUZAKU_VOCABULARY_QA_SCOPE=packs bash scripts/test-linux-apps.sh vocabulary`.
+This separate gate uses the selected installation's adjacent `suzaku_tool` to export/install
+eight packs into the private QA data directory **before** starting its host and panel. It
+checks eight pack workflows plus two builtin sentence-progress workflows, including the
+live companion's system-font draft rendering and editor focus. It neither reads nor changes
+the personal pack registry, and does not replace the default builtin gate.
 The private IBus gate also checks sentence progress in short, threshold-crossing and long drafts,
 including consecutive numeric adoptions, valid homophones, exact undo and one explicit commit.
 To validate a user-local installation instead of rebuilding debug binaries, set
 `SUZAKU_APP_QA_BIN_DIR="$HOME/.local/libexec/suzaku"`; the directory must contain `panel` and
-`linux_ime_host`. This still uses a private display/bus and is not personal-desktop acceptance.
+`linux_ime_host` (and `suzaku_tool` for the `packs` scope). This still uses a private display/bus
+and is not personal-desktop acceptance.
 Owned GNOME Text Editor windows enable read-only accessibility observation: saving requires the
 exact application buffer and a finished load/save indicator before and after one physical Ctrl+S.
 File contents alone are not a completion barrier. Missing observation, stale files or wrong text

@@ -118,6 +118,10 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
             std::path::Path::new(&std::env::var_os(key).unwrap()).starts_with(std::env::temp_dir())
         );
     }
+    assert_ne!(
+        std::env::var("DISPLAY").unwrap().split('.').next().unwrap(),
+        ":0"
+    );
     let mut builder = EventLoop::<PanelUserEvent>::with_user_event();
     builder.with_x11().with_any_thread(true);
     let events = builder.build().unwrap();
@@ -131,6 +135,7 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
             let mut panel = pollster::block_on(PanelState::new(window)).unwrap();
             panel.runs_without_window_focus = true;
             panel.is_focused = false;
+            panel.chrome.blur_input();
             let mut app = crate::PanelApp::new(self.proxy.clone(), None);
             app.panel = Some(panel);
             app.panel_visible = true;
@@ -146,6 +151,7 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
             });
             let mut frame = keyboard_frame("hel", 1);
             publish_wake_frames(&mut app, events, [Some(frame.clone())]);
+            assert!(app.panel.as_ref().unwrap().native.showing);
             app.user_event(events, PanelUserEvent::HidePanel);
             assert_panel_visibility(&app, false);
             frame.revision += 1;
@@ -211,6 +217,7 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
                 assert!(!app.panel_visible, "visibility guard bypassed: {guard}");
                 let panel = app.panel.as_mut().unwrap();
                 panel.is_focused = false;
+                panel.chrome.blur_input();
                 panel.chrome.settings_open = false;
                 panel.runs_without_window_focus = true;
                 frame.revision += 1;
@@ -234,6 +241,9 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
             assert!(app.native_auto_shown);
             publish_wake_frames(&mut app, events, [None]);
             assert_panel_visibility(&app, false);
+            assert_activation_visibility(&mut app, events);
+            assert_explicit_interaction_visibility(&mut app, events);
+            assert_presentation_requires_visible_rendered_candidates(&mut app, events);
             assert!(
                 receiver.try_recv().is_err(),
                 "visibility must not send input actions"
@@ -253,6 +263,520 @@ fn hidden_panel_wakes_for_new_contexts_after_coalesced_updates() {
     println!(
         "PASS: coalesced context/restart wakeups, manual hiding, focus/privacy guards and auto-hide"
     );
+    println!(
+        "PASS: activation preparation preserves first drafts, manual visibility and focus/privacy guards"
+    );
+    println!(
+        "PASS: explicit gear/settings and seed editing retain visibility across native empty/focus/disconnect updates"
+    );
+}
+
+fn assert_presentation_requires_visible_rendered_candidates(
+    app: &mut crate::PanelApp,
+    events: &ActiveEventLoop,
+) {
+    app.settings = None;
+    let panel = app.panel.as_mut().unwrap();
+    panel.finish_text_editing();
+    panel.set_window_focus(false);
+    panel.native = NativeView::default();
+    panel.chrome.settings_open = false;
+    panel.chrome.compact_mode = false;
+    panel.runs_without_window_focus = true;
+    app.user_event(events, PanelUserEvent::ShowPanel);
+    let mut frame = keyboard_frame("hel", 1);
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    assert!(
+        app.native_presentation_target().is_none(),
+        "not yet rendered"
+    );
+    let window = app.panel.as_ref().unwrap().window.id();
+    let redraw = |app: &mut crate::PanelApp| {
+        app.window_event(events, window, WindowEvent::RedrawRequested);
+    };
+    redraw(app);
+    let target = app
+        .native_presentation_target()
+        .expect("presented native frame");
+    assert_eq!(
+        (target.host.as_str(), target.context, target.revision),
+        (frame.host.as_str(), frame.context, frame.revision)
+    );
+
+    // Preserve the old painted identity until the next frame really presents.
+    frame.revision += 1;
+    frame.seed = "hello".into();
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    assert_eq!(app.native_presentation_target().unwrap(), target);
+    redraw(app);
+    assert_eq!(
+        app.native_presentation_target().unwrap().revision,
+        frame.revision
+    );
+
+    for boundary in [
+        "hidden",
+        "compact",
+        "settings",
+        "local edit",
+        "occluded",
+        "backend",
+    ] {
+        match boundary {
+            "hidden" => app.user_event(events, PanelUserEvent::HidePanel),
+            "compact" => app.panel.as_mut().unwrap().chrome.compact_mode = true,
+            "settings" => app.panel.as_mut().unwrap().chrome.settings_open = true,
+            "local edit" => app.panel.as_mut().unwrap().is_focused = true,
+            "occluded" => app.window_event(events, window, WindowEvent::Occluded(true)),
+            "backend" => app.panel.as_mut().unwrap().runs_without_window_focus = false,
+            _ => unreachable!(),
+        }
+        assert!(
+            app.native_presentation_target().is_none(),
+            "must relinquish: {boundary}"
+        );
+        let panel = app.panel.as_mut().unwrap();
+        panel.chrome.compact_mode = false;
+        panel.chrome.settings_open = false;
+        panel.is_focused = false;
+        panel.chrome.blur_input();
+        panel.runs_without_window_focus = true;
+        app.window_event(events, window, WindowEvent::Occluded(false));
+        app.user_event(events, PanelUserEvent::ShowPanel);
+        assert!(
+            app.native_presentation_target().is_none(),
+            "reopen needs a new render"
+        );
+        redraw(app);
+        assert!(
+            app.native_presentation_target().is_some(),
+            "reacquire: {boundary}"
+        );
+    }
+    frame.context += 1;
+    frame.revision += 1;
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    assert!(
+        app.native_presentation_target().is_none(),
+        "old field was painted"
+    );
+    redraw(app);
+    assert!(app.native_presentation_target().is_some());
+    frame.private = true;
+    frame.seed.clear();
+    frame.candidates.clear();
+    frame.revision += 1;
+    publish_wake_frames(app, events, [Some(frame)]);
+    assert!(app.native_presentation_target().is_none());
+    redraw(app);
+    assert!(app.native_presentation_target().is_none());
+    publish_wake_frames(app, events, [None]);
+    assert!(app.native_presentation_target().is_none());
+    println!(
+        "PASS: default custom popup ownership requires rendered candidates and releases at visibility/focus/privacy boundaries"
+    );
+}
+
+fn assert_explicit_interaction_visibility(app: &mut crate::PanelApp, events: &ActiveEventLoop) {
+    for case in [
+        "untouched",
+        "screen keyboard",
+        "tray settings",
+        "gear settings",
+        "seed editor",
+    ] {
+        let explicitly_visible = !matches!(case, "untouched" | "screen keyboard");
+        app.settings = None;
+        let panel = app.panel.as_mut().unwrap();
+        panel.finish_text_editing();
+        panel.set_window_focus(false);
+        panel.native = NativeView {
+            sender: Some(app.native_sync.as_ref().unwrap().sender.clone()),
+            ..Default::default()
+        };
+        panel.chrome.settings_open = false;
+        panel.chrome.llm_enabled = false;
+        panel.engine.configure_prediction(None);
+        panel.chrome.set_seed_text(String::new());
+        panel.refresh_seed();
+        app.user_event(events, PanelUserEvent::ShowPanel);
+        app.user_event(events, PanelUserEvent::HidePanel);
+        let mut frame = keyboard_frame("hel", 1);
+        publish_wake_frames(app, events, [Some(frame.clone())]);
+        assert!(app.panel.as_ref().unwrap().native.showing);
+        assert_panel_visibility(app, true);
+        assert!(
+            app.native_auto_shown,
+            "fixture must wake automatically: {case}"
+        );
+
+        match case {
+            "untouched" => {}
+            "screen keyboard" => {
+                let panel = app.panel.as_mut().unwrap();
+                panel.chrome.active_input_mode = InputMode::VirtualKeyboard;
+                panel.chrome.input_modes_expanded = true;
+                click_visible_panel_interaction(app, events, InteractionKind::InputModesToggle);
+                let panel = app.panel.as_ref().unwrap();
+                assert!(!panel.is_focused);
+                assert!(panel.chrome.input_focused);
+                assert!(panel.native.showing);
+                assert!(app.native_auto_shown);
+                // Collapsing a native keyboard tab focuses its seed in chrome,
+                // but is not a request to edit locally or pin the companion.
+                frame.revision += 1;
+                frame.seed = "native follow-up".into();
+                publish_wake_frames(app, events, [Some(frame.clone())]);
+                assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, frame.seed);
+                assert!(app.panel.as_ref().unwrap().native.showing);
+                assert!(app.native_auto_shown);
+            }
+            "tray settings" => app.user_event(events, PanelUserEvent::OpenSettings),
+            "gear settings" => {
+                click_visible_panel_interaction(app, events, InteractionKind::SettingsToggle)
+            }
+            "seed editor" => {
+                click_visible_panel_interaction(app, events, InteractionKind::SeedInput);
+                let panel = app.panel.as_mut().unwrap();
+                assert!(!panel.is_focused);
+                assert!(panel.chrome.input_focused);
+                assert!(!panel.native.showing);
+                panel.handle_text_input("local editing draft");
+                panel.chrome.caret_index = 5;
+                // A native reader wake can overtake the asynchronous Focused
+                // event even after the real click entered local editing.
+                frame.revision += 1;
+                frame.seed = "late external draft".into();
+                publish_wake_frames(app, events, [Some(frame.clone())]);
+                let panel = app.panel.as_ref().unwrap();
+                assert!(!panel.is_focused);
+                assert!(panel.chrome.input_focused);
+                assert!(!panel.native.showing);
+                assert_eq!(panel.chrome.seed_text, "local editing draft");
+                assert_eq!(panel.engine.snapshot().seed_text, "local editing draft");
+                assert_eq!(panel.chrome.caret_index, 5);
+                assert_owned_panel_has_x11_focus(app);
+                // This bounded UI callback has not dispatched X11 FocusIn yet.
+                // Deliver only the transition already verified on the private server.
+                let panel = app.panel.as_ref().unwrap();
+                app.window_event(events, panel.window.id(), WindowEvent::Focused(true));
+                let panel = app.panel.as_mut().unwrap();
+                assert!(panel.is_focused);
+                assert!(panel.chrome.input_focused);
+                assert!(!panel.native.showing);
+                assert_eq!(panel.chrome.seed_text, "local editing draft");
+            }
+            _ => unreachable!(),
+        }
+        let settings_window = app.settings.as_ref().map(|settings| settings.window.id());
+        if case.ends_with("settings") {
+            assert!(
+                settings_window.is_some(),
+                "settings window was not created: {case}"
+            );
+            assert!(app.panel.as_ref().unwrap().chrome.settings_open);
+            assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, "hel");
+        }
+
+        for update in [
+            "private empty",
+            "unfocused empty",
+            "focused empty",
+            "disconnect",
+        ] {
+            frame.revision += 1;
+            frame.seed.clear();
+            frame.candidates.clear();
+            frame.focused = matches!(update, "focused empty" | "private empty");
+            frame.private = update == "private empty";
+            publish_wake_frames(
+                app,
+                events,
+                [(update != "disconnect").then(|| frame.clone())],
+            );
+            assert_eq!(
+                app.panel_visible, explicitly_visible,
+                "lost visibility ownership: {case}, {update}"
+            );
+            assert_panel_visibility(app, explicitly_visible);
+            assert!(
+                !app.native_auto_shown,
+                "explicit visibility must not expire: {case}, {update}"
+            );
+            assert_eq!(
+                app.settings.as_ref().map(|settings| settings.window.id()),
+                settings_window
+            );
+            if case.ends_with("settings") {
+                let panel = app.panel.as_ref().unwrap();
+                assert!(panel.chrome.settings_open);
+                // Keeping an explicitly opened window is not permission to keep
+                // mirroring the preceding external field's text or candidates.
+                assert!(
+                    panel.chrome.seed_text.is_empty(),
+                    "stale mirror: {case}, {update}"
+                );
+                assert!(panel.chrome.next_token_candidates.is_empty());
+                assert!(panel.chrome.sentence_candidates.is_empty());
+                assert!(panel.view_snapshot().seed_text.is_empty());
+                assert!(panel.view_snapshot().candidate_labels.is_empty());
+            } else if case == "seed editor" {
+                let panel = app.panel.as_ref().unwrap();
+                assert!(panel.is_focused);
+                assert!(
+                    panel.chrome.input_focused,
+                    "native update ended local editing: {update}"
+                );
+                assert_eq!(panel.chrome.seed_text, "local editing draft");
+                assert_eq!(panel.engine.snapshot().seed_text, "local editing draft");
+                assert_eq!(panel.chrome.caret_index, 5);
+            }
+        }
+
+        if let Some(settings_window) = settings_window {
+            app.window_event(events, settings_window, WindowEvent::CloseRequested);
+            assert!(app.settings.is_none());
+            assert!(!app.panel.as_ref().unwrap().chrome.settings_open);
+        } else if case == "seed editor" {
+            let panel = app.panel.as_mut().unwrap();
+            panel.finish_text_editing();
+            let window = panel.window.id();
+            app.window_event(events, window, WindowEvent::Focused(false));
+            assert!(!app.panel.as_ref().unwrap().chrome.input_focused);
+        }
+        // Ownership survives finishing the explicit interaction; merely skipping
+        // auto-hide while settings/focus is active would fail this later update.
+        frame.revision += 1;
+        frame.focused = false;
+        publish_wake_frames(app, events, [Some(frame)]);
+        assert_panel_visibility(app, explicitly_visible);
+        assert!(!app.native_auto_shown);
+        if case == "seed editor" {
+            assert_eq!(
+                app.panel.as_ref().unwrap().chrome.seed_text,
+                "local editing draft"
+            );
+        }
+        app.user_event(events, PanelUserEvent::HidePanel);
+    }
+}
+
+fn click_visible_panel_interaction(
+    app: &mut crate::PanelApp,
+    events: &ActiveEventLoop,
+    action: InteractionKind,
+) {
+    let panel = app.panel.as_mut().unwrap();
+    panel.last_scene = None;
+    let rect = panel.interaction_rect(action).expect("visible interaction");
+    let mut point = None;
+    for x in [0.5, 0.25, 0.75, 0.1, 0.9] {
+        for y in [0.5, 0.25, 0.75, 0.1, 0.9] {
+            let candidate = (rect[0] + rect[2] * x, rect[1] + rect[3] * y);
+            if panel.hit_interaction_at(candidate.0, candidate.1) == Some(action) {
+                point = Some(candidate);
+                break;
+            }
+        }
+        if point.is_some() {
+            break;
+        }
+    }
+    panel.cursor_position = Some(point.expect("visible interaction must have a hittable point"));
+    panel.begin_primary_press(false);
+    assert_eq!(panel.interaction.pressed_interaction, Some(action));
+    panel.complete_primary_release(false);
+    let window = panel.window.id();
+    app.window_event(events, window, WindowEvent::RedrawRequested);
+}
+
+fn assert_owned_panel_has_x11_focus(app: &crate::PanelApp) {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use x11rb::protocol::xproto::ConnectionExt;
+    let RawWindowHandle::Xlib(handle) = app
+        .panel
+        .as_ref()
+        .unwrap()
+        .window
+        .window_handle()
+        .unwrap()
+        .as_raw()
+    else {
+        panic!("private X11 fixture required");
+    };
+    let (connection, _) = x11rb::connect(None).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        let focus = connection.get_input_focus().unwrap().reply().unwrap().focus;
+        if focus == handle.window as u32 {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "SeedInput did not acquire private X11 focus: {focus:#x}"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+fn assert_activation_visibility(app: &mut crate::PanelApp, events: &ActiveEventLoop) {
+    let reset = |app: &mut crate::PanelApp| {
+        app.settings = None;
+        let panel = app.panel.as_mut().unwrap();
+        panel.native = NativeView {
+            sender: Some(app.native_sync.as_ref().unwrap().sender.clone()),
+            ..Default::default()
+        };
+        panel.runs_without_window_focus = true;
+        panel.is_focused = false;
+        panel.chrome.blur_input();
+        panel.chrome.settings_open = false;
+        app.user_event(events, PanelUserEvent::ShowPanel);
+        assert_panel_visibility(app, true);
+    };
+
+    // Activation requests and the native snapshot reader enqueue independently. A first
+    // draft already displayed when preparation runs is not a manual-hide request.
+    for frame_first in [false, true] {
+        reset(app);
+        let mut frame = keyboard_frame("first draft", 1);
+        if frame_first {
+            publish_wake_frames(app, events, [Some(frame.clone())]);
+        }
+        app.user_event(events, PanelUserEvent::PrepareInputMethodActivation);
+        if !frame_first {
+            assert_panel_visibility(app, false);
+            assert!(app.native_hidden_context.is_none());
+            publish_wake_frames(app, events, [Some(frame.clone())]);
+        }
+        assert!(
+            app.panel_visible,
+            "activation hid first draft: frame_first={frame_first}"
+        );
+        assert_panel_visibility(app, true);
+        assert!(app.native_auto_shown);
+        assert!(app.native_hidden_context.is_none());
+        assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, frame.seed);
+
+        // Committing the first draft must still retire the automatic companion.
+        frame.revision += 1;
+        frame.seed.clear();
+        frame.candidates.clear();
+        publish_wake_frames(app, events, [Some(frame)]);
+        assert_panel_visibility(app, false);
+        assert!(!app.native_auto_shown);
+        assert!(app.native_hidden_context.is_none());
+    }
+
+    // Once preparation has happened, a later user gesture owns visibility.
+    // Completing the engine switch must not emit a second automatic hide.
+    for manually_show in [false, true] {
+        reset(app);
+        let mut frame = keyboard_frame("manual visibility", 1);
+        app.user_event(events, PanelUserEvent::PrepareInputMethodActivation);
+        publish_wake_frames(app, events, [Some(frame.clone())]);
+        app.user_event(
+            events,
+            if manually_show {
+                PanelUserEvent::ShowPanel
+            } else {
+                PanelUserEvent::HidePanel
+            },
+        );
+        let suppression = app.native_hidden_context.clone();
+        frame.revision += 1;
+        publish_wake_frames(app, events, [Some(frame.clone())]);
+        assert_panel_visibility(app, manually_show);
+        assert!(!app.native_auto_shown);
+        assert_eq!(app.native_hidden_context, suppression);
+        assert_eq!(
+            suppression,
+            (!manually_show).then(|| (frame.host.clone(), frame.context))
+        );
+        frame.revision += 1;
+        frame.seed.clear();
+        frame.candidates.clear();
+        publish_wake_frames(app, events, [Some(frame)]);
+        assert_panel_visibility(app, manually_show);
+    }
+
+    // A hide already requested by the user also wins over queued preparation.
+    reset(app);
+    let mut frame = keyboard_frame("already hidden", 1);
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    app.user_event(events, PanelUserEvent::HidePanel);
+    let suppression = app.native_hidden_context.clone();
+    app.user_event(events, PanelUserEvent::PrepareInputMethodActivation);
+    assert_panel_visibility(app, false);
+    frame.revision += 1;
+    publish_wake_frames(app, events, [Some(frame)]);
+    assert_panel_visibility(app, false);
+    assert!(!app.native_auto_shown);
+    assert_eq!(app.native_hidden_context, suppression);
+
+    // Activation preparation is not permission to expose a private/stale draft,
+    // show a focusing companion, or dismiss an actively edited panel/settings.
+    for guard in [
+        "panel focus",
+        "settings",
+        "backend",
+        "private",
+        "unfocused",
+        "empty",
+    ] {
+        reset(app);
+        let mut frame = keyboard_frame("guarded draft", 1);
+        let mut settings_window = None;
+        if guard == "settings" {
+            app.open_settings(events);
+            settings_window = app.settings.as_ref().map(|settings| settings.window.id());
+            assert!(settings_window.is_some());
+        }
+        let panel = app.panel.as_mut().unwrap();
+        match guard {
+            "panel focus" => panel.is_focused = true,
+            "settings" => assert!(panel.chrome.settings_open),
+            "backend" => panel.runs_without_window_focus = false,
+            "private" => {
+                frame.private = true;
+                frame.seed.clear();
+                frame.candidates.clear();
+            }
+            "unfocused" => {
+                frame.focused = false;
+                frame.seed.clear();
+                frame.candidates.clear();
+            }
+            "empty" => {
+                frame.seed.clear();
+                frame.candidates.clear();
+            }
+            _ => unreachable!(),
+        }
+        publish_wake_frames(app, events, [Some(frame)]);
+        app.user_event(events, PanelUserEvent::PrepareInputMethodActivation);
+        let editing = matches!(guard, "panel focus" | "settings");
+        assert_eq!(
+            app.panel_visible, editing,
+            "activation bypassed {guard} guard"
+        );
+        assert_panel_visibility(app, editing);
+        assert!(!app.native_auto_shown);
+        assert!(app.native_hidden_context.is_none());
+        assert_eq!(
+            app.panel.as_ref().unwrap().is_focused,
+            guard == "panel focus"
+        );
+        assert_eq!(
+            app.panel.as_ref().unwrap().chrome.settings_open,
+            guard == "settings"
+        );
+        assert_eq!(
+            app.settings.as_ref().map(|settings| settings.window.id()),
+            settings_window
+        );
+    }
+    reset(app);
 }
 
 pub(super) fn publish_wake_frames(
@@ -529,10 +1053,12 @@ fn prepare_keyboard(state: &mut PanelState) -> mpsc::Receiver<ActionRequest> {
     state.native = Default::default();
     state.is_focused = false;
     state.chrome = PanelChromeState::default();
+    state.chrome.blur_input();
     state.chrome.llm_enabled = false;
     state.clear_pressed_interaction();
     state.interaction.touch_tap_pending = false;
     state.receive_native_frame(Some(keyboard_frame("hel", 10)));
+    assert!(state.native.showing);
     state.chrome.active_input_mode = InputMode::VirtualKeyboard;
     state.chrome.input_modes_expanded = true;
     state.last_scene = None;
@@ -1106,6 +1632,7 @@ fn seed_source(state: &mut PanelState, source: InputMode) {
     state.native = Default::default();
     state.is_focused = false;
     state.chrome = PanelChromeState::default();
+    state.chrome.blur_input();
     state.last_commit_feedback = None;
     state.engine.seed("");
     state.receive_native_frame(Some(NativeComposition {
@@ -1119,6 +1646,7 @@ fn seed_source(state: &mut PanelState, source: InputMode) {
         selected: 0,
         candidates: vec![],
     }));
+    assert!(state.native.showing);
     state.chrome.active_input_mode = source;
     state.chrome.input_modes_expanded = true;
     state.chrome.voice_transcript = "world".into();

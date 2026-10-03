@@ -9573,6 +9573,465 @@
         "could you check the opening hours?",
         "could you check the opening times?"
       ]
+    },
+    {
+      "id": "daily_chat",
+      "words": [
+        "impressive",
+        "six",
+        "others",
+        "doing",
+        "calmer",
+        "air"
+      ],
+      "next_words": [
+        [
+          "that's really",
+          [
+            "impressive",
+            "kind"
+          ]
+        ],
+        [
+          "you did",
+          [
+            "great",
+            "well"
+          ]
+        ],
+        [
+          "it looks",
+          [
+            "great",
+            "nice"
+          ]
+        ],
+        [
+          "i like your",
+          [
+            "idea",
+            "style"
+          ]
+        ],
+        [
+          "i'm happy for",
+          [
+            "you",
+            "them"
+          ]
+        ],
+        [
+          "don't worry about",
+          [
+            "it",
+            "the"
+          ]
+        ],
+        [
+          "no need to",
+          [
+            "rush",
+            "worry"
+          ]
+        ],
+        [
+          "you made my",
+          [
+            "day",
+            "morning"
+          ]
+        ],
+        [
+          "i'm almost",
+          [
+            "there",
+            "ready"
+          ]
+        ],
+        [
+          "i'm just",
+          [
+            "leaving",
+            "finishing"
+          ]
+        ],
+        [
+          "let's meet at",
+          [
+            "noon",
+            "six"
+          ]
+        ],
+        [
+          "i'll wait for",
+          [
+            "you",
+            "the"
+          ]
+        ],
+        [
+          "i'll be home",
+          [
+            "soon",
+            "late"
+          ]
+        ],
+        [
+          "are you home",
+          [
+            "yet",
+            "today"
+          ]
+        ],
+        [
+          "what are you",
+          [
+            "doing",
+            "planning"
+          ]
+        ],
+        [
+          "how was your",
+          [
+            "day",
+            "weekend"
+          ]
+        ],
+        [
+          "let's take a",
+          [
+            "break",
+            "walk"
+          ]
+        ],
+        [
+          "i need some",
+          [
+            "rest",
+            "water"
+          ]
+        ],
+        [
+          "time for a",
+          [
+            "break",
+            "coffee"
+          ]
+        ],
+        [
+          "i feel much",
+          [
+            "better",
+            "calmer"
+          ]
+        ],
+        [
+          "i'm getting",
+          [
+            "tired",
+            "hungry"
+          ]
+        ],
+        [
+          "have you had",
+          [
+            "breakfast",
+            "lunch"
+          ]
+        ],
+        [
+          "let's get some",
+          [
+            "fresh",
+            "coffee"
+          ]
+        ],
+        [
+          "hope you",
+          [
+            "sleep",
+            "feel"
+          ]
+        ]
+      ],
+      "sentences": [
+        "that's really impressive.",
+        "that's really kind of you.",
+        "you did great today.",
+        "you did well on this.",
+        "it looks great on you.",
+        "it looks nice and comfortable.",
+        "i like your idea.",
+        "i like your style.",
+        "i'm happy for you.",
+        "i'm happy for them.",
+        "don't worry about it.",
+        "don't worry about the delay.",
+        "no need to rush.",
+        "no need to worry.",
+        "you made my day.",
+        "you made my morning better.",
+        "i'm almost there.",
+        "i'm almost ready to leave.",
+        "i'm just leaving now.",
+        "i'm just finishing my work.",
+        "let's meet at noon.",
+        "let's meet at six.",
+        "i'll wait for you outside.",
+        "i'll wait for the others.",
+        "i'll be home soon.",
+        "i'll be home late tonight.",
+        "are you home yet?",
+        "are you home today?",
+        "what are you doing tonight?",
+        "what are you planning for tomorrow?",
+        "how was your day?",
+        "how was your weekend?",
+        "let's take a break.",
+        "let's take a walk outside.",
+        "i need some rest.",
+        "i need some water.",
+        "time for a break.",
+        "time for a coffee.",
+        "i feel much better now.",
+        "i feel much calmer now.",
+        "i'm getting tired.",
+        "i'm getting hungry.",
+        "have you had breakfast?",
+        "have you had lunch?",
+        "let's get some fresh air.",
+        "let's get some coffee.",
+        "hope you sleep well.",
+        "hope you feel better soon."
+      ]
+    },
+    {
+      "id": "daily_needs",
+      "words": [
+        "tastes",
+        "dessert",
+        "road"
+      ],
+      "next_words": [
+        [
+          "could we get the",
+          [
+            "menu",
+            "bill"
+          ]
+        ],
+        [
+          "i'll have the",
+          [
+            "soup",
+            "salad"
+          ]
+        ],
+        [
+          "please make it",
+          [
+            "mild",
+            "less"
+          ]
+        ],
+        [
+          "could you put the sauce",
+          [
+            "on",
+            "in"
+          ]
+        ],
+        [
+          "can i get some",
+          [
+            "water",
+            "napkins"
+          ]
+        ],
+        [
+          "i'd like my tea",
+          [
+            "without",
+            "with"
+          ]
+        ],
+        [
+          "this tastes",
+          [
+            "delicious",
+            "fresh"
+          ]
+        ],
+        [
+          "could we order",
+          [
+            "dessert",
+            "another"
+          ]
+        ],
+        [
+          "it's getting",
+          [
+            "cold",
+            "windy"
+          ]
+        ],
+        [
+          "it might",
+          [
+            "rain",
+            "snow"
+          ]
+        ],
+        [
+          "don't forget your",
+          [
+            "umbrella",
+            "jacket"
+          ]
+        ],
+        [
+          "let's stay",
+          [
+            "inside",
+            "home"
+          ]
+        ],
+        [
+          "the weather looks",
+          [
+            "clear",
+            "cloudy"
+          ]
+        ],
+        [
+          "we can go outside",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ],
+        [
+          "i'll bring my",
+          [
+            "coat",
+            "umbrella"
+          ]
+        ],
+        [
+          "please drive",
+          [
+            "carefully",
+            "slowly"
+          ]
+        ],
+        [
+          "can we change the",
+          [
+            "time",
+            "place"
+          ]
+        ],
+        [
+          "i need to leave",
+          [
+            "early",
+            "now"
+          ]
+        ],
+        [
+          "i can't make it",
+          [
+            "today",
+            "tonight"
+          ]
+        ],
+        [
+          "could we talk",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ],
+        [
+          "i'll let you know if",
+          [
+            "anything",
+            "the"
+          ]
+        ],
+        [
+          "we may have to",
+          [
+            "cancel",
+            "reschedule"
+          ]
+        ],
+        [
+          "let's decide",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ],
+        [
+          "i'll send you the",
+          [
+            "address",
+            "details"
+          ]
+        ]
+      ],
+      "sentences": [
+        "could we get the menu, please?",
+        "could we get the bill, please?",
+        "i'll have the soup, please.",
+        "i'll have the salad, please.",
+        "please make it mild.",
+        "please make it less spicy.",
+        "could you put the sauce on the side?",
+        "could you put the sauce in a separate bowl?",
+        "can i get some water, please?",
+        "can i get some napkins, please?",
+        "i'd like my tea without sugar.",
+        "i'd like my tea with milk.",
+        "this tastes delicious.",
+        "this tastes fresh and light.",
+        "could we order dessert now?",
+        "could we order another drink?",
+        "it's getting cold outside.",
+        "it's getting windy outside.",
+        "it might rain later.",
+        "it might snow tonight.",
+        "don't forget your umbrella.",
+        "don't forget your jacket.",
+        "let's stay inside until the rain stops.",
+        "let's stay home today.",
+        "the weather looks clear this morning.",
+        "the weather looks cloudy today.",
+        "we can go outside later.",
+        "we can go outside tomorrow.",
+        "i'll bring my coat.",
+        "i'll bring my umbrella just in case.",
+        "please drive carefully in the rain.",
+        "please drive slowly on this road.",
+        "can we change the time?",
+        "can we change the place?",
+        "i need to leave early today.",
+        "i need to leave now.",
+        "i can't make it today.",
+        "i can't make it tonight.",
+        "could we talk later?",
+        "could we talk tomorrow?",
+        "i'll let you know if anything changes.",
+        "i'll let you know if the plans change.",
+        "we may have to cancel our plans.",
+        "we may have to reschedule our meeting.",
+        "let's decide later.",
+        "let's decide tomorrow morning.",
+        "i'll send you the address.",
+        "i'll send you the details soon."
+      ]
     }
   ],
   "phrase_endings": [

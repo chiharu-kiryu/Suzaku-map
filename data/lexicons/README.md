@@ -56,6 +56,32 @@
 353 组旧汉字语境和日文保持不变；已有快递柜、失物招领语境不覆盖，而是另补
 `快递柜满了` / `认领失物`。这些是预设表达，不查询真实取件码、物流、借阅记录或营业时间。
 
+日常表达补缺另在末尾追加 `qiang → 强`、`li'hai → 厉害`、`hen'qiang → 很强`、
+`hen'li'hai → 很厉害`，以及“很强”“很厉害”各两条预设续句。中文现为 **2,047 条读音、
+371 组语境、740 条续句**；前 2,043 条读音的完整顺序、类型和分隔标记由新增历史指纹锁定。
+整拼、分隔拼音、半截末音节和采用汉字后的继续输入使用现有算法，不绑定具体模型。
+
+再追加日常聊天层：英文 `daily_chat` 复用已有常用词，仅增加 6 个去重索引词形，
+提供 24 组下一词搭配、48 条短句；中文追加 64 条读音、24 组语境和 48 条续句。
+该轮总量为 **6,108 项英文索引、401 组搭配、766 条英文短句；2,111 条中文读音、
+395 组语境、788 条中文续句**。覆盖简单评价、心情感受、简短回应、约见进度和休息饮食，
+例如 `that's really imp` → `that's really impressive` / `that's really impressive.`，
+`zhen bu cuo` → `真不错` / `真不错，下次还想再来。`，
+`dao jia le` → `到家了` / `到家了，给你报个平安。`。
+这些是默认内置的项目自编表达，不需安装主题包；并非完整口语语料库或模型生成结果。
+旧十一层英文全部权重和前 2,047 条中文读音另加历史指纹锁定，旧语境与日文保持不变；
+仍遵守 6,144 项英文索引预算，不增加输入规则或模型提供器特例。
+
+日用需求层 `daily_needs` 继续补点餐口味、天气出门和临时安排：中文新增 64 条读音，
+中英各新增 24 组语境和 48 条短句；英文只新增 `tastes`、`dessert`、`road` 三个索引词形。
+当前总量为 **6,111 项英文索引、425 组搭配、814 条英文短句；2,175 条中文读音、
+419 组语境、836 条中文续句**。例如 `please make it mi` → `please make it mild` /
+`please make it mild.`，`shao tang` → `少糖` / `少糖就好，谢谢。`，
+`dai san` → `带伞` / `带伞出门，免得淋雨。`，`lin shi you shi` → `临时有事` /
+`临时有事，可能要晚一点。`。这些是输入表达预设，不查询天气、菜单、位置或行程，
+不依赖模型，不自动添加个人资料。旧十二层英文权重及前 2,111 条中文读音另加指纹锁定，
+短前缀仍允许旧候选竞争；词句首屏、明确分支、保真续写由固定场景测试检查。
+
 ## 格式版本 1
 
 UTF-8 JSON。必填 `format_version: 1` 和 `language`；其余顶层数组默认空。
@@ -124,6 +150,29 @@ Linux 宿主及面板在构建引擎前读取已启用包，之后冻结为进�
 [离线包使用与制作](../../docs/linux-packaging-data.md#离线词库包与制包-sdk)。
 源码示例：[英文户外观星](../offline-packs/en-outdoors.json)、
 [中文户外观星](../offline-packs/zh-Hans-outdoors.json)、[日文铁路出行](../offline-packs/ja-rail.json)。
+0.8.0 之后的开发版首轮追加四个可选集合：
+[英文学习写作](../offline-packs/en-study.json)、[中文学习写作](../offline-packs/zh-Hans-study.json)、
+[英文烹饪备餐](../offline-packs/en-cooking.json)、[中文烹饪备餐](../offline-packs/zh-Hans-cooking.json)。
+每组英文包有 60 个显式词形、16 组搭配及 32 条短句，中文包有 36 条读音、
+16 组语境及 32 条续句；合计 120 个英文词形、72 条中文读音、128 条预设句子。
+这是包内条目数，不是与内置数据去重后的新增索引数；内置 6,102 / 2,043 项及原排序不变。
+例如 `please annotate this para` 同时提供 `please annotate this paragraph` 和
+`please annotate this paragraph before our discussion.`；`shi cai qing dan` 同时提供
+`食材清单` 和 `食材清单先按菜谱整理一下。`。内容由项目编写，不含课程原文、个人笔记或历史；
+烹饪词句只是输入示例，不替代食品安全或饮食指导。新包也可直接用 0.8.0 的 `pack install`
+加载 JSON，不需要绑定模型或升级算法；0.8.0 已发布的推荐目录本身仍只有原来的三个包。
+
+第二轮追加 [英文旅行住宿](../offline-packs/en-travel.json)、
+[中文旅行住宿](../offline-packs/zh-Hans-travel.json)、[英文工作协作](../offline-packs/en-work.json)、
+[中文工作协作](../offline-packs/zh-Hans-work.json)：同样合计 120 个显式英文词形、72 条
+中文读音、中英各 32 组语境和 64 条短句。新增八包累计 240 个显式词形、144 条读音、
+256 条预设句子，推荐目录现为 **11 包**；这些仍是包内数量，不是去重后新增量。
+覆盖行李寄存、客房设施、接驳/行程变更、任务分工、纪要复核、交接与交付确认。
+例如 `could you store our lugg` → `could you store our luggage` /
+`could you store our luggage until this afternoon?`，`xiang mu lu xian tu` →
+`项目路线图` / `项目路线图请在下次会议前更新。`。原“会议纪要”“验收标准”续句不覆盖，
+新内容用“纪要复核”“验收清单”独立语境表达；旅行句子不是实时班次、价格或预订信息。
+各主题包可独立启停，不自动收集行程、会议或项目资料，不执行预订/工作操作。
 扩展预算独立于内置质量门禁：单包 256 KiB / 2,048 索引单元，最多安装 16 包，每种语言
 启用扩展总计不超过 4,096 单元；这不是去重词数。候选页数、解码窗口和模型预算不变。
 
@@ -134,7 +183,10 @@ cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
 cargo test --locked --all-features languages:: -- --test-threads=1
 cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
+cargo test --locked --all-features --test daily_english_vocabulary --test daily_chinese_vocabulary -- --test-threads=1
+cargo test --locked --all-features --test daily_needs_english --test daily_needs_chinese -- --test-threads=1
 cargo test --locked --all-features --test offline_packs -- --test-threads=1
+cargo test --locked --all-features --test offline_pack_quality -- --test-threads=1
 ```
 
 [数据契约回归](../../tests/lexicon_resources.rs)覆盖格式、边界、同音和层顺序；
@@ -154,3 +206,9 @@ cargo test --locked --all-features --test offline_packs -- --test-threads=1
 其合成错误并非真实网络请求。配合[隔离编辑器检查](../../scripts/test-linux-vocabulary.py)和
 [原生 IBus 回归](../../scripts/test-native-sync.py)校验词句采用、撤回、续写与提交，
 后者用任务拥有的回环 HTTP 服务单独检查 503 和实际请求超时。
+
+[离线包词句回归](../../tests/offline_pack_quality.rs)在自有注册表中同时启用十一个包，
+检查新增 240 个英文词形可索引、144 条中文读音可选，以及独立编写的 32 / 32 个中英
+词句场景（中文四种拼写）、长短草稿与字面空白、下一词、大小写/撇号和半截拼音。
+模型不可用/缺失/超时/503 是类型化合成错误，不冒充真实网络或大模型质量验收。
+原生包专项另检查数字采用/撤回、Space 续写、词句精确提交和启动快照。

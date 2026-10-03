@@ -118,7 +118,11 @@ mkdir -p -- "$suzaku_package_tree/share/suzaku/offline-pack-sdk" \
 install -m 644 -- sdk/offline-packs/suzaku_pack.py sdk/offline-packs/example.py \
   "$suzaku_package_tree/share/suzaku/offline-pack-sdk/"
 install -m 644 -- data/offline-packs/en-outdoors.json data/offline-packs/zh-Hans-outdoors.json \
-  data/offline-packs/ja-rail.json "$suzaku_package_tree/share/suzaku/offline-packs/"
+  data/offline-packs/ja-rail.json data/offline-packs/en-study.json data/offline-packs/zh-Hans-study.json \
+  data/offline-packs/en-cooking.json data/offline-packs/zh-Hans-cooking.json \
+  data/offline-packs/en-travel.json data/offline-packs/zh-Hans-travel.json \
+  data/offline-packs/en-work.json data/offline-packs/zh-Hans-work.json \
+  "$suzaku_package_tree/share/suzaku/offline-packs/"
 # Every guide also appears outside docs/. Resolve sibling documentation from
 # the canonical docs directory in both flat layouts, including model audits.
 for suzaku_package_guide in linux-packaging-data.md model-providers.md ibus-candidates.md translation.md interface-languages.md; do

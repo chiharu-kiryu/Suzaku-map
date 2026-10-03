@@ -1,0 +1,60 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.en.cooking", "version": "1.0.0",
+    "name": "Cooking · Kitchen and meal preparation", "description": "Authored vocabulary for utensils, ingredients, recipes and sharing kitchen tasks; not food-safety or dietary advice.",
+    "language": "en", "topics": ["cooking", "home"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "en",
+    "word_layers": [{
+      "id": "kitchen-preparation",
+      "words": [
+        "colander", "colanders", "spatula", "spatulas", "ladle", "ladles",
+        "whisk", "whisks", "whisked", "whisking", "sieve", "sieves", "grater", "graters",
+        "peeler", "peelers", "saucepan", "saucepans", "skillet", "skillets", "ramekin", "ramekins",
+        "marinade", "marinades", "marinated", "marinating", "simmer", "simmers", "simmered", "simmering",
+        "knead", "kneads", "kneaded", "kneading", "dough", "sourdough", "breadcrumb", "breadcrumbs",
+        "drizzle", "drizzles", "drizzled", "drizzling", "chop", "chops", "chopped", "chopping",
+        "portion", "portions", "portioned", "portioning", "teaspoon", "teaspoons", "tablespoon", "tablespoons",
+        "zest", "zested", "zesting", "measuring", "utensil", "utensils"
+      ],
+      "next_words": [
+        ["please pass me the", ["colander", "spatula"]],
+        ["let's measure the", ["flour", "rice"]],
+        ["could you chop the", ["onions", "vegetables"]],
+        ["please whisk the", ["eggs", "batter"]],
+        ["we need a larger", ["saucepan", "bowl"]],
+        ["please drain the pasta in the", ["colander", "sink"]],
+        ["let's prepare the", ["marinade", "ingredients"]],
+        ["please knead the", ["dough", "mixture"]],
+        ["could you grate some", ["cheese", "ginger"]],
+        ["please divide the soup into", ["portions", "bowls"]],
+        ["the recipe calls for a", ["teaspoon", "tablespoon"]],
+        ["could you check the ingredient", ["list", "quantities"]],
+        ["please label these", ["containers", "jars"]],
+        ["let's add this to our weekly", ["menu", "plan"]],
+        ["please rinse the", ["sieve", "colander"]],
+        ["could you bring the measuring", ["spoons", "jug"]]
+      ],
+      "sentences": [
+        "please pass me the colander from the cupboard.", "please pass me the spatula beside the bowl.",
+        "let's measure the flour before we start.", "let's measure the rice for tonight's dinner.",
+        "could you chop the onions while i get the bowl?", "could you chop the vegetables for the soup?",
+        "please whisk the eggs in a separate bowl.", "please whisk the batter until it is smooth.",
+        "we need a larger saucepan for this recipe.", "we need a larger bowl for the dough.",
+        "please drain the pasta in the colander.", "please drain the pasta in the sink using a colander.",
+        "let's prepare the marinade in a separate bowl.", "let's prepare the ingredients before we start cooking.",
+        "please knead the dough on the floured surface.", "please knead the mixture as described in the recipe.",
+        "could you grate some cheese into this bowl?", "could you grate some ginger for the sauce?",
+        "please divide the soup into portions.", "please divide the soup into bowls for everyone.",
+        "the recipe calls for a teaspoon of salt.", "the recipe calls for a tablespoon of olive oil.",
+        "could you check the ingredient list before shopping?", "could you check the ingredient quantities in the recipe?",
+        "please label these containers with their contents.", "please label these jars before putting them away.",
+        "let's add this to our weekly menu.", "let's add this to our weekly plan for meals.",
+        "please rinse the sieve after using it.", "please rinse the colander and put it away.",
+        "could you bring the measuring spoons from the drawer?", "could you bring the measuring jug to the counter?"
+      ]
+    }]
+  }
+}

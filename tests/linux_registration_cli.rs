@@ -493,8 +493,59 @@ fn dynamic_registry_fallback_queries_are_bounded() {
 }
 
 #[test]
+fn restoration_recognizes_explicit_missing_engine_after_restart_and_switch() {
+    for missing_confirmation in [false, true] {
+        let f = Fixture::new();
+        let mut state = f.desktop();
+        state["restart_engine"] = "".into();
+        state["missing_engine_error"] = true.into();
+        state["missing_confirmation_once"] = missing_confirmation.into();
+        f.write_desktop(state);
+        success(f.run_bounded(&["linux-register", "install"]));
+        let after = f.desktop();
+        assert_eq!(after["engine"], "xkb:us::eng");
+        let switches = after["calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|call| **call == serde_json::json!(["ibus", "engine", "xkb:us::eng"]))
+            .count();
+        assert_eq!(
+            switches, 1,
+            "restoration must be confirmed without redundant switching"
+        );
+    }
+}
+
+#[test]
+fn restoration_does_not_treat_arbitrary_query_errors_as_a_missing_engine() {
+    for error in [
+        "Can't connect to IBus.",
+        "No engine is set.",
+        "GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: No global engine.",
+    ] {
+        let f = Fixture::new();
+        let mut state = f.desktop();
+        state["restore_query_error"] = error.into();
+        f.write_desktop(state);
+        let result = f.run_bounded(&["linux-register", "install"]);
+        assert!(!result.status.success());
+        assert!(
+            String::from_utf8_lossy(&result.stderr)
+                .contains("previous engine could not be restored")
+        );
+        assert!(
+            !f.desktop()["calls"].as_array().unwrap().iter().any(|call| {
+                call[0] == "ibus" && call[1] == "engine" && call.as_array().unwrap().len() == 3
+            }),
+            "an unknown desktop state must not trigger an engine switch"
+        );
+    }
+}
+
+#[test]
 fn engine_restoration_has_one_deadline_for_queries_switches_and_retries() {
-    for scenario in ["query", "switch", "slow-unconfirmed"] {
+    for scenario in ["query", "switch", "slow-unconfirmed", "missing-unconfirmed"] {
         let f = Fixture::new();
         let mut state = f.desktop();
         match scenario {
@@ -504,6 +555,11 @@ fn engine_restoration_has_one_deadline_for_queries_switches_and_retries() {
             }
             "switch" => {
                 state["block_command"] = serde_json::json!(["ibus", "engine", "xkb:us::eng"])
+            }
+            "missing-unconfirmed" => {
+                state["restart_engine"] = "".into();
+                state["missing_engine_error"] = true.into();
+                state["ignore_engine_switch"] = true.into();
             }
             _ => {
                 state["ignore_engine_switch"] = true.into();

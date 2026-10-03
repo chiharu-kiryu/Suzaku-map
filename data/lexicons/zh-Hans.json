@@ -2044,7 +2044,139 @@
     {"reading": "ren'ling", "text": "认领", "kind": "word"},
     {"reading": "shi'wu", "text": "失物", "kind": "word"},
     {"reading": "yi'shi", "text": "遗失", "kind": "word"},
-    {"reading": "wu'pin", "text": "物品", "kind": "word"}
+    {"reading": "wu'pin", "text": "物品", "kind": "word"},
+    {"reading": "qiang", "text": "强", "kind": "word"},
+    {"reading": "li'hai", "text": "厉害", "kind": "word"},
+    {"reading": "hen'qiang", "text": "很强", "kind": "word"},
+    {"reading": "hen'li'hai", "text": "很厉害", "kind": "word"},
+    {"reading": "bu'cuo", "text": "不错", "kind": "word"},
+    {"reading": "zhen'bu'cuo", "text": "真不错", "kind": "word"},
+    {"reading": "ting'hao", "text": "挺好", "kind": "word"},
+    {"reading": "hen'hao", "text": "很好", "kind": "word"},
+    {"reading": "tai'hao'le", "text": "太好了", "kind": "word"},
+    {"reading": "tai'bang'le", "text": "太棒了", "kind": "word"},
+    {"reading": "hao'li'hai", "text": "好厉害", "kind": "word"},
+    {"reading": "zhen'li'hai", "text": "真厉害", "kind": "word"},
+    {"reading": "zhen'bang", "text": "真棒", "kind": "word"},
+    {"reading": "hen'bang", "text": "很棒", "kind": "word"},
+    {"reading": "hao'bang", "text": "好棒", "kind": "word"},
+    {"reading": "kao'pu", "text": "靠谱", "kind": "word"},
+    {"reading": "bu'kao'pu", "text": "不靠谱", "kind": "word"},
+    {"reading": "you'yi'si", "text": "有意思", "kind": "word"},
+    {"reading": "mei'yi'si", "text": "没意思", "kind": "word"},
+    {"reading": "zhen'you'qu", "text": "真有趣", "kind": "word"},
+    {"reading": "ting'you'qu", "text": "挺有趣", "kind": "word"},
+    {"reading": "hao'kai'xin", "text": "好开心", "kind": "word"},
+    {"reading": "hen'kai'xin", "text": "很开心", "kind": "word"},
+    {"reading": "you'dian'lei", "text": "有点累", "kind": "word"},
+    {"reading": "you'dian'kun", "text": "有点困", "kind": "word"},
+    {"reading": "bu'shu'fu", "text": "不舒服", "kind": "word"},
+    {"reading": "hao'duo'le", "text": "好多了", "kind": "word"},
+    {"reading": "mei'shi'ba", "text": "没事吧", "kind": "word"},
+    {"reading": "mei'shi'de", "text": "没事的", "kind": "word"},
+    {"reading": "xin'ku'la", "text": "辛苦啦", "kind": "word"},
+    {"reading": "ma'fan'le", "text": "麻烦了", "kind": "word"},
+    {"reading": "ma'fan'ni'le", "text": "麻烦你了", "kind": "word"},
+    {"reading": "xie'xie'la", "text": "谢谢啦", "kind": "word"},
+    {"reading": "hao'ya", "text": "好呀", "kind": "word"},
+    {"reading": "hao'lei", "text": "好嘞", "kind": "word"},
+    {"reading": "xing'ba", "text": "行吧", "kind": "word"},
+    {"reading": "ke'yi'ya", "text": "可以呀", "kind": "word"},
+    {"reading": "liao'jie'le", "text": "了解了", "kind": "word"},
+    {"reading": "ye'shi", "text": "也是", "kind": "word"},
+    {"reading": "jiu'shi", "text": "就是", "kind": "word"},
+    {"reading": "sui'bian", "text": "随便", "kind": "word"},
+    {"reading": "zai'kan'kan", "text": "再看看", "kind": "word"},
+    {"reading": "wo'kan'kan", "text": "我看看", "kind": "word"},
+    {"reading": "ma'shang'lai", "text": "马上来", "kind": "word"},
+    {"reading": "dao'jia'le", "text": "到家了", "kind": "word"},
+    {"reading": "chu'fa'le", "text": "出发了", "kind": "word"},
+    {"reading": "dao'na'li'le", "text": "到哪里了", "kind": "word"},
+    {"reading": "ji'dian'jian", "text": "几点见", "kind": "word"},
+    {"reading": "dai'hui'jian", "text": "待会见", "kind": "word"},
+    {"reading": "wan'dian'liao", "text": "晚点聊", "kind": "word"},
+    {"reading": "xia'ci'ba", "text": "下次吧", "kind": "word"},
+    {"reading": "gai'tian'ba", "text": "改天吧", "kind": "word"},
+    {"reading": "chi'fan'le'ma", "text": "吃饭了吗", "kind": "word"},
+    {"reading": "chi'hao'le", "text": "吃好了", "kind": "word"},
+    {"reading": "e'le", "text": "饿了", "kind": "word"},
+    {"reading": "hao'e", "text": "好饿", "kind": "word"},
+    {"reading": "ke'le", "text": "渴了", "kind": "word"},
+    {"reading": "hao'kun", "text": "好困", "kind": "word"},
+    {"reading": "xiu'xi'yi'xia", "text": "休息一下", "kind": "word"},
+    {"reading": "zao'dian'shui", "text": "早点睡", "kind": "word"},
+    {"reading": "shui'xing'le", "text": "睡醒了", "kind": "word"},
+    {"reading": "qi'chuang'le", "text": "起床了", "kind": "word"},
+    {"reading": "qu'san'bu", "text": "去散步", "kind": "word"},
+    {"reading": "chu'qu'zou'zou", "text": "出去走走", "kind": "word"},
+    {"reading": "he'dian'shui", "text": "喝点水", "kind": "word"},
+    {"reading": "ji'de'xiu'xi", "text": "记得休息", "kind": "word"},
+    {"reading": "zhu'yi'shen'ti", "text": "注意身体", "kind": "word"},
+    {"reading": "hao'hao'xiu'xi", "text": "好好休息", "kind": "word"},
+    {"reading": "shao'tang", "text": "少糖", "kind": "word"},
+    {"reading": "re'de", "text": "热的", "kind": "word"},
+    {"reading": "bing'de", "text": "冰的", "kind": "word"},
+    {"reading": "bu'fang'la", "text": "不放辣", "kind": "word"},
+    {"reading": "zhong'la", "text": "中辣", "kind": "word"},
+    {"reading": "te'la", "text": "特辣", "kind": "word"},
+    {"reading": "jia'la", "text": "加辣", "kind": "word"},
+    {"reading": "xiao'fen", "text": "小份", "kind": "word"},
+    {"reading": "da'fen", "text": "大份", "kind": "word"},
+    {"reading": "jia'fan", "text": "加饭", "kind": "word"},
+    {"reading": "bu'yao'can'ju", "text": "不要餐具", "kind": "word"},
+    {"reading": "ji'kou", "text": "忌口", "kind": "word"},
+    {"reading": "la'yi'dian", "text": "辣一点", "kind": "word"},
+    {"reading": "tian'yi'dian", "text": "甜一点", "kind": "word"},
+    {"reading": "dan'yi'dian", "text": "淡一点", "kind": "word"},
+    {"reading": "shao'fang'yan", "text": "少放盐", "kind": "word"},
+    {"reading": "shao'fang'you", "text": "少放油", "kind": "word"},
+    {"reading": "bu'yong'jia'tang", "text": "不用加糖", "kind": "word"},
+    {"reading": "mai'dan", "text": "买单", "kind": "word"},
+    {"reading": "jie'zhang", "text": "结账", "kind": "word"},
+    {"reading": "xia'yu'le", "text": "下雨了", "kind": "word"},
+    {"reading": "xia'xue'le", "text": "下雪了", "kind": "word"},
+    {"reading": "qi'feng'le", "text": "起风了", "kind": "word"},
+    {"reading": "hao'leng", "text": "好冷", "kind": "word"},
+    {"reading": "hao're", "text": "好热", "kind": "word"},
+    {"reading": "dai'san", "text": "带伞", "kind": "word"},
+    {"reading": "yu'ting'le", "text": "雨停了", "kind": "word"},
+    {"reading": "tian'qing'le", "text": "天晴了", "kind": "word"},
+    {"reading": "tian'hei'le", "text": "天黑了", "kind": "word"},
+    {"reading": "chu'men'le", "text": "出门了", "kind": "word"},
+    {"reading": "kuai'xia'yu'le", "text": "快下雨了", "kind": "word"},
+    {"reading": "xia'xiao'yu", "text": "下小雨", "kind": "word"},
+    {"reading": "xia'da'yu", "text": "下大雨", "kind": "word"},
+    {"reading": "chuan'wai'tao", "text": "穿外套", "kind": "word"},
+    {"reading": "wai'mian'leng", "text": "外面冷", "kind": "word"},
+    {"reading": "wai'mian're", "text": "外面热", "kind": "word"},
+    {"reading": "tian'qi'bu'cuo", "text": "天气不错", "kind": "word"},
+    {"reading": "shai'tai'yang", "text": "晒太阳", "kind": "word"},
+    {"reading": "dai'jian'wai'tao", "text": "带件外套", "kind": "word"},
+    {"reading": "yin'tian", "text": "阴天", "kind": "word"},
+    {"reading": "qing'tian", "text": "晴天", "kind": "word"},
+    {"reading": "yu'tian", "text": "雨天", "kind": "word"},
+    {"reading": "yue'hao'le", "text": "约好了", "kind": "word"},
+    {"reading": "gai'shi'jian", "text": "改时间", "kind": "word"},
+    {"reading": "lai'bu'ji'le", "text": "来不及了", "kind": "word"},
+    {"reading": "gan'bu'shang'le", "text": "赶不上了", "kind": "word"},
+    {"reading": "ti'qian'yi'dian", "text": "提前一点", "kind": "word"},
+    {"reading": "gai'dao'ming'tian", "text": "改到明天", "kind": "word"},
+    {"reading": "lin'shi'you'shi", "text": "临时有事", "kind": "word"},
+    {"reading": "you'an'pai", "text": "有安排", "kind": "word"},
+    {"reading": "mei'an'pai", "text": "没安排", "kind": "word"},
+    {"reading": "you'kong'ma", "text": "有空吗", "kind": "word"},
+    {"reading": "ji'dian'chu'fa", "text": "几点出发", "kind": "word"},
+    {"reading": "ji'dian'hui'lai", "text": "几点回来", "kind": "word"},
+    {"reading": "guo'yi'hui'er", "text": "过一会儿", "kind": "word"},
+    {"reading": "deng'wo'yi'xia", "text": "等我一下", "kind": "word"},
+    {"reading": "wo'dao'le", "text": "我到了", "kind": "word"},
+    {"reading": "ni'dao'le'ma", "text": "你到了吗", "kind": "word"},
+    {"reading": "gai'tian'zai'yue", "text": "改天再约", "kind": "word"},
+    {"reading": "xian'zhe'yang'ba", "text": "先这样吧", "kind": "word"},
+    {"reading": "wan'dian'dao", "text": "晚点到", "kind": "word"},
+    {"reading": "zao'dian'dao", "text": "早点到", "kind": "word"},
+    {"reading": "deng'ni'hui'fu", "text": "等你回复", "kind": "word"},
+    {"reading": "shi'jian'he'shi", "text": "时间合适", "kind": "word"}
   ],
   "continuations": [
     [
@@ -4626,6 +4758,356 @@
       [
         "周末营业的时间和平时一样吗？",
         "周末营业吗，我想过去一趟。"
+      ]
+    ],
+    [
+      "很强",
+      [
+        "很强的学习能力。",
+        "很强，继续加油！"
+      ]
+    ],
+    [
+      "很厉害",
+      [
+        "很厉害的表现。",
+        "很厉害，向你学习。"
+      ]
+    ],
+    [
+      "真不错",
+      [
+        "真不错，下次还想再来。",
+        "真不错，值得试一试。"
+      ]
+    ],
+    [
+      "太好了",
+      [
+        "太好了，终于等到你了。",
+        "太好了，我们一起去吧。"
+      ]
+    ],
+    [
+      "太棒了",
+      [
+        "太棒了，这次很顺利。",
+        "太棒了，继续保持！"
+      ]
+    ],
+    [
+      "靠谱",
+      [
+        "靠谱的话就试试看。",
+        "靠谱的人让人放心。"
+      ]
+    ],
+    [
+      "有意思",
+      [
+        "有意思，下次再聊聊。",
+        "有意思，我想多了解一点。"
+      ]
+    ],
+    [
+      "很开心",
+      [
+        "很开心能和你一起出来。",
+        "很开心，今天过得很充实。"
+      ]
+    ],
+    [
+      "有点累",
+      [
+        "有点累，我先休息一下。",
+        "有点累，晚点再聊吧。"
+      ]
+    ],
+    [
+      "有点困",
+      [
+        "有点困，我先去睡了。",
+        "有点困，想休息一会儿。"
+      ]
+    ],
+    [
+      "不舒服",
+      [
+        "不舒服的话就先休息。",
+        "不舒服，今天就不出门了。"
+      ]
+    ],
+    [
+      "好多了",
+      [
+        "好多了，谢谢你的关心。",
+        "好多了，不用担心我。"
+      ]
+    ],
+    [
+      "没事的",
+      [
+        "没事的，不用放在心上。",
+        "没事的，我们慢慢来。"
+      ]
+    ],
+    [
+      "麻烦你了",
+      [
+        "麻烦你了，谢谢帮忙。",
+        "麻烦你了，有空请你吃饭。"
+      ]
+    ],
+    [
+      "谢谢啦",
+      [
+        "谢谢啦，帮了我大忙。",
+        "谢谢啦，下次我来帮你。"
+      ]
+    ],
+    [
+      "好呀",
+      [
+        "好呀，那就这么说定了。",
+        "好呀，我们一起去。"
+      ]
+    ],
+    [
+      "了解了",
+      [
+        "了解了，我再确认一下。",
+        "了解了，谢谢你告诉我。"
+      ]
+    ],
+    [
+      "我看看",
+      [
+        "我看看时间，再回复你。",
+        "我看看有没有其他办法。"
+      ]
+    ],
+    [
+      "马上来",
+      [
+        "马上来，请稍等一下。",
+        "马上来，我拿好东西就走。"
+      ]
+    ],
+    [
+      "到家了",
+      [
+        "到家了，给你报个平安。",
+        "到家了，今天辛苦啦。"
+      ]
+    ],
+    [
+      "出发了",
+      [
+        "出发了，到了再联系你。",
+        "出发了，路上大概半小时。"
+      ]
+    ],
+    [
+      "几点见",
+      [
+        "几点见比较方便？",
+        "几点见，我们提前约好吧。"
+      ]
+    ],
+    [
+      "晚点聊",
+      [
+        "晚点聊，我先忙一会儿。",
+        "晚点聊，等你有空再说。"
+      ]
+    ],
+    [
+      "吃饭了吗",
+      [
+        "吃饭了吗，要不要一起吃？",
+        "吃饭了吗，别忙得忘了时间。"
+      ]
+    ],
+    [
+      "休息一下",
+      [
+        "休息一下，等会儿再继续。",
+        "休息一下，出去走走吧。"
+      ]
+    ],
+    [
+      "早点睡",
+      [
+        "早点睡，明天还要早起。",
+        "早点睡，晚安啦。"
+      ]
+    ],
+    [
+      "少糖",
+      [
+        "少糖就好，谢谢。",
+        "少糖的可以做成热的吗？"
+      ]
+    ],
+    [
+      "不放辣",
+      [
+        "不放辣，清淡一点就好。",
+        "不放辣的这份帮我打包。"
+      ]
+    ],
+    [
+      "小份",
+      [
+        "小份就够了，谢谢。",
+        "小份的可以换一种口味吗？"
+      ]
+    ],
+    [
+      "大份",
+      [
+        "大份可以两个人一起吃吗？",
+        "大份的请帮我分开装。"
+      ]
+    ],
+    [
+      "加饭",
+      [
+        "加饭需要另外收费吗？",
+        "加饭的话请再给我一小碗。"
+      ]
+    ],
+    [
+      "不要餐具",
+      [
+        "不要餐具，我自己带了。",
+        "不要餐具和吸管，谢谢。"
+      ]
+    ],
+    [
+      "少放盐",
+      [
+        "少放盐，谢谢。",
+        "少放盐的这份是我的。"
+      ]
+    ],
+    [
+      "结账",
+      [
+        "结账可以扫码吗？",
+        "结账的时候请帮我开张小票。"
+      ]
+    ],
+    [
+      "下雨了",
+      [
+        "下雨了，我带了伞。",
+        "下雨了，我们在门口等一下吧。"
+      ]
+    ],
+    [
+      "起风了",
+      [
+        "起风了，我去关窗。",
+        "起风了，我们换个地方坐吧。"
+      ]
+    ],
+    [
+      "带伞",
+      [
+        "带伞出门，免得淋雨。",
+        "带伞了吗，我这里还有一把。"
+      ]
+    ],
+    [
+      "雨停了",
+      [
+        "雨停了，我们再出发吧。",
+        "雨停了，我现在过去。"
+      ]
+    ],
+    [
+      "天晴了",
+      [
+        "天晴了，出去走走吧。",
+        "天晴了，我想去附近散步。"
+      ]
+    ],
+    [
+      "出门了",
+      [
+        "出门了，晚点再联系。",
+        "出门了，有事给我发消息。"
+      ]
+    ],
+    [
+      "天气不错",
+      [
+        "天气不错，一起出去走走吧。",
+        "天气不错，适合在外面坐一会儿。"
+      ]
+    ],
+    [
+      "带件外套",
+      [
+        "带件外套，晚上再回来。",
+        "带件外套放在包里吧。"
+      ]
+    ],
+    [
+      "约好了",
+      [
+        "约好了，那就到时候见。",
+        "约好了，我们在门口碰面。"
+      ]
+    ],
+    [
+      "改时间",
+      [
+        "改时间的话提前告诉我。",
+        "改时间也可以，看你方便。"
+      ]
+    ],
+    [
+      "来不及了",
+      [
+        "来不及了，我们改天再约吧。",
+        "来不及了，你们先去吧。"
+      ]
+    ],
+    [
+      "临时有事",
+      [
+        "临时有事，可能要晚一点。",
+        "临时有事，今天就不过去了。"
+      ]
+    ],
+    [
+      "有空吗",
+      [
+        "有空吗，想和你聊两句。",
+        "有空吗，我们约个时间见面吧。"
+      ]
+    ],
+    [
+      "几点出发",
+      [
+        "几点出发比较合适？",
+        "几点出发，你定好了告诉我。"
+      ]
+    ],
+    [
+      "等我一下",
+      [
+        "等我一下，我马上过来。",
+        "等我一下，我还在收拾东西。"
+      ]
+    ],
+    [
+      "我到了",
+      [
+        "我到了，你在哪儿？",
+        "我到了，在门口等你。"
       ]
     ]
   ]

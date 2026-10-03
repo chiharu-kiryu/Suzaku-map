@@ -132,6 +132,57 @@ fn catalog_filter_export_validate_and_no_clobber_are_read_only() {
 }
 
 #[test]
+fn bundled_collections_match_sources_and_topic_filters_without_installing() {
+    let f = Fixture::new();
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/offline-packs");
+    let files: Vec<_> = fs::read_dir(&source)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    let catalog = packs::recommended();
+    assert_eq!(catalog.len(), 11);
+    assert_eq!(files.len(), catalog.len());
+    let mut ids = std::collections::HashSet::new();
+    for path in files {
+        let from_file = OfflinePack::read(&path).unwrap();
+        assert!(ids.insert(from_file.manifest.id.clone()));
+        let built_in = catalog
+            .iter()
+            .find(|pack| pack.manifest.id == from_file.manifest.id)
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(built_in).unwrap(),
+            serde_json::to_value(&from_file).unwrap()
+        );
+        let export = f.0.join(path.file_name().unwrap());
+        f.cli(&["export", &from_file.manifest.id, export.to_str().unwrap()]);
+        assert_eq!(
+            serde_json::to_value(OfflinePack::read(&export).unwrap()).unwrap(),
+            serde_json::to_value(from_file).unwrap()
+        );
+    }
+    for topic in ["study", "cooking", "travel", "work"] {
+        for language in ["en", "zh-Hans"] {
+            let filtered: serde_json::Value = serde_json::from_str(&f.cli(&[
+                "catalog",
+                "--topic",
+                topic,
+                "--language",
+                language,
+            ]))
+            .unwrap();
+            assert_eq!(filtered.as_array().unwrap().len(), 1);
+            assert_eq!(
+                filtered[0]["id"],
+                format!("org.suzaku.{}.{topic}", language.to_lowercase())
+            );
+        }
+    }
+    assert!(!f.store().path().parent().unwrap().exists());
+}
+
+#[test]
 fn all_collections_merge_without_changing_builtin_prefixes() {
     let f = Fixture::new();
     for pack in packs::recommended() {
@@ -143,7 +194,7 @@ fn all_collections_merge_without_changing_builtin_prefixes() {
         "{:?}",
         catalog.report.errors
     );
-    assert_eq!(catalog.report.loaded.len(), 3);
+    assert_eq!(catalog.report.loaded.len(), 11);
     for language in ["en", "zh-Hans", "ja"] {
         let base = lexicon::builtin(language).unwrap();
         let active = catalog.get(language).unwrap();
@@ -230,6 +281,68 @@ fn chinese_and_japanese_packs_produce_words_and_sentences() {
         assert!(contains(&result, word, "Word"), "{result}");
         assert!(contains(&result, sentence, "Sentence"), "{result}");
     }
+}
+
+#[test]
+fn travel_and_work_collections_are_opt_in_and_can_be_disabled_independently() {
+    let f = Fixture::new();
+    let cases = [
+        (
+            "org.suzaku.en.travel",
+            "en",
+            "could you store our lugg",
+            "could you store our luggage until this afternoon?",
+        ),
+        (
+            "org.suzaku.zh-hans.travel",
+            "zh-Hans",
+            "xing li ji cun",
+            "行李寄存可以到下午吗？",
+        ),
+        (
+            "org.suzaku.en.work",
+            "en",
+            "please update the project road",
+            "please update the project roadmap before our next meeting.",
+        ),
+        (
+            "org.suzaku.zh-hans.work",
+            "zh-Hans",
+            "xiang mu lu xian tu",
+            "项目路线图请在下次会议前更新。",
+        ),
+    ];
+    for (_, language, seed, sentence) in cases {
+        assert!(!contains(&f.preview(language, seed), sentence, "Sentence"));
+    }
+    assert!(
+        !f.store().path().exists(),
+        "preview must not install any recommended pack"
+    );
+    for pack in packs::recommended() {
+        f.store().install(pack, false).unwrap();
+    }
+    for (id, language, seed, sentence) in cases {
+        assert!(contains(&f.preview(language, seed), sentence, "Sentence"));
+        f.cli(&["disable", id]);
+        assert!(!contains(&f.preview(language, seed), sentence, "Sentence"));
+        for (other_id, other_language, other_seed, other_sentence) in cases {
+            if other_id != id {
+                assert!(
+                    contains(
+                        &f.preview(other_language, other_seed),
+                        other_sentence,
+                        "Sentence"
+                    ),
+                    "disabling {id} affected {other_id}"
+                );
+            }
+        }
+        f.cli(&["enable", id]);
+        assert!(contains(&f.preview(language, seed), sentence, "Sentence"));
+    }
+    assert_eq!(f.store().list().unwrap().len(), 11);
+    assert!(f.store().load().report.errors.is_empty());
 }
 
 #[test]

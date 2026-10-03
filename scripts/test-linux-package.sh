@@ -5,6 +5,10 @@ suzaku_package_test_output=$(realpath -- "${1:?Usage: test-linux-package.sh OUTP
 suzaku_package_test_tmp=$(mktemp -d /tmp/suzaku-package-test.XXXXXX)
 trap 'rm -r -- "$suzaku_package_test_tmp"' EXIT
 shopt -s nullglob
+suzaku_package_test_pack_names=(
+  en-outdoors zh-Hans-outdoors ja-rail en-study zh-Hans-study en-cooking zh-Hans-cooking
+  en-travel zh-Hans-travel en-work zh-Hans-work
+)
 suzaku_package_test_checksums=("$suzaku_package_test_output/"*.sha256)
 suzaku_package_test_artifacts=("$suzaku_package_test_output/"*.tar.gz "$suzaku_package_test_output/"*.deb)
 ((${#suzaku_package_test_artifacts[@]} > 0)) || { printf 'No packages found.\n' >&2; exit 1; }
@@ -60,8 +64,10 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_tree/bin/suzaku_tool" data --help
   "$suzaku_package_test_tree/bin/suzaku_tool" pack --help
+  "$suzaku_package_test_tree/bin/suzaku_tool" pack catalog |
+    jq -e --argjson expected "${#suzaku_package_test_pack_names[@]}" 'length == $expected' >/dev/null
   test -s "$suzaku_package_test_tree/share/suzaku/offline-pack-sdk/suzaku_pack.py"
-  for suzaku_package_test_pack in en-outdoors zh-Hans-outdoors ja-rail; do
+  for suzaku_package_test_pack in "${suzaku_package_test_pack_names[@]}"; do
     "$suzaku_package_test_tree/bin/suzaku_tool" pack validate \
       "$suzaku_package_test_tree/share/suzaku/offline-packs/$suzaku_package_test_pack.json"
   done
@@ -96,8 +102,10 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/releases/$suzaku_package_test_version.md"
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" data --help
   "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" pack --help
+  "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" pack catalog |
+    jq -e --argjson expected "${#suzaku_package_test_pack_names[@]}" 'length == $expected' >/dev/null
   test -s "$suzaku_package_test_extract/root/usr/share/suzaku/offline-pack-sdk/suzaku_pack.py"
-  for suzaku_package_test_pack in en-outdoors zh-Hans-outdoors ja-rail; do
+  for suzaku_package_test_pack in "${suzaku_package_test_pack_names[@]}"; do
     "$suzaku_package_test_extract/root/usr/bin/suzaku-tool" pack validate \
       "$suzaku_package_test_extract/root/usr/share/suzaku/offline-packs/$suzaku_package_test_pack.json"
   done

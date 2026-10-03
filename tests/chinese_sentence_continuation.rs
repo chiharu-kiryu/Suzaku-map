@@ -62,6 +62,29 @@ fn adopted_chinese_words_keep_the_sentence_while_typing_and_adopting_the_next_wo
 }
 
 #[test]
+fn adopted_everyday_adjectives_keep_authored_sentences_and_literal_spaces() {
+    for (word, rest) in [("很强", "的学习能力。"), ("很厉害", "的表现。")] {
+        for gap in ["", " ", "  "] {
+            for tail in ["", "de", "的"] {
+                let seed = format!("{word}{gap}{tail}");
+                assert_sentence(&seed, &format!("{word}{gap}{rest}"));
+            }
+            // Existing decoding deliberately requires at least two letters
+            // before completing an unfinished reading. A lone d is still
+            // literal input, not an instruction to guess the syllable de.
+            let seed = format!("{word}{gap}d");
+            let ime = engine(&seed);
+            assert_eq!(ime.candidates()[0].text, seed);
+            assert!(
+                !ime.candidates()
+                    .iter()
+                    .any(|candidate| { candidate.text == format!("{word}{gap}{rest}") })
+            );
+        }
+    }
+}
+
+#[test]
 fn sentence_progress_preserves_every_adopted_space_and_long_prefix() {
     for prefix in [
         String::new(),

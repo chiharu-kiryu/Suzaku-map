@@ -53,6 +53,14 @@ preference_sentence_batches = {
 }
 
 
+def active_host():
+    """Resolve the owned live host after restarts, never a list slot or helper."""
+    hosts = [process for process in processes
+             if process.args[0] == str(host_path) and process.poll() is None]
+    assert len(hosts) == 1, f"expected one live native host, found {[host.pid for host in hosts]}"
+    return hosts[0]
+
+
 class ModelFixture(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -403,8 +411,7 @@ def check_engine_recovery(bus):
         return reply.unpack()[0][2]
 
     def stop_host(kill=False):
-        host = next(process for process in reversed(processes)
-                    if process.args[0] == str(host_path) and process.poll() is None)
+        host = active_host()
         host.kill() if kill else host.terminate()
         host.wait(timeout=3)
         wait(lambda: selected() is None, "host loss should reproduce the missing engine")
@@ -537,7 +544,7 @@ def check_settings_io_responsiveness(bus):
     config = Path(os.environ["SUZAKU_IME_CONFIG"])
     armed, entered, released, finished, failed = [runtime / ("control-io." + name)
                                                 for name in ["arm", "entered", "release", "finished", "fail"]]
-    host = processes[-1]
+    host = active_host()
 
     def workers():
         count = 0
@@ -2457,6 +2464,222 @@ def observe_lookup(context):
     return lookup
 
 
+def check_native_presentation(bus, environment):
+    """A rendered-panel lease hides only presentation; IBus remains the fallback."""
+    assert json.loads(command("P0"))["ok"]
+    assert json.loads(command("Len"))["ok"]
+    context = create_context(bus, "suzaku-presentation-qa")
+    lookup = observe_lookup(context)
+    commits, preedits = [], []
+    context.connect("commit-text", lambda _, text: commits.append(text.get_text()))
+    context.connect("update-preedit-text", lambda _, text, cursor, visible:
+                    preedits.append((text.get_text(), cursor, visible)))
+    context.connect("update-preedit-text-with-mode", lambda _, text, cursor, visible, mode:
+                    preedits.append((text.get_text(), cursor, visible, mode)))
+    local_watchers = []
+    owner, other_owner = "presentation-qa-a", "presentation-qa-b"
+
+    def subscribe():
+        observer = Watch()
+        local_watchers.append(observer)
+        wait(lambda: observer.latest is not None, "presentation subscription")
+        return observer
+
+    def lease(frame, shown, client=owner):
+        return command(f'V{frame["host"]} {frame["context"]} '
+                       f'{frame["revision"]} {client} {int(shown)}')
+
+    def stock(visible=True):
+        return lookup["visible"] == visible and lookup["aux_visible"] == visible
+
+    def quiet(observer, baseline, count, duration=.12):
+        until = time.monotonic() + duration
+        before_commits, before_preedits = list(commits), list(preedits)
+        before_models = len(model_requests)
+        while time.monotonic() < until:
+            pump()
+            assert observer.latest == baseline, "presentation changed native composition/revision"
+            assert len(observer.frames) == count, "presentation published a redundant native frame"
+            assert commits == before_commits and preedits == before_preedits, \
+                "presentation changed commit/preedit state"
+            assert len(model_requests) == before_models, "presentation invoked a model"
+            time.sleep(.01)
+
+    def baseline(observer):
+        # Drain previous input publications without changing the draft or revision.
+        assert not context.process_key_event(IBus.KEY_F1, 0, 0)
+        assert command("Q") == b"1"
+        pump()
+        return observer.latest, len(observer.frames)
+
+    def claim(observer):
+        frame, count = baseline(observer)
+        assert lease(frame, True) == b"1", ("valid presentation rejected", frame)
+        wait(lambda: stock(False), "rendered panel suppresses lookup and auxiliary")
+        quiet(observer, frame, count)
+        return frame
+
+    def fresh_draft(observer):
+        context.reset()
+        wait(lambda: not observer.latest["seed"], "clear presentation fixture draft")
+        type_seed(context, "hel")
+        wait(lambda: observer.latest["seed"] == "hel" and stock(), "IBus fallback draft")
+        return baseline(observer)[0]
+
+    try:
+        context.focus_in()
+        assert bus.set_global_engine("dev.suzaku.linux.ime")
+        wait(lambda: context.get_engine() is not None and
+             context.get_engine().get_name() == "dev.suzaku.linux.ime", "presentation engine attach")
+        watch = subscribe()
+        wait(lambda: watch.latest["focused"], "presentation context focused")
+        assert not watch.latest["seed"]
+        assert lease(watch.latest, True) == b"0", "empty composition acquired a lease"
+        fresh_draft(watch)
+        late = subscribe()
+        wait(lambda: late.latest == watch.latest, "second presentation observer current")
+        assert stock(), "mere W subscribers must not hide the system candidates"
+
+        initial = claim(watch)
+        invalid = [
+            dict(initial, revision=initial["revision"] - 1),
+            dict(initial, revision=initial["revision"] + 1),
+            dict(initial, context=initial["context"] + 1),
+            dict(initial, host="00000000-0000-0000-0000-000000000000"),
+        ]
+        count = len(watch.frames)
+        for frame in invalid:
+            assert lease(frame, True) == b"0", ("stale/foreign lease accepted", frame)
+        for frame in invalid[2:]:
+            assert lease(frame, False) == b"0", "foreign context/host released a live lease"
+        for invalid_owner in ["", "bad.owner", "bad/owner", "bad owner", "é", "x" * 65]:
+            assert lease(initial, True, invalid_owner) == b"0", ("invalid owner", invalid_owner)
+        assert lease(initial, True, other_owner) == b"0", "another owner stole a live lease"
+        assert lease(initial, False, other_owner) == b"0", "another owner released the live lease"
+        assert stock(False)
+        quiet(watch, initial, count)
+
+        # Same-context editing must not flash the stock UI while a lease is live.
+        type_seed(context, "p")
+        wait(lambda: watch.latest["seed"] == "help", "typing under a presentation lease")
+        assert watch.latest["context"] == initial["context"] and stock(False)
+        current, count = baseline(watch)
+        assert lease(initial, True) == b"0", "an obsolete rendered revision renewed the lease"
+        # Releasing one's own lease is safe even when input advanced its revision.
+        assert lease(initial, False) == b"1"
+        wait(stock, "explicit release restores IBus without another key")
+        quiet(watch, current, count)
+        assert not commits
+
+        # Presentation changes preserve selection, exact adoption undo and explicit commit.
+        fresh_draft(watch)
+        index = next(i for i, candidate in enumerate(watch.latest["candidates"][:6])
+                     if candidate["text"] == "hello")
+        assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+        assert not context.process_key_event(IBus.KEY_1 + index, 0, IBus.ModifierType.RELEASE_MASK)
+        wait(lambda: watch.latest["seed"] == "hello", "adoption before presentation changes")
+        adopted = claim(watch)
+        assert lease(adopted, False) == b"1"
+        wait(stock, "release adopted draft")
+        assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+        wait(lambda: watch.latest["seed"] == "hel", "lease must preserve exact adoption undo")
+        assert not commits
+        assert context.process_key_event(IBus.KEY_Tab, 0, 0)
+        wait(lambda: watch.latest["selected"] == 1, "selection before presentation changes")
+        selected = claim(watch)
+        expected = selected["candidates"][selected["selected"]]["text"]
+        assert lease(selected, False) == b"1"
+        wait(lambda: stock() and lookup["selected"] == selected["selected"], "release preserves selection")
+        assert context.process_key_event(IBus.KEY_Return, 0, 0)
+        wait(lambda: commits == [expected] and not watch.latest["seed"], "explicit commit remains exactly once")
+
+        fresh_draft(watch)
+        expired = claim(watch)
+        count = len(watch.frames)
+        started = time.monotonic()
+        wait(stock, "lost panel heartbeat restores IBus without keys", timeout=3)
+        assert time.monotonic() - started >= .5, "lease expired immediately instead of persisting"
+        quiet(watch, expired, count)
+
+        renewed = claim(watch)
+        count = len(watch.frames)
+        quiet(watch, renewed, count, duration=.65)
+        assert lease(renewed, True) == b"1"
+        quiet(watch, renewed, count, duration=.7)
+        assert stock(False), "same-frame heartbeat did not renew presentation ownership"
+        assert lease(renewed, False) == b"1"
+        wait(stock, "renewed lease releases without changing input")
+
+        # Focus and privacy boundaries revoke ownership even if empty frames coalesce.
+        for boundary in ["focus", "private", "empty", "compose"]:
+            fresh_draft(watch)
+            old = claim(watch)
+            if boundary == "focus":
+                context.focus_out()
+                wait(lambda: watch.latest["context"] != old["context"] and not watch.latest["seed"],
+                     "focus boundary clears the leased draft")
+                context.focus_in()
+                wait(lambda: watch.latest["focused"], "presentation refocus")
+            elif boundary == "private":
+                context.set_content_type(IBus.InputPurpose.PASSWORD, 0)
+                wait(lambda: watch.latest["private"] and not watch.latest["seed"], "private lease boundary")
+                assert lease(watch.latest, True) == b"0", "private composition acquired a lease"
+                assert not context.process_key_event(IBus.KEY_a, 0, 0)
+                context.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+                wait(lambda: not watch.latest["private"], "presentation returns to public input")
+            elif boundary == "empty":
+                assert context.process_key_event(IBus.KEY_Escape, 0, 0)
+                wait(lambda: not watch.latest["seed"], "empty lease boundary")
+                assert lease(watch.latest, True) == b"0"
+            else:
+                assert context.process_key_event(IBus.KEY_dead_acute, 0, 0)
+                wait(lambda: lookup["aux_visible"] and "Compose" in lookup["aux"], "Compose fallback hint")
+                assert not lookup["visible"]
+                assert lease(watch.latest, True) == b"0", "pending Compose acquired a lease"
+                assert context.process_key_event(IBus.KEY_Escape, 0, 0)
+                wait(lambda: watch.latest["seed"] == "hel" and stock(), "Compose cancellation keeps the draft")
+            assert lease(old, True) == b"0", f"obsolete {boundary} presentation accepted"
+            if boundary != "compose":
+                type_seed(context, "hel")
+                wait(lambda: watch.latest["seed"] == "hel" and stock(), f"{boundary} restores stock candidates")
+            assert commits == [expected], f"{boundary} committed a draft"
+
+        # A real private host restart changes identity and starts in fallback mode.
+        old = claim(watch)
+        host = active_host()
+        host.terminate()
+        host.wait(timeout=3)
+        processes.append(subprocess.Popen([str(host_path)], stdout=subprocess.DEVNULL, env=environment))
+
+        def ready():
+            try:
+                return command("Q") == b"1"
+            except OSError:
+                return False
+
+        wait(ready, "presentation replacement host ready")
+        fresh = subscribe()
+        assert fresh.latest["host"] != old["host"]
+        context.focus_in()
+        assert bus.set_global_engine("dev.suzaku.linux.ime")
+        wait(lambda: fresh.latest["focused"], "presentation replacement host focus")
+        type_seed(context, "hel")
+        wait(lambda: fresh.latest["seed"] == "hel" and stock(), "host restart defaults to IBus fallback")
+        assert lease(dict(fresh.latest, host=old["host"]), True) == b"0"
+        final = claim(fresh)
+        assert lease(final, False) == b"1"
+        wait(stock, "fresh host presentation release")
+        assert commits == [expected], "host/presentation lifecycle committed extra text"
+        print("PASS: rendered-panel lease hides lookup+aux only; W-only fallback, exact revisions, owner isolation, no snapshot/preedit/model side effects, undo/selection/commit, TTL, focus/privacy/empty/Compose and host restart")
+    finally:
+        context.focus_out()
+        context.destroy()
+        for observer in local_watchers:
+            watchers.remove(observer)
+            observer.sock.close()
+        pump()
+
+
 def check_draft_preview(context, watch, commits, lookup):
     inline = os.environ.get("SUZAKU_IBUS_INLINE_PREEDIT") == "1"
     # Drain the preceding language/focus publication before using an exact
@@ -4258,7 +4481,10 @@ def check_ipc_boundaries(bus, context, watch, commits):
     wait(lambda: watch.latest["focused"] and not watch.latest["seed"], "restore transport test context")
 
     # Bounded clients, including peers that abandon their response, release descriptors.
-    fd_dir = Path(f"/proc/{processes[1].pid}/fd")
+    # Retain this exact live process for the whole measurement: restarting or
+    # losing it must fail, not silently redirect the leak check to another host.
+    host = active_host()
+    fd_dir = Path(f"/proc/{host.pid}/fd")
     baseline_fds = len(list(fd_dir.iterdir()))
     clients = []
     try:
@@ -4648,7 +4874,13 @@ def prepare_offline_pack_fixture(environment):
     directory = runtime / "packs"
     environment["SUZAKU_LEXICON_DIR"] = str(directory)
     tool = host_path.with_name("suzaku_tool")
-    for identifier in ["org.suzaku.en.outdoors", "org.suzaku.zh-hans.outdoors", "org.suzaku.ja.rail"]:
+    for identifier in [
+        "org.suzaku.en.outdoors", "org.suzaku.zh-hans.outdoors", "org.suzaku.ja.rail",
+        "org.suzaku.en.study", "org.suzaku.zh-hans.study",
+        "org.suzaku.en.cooking", "org.suzaku.zh-hans.cooking",
+        "org.suzaku.en.travel", "org.suzaku.zh-hans.travel",
+        "org.suzaku.en.work", "org.suzaku.zh-hans.work",
+    ]:
         destination = runtime / (identifier + ".json")
         for args in [["export", identifier, str(destination)], ["install", str(destination)]]:
             subprocess.run([str(tool), "pack", *args], env=environment,
@@ -4674,6 +4906,18 @@ def check_offline_packs(bus, environment):
         ("en", "please bring your bino", "please bring your binoculars", "please bring your binoculars."),
         ("zh-Hans", "xing kong guan ce", "星空观测", "星空观测安排在周末晚上。"),
         ("ja", "kaisatsu", "改札", "改札はどこですか。"),
+        ("en", "please annotate this para", "please annotate this paragraph",
+         "please annotate this paragraph before our discussion."),
+        ("zh-Hans", "yue du pi zhu", "阅读批注", "阅读批注请写在页边空白处。"),
+        ("en", "please pass me the col", "please pass me the colander",
+         "please pass me the colander from the cupboard."),
+        ("zh-Hans", "shi cai qing dan", "食材清单", "食材清单先按菜谱整理一下。"),
+        ("en", "could you store our lugg", "could you store our luggage",
+         "could you store our luggage until this afternoon?"),
+        ("zh-Hans", "xing li ji cun", "行李寄存", "行李寄存可以到下午吗？"),
+        ("en", "please update the project road", "please update the project roadmap",
+         "please update the project roadmap before our next meeting."),
+        ("zh-Hans", "xiang mu lu xian tu", "项目路线图", "项目路线图请在下次会议前更新。"),
     ]
     try:
         for language, seed, word, sentence in cases:
@@ -4690,9 +4934,20 @@ def check_offline_packs(bus, environment):
             index = next(i for i, c in enumerate(choices) if c["text"] == word)
             assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
             wait(lambda: watch.latest["seed"] == word, "pack word adoption")
+            assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+            wait(lambda: watch.latest["seed"] == seed, "exact pack adoption undo")
+            index = next(i for i, c in enumerate(watch.latest["candidates"][:6])
+                         if c["text"] == word)
+            assert context.process_key_event(IBus.KEY_1 + index, 0, 0)
+            wait(lambda: watch.latest["seed"] == word, "pack word readoption")
             type_seed(context, " ")
             wait(lambda: watch.latest["seed"] == word + " ", "Space does not submit pack text")
             assert len(commits) == before
+            suffix = sentence[len(word):]
+            if language == "zh-Hans" or (language == "en" and suffix.startswith(" ")):
+                expected = word + " " + (suffix.lstrip() if language == "en" else suffix)
+                assert any(c["text"] == expected and c["kind"] == "sentence"
+                           and c["source"] == "local" for c in watch.latest["candidates"][:6]), watch.latest
             # Japanese conversion intentionally joins reading separators. To
             # submit padding literally, explicitly adopt the exact raw choice.
             # Keep the byte-exact assertion instead of accepting a trimmed result.
@@ -4719,7 +4974,7 @@ def check_offline_packs(bus, environment):
         type_seed(context, "stargaz")
         wait(lambda: watch.latest["seed"] == "stargaz", "snapshot spelling")
         assert any(c["text"] == "stargazing" for c in watch.latest["candidates"])
-        print("PASS: offline packs EN/ZH/JA native words/sentences, labels, numeric adoption, Space, exact commits and immutable startup snapshot")
+        print(f"PASS: {len(cases)} offline pack workflows EN/ZH/JA, words/sentences, labels, numeric adoption/undo, Space continuation, exact commits and immutable startup snapshot")
     finally:
         context.focus_out()
         watchers.remove(watch)
@@ -4745,6 +5000,9 @@ try:
     assert bus.is_connected()
     if os.environ.get("SUZAKU_NATIVE_PACKS_ONLY") == "1":
         check_offline_packs(bus, host_environment)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_PRESENTATION_ONLY") == "1":
+        check_native_presentation(bus, host_environment)
         raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_LANGUAGE_ONLY") == "1":
         check_language_shortcut(bus)
@@ -4777,6 +5035,7 @@ try:
             check_tray_activation(bus)
             print(f"PASS: isolated activation/release repetition {attempt + 1}/{repetitions}", flush=True)
         raise SystemExit(0)
+    check_native_presentation(bus, host_environment)
     check_tray_activation(bus)
     check_language_shortcut(bus)
     check_post_process_preedit(bus)
@@ -5013,9 +5272,10 @@ try:
     # IBus global-engine mode may focus its empty fallback context immediately.
     wait(lambda: not watch.latest["seed"] and watch.latest["context"] > context_id, "focus-out clears view")
     old_host = watch.latest["host"]
-    processes[-1].terminate()
-    processes[-1].wait(timeout=3)
-    processes.append(subprocess.Popen([str(host_path)], stdout=subprocess.DEVNULL))
+    host = active_host()
+    host.terminate()
+    host.wait(timeout=3)
+    processes.append(subprocess.Popen([str(host_path)], stdout=subprocess.DEVNULL, env=host_environment))
     def restarted():
         try:
             return command("Q") == b"1"

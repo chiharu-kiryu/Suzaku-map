@@ -987,8 +987,26 @@ fn ibus_current_engine(timeout: Duration) -> Result<Option<String>, String> {
     let Some(mut ibus) = command("ibus") else {
         return Ok(None);
     };
-    let output = linux_registration_output(ibus.arg("engine"), timeout)?;
+    ibus.env("LC_ALL", "C").arg("engine");
+    #[cfg(target_os = "linux")]
+    let output = suzaku_map::platform::linux_command::run_with_stderr(&mut ibus, timeout)
+        .map_err(|error| format!("IBus engine query failed: {error}"))?;
+    #[cfg(not(target_os = "linux"))]
+    let output = linux_registration_output(&mut ibus, timeout)?;
     if !output.status.success() {
+        // Removing the old component can temporarily clear GlobalEngine. IBus
+        // reports that precise state as a failed CLI query, not empty stdout
+        // with success. Keep transport/permission failures fatal: only the
+        // explicit D-Bus missing-engine reply permits bounded restoration.
+        if output.status.code() == Some(1)
+            && output.stdout.is_empty()
+            && String::from_utf8_lossy(&output.stderr).lines().any(|line| {
+                line.trim_end()
+                    .ends_with("GDBus.Error:org.freedesktop.DBus.Error.Failed: No global engine.")
+            })
+        {
+            return Ok(None);
+        }
         return Err(format!("IBus engine query failed with {}", output.status));
     }
     let engine = String::from_utf8(output.stdout)

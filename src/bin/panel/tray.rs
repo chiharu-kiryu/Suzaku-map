@@ -92,6 +92,30 @@ mod platform {
     }
 
     impl InputMethodMenuState {
+        fn request_control(
+            &mut self,
+            control_tx: &Sender<TrayControl>,
+            command: TrayControl,
+            send_event: impl FnOnce(PanelUserEvent),
+        ) {
+            if self.busy {
+                return;
+            }
+            let activating = matches!(command, TrayControl::ActivateInputMethod);
+            self.busy = true;
+            self.operation_error = None;
+            if control_tx.send(command).is_err() {
+                self.busy = false;
+                self.operation_error = Some("Tray controller unavailable; restart Suzaku".into());
+            } else if activating {
+                // The tray callback holds the ksni service lock. Publish preparation
+                // before that callback returns, so later Show/Hide actions stay newer
+                // even when the worker is blocked behind a slow status refresh.
+                // The worker takes the same lock before starting the system switch.
+                send_event(PanelUserEvent::PrepareInputMethodActivation);
+            }
+        }
+
         fn can_activate(&self) -> bool {
             !self.busy && (!self.system.active() || self.native_error.is_some())
         }
@@ -245,15 +269,11 @@ mod platform {
         }
 
         fn request_input_method(&mut self, command: TrayControl) {
-            if !self.input_method.busy {
-                self.input_method.busy = true;
-                self.input_method.operation_error = None;
-                if self.control_tx.send(command).is_err() {
-                    self.input_method.busy = false;
-                    self.input_method.operation_error =
-                        Some("Tray controller unavailable; restart Suzaku".into());
-                }
-            }
+            let proxy = &self.proxy;
+            self.input_method
+                .request_control(&self.control_tx, command, |event| {
+                    let _ = proxy.send_event(event);
+                });
         }
 
         fn request_model(&mut self, warmup: bool) {
@@ -872,11 +892,6 @@ mod platform {
                                 if let Some(error) = &tray.input_method.operation_error {
                                     tray.send(PanelUserEvent::InputMethodError(error.clone()));
                                 }
-                                if succeeded && activating {
-                                    // Native IBus candidates appear on input without taking focus.
-                                    tray.panel_visible = false;
-                                    tray.send(PanelUserEvent::HidePanel);
-                                }
                                 if succeeded && quitting {
                                     tray.send(PanelUserEvent::Quit);
                                 }
@@ -1020,6 +1035,115 @@ mod platform {
             InputMethodMenuState, InputMethodState, TRAY_ICON_SIZES, menu_label, suzaku_icon,
         };
         use crate::input_method::SUZAKU_ENGINE;
+
+        #[test]
+        fn activation_prepares_before_delayed_worker_and_newer_visibility_actions() {
+            use super::*;
+            let (control_tx, control_rx) = mpsc::channel();
+            let mut state = InputMethodMenuState {
+                operation_error: Some("Previous activation failed".into()),
+                ..Default::default()
+            };
+            let mut events = Vec::new();
+
+            // AboutToShow can queue a slow refresh without marking activation busy.
+            // Leave both requests unread to verify preparation never waits for it.
+            control_tx.send(TrayControl::RefreshInputMethod).unwrap();
+            state.request_control(&control_tx, TrayControl::ActivateInputMethod, |event| {
+                events.push(event);
+            });
+            assert!(state.busy);
+            assert!(state.operation_error.is_none());
+            assert!(matches!(
+                events.as_slice(),
+                [PanelUserEvent::PrepareInputMethodActivation]
+            ));
+
+            // Later tray callbacks must remain later in the same UI event stream.
+            events.push(PanelUserEvent::ShowPanel);
+            events.push(PanelUserEvent::HidePanel);
+            assert!(matches!(
+                control_rx.try_recv(),
+                Ok(TrayControl::RefreshInputMethod)
+            ));
+            assert!(matches!(
+                control_rx.try_recv(),
+                Ok(TrayControl::ActivateInputMethod)
+            ));
+            assert!(control_rx.try_recv().is_err());
+            assert!(matches!(
+                events.as_slice(),
+                [
+                    PanelUserEvent::PrepareInputMethodActivation,
+                    PanelUserEvent::ShowPanel,
+                    PanelUserEvent::HidePanel
+                ]
+            ));
+        }
+
+        #[test]
+        fn busy_input_method_rejects_activation_without_preparing_or_clearing_error() {
+            use super::*;
+            let (control_tx, control_rx) = mpsc::channel();
+            let mut state = InputMethodMenuState {
+                busy: true,
+                operation_error: Some("Existing operation error".into()),
+                ..Default::default()
+            };
+            state.request_control(&control_tx, TrayControl::ActivateInputMethod, |_| {
+                panic!("A rejected activation must not hide the panel");
+            });
+            assert!(state.busy);
+            assert_eq!(
+                state.operation_error.as_deref(),
+                Some("Existing operation error")
+            );
+            assert!(control_rx.try_recv().is_err());
+        }
+
+        #[test]
+        fn disconnected_input_method_worker_does_not_prepare_and_keeps_retry_available() {
+            use super::*;
+            let (control_tx, control_rx) = mpsc::channel();
+            drop(control_rx);
+            let mut state = InputMethodMenuState::default();
+            state.request_control(&control_tx, TrayControl::ActivateInputMethod, |_| {
+                panic!("An activation that was not queued must not hide the panel");
+            });
+            assert!(!state.busy);
+            assert!(state.can_activate());
+            assert_eq!(
+                state.operation_error.as_deref(),
+                Some("Tray controller unavailable; restart Suzaku")
+            );
+        }
+
+        #[test]
+        fn non_activation_requests_never_prepare_panel_visibility() {
+            use super::*;
+            for command in [
+                TrayControl::ReleaseInputMethod,
+                TrayControl::SetLanguage(BuiltinLanguage::English),
+                TrayControl::SetPredictionEnabled(false),
+                TrayControl::ReloadImeSettings,
+                TrayControl::ClearPreferences,
+                TrayControl::Quit,
+            ] {
+                let (control_tx, control_rx) = mpsc::channel();
+                let expected = std::mem::discriminant(&command);
+                let mut state = InputMethodMenuState::default();
+                state.request_control(&control_tx, command, |_| {
+                    panic!("Only activation may prepare panel visibility");
+                });
+                assert!(state.busy);
+                assert!(state.operation_error.is_none());
+                assert_eq!(
+                    std::mem::discriminant(&control_rx.try_recv().unwrap()),
+                    expected
+                );
+                assert!(control_rx.try_recv().is_err());
+            }
+        }
 
         #[test]
         fn language_updates_are_deduplicated_and_nested_menus_keep_actions_and_ids() {

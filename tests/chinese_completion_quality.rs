@@ -135,6 +135,52 @@ fn separated_pinyin_keeps_words_and_sentences_on_the_first_page() {
 }
 
 #[test]
+fn everyday_adjectives_have_local_word_and_sentence_candidates() {
+    for (separated, partial, word, sentence) in [
+        ("hen qiang", "hen qia", "很强", "很强的学习能力。"),
+        ("hen li hai", "hen li h", "很厉害", "很厉害的表现。"),
+    ] {
+        for seed in [
+            separated.replace(' ', ""),
+            separated.to_owned(),
+            separated.replace(' ', "'"),
+            separated.to_ascii_uppercase(),
+            partial.to_owned(),
+            partial.replace(' ', ""),
+        ] {
+            let ime = engine(&seed);
+            let page: Vec<_> = ime.candidates().iter().take(PAGE_SIZE).collect();
+            assert!(
+                page.iter().any(|candidate| {
+                    candidate.text == word && candidate.kind == CandidateKind::Word
+                }),
+                "{seed:?}: {page:?}"
+            );
+            assert!(
+                page.iter().any(|candidate| {
+                    candidate.text == sentence && candidate.kind == CandidateKind::Sentence
+                }),
+                "{seed:?}: {page:?}"
+            );
+            assert!(
+                ime.candidates()
+                    .iter()
+                    .any(|candidate| candidate.text == seed)
+            );
+            assert!(
+                ime.candidates()
+                    .iter()
+                    .all(|candidate| candidate.source == CandidateSource::Local)
+            );
+            assert!(ime.snapshot().committed_text.is_empty());
+        }
+    }
+    for (seed, word) in [("qiang", "强"), ("lihai", "厉害"), ("li hai", "厉害")] {
+        assert_eq!(engine(seed).candidates()[0].text, word, "{seed}");
+    }
+}
+
+#[test]
 fn explicit_syllable_boundaries_are_not_erased_to_force_a_match() {
     for (seed, primary) in [
         ("xi an", "西安"),

@@ -98,6 +98,7 @@ fn reset(state: &mut PanelState) {
     state.native = NativeView::default();
     state.chrome = PanelChromeState {
         llm_enabled: false,
+        input_focused: false,
         ..Default::default()
     };
     state.engine.configure_prediction(None);
@@ -137,6 +138,11 @@ fn tool_adoption_gestures_must_not_cross_native_targets() {
                     state.last_interaction_action = None;
                     let initial = frame("alpha", 1, 10);
                     state.receive_native_frame(Some(initial.clone()));
+                    assert!(
+                        state.native.showing,
+                        "native fixture did not enter its view"
+                    );
+                    assert_eq!(state.chrome.seed_text, initial.seed);
                     if case.starts_with("starts") {
                         let mut unavailable = initial.clone();
                         unavailable.revision += 1;

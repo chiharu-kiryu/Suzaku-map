@@ -1,0 +1,61 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.en.work", "version": "1.0.0",
+    "name": "Work · Team coordination", "description": "Authored vocabulary for task ownership, handovers, meetings and delivery; no private project data or automatic actions.",
+    "language": "en", "topics": ["work", "collaboration"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "en",
+    "word_layers": [{
+      "id": "team-coordination",
+      "words": [
+        "handover", "handovers", "handoff", "handoffs", "onboard", "onboards", "onboarded", "onboarding",
+        "deliverable", "deliverables", "milestone", "milestones", "roadmap", "roadmaps", "timeline", "timelines",
+        "blocker", "blockers", "stakeholder", "stakeholders", "assignee", "assignees",
+        "reviewer", "reviewers", "approver", "approvers", "dependency", "dependencies",
+        "workstream", "workstreams", "workload", "workloads", "delegation",
+        "prioritize", "prioritizes", "prioritized", "prioritizing", "prioritise", "prioritises", "prioritised", "prioritising",
+        "clarify", "clarifies", "clarified", "clarifying", "consolidate", "consolidates", "consolidated", "consolidating",
+        "agenda", "agendas", "minutes", "recap", "recaps", "recapped", "recapping",
+        "alignment", "accountability", "retrospective", "retrospectives"
+      ],
+      "next_words": [
+        ["please update the project", ["roadmap", "timeline"]],
+        ["could you confirm the task", ["owner", "priority"]],
+        ["let's document the remaining", ["blockers", "dependencies"]],
+        ["please share the meeting", ["minutes", "agenda"]],
+        ["could you review the acceptance", ["criteria", "checklist"]],
+        ["let's agree on the next", ["milestone", "steps"]],
+        ["please prepare the handover", ["notes", "checklist"]],
+        ["the deployment window needs", ["confirmation", "approval"]],
+        ["could you summarize the main", ["decisions", "risks"]],
+        ["please assign a reviewer", ["before", "for"]],
+        ["let's split this task into", ["smaller", "separate"]],
+        ["could you check the latest", ["deliverable", "estimate"]],
+        ["please flag any scheduling", ["conflicts", "constraints"]],
+        ["the onboarding checklist is", ["ready", "attached"]],
+        ["could we move the retrospective", ["to", "online"]],
+        ["please record the agreed", ["scope", "deadline"]]
+      ],
+      "sentences": [
+        "please update the project roadmap before our next meeting.", "please update the project timeline with the revised dates.",
+        "could you confirm the task owner before we begin?", "could you confirm the task priority with the team?",
+        "let's document the remaining blockers in the handover notes.", "let's document the remaining dependencies before planning.",
+        "please share the meeting minutes with everyone.", "please share the meeting agenda before we start.",
+        "could you review the acceptance criteria with the team?", "could you review the acceptance checklist before delivery?",
+        "let's agree on the next milestone before we finish.", "let's agree on the next steps for this project.",
+        "please prepare the handover notes before you go on leave.", "please prepare the handover checklist for the new owner.",
+        "the deployment window needs confirmation from the team.", "the deployment window needs approval before we proceed.",
+        "could you summarize the main decisions from the meeting?", "could you summarize the main risks before we proceed?",
+        "please assign a reviewer before the next meeting.", "please assign a reviewer for each deliverable.",
+        "let's split this task into smaller steps.", "let's split this task into separate workstreams.",
+        "could you check the latest deliverable against the checklist?", "could you check the latest estimate before we confirm it?",
+        "please flag any scheduling conflicts before tomorrow.", "please flag any scheduling constraints in the planning notes.",
+        "the onboarding checklist is ready for review.", "the onboarding checklist is attached to this message.",
+        "could we move the retrospective to next week?", "could we move the retrospective online to include everyone?",
+        "please record the agreed scope in the project notes.", "please record the agreed deadline after the meeting."
+      ]
+    }]
+  }
+}

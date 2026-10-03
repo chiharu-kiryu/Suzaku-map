@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.8.0 — Offline vocabulary packs and authoring SDK**.
+Current source version: **0.8.1 — Native candidates and everyday bilingual fallback**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -40,6 +40,65 @@ checks and clean-container installation checks to pass before publication. Other
 are added only after their own acceptance, not implied by the shared version number.
 This is a release requirement, not a claim that automatic publication is implemented or
 that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.8.1 — Native candidates and everyday bilingual fallback
+
+- Adds optional English/Chinese study-writing, cooking-preparation, travel-lodging and team-work
+  packs, bringing the bundled catalog to eleven collections. The eight new packages are version
+  1.0.0 and contain 240 explicit English forms, 144 Chinese readings and 256 authored sentences,
+  before built-in deduplication.
+- Optional packs leave existing embedded vocabulary, prior ranks, Japanese data, decoder/model
+  contracts and budgets unchanged. The new JSON can also be installed by the released 0.8.0 CLI;
+  its existing catalog does not gain the new exports until the tool is rebuilt/upgraded.
+  Nothing is auto-installed.
+- Adds candidate-quality and catalog/source/export parity regressions; extends the native IBus
+  pack fixture and Linux distribution checks to the new collections. See
+  [vocabulary data](data/lexicons/README.md) and [pack usage](docs/linux-packaging-data.md#离线词库包与制包-sdk).
+- The travel/work follow-up retains the old meeting-minutes and acceptance-standard continuations,
+  adding more specific contexts instead. Independent enable/disable checks keep themes opt-in;
+  generated phrases neither read bookings/project records nor perform external actions.
+- Adds a private GTK3 per-key gate for the earlier desktop draft-check failure: stable real
+  input contexts, exact first/repeated keys, bilingual adoption/undo/commits, language chords,
+  field changes and companion focus. CI runs default and forced-sync IBus transport. This
+  improves diagnostics and coverage; it does not establish a fix for the GNOME/Wayland failure.
+- Completes that gate's tray fixture: an owned StatusNotifierWatcher lets the real panel
+  register its menu, and the tenth workflow activates through that menu from a real private
+  XKB engine before switching Chinese to English. Menu readiness is observed after one
+  AboutToShow, without repeating activation or input. Personal desktop acceptance remains open.
+- Fixes a separate tray-activation visibility race: automatic preparation is published when
+  the tray accepts activation, before queued refresh/switch work, and never marks the active
+  draft as manually hidden. A first native draft arriving before preparation remains visible;
+  delayed worker preparation/completion cannot override later explicit Show/Hide. Busy or
+  disconnected requests do not prepare visibility.
+- Opening settings or editing the seed transfers an automatic popup to explicit visibility;
+  empty/unfocused/disconnected native snapshots no longer close that interaction or its window
+  after editing finishes. Late native drafts cannot overwrite local text while the window-focus
+  event is pending. Native tool tabs still update/auto-hide, and invisible snapshots still clear
+  mirrored content. These fixes do not establish the cause of the earlier personal-desktop
+  synthetic-key failure.
+- Defaults to the custom Suzaku candidate surface once it has actually presented a public
+  native frame. A short host/context-bound lease suppresses only IBus lookup/auxiliary UI;
+  hidden, folded, occluded or locally edited panels relinquish it. UI-thread heartbeats and
+  a 1.2-second host expiry after the last accepted renewal restore system candidates after
+  stalls/crashes without another key (up to about 1.8 seconds from a UI stall).
+  Passive snapshot subscribers do not suppress candidates, and display acknowledgements never
+  change draft revisions, selection, model requests or commits.
+- Fills a basic Chinese fallback gap with data-only readings for 强、厉害、很强、很厉害 and four
+  authored continuations. Original 2,043 reading ranks are retained; full/separated Pinyin and
+  adoption/spacing regressions stay independent of model availability.
+- Adds everyday reactions, feelings, replies, meeting updates and rest/meal expressions to the
+  default offline fallback. English adds 24 collocations and 48 sentences with just six new
+  indexed forms; Chinese adds 64 readings and 24 contexts / 48 continuations. All eleven earlier
+  English layers and 2,047 Chinese readings keep their original order and priority. Data-only
+  additions remain independent of models and optional packs; index/candidate budgets are unchanged.
+- Appends a `daily_needs` batch for food preferences, weather/outings and last-minute plans:
+  64 Chinese readings and 24 contexts / 48 sentences per language. English reuses the existing
+  index except for three explicit forms (tastes, dessert, road), totaling 6,111 indexed words.
+  All twelve earlier English layers and 2,111 Chinese readings retain their ranks; this adds
+  authored input expressions, not weather/menu/location services or model-specific behavior.
+
+See the [0.8.1 release notes](docs/releases/0.8.1.md). Historical “unreleased” records below and
+in linked audit guides retain their original development context; publication requires same-commit CI.
 
 ### 0.8.0 — Offline vocabulary packs and authoring SDK
 

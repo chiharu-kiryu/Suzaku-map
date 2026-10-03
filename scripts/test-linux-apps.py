@@ -15,6 +15,7 @@ import gi
 
 sys.dont_write_bytecode = True
 from fixtures.compose_fixture import require_private_compose
+from fixtures.x11_focus import focus_ancestry
 
 root = Path(os.environ["SUZAKU_APP_QA_ROOT"])
 runtime = root / "runtime"
@@ -223,12 +224,33 @@ class X11:
         self.x.XRaiseWindow(self.display, window)
         self.x.XSetInputFocus(self.display, window, 1, 0)
         self.x.XSync(self.display, 0)
-        wait(lambda: self.focused() == window, "X11 application focus")
+        wait(lambda: self.focused_within(window), "X11 application focus")
 
     def focused(self):
         window, revert = C.c_ulong(), C.c_int()
         self.x.XGetInputFocus(self.display, C.byref(window), C.byref(revert))
         return window.value
+
+    def focus_ancestry(self):
+        def parent_for(window):
+            root, parent, count = C.c_ulong(), C.c_ulong(), C.c_uint()
+            children = C.POINTER(C.c_ulong)()
+            try:
+                if not self.x.XQueryTree(self.display, window, C.byref(root),
+                                         C.byref(parent), C.byref(children), C.byref(count)):
+                    return None
+                return parent.value
+            finally:
+                if children:
+                    self.x.XFree(children)
+
+        return focus_ancestry(self.focused(), parent_for)
+
+    def focused_within(self, window):
+        # A shared root is not an ownership relationship. None/PointerRoot
+        # likewise must never authorize an application-targeted injection.
+        return (type(window) is int and window > 1 and window != self.root and
+                window in self.focus_ancestry())
 
     def key(self, keysym, modifier=None):
         modifiers = [] if modifier is None else (modifier if isinstance(modifier, list) else [modifier])

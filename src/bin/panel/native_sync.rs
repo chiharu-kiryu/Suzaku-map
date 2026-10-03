@@ -39,6 +39,8 @@ pub(super) use tests::assert_workers_cancel_on_shutdown;
 pub(super) struct NativeView {
     pub frame: Option<NativeComposition>,
     pub showing: bool,
+    pub(super) presented: Option<super::native_presentation::PresentationTarget>,
+    pub(super) occluded: bool,
     draft: Option<(String, usize, bool)>,
     pub sender: Option<SyncSender<ActionRequest>>,
     pending: Option<PendingAction>,
@@ -204,6 +206,50 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
 }
 
 impl PanelState {
+    fn native_presentation_target(&self) -> Option<super::native_presentation::PresentationTarget> {
+        if self.kind != super::PanelWindowKind::Main
+            || !self.runs_without_window_focus
+            || !self.native.showing
+            || self.native.occluded
+            || self.chrome.compact_mode
+            || self.has_local_panel_interaction()
+            || self.window.is_minimized() == Some(true)
+            || self.size.width == 0
+            || self.size.height == 0
+        {
+            return None;
+        }
+        self.native
+            .frame
+            .as_ref()
+            .filter(|frame| frame.visible())
+            .map(|frame| super::native_presentation::PresentationTarget {
+                host: frame.host.clone(),
+                context: frame.context,
+                revision: frame.revision,
+            })
+    }
+
+    pub(super) fn note_native_frame_presented(&mut self) {
+        self.native.presented = self.native_presentation_target();
+    }
+
+    pub(super) fn presented_native_target(
+        &self,
+    ) -> Option<super::native_presentation::PresentationTarget> {
+        let current = self.native_presentation_target()?;
+        // Keep the displayed revision while the next same-field frame awaits
+        // painting. The host rejects stale renewals but retains the short lease,
+        // avoiding a system-popup flash on every key. No cross-context carryover.
+        self.native
+            .presented
+            .as_ref()
+            .filter(|presented| {
+                presented.host == current.host && presented.context == current.context
+            })
+            .cloned()
+    }
+
     /// A screen-keyboard event edits a retained local draft until the native host
     /// acknowledges it. Only the unsent suffix/edit is coalesced into the next write.
     pub(super) fn native_keyboard_edit(&mut self, text: Option<&str>) -> bool {
@@ -292,6 +338,15 @@ impl PanelState {
                 self.native_typing_feedback();
             }
         }
+    }
+
+    /// Local editing owns the window even before its asynchronous Focused event.
+    /// Native tool tabs may mark the seed focused without acquiring window focus;
+    /// those still belong to the external composition, not a local editor.
+    pub(super) fn has_local_panel_interaction(&self) -> bool {
+        self.is_focused
+            || self.chrome.settings_open
+            || (!self.native.showing && self.chrome.input_focused)
     }
 
     /// Stay visible while either the public host draft or queued keyboard draft
@@ -395,7 +450,7 @@ impl PanelState {
         // focus/settings early return so an away-and-back update cannot revive
         // a press that began in another field. Retain tool sources for a new click.
         let updates_native_view =
-            self.native.showing || (visible && !self.is_focused && !self.chrome.settings_open);
+            self.native.showing || (visible && !self.has_local_panel_interaction());
         if updates_native_view
             && (matches!(
                 self.interaction.pressed_interaction,
@@ -417,7 +472,7 @@ impl PanelState {
             self.interaction.touch_tap_pending = false;
         }
         // Our own text IME context is not an external app to mirror back into itself.
-        if self.is_focused || self.chrome.settings_open {
+        if self.has_local_panel_interaction() {
             if self.native.showing && !visible {
                 self.refresh_native_view();
                 self.window.request_redraw();

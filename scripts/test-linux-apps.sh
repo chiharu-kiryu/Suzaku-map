@@ -5,9 +5,20 @@ suzaku_apps_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd -- "$suzaku_apps_root"
 suzaku_apps_suite=${1:-gtk}
 case "$suzaku_apps_suite" in
-  gtk|vocabulary|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor) ;;
-  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|vocabulary|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor]\n' >&2; exit 2 ;;
+  gtk|gtk3|vocabulary|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor) ;;
+  *) printf 'Usage: bash scripts/test-linux-apps.sh [gtk|gtk3|vocabulary|browser|firefox|vscode|model|qt5|qt6|cross|popup|lifecycle|bus-restart|keyboard|editor]\n' >&2; exit 2 ;;
 esac
+# Existing suites retain their explicit synchronous IBus transport. The GTK3
+# diagnostic also exercises the installed client's default, without inheriting
+# a desktop override or changing any user environment/configuration.
+suzaku_apps_input_env=(IBUS_ENABLE_SYNC_MODE=1)
+if [[ $suzaku_apps_suite == gtk3 ]]; then
+  case "${SUZAKU_GTK3_QA_SYNC_MODE:-default}" in
+    default) suzaku_apps_input_env=() ;;
+    1) ;;
+    *) printf 'SUZAKU_GTK3_QA_SYNC_MODE must be default or 1.\n' >&2; exit 2 ;;
+  esac
+fi
 if [[ $suzaku_apps_suite == model && ( ${SUZAKU_MODEL_LOCAL_QA:-0} != 1 || -z ${SUZAKU_MODEL_QA_MODEL:-} ) ]]; then
   printf 'Live QA needs explicit SUZAKU_MODEL_LOCAL_QA=1 and SUZAKU_MODEL_QA_MODEL (installed local Ollama model).\n' >&2
   exit 2
@@ -46,6 +57,7 @@ for suzaku_apps_qt in 5 6; do
 done
 suzaku_apps_script=scripts/test-linux-cross-apps.py
 [[ $suzaku_apps_suite != gtk ]] || suzaku_apps_script=scripts/test-linux-apps.py
+[[ $suzaku_apps_suite != gtk3 ]] || suzaku_apps_script=scripts/test-linux-gtk3.py
 [[ $suzaku_apps_suite != vocabulary ]] || suzaku_apps_script=scripts/test-linux-vocabulary.py
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_script=scripts/test-linux-candidate-window.py
 [[ $suzaku_apps_suite != lifecycle ]] || suzaku_apps_script=scripts/test-linux-input-lifecycle.py
@@ -63,6 +75,18 @@ fi
 for suzaku_apps_binary in panel linux_ime_host; do
   test -x "$suzaku_apps_bins/$suzaku_apps_binary"
 done
+# Keep the growing full vocabulary gate within the unchanged per-session
+# deadline. Build once above, then run both mixed-language partitions with
+# independent displays/buses/configuration; neither part is the complete gate.
+if [[ $suzaku_apps_suite == vocabulary && ${SUZAKU_VOCABULARY_QA_SCOPE-all} == all ]]; then
+  for suzaku_apps_part in part-1 part-2; do
+    env SUZAKU_APP_QA_BIN_DIR="$suzaku_apps_bins" \
+      SUZAKU_VOCABULARY_QA_SCOPE="$suzaku_apps_part" \
+      bash "$suzaku_apps_root/scripts/test-linux-apps.sh" vocabulary
+  done
+  printf 'PASS: complete vocabulary scope=all; both mixed-language parts passed.\n'
+  exit 0
+fi
 suzaku_apps_tmp=$(mktemp -d /tmp/suzaku-app-qa.XXXXXX)
 cleanup() {
   case "$suzaku_apps_tmp" in
@@ -84,7 +108,7 @@ install -m 600 "$suzaku_apps_root/scripts/fixtures/compose.XCompose" "$suzaku_ap
 suzaku_apps_screen=1920x1080x24
 [[ $suzaku_apps_suite != popup ]] || suzaku_apps_screen=800x600x24
 # shellcheck disable=SC2016 # Expand DISPLAY only after xvfb-run assigns the private display.
-timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
+timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS -u IBUS_ENABLE_SYNC_MODE \
   -u SUZAKU_IBUS_INLINE_PREEDIT -u SUZAKU_LEXICON_DIR \
   -u VSCODE_IPC_HOOK_CLI -u VSCODE_IPC_HOOK -u VSCODE_PORTABLE -u ELECTRON_RUN_AS_NODE \
   -u AT_SPI_BUS_ADDRESS -u SESSION_MANAGER -u DBUS_STARTER_ADDRESS -u DBUS_STARTER_BUS_TYPE \
@@ -98,7 +122,7 @@ timeout --kill-after=3s 240s env -u DISPLAY -u WAYLAND_DISPLAY -u IBUS_ADDRESS \
   IBUS_ADDRESS="unix:path=$suzaku_apps_tmp/runtime/ibus.sock" \
   XCOMPOSEFILE="$suzaku_apps_tmp/compose.XCompose" \
   XLOCALEDIR=/usr/share/X11/locale GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
-  GTK_IM_MODULE=ibus IBUS_ENABLE_SYNC_MODE=1 IBUS_DISCARD_PASSWORD=0 \
+  GTK_IM_MODULE=ibus "${suzaku_apps_input_env[@]}" IBUS_DISCARD_PASSWORD=0 \
   GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 GTK_A11Y=none NO_AT_BRIDGE=1 \
   XDG_CURRENT_DESKTOP=SuzakuQA XDG_SESSION_TYPE=x11 WINIT_X11_SCALE_FACTOR=1 \
   SUZAKU_LINUX_PANEL_BACKEND=x11-nofocus LIBGL_ALWAYS_SOFTWARE=1 \
