@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Test native QA isolation and the diagnostic shim; never connect to an IBus bus."""
+from contextlib import redirect_stderr
+import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -7,9 +10,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, call, patch
 
 sys.dont_write_bytecode = True
 from fixtures.compose_fixture import require_private_compose
+from fixtures.native_probe_cleanup import (
+    PendingCallbacks, preserve_primary_failure, report_native_diagnostic,
+)
 
 
 class NativeTraceTests(unittest.TestCase):
@@ -121,6 +128,244 @@ class ComposeIsolationTests(unittest.TestCase):
         for root in [alias, nested]:
             with self.subTest(root=root), self.assertRaises(ValueError):
                 require_private_compose(root, {"XCOMPOSEFILE": str(root / "compose.XCompose")})
+
+
+class FakeGLib:
+    SOURCE_REMOVE = False
+
+    def __init__(self):
+        self.sources = {}
+        self.removed = []
+        self.next_id = 0
+
+    def timeout_add(self, delay_ms, callback):
+        self.next_id += 1
+        self.sources[self.next_id] = (delay_ms, callback)
+        return self.next_id
+
+    def source_remove(self, source_id):
+        self.removed.append(source_id)
+        del self.sources[source_id]
+
+    def dispatch(self, source_id):
+        _, callback = self.sources.pop(source_id)
+        try:
+            result = callback()
+        except Exception:
+            # GI prints callback exceptions rather than raising from iteration().
+            # The test must not rely on ordinary Python propagation here.
+            return self.SOURCE_REMOVE
+        if result is not self.SOURCE_REMOVE:
+            raise AssertionError("one-shot callback requested another dispatch")
+        return result
+
+
+class NativeProbeCleanupTests(unittest.TestCase):
+    def setUp(self):
+        self.glib = FakeGLib()
+        self.pending = PendingCallbacks(self.glib)
+
+    def test_completed_callback_is_retired_and_cannot_request_a_repeat(self):
+        calls = []
+        source_id = self.pending.schedule(90, lambda: calls.append("ran") or True)
+        self.assertEqual(self.glib.sources[source_id][0], 90)
+        self.assertIs(self.glib.dispatch(source_id), self.glib.SOURCE_REMOVE)
+        self.assertEqual(calls, ["ran"])
+        self.pending.cancel_all()
+        self.pending.raise_if_failed()
+        self.assertEqual(self.glib.sources, {})
+        self.assertEqual(self.glib.removed, [])
+
+    def test_cancel_all_removes_only_pending_callbacks_and_is_idempotent(self):
+        calls = []
+        completed = self.pending.schedule(90, lambda: calls.append("completed"))
+        self.glib.dispatch(completed)
+        remaining = {self.pending.schedule(90, lambda: calls.append("unexpected"))
+                     for _ in range(2)}
+        self.pending.cancel_all()
+        self.pending.cancel_all()
+        self.pending.raise_if_failed()
+        self.assertEqual(set(self.glib.removed), remaining)
+        self.assertEqual(len(self.glib.removed), 2)
+        self.assertEqual(self.glib.sources, {})
+        self.assertEqual(calls, ["completed"])
+
+    def test_failing_callback_is_retired_and_explicit_check_propagates_its_error(self):
+        failure = RuntimeError("delayed engine switch failed")
+
+        def fail():
+            raise failure
+
+        source_id = self.pending.schedule(90, fail)
+        self.assertIs(self.glib.dispatch(source_id), self.glib.SOURCE_REMOVE)
+        with self.assertRaises(RuntimeError) as raised:
+            self.pending.raise_if_failed()
+        self.assertIs(raised.exception, failure)
+        self.pending.cancel_all()
+        self.assertEqual(self.glib.sources, {})
+        self.assertEqual(self.glib.removed, [])
+
+    def test_later_callback_failures_do_not_replace_first_or_grow_notes_unboundedly(self):
+        failures = [RuntimeError(f"switch failure {i}") for i in range(20)]
+        for failure in failures:
+            def fail(error=failure):
+                raise error
+
+            source_id = self.pending.schedule(90, fail)
+            self.assertIs(self.glib.dispatch(source_id), self.glib.SOURCE_REMOVE)
+        self.pending.cancel_all()
+        with self.assertRaises(RuntimeError) as raised:
+            self.pending.raise_if_failed()
+        self.assertIs(raised.exception, failures[0])
+        self.assertEqual(failures[0].__notes__, [
+            "Additional delayed callback failure: RuntimeError: switch failure 1",
+            "Additional delayed callback failure: RuntimeError: switch failure 2",
+            "Additional delayed callback failure: RuntimeError: switch failure 3",
+            "Further delayed callback failures omitted.",
+        ])
+        self.assertEqual(self.glib.sources, {})
+        self.assertEqual(self.glib.removed, [])
+
+    def test_cleanup_error_is_not_allowed_to_replace_primary_failure(self):
+        failure = AssertionError("original engine mismatch")
+        with self.assertRaises(AssertionError) as raised:
+            try:
+                raise failure
+            finally:
+                with preserve_primary_failure("release private panel"):
+                    raise RuntimeError("connection closed")
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(failure.__notes__,
+                         ["release private panel: RuntimeError: connection closed"])
+
+    def test_cleanup_error_without_primary_failure_propagates(self):
+        failure = RuntimeError("connection closed")
+        with self.assertRaises(RuntimeError) as raised:
+            try:
+                pass
+            finally:
+                with preserve_primary_failure("release private panel"):
+                    raise failure
+        self.assertIs(raised.exception, failure)
+
+    def test_rechecking_primary_callback_error_does_not_add_a_self_note(self):
+        failure = RuntimeError("delayed engine switch failed")
+        with self.assertRaises(RuntimeError) as raised:
+            try:
+                raise failure
+            finally:
+                with preserve_primary_failure("check callback errors"):
+                    raise failure
+        self.assertIs(raised.exception, failure)
+        self.assertFalse(getattr(failure, "__notes__", []))
+
+    def test_successful_system_exit_does_not_hide_cleanup_failure(self):
+        failure = RuntimeError("connection closed")
+        with self.assertRaises(RuntimeError) as raised:
+            try:
+                raise SystemExit(0)
+            finally:
+                with preserve_primary_failure("release private panel"):
+                    raise failure
+        self.assertIs(raised.exception, failure)
+
+    def test_successful_cleanup_preserves_normal_and_exceptional_control_flow(self):
+        with preserve_primary_failure("release private panel"):
+            pass
+        for failure in [AssertionError("original engine mismatch"), SystemExit(0)]:
+            with self.subTest(failure=type(failure).__name__):
+                with self.assertRaises(type(failure)) as raised:
+                    try:
+                        raise failure
+                    finally:
+                        with preserve_primary_failure("release private panel"):
+                            pass
+                self.assertIs(raised.exception, failure)
+                self.assertFalse(hasattr(failure, "__notes__"))
+
+
+class NativeDiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.connection = Mock(spec=["is_closed"])
+        self.connection.is_closed.return_value = True
+        self.bus = Mock(spec=["get_connection", "is_connected"])
+        self.bus.get_connection.return_value = self.connection
+        self.bus.is_connected.return_value = False
+        self.daemon = self.process(501, "ibus-daemon", -11)
+
+    @staticmethod
+    def process(pid, name, returncode=None):
+        process = Mock(spec=["args", "pid", "poll"])
+        process.args = [f"/private/fixture/{name}", "--synthetic-input", "do not print this text"]
+        process.pid = pid
+        process.poll.return_value = returncode
+        return process
+
+    def report(self, processes=(), **details):
+        report_native_diagnostic("query-failed", phase="N45", started=100,
+                                 bus=self.bus, daemon=self.daemon,
+                                 processes=processes, **details)
+
+    def test_closed_connection_and_signaled_daemon_use_only_local_observation(self):
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), patch("fixtures.native_probe_cleanup.time.monotonic", return_value=103.125):
+            self.report([self.process(502, "linux_ime_host")], purpose=8)
+        line = stderr.getvalue()
+        self.assertTrue(line.startswith("NATIVE DIAGNOSTIC: "))
+        state = json.loads(line.removeprefix("NATIVE DIAGNOSTIC: "))
+        self.assertEqual(state, {
+            "event": "query-failed", "phase": "N45", "elapsed_s": 3.125,
+            "bus_connected": False, "connection_closed": True,
+            "daemon_pid": 501, "daemon_returncode": -11,
+            "recent_children": [{"name": "linux_ime_host", "pid": 502, "returncode": None}],
+            "purpose": 8,
+        })
+        self.assertEqual(self.bus.method_calls, [call.get_connection(), call.is_connected()])
+        self.assertEqual(self.connection.method_calls, [call.is_closed()])
+
+    def test_reports_only_executable_basename_not_path_or_remaining_arguments(self):
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            self.report([self.process(502, "linux_ime_probe", 1)])
+        self.assertIn('"name": "linux_ime_probe"', stderr.getvalue())
+        for private in ["/private/fixture", "--synthetic-input", "do not print this text"]:
+            self.assertNotIn(private, stderr.getvalue())
+
+    def test_observes_only_the_last_eight_children(self):
+        children = [self.process(600 + i, f"child-{i}") for i in range(12)]
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            self.report(children)
+        state = json.loads(stderr.getvalue().removeprefix("NATIVE DIAGNOSTIC: "))
+        self.assertEqual([child["pid"] for child in state["recent_children"]], list(range(604, 612)))
+        for child in children[:4]:
+            child.poll.assert_not_called()
+        for child in children[4:]:
+            child.poll.assert_called_once_with()
+
+    def test_broken_bus_accessor_does_not_replace_original_failure(self):
+        self.bus.get_connection.side_effect = RuntimeError("accessor failed")
+        failure = AssertionError("original native assertion")
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), self.assertRaises(AssertionError) as raised:
+            try:
+                raise failure
+            finally:
+                self.report()
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(stderr.getvalue(),
+                         "NATIVE DIAGNOSTIC unavailable: RuntimeError: accessor failed\n")
+
+    def test_unwritable_stderr_does_not_replace_original_failure(self):
+        stderr = Mock(spec=["write", "flush"])
+        stderr.write.side_effect = OSError("diagnostic destination closed")
+        failure = AssertionError("original native assertion")
+        with redirect_stderr(stderr), self.assertRaises(AssertionError) as raised:
+            try:
+                raise failure
+            finally:
+                self.report()
+        self.assertIs(raised.exception, failure)
 
 
 if __name__ == "__main__":

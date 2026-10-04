@@ -55,6 +55,7 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/privacy.md"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-network.md"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-network.mmd"
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/functional-tensor.json"
   test -s "$suzaku_package_test_tree/share/doc/suzaku/docs/bug-audit-2026-09-13.md"
   python3 "$suzaku_package_test_scripts/check-package-audit-links.py" \
     "$suzaku_package_test_tree/share/doc/suzaku" "$suzaku_package_test_tree/README.md" \
@@ -95,6 +96,7 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/privacy.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.mmd"
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-tensor.json"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/bug-audit-2026-09-13.md"
   python3 "$suzaku_package_test_scripts/check-package-audit-links.py" \
     "$suzaku_package_test_extract/root/usr/share/doc/suzaku"

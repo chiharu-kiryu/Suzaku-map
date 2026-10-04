@@ -6,6 +6,24 @@ use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, Wind
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
+fn wheel_vertical_delta(delta: MouseScrollDelta) -> f32 {
+    match delta {
+        MouseScrollDelta::LineDelta(_, y) if y.is_finite() => y,
+        MouseScrollDelta::LineDelta(..) => 0.0,
+        MouseScrollDelta::PixelDelta(position) => gesture_direction(position.y),
+    }
+}
+
+fn gesture_direction(delta: f64) -> f32 {
+    // signum maps signed zero to a direction and infinity to a finite step.
+    // Check the original precision before narrowing, including tiny deltas.
+    if delta.is_finite() && delta != 0.0 {
+        delta.signum() as f32
+    } else {
+        0.0
+    }
+}
+
 pub(super) fn handle_panel_window_event(
     state: &mut PanelState,
     event_loop: &ActiveEventLoop,
@@ -360,10 +378,13 @@ pub(super) fn handle_panel_window_event(
                 state.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let zoom_delta = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(position) => (position.y as f32 / 80.0).signum(),
-                };
+                let zoom_delta = wheel_vertical_delta(delta);
+                // A horizontal/empty/nonfinite event has no vertical meaning
+                // for paging, zoom or settings. In particular, do not let raw
+                // NaN pixels propagate into the settings scroll position.
+                if zoom_delta == 0.0 {
+                    return;
+                }
                 if state.kind == PanelWindowKind::Main
                     && (state.modifiers.control_key() || state.modifiers.super_key())
                 {
@@ -379,12 +400,14 @@ pub(super) fn handle_panel_window_event(
                         }
                     };
                     state.adjust_settings_scroll(scroll_delta);
+                } else if state.kind == PanelWindowKind::Main {
+                    state.scroll_native_candidates(zoom_delta);
                 }
                 state.window.request_redraw();
             }
             WindowEvent::PinchGesture { delta, .. } => {
                 if state.kind == PanelWindowKind::Main && !state.chrome.compact_mode {
-                    let magnitude = (delta as f32).signum();
+                    let magnitude = gesture_direction(delta);
                     if magnitude > 0.0 {
                         state.adjust_window_scale(1);
                     } else if magnitude < 0.0 {
@@ -465,9 +488,67 @@ fn event_is_safe_while_unfocused(event: &WindowEvent, non_focusing_panel: bool) 
 
 #[cfg(test)]
 mod tests {
-    use super::{dismisses_hover_tooltip, event_is_safe_while_unfocused};
+    use super::{
+        dismisses_hover_tooltip, event_is_safe_while_unfocused, gesture_direction,
+        wheel_vertical_delta,
+    };
     use winit::dpi::PhysicalPosition;
-    use winit::event::{DeviceId, WindowEvent};
+    use winit::event::{DeviceId, MouseScrollDelta, WindowEvent};
+
+    #[test]
+    fn horizontal_zero_and_nonfinite_scroll_have_no_vertical_action() {
+        for y in [0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            for x in [0.0, 60.0, -60.0] {
+                assert_eq!(
+                    wheel_vertical_delta(MouseScrollDelta::PixelDelta(PhysicalPosition::new(x, y))),
+                    0.0,
+                    "pixel delta ({x}, {y}) must not navigate or zoom"
+                );
+            }
+            assert_eq!(
+                wheel_vertical_delta(MouseScrollDelta::LineDelta(1.0, y as f32)),
+                0.0,
+                "line delta y={y} must not navigate or zoom"
+            );
+        }
+    }
+
+    #[test]
+    fn zero_and_nonfinite_pinch_do_not_choose_a_zoom_direction() {
+        for delta in [0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(gesture_direction(delta), 0.0, "pinch delta={delta}");
+        }
+    }
+
+    #[test]
+    fn finite_vertical_scroll_and_pinch_keep_their_existing_direction() {
+        for (delta, expected) in [
+            (0.25, 1.0),
+            (-0.25, -1.0),
+            (80.0, 1.0),
+            (-80.0, -1.0),
+            (f64::from_bits(1), 1.0),
+            (-f64::from_bits(1), -1.0),
+            (f64::MAX, 1.0),
+            (-f64::MAX, -1.0),
+        ] {
+            assert_eq!(
+                wheel_vertical_delta(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                    60.0, delta
+                ))),
+                expected
+            );
+            assert_eq!(gesture_direction(delta), expected);
+        }
+        assert_eq!(
+            wheel_vertical_delta(MouseScrollDelta::LineDelta(5.0, 2.0)),
+            2.0
+        );
+        assert_eq!(
+            wheel_vertical_delta(MouseScrollDelta::LineDelta(5.0, -2.0)),
+            -2.0
+        );
+    }
 
     #[test]
     fn scroll_or_press_hides_tooltips_but_redraw_does_not_cancel_pending_hints() {

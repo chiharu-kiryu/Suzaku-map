@@ -92,6 +92,16 @@ does not imply cross-platform stability. Keep another input method available.
 - **Small dictionaries:** English collocations and Chinese/Japanese conversion are bounded. There
   is no complete Japanese morphological analyzer, personal learning dictionary or arbitrary
   long-sentence offline conversion. Unknown text remains available literally.
+  The unreleased gradual Japanese expansion adds everyday readings/continuations and fixes
+  Romaji boundary and adopted-prefix completion gaps; it does not remove these limits.
+  Authored Japanese sentences now remain available as the whole converted draft
+  advances through matching particles/text. This is prefix matching against the active
+  lexicon, not an inferred reading index for every Kanji in a sentence: `予定がkima`
+  cannot infer `決ま` without a corresponding reading. Unknown prefixes/conflicting tails
+  are not discarded. Horizontal reading separators still disappear only in converted
+  choices (the exact literal stays selectable); line boundaries remain intact.
+  Katakana-to-Kanji lookup and Japanese local continuation beyond 256 scalars remain outside
+  this phase. See [the Japanese data scope](../data/lexicons/README.md#日语日常基础扩充未发布).
   The 0.6.9 source expands the deduplicated English index to 3,906 forms and
   Chinese readings to 602 entries, with more authored collocations and a stable Pinyin
   first-letter index. This is still a curated vocabulary, not a downloaded corpus or learned

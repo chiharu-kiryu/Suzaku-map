@@ -1,10 +1,14 @@
 use super::ranked_candidates;
 use crate::ime::{Candidate, LanguagePlugin};
 use crate::lexicon::{Lexicon, WordLayer};
-use std::sync::OnceLock;
+use std::{collections::HashSet, sync::OnceLock};
 
 fn vocabulary() -> &'static Lexicon {
     crate::lexicon::active("en").expect("English vocabulary is registered")
+}
+
+fn is_word_char(ch: char) -> bool {
+    ch.is_ascii_alphabetic() || matches!(ch, '\'' | '’')
 }
 
 // Indexing is an English implementation concern; the data layer only supplies
@@ -23,7 +27,7 @@ fn indexed_words(layers: &[WordLayer]) -> impl Iterator<Item = &str> {
             )
             .chain(layer.sentences.iter().flat_map(|sentence| {
                 sentence
-                    .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                    .split(|ch: char| !is_word_char(ch))
                     .filter(|word| !word.is_empty())
             }))
     })
@@ -93,17 +97,57 @@ fn dictionary() -> &'static [Word] {
     })
 }
 
+/// Explicit prose separators can start an English word without an ASCII space.
+/// Scan forwards once: punctuation inside a URL/path/identifier must not hide
+/// its syntax and expose a completion-eligible suffix, even in a long draft.
+fn word_boundaries(text: &str) -> impl Iterator<Item = (usize, char)> + '_ {
+    let mut protected_token = false;
+    text.char_indices().filter(move |(_, ch)| {
+        if ch.is_whitespace() {
+            protected_token = false;
+            return true;
+        }
+        protected_token |= matches!(ch, '/' | '\\' | '_' | '@' | '.' | ':' | '-');
+        !protected_token && matches!(ch, '—' | '，' | '。' | '！' | '？' | '；' | '：' | '、')
+    })
+}
+
+// Begin at the nearest preceding token boundary, not at session-history start.
+// A token without whitespace still needs its whole prefix: dropping it could
+// hide a URL/path marker and incorrectly reinterpret its tail as prose.
+fn boundary_scan_window(text: &str, start: usize) -> (usize, &str) {
+    let start = if text[start..].starts_with(char::is_whitespace) {
+        start
+    } else {
+        text[..start]
+            .char_indices()
+            .rev()
+            .find(|(_, ch)| ch.is_whitespace())
+            .map_or(0, |(index, _)| index)
+    };
+    (start, &text[start..])
+}
+
+pub(crate) fn word_boundaries_from(
+    text: &str,
+    start: usize,
+) -> impl Iterator<Item = (usize, char)> + '_ {
+    let (base, window) = boundary_scan_window(text, start);
+    word_boundaries(window).map(move |(index, ch)| (base + index, ch))
+}
+
 /// Only natural-language word tails are eligible. Do not rewrite URLs, paths,
 /// identifiers, numbers, hyphenated expressions or mixed-script input.
 pub fn english_word_prefix(seed: &str) -> Option<&str> {
-    let token = seed.rsplit(char::is_whitespace).next()?;
+    let start = word_boundaries_from(seed, seed.len())
+        .last()
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    let token = &seed[start..];
     let word = token.trim_start_matches(['(', '[', '{', '"', '“', '‘', '\'']);
     if word.is_empty()
         || word.len() > 64
         || !word.starts_with(|c: char| c.is_ascii_alphabetic())
-        || !word
-            .chars()
-            .all(|c| c.is_ascii_alphabetic() || c == '\'' || c == '’')
+        || !word.chars().all(is_word_char)
     {
         return None;
     }
@@ -184,8 +228,17 @@ fn current_line(text: &str) -> &str {
         .map_or(text, |(index, ch)| &text[index + ch.len_utf8()..])
 }
 
-fn context_word_match(context: &str) -> (usize, &'static [String]) {
-    let normalized = current_line(context)
+fn current_clause(text: &str) -> &str {
+    let line = current_line(text);
+    let start = word_boundaries(line)
+        .filter(|(_, ch)| !ch.is_whitespace())
+        .last()
+        .map_or(0, |(index, ch)| index + ch.len_utf8());
+    &line[start..]
+}
+
+fn canonical_context(context: &str) -> String {
+    context
         .split_whitespace()
         .map(|word| {
             // Only ordinary phrase wrappers/separators may be ignored. Keeping
@@ -196,17 +249,55 @@ fn context_word_match(context: &str) -> (usize, &'static [String]) {
             )
         })
         .collect::<Vec<_>>()
-        .join(" ");
-    vocabulary()
-        .next_words()
-        .filter(|(prefix, _)| {
-            normalized == *prefix
+        .join(" ")
+}
+
+struct WordContext {
+    prefix: String,
+    strength: usize,
+    words: &'static [String],
+}
+
+fn index_contexts(
+    contexts: impl Iterator<Item = (&'static str, &'static [String])>,
+) -> Vec<WordContext> {
+    let mut seen = HashSet::new();
+    contexts
+        .filter_map(|(prefix, words)| {
+            let prefix = canonical_context(prefix);
+            // Appended packs may use equivalent case, spacing or apostrophes.
+            // Their spelling must not displace an earlier authored context.
+            (!prefix.is_empty() && seen.insert(prefix.clone())).then(|| WordContext {
+                strength: prefix.chars().count(),
+                prefix,
+                words,
+            })
+        })
+        .collect()
+}
+
+fn next_word_contexts() -> &'static [WordContext] {
+    static CONTEXTS: OnceLock<Vec<WordContext>> = OnceLock::new();
+    CONTEXTS.get_or_init(|| index_contexts(vocabulary().next_words()))
+}
+
+fn phrase_ending_contexts() -> &'static [WordContext] {
+    static CONTEXTS: OnceLock<Vec<WordContext>> = OnceLock::new();
+    CONTEXTS.get_or_init(|| index_contexts(vocabulary().phrase_endings()))
+}
+
+fn context_word_match(context: &str) -> (usize, &'static [String]) {
+    let normalized = canonical_context(current_clause(context));
+    next_word_contexts()
+        .iter()
+        .filter(|entry| {
+            normalized == entry.prefix
                 || normalized
-                    .strip_suffix(prefix)
+                    .strip_suffix(&entry.prefix)
                     .is_some_and(|left| left.ends_with(' '))
         })
-        .max_by_key(|(prefix, _)| prefix.len())
-        .map_or((0, &[]), |(prefix, words)| (prefix.chars().count(), words))
+        .max_by_key(|entry| entry.strength)
+        .map_or((0, &[]), |entry| (entry.strength, entry.words))
 }
 
 fn bounded_context(context: &str) -> &str {
@@ -215,14 +306,25 @@ fn bounded_context(context: &str) -> &str {
         .rev()
         .nth(159)
         .map_or(0, |(index, _)| index);
-    let tail = &context[start..];
-    if start == 0 || context[..start].ends_with(char::is_whitespace) {
-        tail
-    } else {
-        // Discard a token cut by the 160-scalar budget instead of treating its
-        // suffix as a fresh word. Preserve any following whitespace/line break.
-        &tail[tail.find(char::is_whitespace).unwrap_or(tail.len())..]
+    if start == 0 {
+        return context;
     }
+    // Discard a token cut by the 160-scalar budget instead of treating its
+    // suffix as a fresh word. Inspect only this bounded tail and its containing
+    // token, preserving the protection state without scanning old history.
+    word_boundaries_from(context, start)
+        .find(|(index, ch)| index + ch.len_utf8() >= start)
+        .map_or("", |(index, ch)| {
+            let after = index + ch.len_utf8();
+            let boundary = if after == start {
+                start
+            } else if ch.is_whitespace() {
+                index
+            } else {
+                after
+            };
+            &context[boundary..]
+        })
 }
 
 fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
@@ -252,7 +354,7 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
         }
         for (_, remaining) in &phrases {
             let next = remaining
-                .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                .split(|ch: char| !is_word_char(ch))
                 .next()
                 .unwrap_or("");
             if !next.is_empty() {
@@ -285,7 +387,7 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
             continue;
         }
         let suffix = remaining
-            .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+            .split(|ch: char| !is_word_char(ch))
             .next()
             .unwrap_or("");
         if !suffix.is_empty() {
@@ -309,7 +411,7 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
             if remaining.starts_with(char::is_whitespace) {
                 let next = remaining
                     .trim_start()
-                    .split(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                    .split(|ch: char| !is_word_char(ch))
                     .next()
                     .unwrap_or("");
                 if !next.is_empty() {
@@ -326,11 +428,12 @@ fn english_variants(seed: &str, committed_context: &str) -> Vec<String> {
             add(format!("{seed} {word}"));
         }
     }
-    if let Some((_, endings)) = vocabulary()
-        .phrase_endings()
-        .find(|(prefix, _)| *prefix == seed.to_lowercase())
+    let ending_context = canonical_context(current_clause(seed));
+    if let Some(entry) = phrase_ending_contexts()
+        .iter()
+        .find(|entry| entry.prefix == ending_context)
     {
-        for ending in endings {
+        for ending in entry.words {
             add(format!("{seed} {ending}"));
         }
     }
@@ -388,6 +491,7 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
     }
     let combined = format!("{} {seed}", bounded_context(context));
     let combined = current_line(&combined);
+    let mut separators = word_boundaries(combined).peekable();
     let mut boundary = true;
     let starts: Vec<_> = combined
         .char_indices()
@@ -395,7 +499,13 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
             let start = boundary && ch.is_ascii_alphabetic();
             // An ASCII quote opens a word only at an existing boundary. Treating
             // every apostrophe as a boundary would split contractions/identifiers.
-            boundary = ch.is_whitespace()
+            let separator = separators
+                .peek()
+                .is_some_and(|(offset, _)| *offset == index);
+            if separator {
+                separators.next();
+            }
+            boundary = separator
                 || matches!(ch, '(' | '[' | '{' | '"' | '“' | '‘')
                 || (boundary && ch == '\'');
             start.then_some(index)
@@ -434,7 +544,7 @@ pub(crate) fn mixed_candidates(
     for (_, remaining) in sentence_remainders(seed, context) {
         let text = if let Some(prefix) = english_word_prefix(seed) {
             let split = remaining
-                .find(|ch: char| !ch.is_ascii_alphabetic() && ch != '\'')
+                .find(|ch: char| !is_word_char(ch))
                 .unwrap_or(remaining.len());
             let word = case_completion(
                 &format!(
@@ -489,7 +599,7 @@ pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'
     } else {
         suffix
     };
-    let split = suffix.find(|ch: char| !ch.is_ascii_alphabetic() && !matches!(ch, '\'' | '’'))?;
+    let split = suffix.find(|ch: char| !is_word_char(ch))?;
     if split == 0 {
         return None;
     }
@@ -514,7 +624,7 @@ mod tests {
     use super::*;
 
     // Current total, independent of the immutable per-layer historical baselines.
-    const EXPECTED_DICTIONARY_WORDS: usize = 6111;
+    const EXPECTED_DICTIONARY_WORDS: usize = 6124;
 
     fn layer_words(id: &str) -> impl Iterator<Item = &'static str> {
         vocabulary()
@@ -542,6 +652,90 @@ mod tests {
             assert_eq!(words[0], seed);
             assert!(words.contains(&expected.into()), "{seed}: {words:?}");
             assert!(words.iter().all(|word| word.starts_with(seed)));
+        }
+    }
+
+    #[test]
+    fn boundary_scan_window_excludes_finished_history_without_hiding_token_syntax() {
+        let history = format!("{}\u{3000}", "Completed note. ".repeat(4096));
+        for token in [
+            "说明—hel".to_owned(),
+            "前文，hel".to_owned(),
+            format!("https://{}，hel", "字".repeat(400)),
+            "src/说明—hel".to_owned(),
+            "user_name，hel".to_owned(),
+        ] {
+            let text = format!("{history}{token}");
+            let tail_start = text.len() - "hel".len();
+            let (base, window) = boundary_scan_window(&text, tail_start);
+            assert_eq!(base, history.len() - '\u{3000}'.len_utf8());
+            assert_eq!(window, format!("\u{3000}{token}"));
+            assert_eq!(
+                word_boundaries_from(&text, tail_start)
+                    .filter(|(index, _)| *index >= tail_start)
+                    .collect::<Vec<_>>(),
+                word_boundaries(&text)
+                    .filter(|(index, _)| *index >= tail_start)
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                word_boundaries_from(&text, text.len()).last(),
+                word_boundaries(&text).last()
+            );
+        }
+        let unsplit = format!("https://{}—hel", "字".repeat(400));
+        assert_eq!(
+            boundary_scan_window(&unsplit, unsplit.len() - 3),
+            (0, unsplit.as_str())
+        );
+        assert!(
+            word_boundaries_from(&unsplit, unsplit.len() - 3)
+                .next()
+                .is_none()
+        );
+        let whitespace_start = history.len() - '\u{3000}'.len_utf8();
+        assert_eq!(
+            boundary_scan_window(&history, whitespace_start),
+            (whitespace_start, "\u{3000}")
+        );
+    }
+
+    #[test]
+    fn bounded_context_token_scan_preserves_full_scan_semantics() {
+        fn full_scan(context: &str) -> &str {
+            let start = context
+                .char_indices()
+                .rev()
+                .nth(159)
+                .map_or(0, |(index, _)| index);
+            if start == 0
+                || word_boundaries(context).any(|(index, ch)| index + ch.len_utf8() == start)
+            {
+                return &context[start..];
+            }
+            word_boundaries(context)
+                .find(|(index, _)| *index >= start)
+                .map_or("", |(index, ch)| {
+                    &context[if ch.is_whitespace() {
+                        index
+                    } else {
+                        index + ch.len_utf8()
+                    }..]
+                })
+        }
+        let history = "Already finished. ".repeat(1024);
+        for separator in [" ", "  ", "\u{3000}", "\n", "—", "，", "。"] {
+            for padding in [0, 150, 154, 155, 156, 157, 158, 159, 160, 161] {
+                for token in ["plain", "https://host/", "user_name", "example.com", "你好"] {
+                    let context =
+                        format!("{history}{token}{}{separator}good", "字".repeat(padding));
+                    assert_eq!(
+                        bounded_context(&context),
+                        full_scan(&context),
+                        "{token:?}/{separator:?}/{padding}"
+                    );
+                }
+            }
         }
     }
 
@@ -753,6 +947,73 @@ mod tests {
                 && *kind == crate::ime::candidate_mix::CandidateKind::Sentence
         }));
         assert!(mixed_candidates("x".repeat(5000).as_str(), "please").is_empty());
+    }
+
+    #[test]
+    fn prose_boundaries_keep_bilingual_word_and_sentence_completion() {
+        for separator in ["—", "，", "。", "！", "？", "；", "：", "、"] {
+            let prefix = format!("前文{separator}");
+            for (tail, word, sentence) in [
+                ("hel", "hello", "hello, how are you?"),
+                ("Please SEN", "Please SEND", "Please SEND me the details."),
+                (
+                    "please send ",
+                    "please send me",
+                    "please send me the details.",
+                ),
+            ] {
+                let seed = format!("{prefix}{tail}");
+                let words = english_sentence_variants(&seed);
+                assert_eq!(words[0], seed);
+                assert!(
+                    words.contains(&format!("{prefix}{word}")),
+                    "{seed}: {words:?}"
+                );
+                let sentences = mixed_candidates(&seed, "");
+                assert!(
+                    sentences
+                        .iter()
+                        .any(|(text, _)| text == &format!("{prefix}{sentence}")),
+                    "{seed}: {sentences:?}"
+                );
+                assert!(words.iter().all(|text| text.starts_with(&seed)));
+                assert!(sentences.iter().all(|(text, _)| text.starts_with(&seed)));
+            }
+            assert_eq!(
+                english_variants("m", &format!("{prefix}good"))[1],
+                "morning"
+            );
+            assert!(
+                mixed_candidates("me the d", &format!("{prefix}please send"))
+                    .iter()
+                    .any(|(text, _)| text == "me the details.")
+            );
+        }
+    }
+
+    #[test]
+    fn prose_boundaries_do_not_expose_suffixes_inside_opaque_tokens() {
+        for seed in [
+            "hello-world",
+            "note.hel",
+            "note:hel",
+            "note,hel",
+            "user_hel",
+            "test@hel",
+            "src/hel",
+            "src\\hel",
+            "hello–hel",
+            "你好hel",
+            "https://host/前文，hel",
+            "src/前文—hel",
+            "user_前文，hel",
+            "person@前文。hel",
+            "example.com—hel",
+            "user-name，hel",
+        ] {
+            assert_eq!(english_sentence_variants(seed), [seed], "{seed}");
+            assert!(mixed_candidates(seed, "").is_empty(), "{seed}");
+        }
     }
 
     #[test]
@@ -1319,6 +1580,117 @@ mod tests {
     }
 
     #[test]
+    fn daily_coordination_preserves_all_released_word_ranks() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..13]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6111);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured from the clean 0.8.1 source, before this batch was appended.
+        assert_eq!(count, 6111);
+        assert_eq!(hash, 0x99a6271dff7f0b9f);
+        let layer = &vocabulary().word_layers()[13];
+        assert_eq!(layer.id, "daily_coordination");
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
+    }
+
+    #[test]
+    fn daily_social_preserves_coordination_word_ranks() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..14]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6113);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before appending social data; retain every older snapshot.
+        assert_eq!(count, 6113);
+        assert_eq!(hash, 0xdf1bddaff4c3ecea);
+        let layer = &vocabulary().word_layers()[14];
+        assert_eq!(layer.id, "daily_social");
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
+    }
+
+    #[test]
+    fn daily_objects_preserves_social_word_ranks() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..15]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6117);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before appending daily_objects; all earlier snapshots remain.
+        assert_eq!(count, 6117);
+        assert_eq!(hash, 0x0e93ef5b25176f5a);
+        let layer = &vocabulary().word_layers()[15];
+        assert_eq!(layer.id, "daily_objects");
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
+    }
+
+    #[test]
     fn authored_collocations_and_sentences_are_unique_and_reachable() {
         use crate::ime::candidate_mix::CandidateKind;
         let mut keys = std::collections::HashSet::new();
@@ -1357,8 +1729,8 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 425);
-        assert_eq!(sentences.len(), 814);
+        assert_eq!(keys.len(), 497);
+        assert_eq!(sentences.len(), 958);
     }
 
     #[test]

@@ -101,6 +101,10 @@ jobs:
         run: python3 scripts/test-editor-observer.py
       - name: Test owned X11 focus ancestry without a display
         run: python3 scripts/test-x11-focus.py
+      - name: Validate functional maturity inventory and its source snapshot
+        run: |
+          python3 scripts/functional-tensor.py --check
+          python3 scripts/test-functional-tensor.py
       - name: Test private IBus diagnostic isolation and failure propagation
         run: python3 scripts/test-native-ibus-trace.py
       - name: Test borrowed IBus signal payload lifetimes
@@ -132,6 +136,14 @@ jobs:
         run: |
           bash scripts/test-linux-apps.sh gtk3
           SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh gtk3
+      - name: Test native paging, caret following, bottom layout and platform detection
+        run: |
+          bash scripts/test-linux-apps.sh candidates
+          SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh candidates
+          bash scripts/test-linux-apps.sh bottom-layout
+          SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh bottom-layout
+          bash scripts/test-linux-apps.sh auto-layout
+          SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh auto-layout
       - name: Test expanded bilingual vocabulary in real GTK input
         run: bash scripts/test-linux-apps.sh vocabulary
       - name: Test owned editor observation across two real windows

@@ -51,6 +51,12 @@ pub(super) struct WindowResizeState {
 }
 
 impl WindowResizeState {
+    pub(super) fn awaiting_size(&self, current: PhysicalSize<u32>, now: Instant) -> bool {
+        self.pending.is_some_and(|(target, _, started)| {
+            current != target && now.saturating_duration_since(started) < RESIZE_ACK_WINDOW
+        })
+    }
+
     fn request(
         &mut self,
         current: PhysicalSize<u32>,
@@ -94,7 +100,7 @@ impl WindowResizeState {
     }
 }
 
-fn content_fitted_size(
+pub(super) fn content_fitted_size(
     width: u32,
     dpi: f64,
     max_height: u32,
@@ -188,13 +194,21 @@ fn window_scale_limits_for_base(base: LogicalSize<f64>) -> (f32, f32) {
     )
 }
 
-fn resolve_window_scale_request(scale: f32, base: LogicalSize<f64>, quantize: bool) -> f32 {
+fn normalized_window_scale(scale: f32, quantize: bool) -> f32 {
     let clamped_scale = scale.clamp(PANEL_SCALE_MIN, PANEL_SCALE_MAX);
-    let normalized_scale = if quantize {
+    if quantize {
         (clamped_scale / PANEL_SCALE_STEP).round() * PANEL_SCALE_STEP
     } else {
         clamped_scale
-    };
+    }
+}
+
+pub(super) fn resolve_window_scale_request(
+    scale: f32,
+    base: LogicalSize<f64>,
+    quantize: bool,
+) -> f32 {
+    let normalized_scale = normalized_window_scale(scale, quantize);
     let (min_scale_for_base, max_scale_for_base) = window_scale_limits_for_base(base);
     normalized_scale.clamp(min_scale_for_base, max_scale_for_base)
 }
@@ -355,7 +369,7 @@ fn compact_snap_for_position(
 }
 
 impl PanelState {
-    fn fitted_size_for_width(&self, width: u32) -> PhysicalSize<u32> {
+    pub(super) fn fitted_size_for_width(&self, width: u32) -> PhysicalSize<u32> {
         let dpi = self.window.scale_factor();
         let max_height = (MAX_PANEL_INNER_HEIGHT * dpi).round() as u32;
         let max_height = self.window.current_monitor().map_or(max_height, |monitor| {
@@ -369,7 +383,7 @@ impl PanelState {
         content_fitted_size(width, dpi, max_height, &self.chrome)
     }
 
-    fn request_panel_size(&mut self, target: PhysicalSize<u32>) {
+    pub(super) fn request_panel_size(&mut self, target: PhysicalSize<u32>) {
         if !self
             .window_resize_state
             .request(self.window.inner_size(), target, Instant::now())
@@ -384,6 +398,10 @@ impl PanelState {
     }
 
     pub(super) fn fit_window_to_content(&mut self) {
+        if self.bottom_layout_enabled() {
+            self.update_bottom_layout();
+            return;
+        }
         if self.kind == PanelWindowKind::Settings {
             let Some(metadata) = self
                 .last_scene
@@ -428,6 +446,7 @@ impl PanelState {
         // The orb is always borderless. Expanded windows follow the saved preference,
         // not the window manager's possibly delayed decoration acknowledgement.
         let decorated = !self.chrome.hide_system_titlebar
+            && !self.bottom_layout_enabled()
             && (self.kind == PanelWindowKind::Settings || !self.chrome.compact_mode);
         // Track requests ourselves: Wayland may still report the old decoration state
         // when the user changes their preference again before the configure event.
@@ -495,6 +514,7 @@ impl PanelState {
             self.restore_expanded_window_position(restored);
         }
         self.chrome.compact_mode = compact;
+        self.reset_dock_window_requests();
         self.interaction.compact_hovered = false;
         self.interaction.panel_dragging = false;
         self.interaction.panel_drag_moved = false;
@@ -510,6 +530,10 @@ impl PanelState {
     }
 
     pub(super) fn begin_panel_drag(&mut self) {
+        if self.bottom_layout_enabled() {
+            return;
+        }
+        self.suspend_native_position_for_drag();
         self.interaction.panel_dragging = true;
         self.interaction.panel_drag_moved = false;
         self.interaction.panel_drag_start_cursor = self.cursor_position;
@@ -525,11 +549,14 @@ impl PanelState {
     }
 
     pub(super) fn update_pointer_cursor(&mut self) {
-        let cursor = pointer_cursor_for(
+        let mut cursor = pointer_cursor_for(
             &self.interaction,
             self.cursor_position.is_some(),
             self.kind == PanelWindowKind::Main && self.chrome.compact_mode,
         );
+        if self.bottom_layout_enabled() && cursor == CursorIcon::Grab {
+            cursor = CursorIcon::Default;
+        }
         if self.interaction.pointer_cursor != cursor {
             self.window.set_cursor(cursor);
             self.interaction.pointer_cursor = cursor;
@@ -697,6 +724,14 @@ impl PanelState {
     }
 
     pub(super) fn constrain_expanded_window_position(&mut self) {
+        if self.bottom_layout_enabled() {
+            self.update_bottom_layout();
+            return;
+        }
+        if self.native_position_active() {
+            self.update_native_position();
+            return;
+        }
         if self.kind == PanelWindowKind::Main && self.chrome.compact_mode {
             return;
         }
@@ -841,13 +876,22 @@ impl PanelState {
                     .to_logical::<f64>(self.window.scale_factor())
             }),
         };
-        let target_scale = resolve_window_scale_request(scale, base, quantize);
+        let target_scale = if self.bottom_layout_enabled() {
+            normalized_window_scale(scale, quantize)
+        } else {
+            resolve_window_scale_request(scale, base, quantize)
+        };
         if !is_significant_window_scale_change(self.window_scale, target_scale) {
             return;
         }
 
         self.window_scale = target_scale;
         self.expanded_window_base_size = Some(base);
+        if self.bottom_layout_enabled() {
+            self.update_bottom_layout();
+            self.persist_display_settings();
+            return;
+        }
         let width = (base.width * target_scale as f64 * self.window.scale_factor()).round() as u32;
         let target = self.fitted_size_for_width(width);
         self.request_panel_size(target);
@@ -870,7 +914,10 @@ impl PanelState {
     }
 
     pub(super) fn record_scaled_expanded_size(&mut self, logical_size: LogicalSize<f64>) {
-        if self.kind != PanelWindowKind::Main || self.chrome.compact_mode {
+        if self.kind != PanelWindowKind::Main
+            || self.chrome.compact_mode
+            || self.bottom_layout_enabled()
+        {
             return;
         }
         let (next_size, next_base) = next_scaled_expanded_record(
@@ -889,6 +936,32 @@ impl PanelState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dock_render_waits_for_height_ack_without_waiting_forever_for_a_clamping_wm() {
+        let now = Instant::now();
+        let mut state = WindowResizeState::default();
+        let old = PhysicalSize::new(1000, 350);
+        let target = PhysicalSize::new(1000, 530);
+        assert!(state.request(old, target, now));
+        assert!(state.awaiting_size(old, now));
+        assert!(!state.awaiting_size(target, now));
+        assert!(!state.awaiting_size(old, now + RESIZE_ACK_WINDOW));
+        assert!(!state.observe(target, now));
+        assert!(!state.awaiting_size(old, now));
+    }
+
+    #[test]
+    fn dock_zoom_uses_global_bounds_and_float_restore_uses_saved_width() {
+        let wide_float = LogicalSize::new(1300.0, 300.0);
+        let dock_scale = normalized_window_scale(1.5, true);
+        assert!((dock_scale - 1.5).abs() < 0.001);
+        let floating_scale = resolve_window_scale_request(dock_scale, wide_float, false);
+        assert!(floating_scale < dock_scale);
+        assert!(wide_float.width * f64::from(floating_scale) <= MAX_PANEL_INNER_WIDTH + 0.001);
+        assert_eq!(normalized_window_scale(2.0, false), PANEL_SCALE_MAX);
+        assert_eq!(normalized_window_scale(0.0, false), PANEL_SCALE_MIN);
+    }
 
     #[test]
     fn pointer_cursor_distinguishes_drag_background_from_controls() {

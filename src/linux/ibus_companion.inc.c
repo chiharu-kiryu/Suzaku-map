@@ -6,9 +6,13 @@ static char *suzaku_companion_snapshot(void) {
     GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
     gboolean private_input = focused != NULL &&
         ((SuzakuIBusEngine *)focused)->private_input;
+    SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
+    gboolean cursor_valid = engine != NULL && !private_input && engine->cursor_valid;
+    IBusRectangle cursor = cursor_valid ? engine->cursor_rect : (IBusRectangle){0};
     char *frame = suzaku_host_ime_companion_snapshot_utf8(
         suzaku_companion_host_id, suzaku_companion_context,
-        suzaku_companion_revision, focused != NULL, private_input);
+        suzaku_companion_revision, focused != NULL, private_input,
+        cursor_valid, cursor.x, cursor.y, cursor.width, cursor.height);
     g_clear_object(&focused);
     return frame;
 }
@@ -26,8 +30,7 @@ static gboolean suzaku_companion_send(GSocketConnection *connection, const char 
     return TRUE;
 }
 
-static void suzaku_companion_publish(void) {
-    suzaku_companion_revision++;
+static void suzaku_companion_publish_geometry(void) {
     if (suzaku_companion_subscribers == NULL || suzaku_companion_subscribers->len == 0) { return; }
     char *frame = suzaku_companion_snapshot();
     if (frame == NULL) { return; }
@@ -37,6 +40,11 @@ static void suzaku_companion_publish(void) {
         }
     }
     suzaku_host_ime_free_utf8(frame);
+}
+
+static void suzaku_companion_publish(void) {
+    suzaku_companion_revision++;
+    suzaku_companion_publish_geometry();
 }
 
 static void suzaku_companion_subscribe(GSocketConnection *connection) {

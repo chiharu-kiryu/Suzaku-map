@@ -2176,7 +2176,199 @@
     {"reading": "wan'dian'dao", "text": "晚点到", "kind": "word"},
     {"reading": "zao'dian'dao", "text": "早点到", "kind": "word"},
     {"reading": "deng'ni'hui'fu", "text": "等你回复", "kind": "word"},
-    {"reading": "shi'jian'he'shi", "text": "时间合适", "kind": "word"}
+    {"reading": "shi'jian'he'shi", "text": "时间合适", "kind": "word"},
+    {"reading": "zai'jiang'yi'bian", "text": "再讲一遍", "kind": "word"},
+    {"reading": "shuo'man'yi'dian", "text": "说慢一点", "kind": "word"},
+    {"reading": "kan'bu'dong", "text": "看不懂", "kind": "word"},
+    {"reading": "kan'dong'le", "text": "看懂了", "kind": "word"},
+    {"reading": "ting'dong'le", "text": "听懂了", "kind": "word"},
+    {"reading": "mei'kan'qing", "text": "没看清", "kind": "word"},
+    {"reading": "wo'mei'ting'dong", "text": "我没听懂", "kind": "word"},
+    {"reading": "wo'mei'kan'dong", "text": "我没看懂", "kind": "word"},
+    {"reading": "wo'shi'shuo", "text": "我是说", "kind": "word"},
+    {"reading": "shi'zhe'yang'ma", "text": "是这样吗", "kind": "word"},
+    {"reading": "shi'zhe'ge'ma", "text": "是这个吗", "kind": "word"},
+    {"reading": "zhe'yang'dui'ma", "text": "这样对吗", "kind": "word"},
+    {"reading": "mei'nong'ming'bai", "text": "没弄明白", "kind": "word"},
+    {"reading": "mei", "text": "没", "kind": "word"},
+    {"reading": "zai'que'ren'yi'xia", "text": "再确认一下", "kind": "word"},
+    {"reading": "mei'you", "text": "没有", "kind": "word"},
+    {"reading": "wo'cha'yi'xia", "text": "我查一下", "kind": "word"},
+    {"reading": "bang'wo'kan'kan", "text": "帮我看看", "kind": "word"},
+    {"reading": "bang'wo'yi'xia", "text": "帮我一下", "kind": "word"},
+    {"reading": "jie'wo'yi'xia", "text": "借我一下", "kind": "word"},
+    {"reading": "bang'ge'mang", "text": "帮个忙", "kind": "word"},
+    {"reading": "da'ba'shou", "text": "搭把手", "kind": "word"},
+    {"reading": "qing'rang'yi'xia", "text": "请让一下", "kind": "word"},
+    {"reading": "jie'guo'yi'xia", "text": "借过一下", "kind": "word"},
+    {"reading": "bie'ke'qi", "text": "别客气", "kind": "word"},
+    {"reading": "ji'cuo'le", "text": "记错了", "kind": "word"},
+    {"reading": "wo'wang'le", "text": "我忘了", "kind": "word"},
+    {"reading": "nong'cuo'le", "text": "弄错了", "kind": "word"},
+    {"reading": "gao'cuo'le", "text": "搞错了", "kind": "word"},
+    {"reading": "fa'cuo'le", "text": "发错了", "kind": "word"},
+    {"reading": "kan'cuo'le", "text": "看错了", "kind": "word"},
+    {"reading": "ting'cuo'le", "text": "听错了", "kind": "word"},
+    {"reading": "an'cuo'le", "text": "按错了", "kind": "word"},
+    {"reading": "wo'lai'ba", "text": "我来吧", "kind": "word"},
+    {"reading": "jiao'gei'wo'ba", "text": "交给我吧", "kind": "word"},
+    {"reading": "ni'xian'lai", "text": "你先来", "kind": "word"},
+    {"reading": "wo'xian'lai", "text": "我先来", "kind": "word"},
+    {"reading": "yi'qi'zuo", "text": "一起做", "kind": "word"},
+    {"reading": "fen'tou'xing'dong", "text": "分头行动", "kind": "word"},
+    {"reading": "lun'dao'ni'le", "text": "轮到你了", "kind": "word"},
+    {"reading": "lun'dao'wo'le", "text": "轮到我了", "kind": "word"},
+    {"reading": "wo'shi'shi'kan", "text": "我试试看", "kind": "word"},
+    {"reading": "wan'dian'hui'fu", "text": "晚点回复", "kind": "word"},
+    {"reading": "hui'fu'ni'le", "text": "回复你了", "kind": "word"},
+    {"reading": "fa'gei'ni'le", "text": "发给你了", "kind": "word"},
+    {"reading": "you'mei'you", "text": "有没有", "kind": "word"},
+    {"reading": "fa'wo'yi'xia", "text": "发我一下", "kind": "word"},
+    {"reading": "zhuan'fa'yi'xia", "text": "转发一下", "kind": "word"},
+    {"reading": "da'ge'dian'hua", "text": "打个电话", "kind": "word"},
+    {"reading": "jie'ge'dian'hua", "text": "接个电话", "kind": "word"},
+    {"reading": "bu'yong'hui'fu", "text": "不用回复", "kind": "word"},
+    {"reading": "bao'chi'lian'xi", "text": "保持联系", "kind": "word"},
+    {"reading": "sui'shi'zhao'wo", "text": "随时找我", "kind": "word"},
+    {"reading": "you'shi'zhao'wo", "text": "有事找我", "kind": "word"},
+    {"reading": "wo'ji'xia'le", "text": "我记下了", "kind": "word"},
+    {"reading": "ji'xia'lai", "text": "记下来", "kind": "word"},
+    {"reading": "bang'wo'zhuan'gao", "text": "帮我转告", "kind": "word"},
+    {"reading": "fang'bian'de'shi'hou", "text": "方便的时候", "kind": "word"},
+    {"reading": "you'kong'zai'hui", "text": "有空再回", "kind": "word"},
+    {"reading": "xian'mang'ni'de", "text": "先忙你的", "kind": "word"},
+    {"reading": "shuo'ding'le", "text": "说定了", "kind": "word"},
+    {"reading": "mei'wen'ti'de", "text": "没问题的", "kind": "word"},
+    {"reading": "wo'chu'li'yi'xia", "text": "我处理一下", "kind": "word"},
+    {"reading": "wo'wen'yi'xia", "text": "我问一下", "kind": "word"},
+    {"reading": "zui'jin'zen'me'yang", "text": "最近怎么样", "kind": "word"},
+    {"reading": "zui'jin'mang'ma", "text": "最近忙吗", "kind": "word"},
+    {"reading": "hai'shun'li'ma", "text": "还顺利吗", "kind": "word"},
+    {"reading": "hai'xi'guan'ma", "text": "还习惯吗", "kind": "word"},
+    {"reading": "shui'de'hao'ma", "text": "睡得好吗", "kind": "word"},
+    {"reading": "xiu'xi'de'zen'me'yang", "text": "休息得怎么样", "kind": "word"},
+    {"reading": "bie'tai'lei'le", "text": "别太累了", "kind": "word"},
+    {"reading": "zhao'gu'hao'zi'ji", "text": "照顾好自己", "kind": "word"},
+    {"reading": "ji'de'chi'fan", "text": "记得吃饭", "kind": "word"},
+    {"reading": "zao'dian'shui'ba", "text": "早点睡吧", "kind": "word"},
+    {"reading": "bie'ao'ye'le", "text": "别熬夜了", "kind": "word"},
+    {"reading": "man'dian'zou", "text": "慢点走", "kind": "word"},
+    {"reading": "dao'jia'shuo'yi'sheng", "text": "到家说一声", "kind": "word"},
+    {"reading": "ji'de'bao'ping'an", "text": "记得报平安", "kind": "word"},
+    {"reading": "wo'ting'zhe'ne", "text": "我听着呢", "kind": "word"},
+    {"reading": "xiang'shuo'jiu'shuo", "text": "想说就说", "kind": "word"},
+    {"reading": "wo'neng'li'jie", "text": "我能理解", "kind": "word"},
+    {"reading": "que'shi'bu'rong'yi", "text": "确实不容易", "kind": "word"},
+    {"reading": "nan'wei'ni'le", "text": "难为你了", "kind": "word"},
+    {"reading": "bie'wang'xin'li'qu", "text": "别往心里去", "kind": "word"},
+    {"reading": "bu'yong'mian'qiang", "text": "不用勉强", "kind": "word"},
+    {"reading": "liang'li'er'xing", "text": "量力而行", "kind": "word"},
+    {"reading": "kai'xin'jiu'hao", "text": "开心就好", "kind": "word"},
+    {"reading": "ni'kai'xin'jiu'hao", "text": "你开心就好", "kind": "word"},
+    {"reading": "ti'ni'gao'xing", "text": "替你高兴", "kind": "word"},
+    {"reading": "gong'xi'ni'ya", "text": "恭喜你呀", "kind": "word"},
+    {"reading": "zhi'de'qing'zhu", "text": "值得庆祝", "kind": "word"},
+    {"reading": "zhen'wei'ni'gao'xing", "text": "真为你高兴", "kind": "word"},
+    {"reading": "yi'qi'chi'fan'ba", "text": "一起吃饭吧", "kind": "word"},
+    {"reading": "chu'lai'zou'zou", "text": "出来走走", "kind": "word"},
+    {"reading": "yi'qi'san'bu", "text": "一起散步", "kind": "word"},
+    {"reading": "he'bei'ka'fei", "text": "喝杯咖啡", "kind": "word"},
+    {"reading": "zhao'ge'di'fang'zuo'zuo", "text": "找个地方坐坐", "kind": "word"},
+    {"reading": "na'tian'fang'bian", "text": "哪天方便", "kind": "word"},
+    {"reading": "zhou'mo'jian'ba", "text": "周末见吧", "kind": "word"},
+    {"reading": "wo'men'zai'na'jian", "text": "我们在哪见", "kind": "word"},
+    {"reading": "wo'qu'jie'ni", "text": "我去接你", "kind": "word"},
+    {"reading": "xu'yao'wo'jie'ma", "text": "需要我接吗", "kind": "word"},
+    {"reading": "wo'lai'an'pai", "text": "我来安排", "kind": "word"},
+    {"reading": "ni'lai'jue'ding", "text": "你来决定", "kind": "word"},
+    {"reading": "ting'ni'an'pai", "text": "听你安排", "kind": "word"},
+    {"reading": "dou'ting'ni'de", "text": "都听你的", "kind": "word"},
+    {"reading": "wo'dou'ke'yi", "text": "我都可以", "kind": "word"},
+    {"reading": "kan'ni'fang'bian", "text": "看你方便", "kind": "word"},
+    {"reading": "dao'shi'hou'zai'shuo", "text": "到时候再说", "kind": "word"},
+    {"reading": "dao'shi'lian'xi", "text": "到时联系", "kind": "word"},
+    {"reading": "lin'shi'you'an'pai", "text": "临时有安排", "kind": "word"},
+    {"reading": "jin'tian'zou'bu'kai", "text": "今天走不开", "kind": "word"},
+    {"reading": "zhe'ci'qu'bu'liao", "text": "这次去不了", "kind": "word"},
+    {"reading": "xia'ci'yi'ding", "text": "下次一定", "kind": "word"},
+    {"reading": "xie'xie'yao'qing", "text": "谢谢邀请", "kind": "word"},
+    {"reading": "xin'yi'ling'le", "text": "心意领了", "kind": "word"},
+    {"reading": "zhen'de'bu'yong", "text": "真的不用", "kind": "word"},
+    {"reading": "bu'yong'te'yi", "text": "不用特意", "kind": "word"},
+    {"reading": "bie'po'fei'le", "text": "别破费了", "kind": "word"},
+    {"reading": "bie'zhe'me'ke'qi", "text": "别这么客气", "kind": "word"},
+    {"reading": "wo'xian'bu'qu'le", "text": "我先不去了", "kind": "word"},
+    {"reading": "gai'ge'shi'jian'ba", "text": "改个时间吧", "kind": "word"},
+    {"reading": "ti'qian'shuo'yi'sheng", "text": "提前说一声", "kind": "word"},
+    {"reading": "dao'le'gao'su'wo", "text": "到了告诉我", "kind": "word"},
+    {"reading": "man'man'liao", "text": "慢慢聊", "kind": "word"},
+    {"reading": "liao'de'hen'kai'xin", "text": "聊得很开心", "kind": "word"},
+    {"reading": "jin'tian'hen'kai'xin", "text": "今天很开心", "kind": "word"},
+    {"reading": "xia'ci'zai'liao", "text": "下次再聊", "kind": "word"},
+    {"reading": "fang'na'le", "text": "放哪了", "kind": "word"},
+    {"reading": "fang'zai'na'li", "text": "放在哪里", "kind": "word"},
+    {"reading": "fang'hui'yuan'chu", "text": "放回原处", "kind": "word"},
+    {"reading": "fang'dao'zhuo'shang", "text": "放到桌上", "kind": "word"},
+    {"reading": "fang'jin'chou'ti", "text": "放进抽屉", "kind": "word"},
+    {"reading": "zai'gui'zi'li", "text": "在柜子里", "kind": "word"},
+    {"reading": "zai'bao'li'mian", "text": "在包里面", "kind": "word"},
+    {"reading": "zai'ni'pang'bian", "text": "在你旁边", "kind": "word"},
+    {"reading": "zai'men'hou'mian", "text": "在门后面", "kind": "word"},
+    {"reading": "zai'zuo'shou'bian", "text": "在左手边", "kind": "word"},
+    {"reading": "zai'you'shou'bian", "text": "在右手边", "kind": "word"},
+    {"reading": "zhao'dao'le'ma", "text": "找到了吗", "kind": "word"},
+    {"reading": "hai'mei'zhao'dao", "text": "还没找到", "kind": "word"},
+    {"reading": "bang'wo'zhao'zhao", "text": "帮我找找", "kind": "word"},
+    {"reading": "bie'nong'diu'le", "text": "别弄丢了", "kind": "word"},
+    {"reading": "ji'de'dai'shang", "text": "记得带上", "kind": "word"},
+    {"reading": "na'guo'lai", "text": "拿过来", "kind": "word"},
+    {"reading": "na'guo'qu", "text": "拿过去", "kind": "word"},
+    {"reading": "di'gei'wo", "text": "递给我", "kind": "word"},
+    {"reading": "bang'wo'na'yi'xia", "text": "帮我拿一下", "kind": "word"},
+    {"reading": "bang'wo'fu'yi'xia", "text": "帮我扶一下", "kind": "word"},
+    {"reading": "bang'wo'ban'yi'xia", "text": "帮我搬一下", "kind": "word"},
+    {"reading": "xian'fang'zhe'li", "text": "先放这里", "kind": "word"},
+    {"reading": "qing'na'qing'fang", "text": "轻拿轻放", "kind": "word"},
+    {"reading": "xiao'xin'tang'shou", "text": "小心烫手", "kind": "word"},
+    {"reading": "xiao'xin'bie'shuai'le", "text": "小心别摔了", "kind": "word"},
+    {"reading": "ba'men'guan'shang", "text": "把门关上", "kind": "word"},
+    {"reading": "ba'chuang'da'kai", "text": "把窗打开", "kind": "word"},
+    {"reading": "gei'wo'liu'yi'ge", "text": "给我留一个", "kind": "word"},
+    {"reading": "bang'wo'shou'qi'lai", "text": "帮我收起来", "kind": "word"},
+    {"reading": "yong'wan'huan'gei'wo", "text": "用完还给我", "kind": "word"},
+    {"reading": "xian'jie'wo'yong'yong", "text": "先借我用用", "kind": "word"},
+    {"reading": "gou'bu'gou", "text": "够不够", "kind": "word"},
+    {"reading": "gou'yong'le", "text": "够用了", "kind": "word"},
+    {"reading": "hai'bu'gou", "text": "还不够", "kind": "word"},
+    {"reading": "hai'sheng'duo'shao", "text": "还剩多少", "kind": "word"},
+    {"reading": "hai'you'ji'ge", "text": "还有几个", "kind": "word"},
+    {"reading": "hai'cha'ji'ge", "text": "还差几个", "kind": "word"},
+    {"reading": "duo'na'yi'ge", "text": "多拿一个", "kind": "word"},
+    {"reading": "shao'na'yi'ge", "text": "少拿一个", "kind": "word"},
+    {"reading": "mei'ren'yi'ge", "text": "每人一个", "kind": "word"},
+    {"reading": "yi'ren'yi'fen", "text": "一人一份", "kind": "word"},
+    {"reading": "zai'lai'yi'fen", "text": "再来一份", "kind": "word"},
+    {"reading": "liu'dian'bei'yong", "text": "留点备用", "kind": "word"},
+    {"reading": "yong'wan'le", "text": "用完了", "kind": "word"},
+    {"reading": "kuai'yong'wan'le", "text": "快用完了", "kind": "word"},
+    {"reading": "duo'mai'yi'dian", "text": "多买一点", "kind": "word"},
+    {"reading": "shao'mai'yi'dian", "text": "少买一点", "kind": "word"},
+    {"reading": "da'yi'dian", "text": "大一点", "kind": "word"},
+    {"reading": "xiao'yi'dian", "text": "小一点", "kind": "word"},
+    {"reading": "chang'yi'dian", "text": "长一点", "kind": "word"},
+    {"reading": "duan'yi'dian", "text": "短一点", "kind": "word"},
+    {"reading": "kuan'yi'dian", "text": "宽一点", "kind": "word"},
+    {"reading": "zhai'yi'dian", "text": "窄一点", "kind": "word"},
+    {"reading": "hou'yi'dian", "text": "厚一点", "kind": "word"},
+    {"reading": "bao'yi'dian", "text": "薄一点", "kind": "word"},
+    {"reading": "tai'jin'le", "text": "太紧了", "kind": "word"},
+    {"reading": "tai'song'le", "text": "太松了", "kind": "word"},
+    {"reading": "gang'hao'he'shi", "text": "刚好合适", "kind": "word"},
+    {"reading": "huan'ge'da'de", "text": "换个大的", "kind": "word"},
+    {"reading": "huan'ge'xiao'de", "text": "换个小的", "kind": "word"},
+    {"reading": "zai'gao'yi'dian", "text": "再高一点", "kind": "word"},
+    {"reading": "zai'di'yi'dian", "text": "再低一点", "kind": "word"},
+    {"reading": "zhe'yang'zheng'hao", "text": "这样正好", "kind": "word"}
   ],
   "continuations": [
     [
@@ -5108,6 +5300,510 @@
       [
         "我到了，你在哪儿？",
         "我到了，在门口等你。"
+      ]
+    ],
+    [
+      "再讲一遍",
+      [
+        "再讲一遍可以吗，我刚才没听清。",
+        "再讲一遍，我想记下来。"
+      ]
+    ],
+    [
+      "说慢一点",
+      [
+        "说慢一点可以吗，我还没记好。",
+        "说慢一点，我想听清楚。"
+      ]
+    ],
+    [
+      "看不懂",
+      [
+        "看不懂这句话是什么意思。",
+        "看不懂的地方我标出来了。"
+      ]
+    ],
+    [
+      "看懂了",
+      [
+        "看懂了，谢谢你解释。",
+        "看懂了，我再试一下。"
+      ]
+    ],
+    [
+      "听懂了",
+      [
+        "听懂了，我来试试看。",
+        "听懂了，谢谢你说得这么清楚。"
+      ]
+    ],
+    [
+      "没看清",
+      [
+        "没看清，可以再发一张吗？",
+        "没看清，我放大一点再看看。"
+      ]
+    ],
+    [
+      "是这样吗",
+      [
+        "是这样吗，你帮我确认一下。",
+        "是这样吗，我再核对一遍。"
+      ]
+    ],
+    [
+      "这样对吗",
+      [
+        "这样对吗，你帮我看看。",
+        "这样对吗，我怕自己弄错了。"
+      ]
+    ],
+    [
+      "再确认一下",
+      [
+        "再确认一下时间和地点吧。",
+        "再确认一下，有变化及时告诉我。"
+      ]
+    ],
+    [
+      "我查一下",
+      [
+        "我查一下，稍后告诉你。",
+        "我查一下有没有其他时间。"
+      ]
+    ],
+    [
+      "帮我看看",
+      [
+        "帮我看看有没有漏掉什么。",
+        "帮我看看这个怎么用。"
+      ]
+    ],
+    [
+      "帮个忙",
+      [
+        "帮个忙，替我拿一下这个。",
+        "帮个忙，把门扶一下好吗？"
+      ]
+    ],
+    [
+      "请让一下",
+      [
+        "请让一下，我想从这里过去。",
+        "请让一下，谢谢。"
+      ]
+    ],
+    [
+      "别客气",
+      [
+        "别客气，能帮上忙就好。",
+        "别客气，有需要随时找我。"
+      ]
+    ],
+    [
+      "我忘了",
+      [
+        "我忘了，刚才说到哪里了？",
+        "我忘了带钥匙，得回去拿一下。"
+      ]
+    ],
+    [
+      "发错了",
+      [
+        "发错了，不好意思。",
+        "发错了，我重新发给你。"
+      ]
+    ],
+    [
+      "我来吧",
+      [
+        "我来吧，你先休息一下。",
+        "我来吧，这个我比较熟悉。"
+      ]
+    ],
+    [
+      "交给我吧",
+      [
+        "交给我吧，弄好了告诉你。",
+        "交给我吧，你先忙别的。"
+      ]
+    ],
+    [
+      "发给你了",
+      [
+        "发给你了，看看有没有收到。",
+        "发给你了，有空再看就好。"
+      ]
+    ],
+    [
+      "发我一下",
+      [
+        "发我一下地址，我找找怎么过去。",
+        "发我一下照片，我确认一下。"
+      ]
+    ],
+    [
+      "打个电话",
+      [
+        "打个电话说吧，这样比较清楚。",
+        "打个电话问一下，再决定吧。"
+      ]
+    ],
+    [
+      "先忙你的",
+      [
+        "先忙你的，有空再回复就好。",
+        "先忙你的，我这边不着急。"
+      ]
+    ],
+    [
+      "我记下了",
+      [
+        "我记下了，谢谢你提醒。",
+        "我记下了，到时候再联系你。"
+      ]
+    ],
+    [
+      "帮我转告",
+      [
+        "帮我转告他，我晚一点到。",
+        "帮我转告大家，时间改到下午了。"
+      ]
+    ],
+    [
+      "最近怎么样",
+      [
+        "最近怎么样，有空聊聊吗？",
+        "最近怎么样，工作还顺利吗？"
+      ]
+    ],
+    [
+      "最近忙吗",
+      [
+        "最近忙吗，记得给自己留点休息时间。",
+        "最近忙吗，有空一起吃顿饭吧。"
+      ]
+    ],
+    [
+      "还习惯吗",
+      [
+        "还习惯吗，有不方便的地方就告诉我。",
+        "还习惯吗，慢慢适应就好。"
+      ]
+    ],
+    [
+      "别太累了",
+      [
+        "别太累了，忙完早点休息。",
+        "别太累了，有需要就叫我。"
+      ]
+    ],
+    [
+      "照顾好自己",
+      [
+        "照顾好自己，记得按时吃饭。",
+        "照顾好自己，有空给我发个消息。"
+      ]
+    ],
+    [
+      "到家说一声",
+      [
+        "到家说一声，我好放心。",
+        "到家说一声，路上慢点。"
+      ]
+    ],
+    [
+      "我听着呢",
+      [
+        "我听着呢，你慢慢说。",
+        "我听着呢，想聊什么都可以。"
+      ]
+    ],
+    [
+      "我能理解",
+      [
+        "我能理解，你也有自己的难处。",
+        "我能理解，我们再一起想想办法。"
+      ]
+    ],
+    [
+      "确实不容易",
+      [
+        "确实不容易，辛苦你了。",
+        "确实不容易，能做到这样已经很好了。"
+      ]
+    ],
+    [
+      "别往心里去",
+      [
+        "别往心里去，大家没有怪你。",
+        "别往心里去，先好好休息一下。"
+      ]
+    ],
+    [
+      "不用勉强",
+      [
+        "不用勉强，按你自己的想法来。",
+        "不用勉强，不方便就下次吧。"
+      ]
+    ],
+    [
+      "替你高兴",
+      [
+        "替你高兴，这次的努力没有白费。",
+        "替你高兴，找个时间庆祝一下吧。"
+      ]
+    ],
+    [
+      "一起吃饭吧",
+      [
+        "一起吃饭吧，你想吃什么？",
+        "一起吃饭吧，我们找个安静点的地方。"
+      ]
+    ],
+    [
+      "出来走走",
+      [
+        "出来走走吧，换换心情。",
+        "出来走走，我们边走边聊。"
+      ]
+    ],
+    [
+      "一起散步",
+      [
+        "一起散步吧，饭后走一会儿。",
+        "一起散步怎么样，去附近的公园？"
+      ]
+    ],
+    [
+      "哪天方便",
+      [
+        "哪天方便，我们约个时间见面。",
+        "哪天方便，提前告诉我一声。"
+      ]
+    ],
+    [
+      "我去接你",
+      [
+        "我去接你，把位置发给我。",
+        "我去接你之前会先给你发消息。"
+      ]
+    ],
+    [
+      "我来安排",
+      [
+        "我来安排，你告诉我大概几点有空。",
+        "我来安排，确定以后再跟你说。"
+      ]
+    ],
+    [
+      "我都可以",
+      [
+        "我都可以，按你方便的时间来。",
+        "我都可以，你选个想去的地方吧。"
+      ]
+    ],
+    [
+      "今天走不开",
+      [
+        "今天走不开，改天再约好吗？",
+        "今天走不开，不好意思让你久等了。"
+      ]
+    ],
+    [
+      "这次去不了",
+      [
+        "这次去不了，谢谢你邀请我。",
+        "这次去不了，你们玩得开心。"
+      ]
+    ],
+    [
+      "谢谢邀请",
+      [
+        "谢谢邀请，我看看时间再回复你。",
+        "谢谢邀请，这次没空，下次再一起吧。"
+      ]
+    ],
+    [
+      "别破费了",
+      [
+        "别破费了，大家随意一点就好。",
+        "别破费了，你能来我就很开心。"
+      ]
+    ],
+    [
+      "聊得很开心",
+      [
+        "聊得很开心，下次有空再聊。",
+        "聊得很开心，谢谢你愿意听我说。"
+      ]
+    ],
+    [
+      "放哪了",
+      [
+        "放哪了，我刚才还看见了。",
+        "放哪了，帮我一起找找吧。"
+      ]
+    ],
+    [
+      "放回原处",
+      [
+        "放回原处之前，记得擦干净。",
+        "放回原处，这样下次就好找了。"
+      ]
+    ],
+    [
+      "放进抽屉",
+      [
+        "放进抽屉里，别放在桌子边上。",
+        "放进抽屉之前，先把东西分类。"
+      ]
+    ],
+    [
+      "还没找到",
+      [
+        "还没找到，我再看看包里。",
+        "还没找到，你记得最后放在哪了吗？"
+      ]
+    ],
+    [
+      "帮我找找",
+      [
+        "帮我找找钥匙，可能在沙发附近。",
+        "帮我找找，我记得刚才还在这里。"
+      ]
+    ],
+    [
+      "记得带上",
+      [
+        "记得带上钥匙，出门前检查一下。",
+        "记得带上雨伞，天气可能会变。"
+      ]
+    ],
+    [
+      "拿过来",
+      [
+        "拿过来吧，我帮你看看。",
+        "拿过来放在这里就好。"
+      ]
+    ],
+    [
+      "帮我拿一下",
+      [
+        "帮我拿一下这个袋子，谢谢。",
+        "帮我拿一下，我腾出手来开门。"
+      ]
+    ],
+    [
+      "轻拿轻放",
+      [
+        "轻拿轻放，里面有玻璃杯。",
+        "轻拿轻放，别碰到旁边的东西。"
+      ]
+    ],
+    [
+      "小心烫手",
+      [
+        "小心烫手，先放一会儿再拿。",
+        "小心烫手，记得用隔热手套。"
+      ]
+    ],
+    [
+      "给我留一个",
+      [
+        "给我留一个，我等会儿过来拿。",
+        "给我留一个就够了，其他的你们分吧。"
+      ]
+    ],
+    [
+      "用完还给我",
+      [
+        "用完还给我就行，不用着急。",
+        "用完还给我，我明天还要用。"
+      ]
+    ],
+    [
+      "够不够",
+      [
+        "够不够，不够我再拿一点。",
+        "够不够用，你先试试看。"
+      ]
+    ],
+    [
+      "还剩多少",
+      [
+        "还剩多少，我们先数一下。",
+        "还剩多少，不够的话我去补一些。"
+      ]
+    ],
+    [
+      "还有几个",
+      [
+        "还有几个，够大家分吗？",
+        "还有几个没拿，帮我确认一下。"
+      ]
+    ],
+    [
+      "每人一个",
+      [
+        "每人一个，剩下的先收起来。",
+        "每人一个，不够的再跟我说。"
+      ]
+    ],
+    [
+      "快用完了",
+      [
+        "快用完了，下次买东西时记得补上。",
+        "快用完了，先看看还有没有备用的。"
+      ]
+    ],
+    [
+      "留点备用",
+      [
+        "留点备用，别一次全用掉。",
+        "留点备用，放在容易找到的地方。"
+      ]
+    ],
+    [
+      "大一点",
+      [
+        "大一点的袋子能装得下吗？",
+        "大一点会更方便拿取。"
+      ]
+    ],
+    [
+      "小一点",
+      [
+        "小一点的盒子更好收纳。",
+        "小一点也可以，能放进去就行。"
+      ]
+    ],
+    [
+      "长一点",
+      [
+        "长一点的线用起来更方便。",
+        "长一点没关系，可以把多余的收起来。"
+      ]
+    ],
+    [
+      "薄一点",
+      [
+        "薄一点的外套比较适合今天的天气。",
+        "薄一点会更轻便，出门好携带。"
+      ]
+    ],
+    [
+      "刚好合适",
+      [
+        "刚好合适，就用这个吧。",
+        "刚好合适，不用再调整了。"
+      ]
+    ],
+    [
+      "换个小的",
+      [
+        "换个小的吧，这个放不进去。",
+        "换个小的就够了，带着也方便。"
       ]
     ]
   ]

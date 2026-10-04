@@ -160,7 +160,11 @@ def start_app(kind, bridge, sync_mode):
                IBUS_ENABLE_SYNC_MODE=str(sync_mode))
     if os.environ.get("SUZAKU_QT_QA_SITE"):
         env["PYTHONPATH"] = str(Path(os.environ["SUZAKU_QT_QA_SITE"]).resolve())
-    return qa.spawn(["/usr/bin/python3", str(fixtures / "qt-input-fields.py"), kind[-1],
+    # Qt/SIP may target a different Python ABI than the system GI controller.
+    # The runner passes the same resolved executable used by its import preflight.
+    qt_python = Path(os.environ.get("SUZAKU_QT_QA_PYTHON", "/usr/bin/python3")).resolve(strict=True)
+    assert qt_python.is_file() and os.access(qt_python, os.X_OK), f"Invalid Qt QA Python: {qt_python}"
+    return qa.spawn([str(qt_python), str(fixtures / "qt-input-fields.py"), kind[-1],
                      bridge.base, bridge.token], env=env)
 
 

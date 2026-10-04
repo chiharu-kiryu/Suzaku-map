@@ -322,6 +322,7 @@ fn translation_requests_reject_stale_press_targets() {
                         revision: 10,
                         focused: true,
                         private: false,
+                        cursor: None,
                         language: "en".into(),
                         seed: "alpha draft".into(),
                         selected: 0,

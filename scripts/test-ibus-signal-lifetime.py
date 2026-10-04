@@ -12,11 +12,46 @@ from unittest.mock import Mock
 
 sys.dont_write_bytecode = True
 from fixtures.ibus_signal_lifetime import IBusSignalObjects
+from fixtures.native_probe_cleanup import PendingCallbacks
 from gi.repository import GLib, GObject
 
 
 class Emitter(GObject.GObject):
     __gsignals__ = {"borrowed-object": (GObject.SignalFlags.RUN_LAST, None, (GObject.Object,))}
+
+
+class PendingCallbackIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.pending = PendingCallbacks(GLib)
+        self.addCleanup(self.pending.cancel_all)
+        self.loop = GLib.MainContext.default()
+
+    def test_glib_dispatch_preserves_callback_failure_for_explicit_check(self):
+        failure = RuntimeError("synthetic delayed switch failure")
+
+        def fail():
+            raise failure
+
+        source = self.pending.schedule(0, fail)
+        self.loop.iteration(False)
+        self.assertIsNone(self.loop.find_source_by_id(source))
+        with self.assertRaises(RuntimeError) as raised:
+            self.pending.raise_if_failed()
+        self.assertIs(raised.exception, failure)
+
+    def test_glib_pending_cancellation_cannot_affect_the_next_workflow(self):
+        calls = []
+        source = self.pending.schedule(0, lambda: calls.append("stale switch"))
+        self.pending.cancel_all()
+        self.loop.iteration(False)
+        self.assertIsNone(self.loop.find_source_by_id(source))
+        self.assertEqual(calls, [])
+        self.pending.raise_if_failed()
+        live = self.pending.schedule(0, lambda: calls.append("current switch") or True)
+        self.loop.iteration(False)
+        self.assertIsNone(self.loop.find_source_by_id(live))
+        self.assertEqual(calls, ["current switch"])
+        self.pending.raise_if_failed()
 
 
 class SignalLifetimeTests(unittest.TestCase):

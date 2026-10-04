@@ -1,15 +1,15 @@
 {
                     let keyboard_scale =
-                        (drawer_rect[3] / (150.0 * responsive_scale)).clamp(0.74, 1.0);
+                        (drawer_rect[3] / ((if bottom_dock { 221.6 } else { 150.0 }) * responsive_scale)).clamp(0.74, 1.0);
                     let keyboard_padding_x = 7.6 * responsive_scale * keyboard_scale;
                     let keyboard_content_left = drawer_rect[0] + keyboard_padding_x;
                     let keyboard_content_right = drawer_rect[0] + drawer_rect[2] - keyboard_padding_x;
                     let keyboard_content_width = (keyboard_content_right - keyboard_content_left).max(120.0);
                     let keyboard_title_y = drawer_rect[1] + 10.0 * responsive_scale * keyboard_scale;
                     let keyboard_status_y = keyboard_title_y;
-                    let row_h = 21.0 * responsive_scale * keyboard_scale;
+                    let row_h = if bottom_dock { 42.0 } else { 21.0 } * responsive_scale * keyboard_scale;
                     let keyboard_y = drawer_rect[1] + 37.0 * responsive_scale * keyboard_scale;
-                    let key_row_gap = 3.2 * responsive_scale * keyboard_scale;
+                    let key_row_gap = if bottom_dock { 4.8 } else { 3.2 } * responsive_scale * keyboard_scale;
                     let mut keyboard_layouts = Vec::new();
                     let keyboard_header_layouts = vec![
                         TextBlock {
@@ -195,7 +195,9 @@
                             );
                             interactive_targets.push(InteractiveTarget {
                                 kind: InteractionKind::VirtualKeyboardKey(*key),
-                                rect: interaction_hit_rect(rect),
+                                // Touch-sized docked keys need no extra slop; using
+                                // their own bounds keeps adjacent rows unambiguous.
+                                rect: if bottom_dock { rect } else { interaction_hit_rect(rect) },
                             });
                             let label = match key {
                                 VirtualKeyboardKey::Character(ch) => ch.to_string(),
@@ -469,7 +471,7 @@
                         );
                         interactive_targets.push(InteractiveTarget {
                             kind: InteractionKind::VirtualKeyboardKey(key),
-                            rect: interaction_hit_rect(rect),
+                            rect: if bottom_dock { rect } else { interaction_hit_rect(rect) },
                         });
                         let label_pixel_size = if label.chars().count() > 6 {
                             1.8 * responsive_scale * keyboard_scale

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline bilingual vocabulary through XTest, real GTK/IBus and saved text.
+"""Offline EN/ZH/JA vocabulary through XTest, real GTK/IBus and saved text.
 
 Use test-linux-apps.sh vocabulary; never run against the personal desktop.
 The shared harness enforces private display/bus/configuration and observes both
@@ -110,6 +110,40 @@ DAILY_NEEDS_CASES = [
     ("zh-Hans", "lin shi you shi", "临时有事", "临时有事，可能要晚一点。"),
 ]
 
+DAILY_COORDINATION_CASES = [
+    ("en", "did you get my me", "did you get my message", "did you get my message?"),
+    ("en", "could you give me a ha", "could you give me a hand", "could you give me a hand?"),
+    ("en", "thanks for getting ba", "thanks for getting back", "thanks for getting back to me."),
+    ("zh-Hans", "bang wo kan kan", "帮我看看", "帮我看看有没有漏掉什么。"),
+    ("zh-Hans", "fa gei ni le", "发给你了", "发给你了，看看有没有收到。"),
+    ("zh-Hans", "xian mang ni de", "先忙你的", "先忙你的，有空再回复就好。"),
+]
+
+DAILY_SOCIAL_CASES = [
+    ("en", "do you want to grab co", "do you want to grab coffee", "do you want to grab coffee?"),
+    ("en", "i hope you're fe", "i hope you're feeling", "i hope you're feeling better."),
+    ("en", "i'll have to pass to", "i'll have to pass tonight", "i'll have to pass tonight, but thank you."),
+    ("zh-Hans", "zhao gu hao zi ji", "照顾好自己", "照顾好自己，记得按时吃饭。"),
+    ("zh-Hans", "wo qu jie ni", "我去接你", "我去接你之前会先给你发消息。"),
+    ("zh-Hans", "xie xie yao qing", "谢谢邀请", "谢谢邀请，我看看时间再回复你。"),
+]
+
+DAILY_OBJECTS_CASES = [
+    ("en", "have you seen my ke", "have you seen my keys", "have you seen my keys?"),
+    ("en", "can i borrow your ch", "can i borrow your charger", "can i borrow your charger?"),
+    ("en", "There's a spare ch", "There's a spare charger", "There's a spare charger on the table."),
+    ("zh-Hans", "fang hui yuan chu", "放回原处", "放回原处之前，记得擦干净。"),
+    ("zh-Hans", "gou'bu'gou", "够不够", "够不够，不够我再拿一点。"),
+    ("zh-Hans", "hai sheng duo shao", "还剩多少", "还剩多少，我们先数一下。"),
+]
+
+JAPANESE_CASES = [
+    ("ja", "sumimasen", "すみません", "すみません、もう一度お願いします。"),
+    ("ja", "onegaishimasu", "お願いします", "お願いします。終わったら教えてください。"),
+    ("ja", "yotei", "予定", "予定が決まったら連絡します。"),
+    ("ja", "JYUNBI", "準備", "準備ができたら連絡します。"),
+]
+
 PACK_CASES = [
     ("en", "please annotate this para", "please annotate this paragraph",
      "please annotate this paragraph before our discussion."),
@@ -127,17 +161,20 @@ PACK_CASES = [
 # A focused diagnostic never replaces the default complete CI gate. Reject
 # misspellings rather than silently running no cases or claiming a full pass.
 scope = apps.os.environ.get("SUZAKU_VOCABULARY_QA_SCOPE", "all")
-if scope not in {"all", "home", "daily", "packs", "part-1", "part-2"}:
-    raise ValueError("SUZAKU_VOCABULARY_QA_SCOPE must be all, home, daily, packs, part-1 or part-2")
-ALL_CASES = CASES + HOME_CASES + ERRANDS_CASES + DAILY_CASES + DAILY_NEEDS_CASES
+if scope not in {"all", "home", "daily", "japanese", "packs", "part-1", "part-2"}:
+    raise ValueError("SUZAKU_VOCABULARY_QA_SCOPE must be all, home, daily, japanese, packs, part-1 or part-2")
+ALL_CASES = (CASES + HOME_CASES + ERRANDS_CASES + DAILY_CASES + DAILY_NEEDS_CASES
+             + DAILY_COORDINATION_CASES + DAILY_SOCIAL_CASES + DAILY_OBJECTS_CASES + JAPANESE_CASES)
 PART_CASES = {"part-1": ALL_CASES[::2], "part-2": ALL_CASES[1::2]}
 # Compare whole case tuples, including repeated entries if ever intentional:
 # both partitions together must preserve the exact full gate, without omissions.
 assert Counter(PART_CASES["part-1"] + PART_CASES["part-2"]) == Counter(ALL_CASES)
-assert all(cases and {case[0] for case in cases} == {"en", "zh-Hans"}
-           for cases in PART_CASES.values()), "each vocabulary part must cover both languages"
-CASES = {"home": HOME_CASES, "daily": DAILY_CASES + DAILY_NEEDS_CASES,
-         "packs": PACK_CASES, **PART_CASES}.get(scope, ALL_CASES)
+assert all(cases and {case[0] for case in cases} == {"en", "zh-Hans", "ja"}
+           for cases in PART_CASES.values()), "each vocabulary part must cover all three languages"
+CASES = {"home": HOME_CASES,
+         "daily": (DAILY_CASES + DAILY_NEEDS_CASES + DAILY_COORDINATION_CASES
+                   + DAILY_SOCIAL_CASES + DAILY_OBJECTS_CASES),
+         "japanese": JAPANESE_CASES, "packs": PACK_CASES, **PART_CASES}.get(scope, ALL_CASES)
 
 
 def prepare_packs():
@@ -203,7 +240,13 @@ def check_vocabulary(bus, x):
         apps.choose_number(x, word)
         x.key(IBus.KEY_space)
         apps.wait(lambda: apps.seed_is(word + " "), "Space keeps the adopted draft editable")
-        if language == "zh-Hans" or sentence.startswith(word + " "):
+        if language == "ja":
+            # Japanese consumes reading separators in conversion, but keeps the
+            # exact spaced literal draft selectable and does not submit on Space.
+            assert any(c["text"] == word + " " for c in apps.watch.latest["candidates"])
+            assert any(c["text"] == sentence and c["kind"] == "sentence"
+                       for c in apps.watch.latest["candidates"][:6]), (reading, apps.watch.latest)
+        elif language == "zh-Hans" or sentence.startswith(word + " "):
             remainder = sentence[len(word):]
             if language == "en":
                 remainder = remainder.lstrip()
@@ -211,11 +254,21 @@ def check_vocabulary(bus, x):
             assert any(c["text"] == expected_sentence and c["kind"] == "sentence"
                        and c["source"] == "local" for c in apps.watch.latest["candidates"][:6]), (
                            reading, expected_sentence, apps.watch.latest)
-        suffix = "today" if language == "en" else "de"
+        suffix = {"en": "today", "zh-Hans": "de", "ja": "ga"}[language]
         x.type(suffix)
         apps.wait(lambda: apps.seed_is(word + " " + suffix), "Space continues adopted vocabulary")
-        continued = word + (" today" if language == "en" else " 的")
-        if language == "zh-Hans":
+        continued = word + {"en": " today", "zh-Hans": " 的", "ja": "が"}[language]
+        japanese_progress = language == "ja" and sentence.startswith(continued)
+        if japanese_progress:
+            assert any(c["text"] == sentence and c["kind"] == "sentence"
+                       and c["source"] == "local" for c in apps.watch.latest["candidates"][:6]), (
+                           "sentence lost after Japanese particle", reading, apps.watch.latest)
+            apps.choose_number(x, sentence)
+            apps.save_document(x, document, "")
+            x.key(IBus.KEY_BackSpace)
+            apps.wait(lambda: apps.seed_is(word + " " + suffix),
+                      "Japanese sentence undo preserves the adopted word, space and romaji tail")
+        if language != "en":
             apps.choose_number(x, continued)
         apps.save_document(x, document, "")
         apps.commit(x)
@@ -225,6 +278,11 @@ def check_vocabulary(bus, x):
         apps.clear_document(x, document)
         x.type(reading)
         apps.wait(lambda: apps.seed_is(reading), "physical spelling before sentence commit")
+        if japanese_progress:
+            apps.choose_number(x, word)
+            x.type(" " + suffix)
+            apps.wait(lambda: apps.seed_is(word + " " + suffix),
+                      "Japanese physical progress before sentence commit")
         apps.choose_number(x, sentence)
         apps.save_document(x, document, "")
         apps.commit(x)
@@ -239,7 +297,8 @@ def check_vocabulary(bus, x):
     progress_cases = [
         ("fa yin", "发音", "ke yi", "可以", "zai", "再示范一下吗？"),
         ("shu ru fa", "输入法", "zhi chi", "支持", "", "多种语言。"),
-    ] if scope != "part-2" else []
+        ("bang wo kan kan", "帮我看看", "you mei you", "有没有", "", "漏掉什么。"),
+    ] if scope not in {"part-2", "japanese"} else []
     for reading, word, next_reading, next_word, last_reading, remainder in progress_cases:
         apps.clear_document(x, document)
         revision = apps.watch.latest["revision"]

@@ -35,6 +35,11 @@ No matching settings	没有匹配的设置	該当する設定なし	일치하는
 Text	文字大小	文字サイズ	글자 크기	Texto	Texte	Textgröße	Texto
 Theme	主题	テーマ	테마	Tema	Thème	Design	Tema
 Title Bar	标题栏	タイトルバー	제목 표시줄	Barra de título	Barre de titre	Titelleiste	Barra de título
+Panel Layout	面板布局	パネル配置	패널 배치	Posición del panel	Position du panneau	Panel-Position	Posição do painel
+Follow caret	跟随光标	カーソルに追従	커서 따라가기	Seguir cursor	Suivre le curseur	Cursor folgen	Seguir cursor
+Bottom dock	屏幕底部	画面下部に固定	화면 하단 고정	Fijar abajo	Ancrer en bas	Unten andocken	Fixar embaixo
+Auto · Follow caret	自动 · 跟随光标	自動 · カーソルに追従	자동 · 커서 따라가기	Auto · Seguir cursor	Auto · Suivre le curseur	Auto · Cursor folgen	Auto · Seguir cursor
+Auto · Bottom dock	自动 · 屏幕底部	自動 · 画面下部に固定	자동 · 화면 하단 고정	Auto · Fijar abajo	Auto · Ancrer en bas	Auto · Unten andocken	Auto · Fixar embaixo
 Show	显示	表示	표시	Mostrar	Afficher	Anzeigen	Mostrar
 Hide	隐藏	非表示	숨기기	Ocultar	Masquer	Ausblenden	Ocultar
 Font	字体	フォント	글꼴	Fuente	Police	Schrift	Fonte

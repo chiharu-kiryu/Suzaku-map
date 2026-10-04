@@ -3,6 +3,7 @@
 use super::{Lexicon, builtin, check_text};
 use crate::data::{files, paths};
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use std::{
     collections::{BTreeMap, HashSet},
     env,
@@ -237,8 +238,10 @@ pub struct InstalledPack {
 struct Registry {
     format_version: u32,
     // Individual records are decoded separately at startup: one damaged record
-    // must not prevent independent valid packs from loading.
-    packages: Vec<serde_json::Value>,
+    // must not prevent independent valid packs from loading. Keep the original
+    // JSON until strict InstalledPack deserialization: Value would silently
+    // discard duplicate enabled/package fields and nested package fields.
+    packages: Vec<Box<RawValue>>,
 }
 
 #[derive(Clone, Debug)]
@@ -291,7 +294,7 @@ impl PackStore {
             .packages
             .into_iter()
             .map(|raw| {
-                let entry = decode_entry(raw)?;
+                let entry = decode_entry(&raw)?;
                 if !ids.insert(entry.package.manifest.id.clone()) {
                     return Err("duplicate installed package id".into());
                 }
@@ -365,7 +368,7 @@ impl PackStore {
             format_version: 1,
             packages: entries
                 .iter()
-                .map(serde_json::to_value)
+                .map(serde_json::value::to_raw_value)
                 .collect::<Result<_, _>>()
                 .map_err(|e| e.to_string())?,
         };
@@ -378,7 +381,9 @@ impl PackStore {
 
     pub fn load(&self) -> Catalog {
         match self.registry() {
-            Ok(registry) => Catalog::from_entries(registry.packages.into_iter().map(decode_entry)),
+            Ok(registry) => {
+                Catalog::from_entries(registry.packages.iter().map(|raw| decode_entry(raw)))
+            }
             Err(error) => Catalog {
                 report: LoadReport {
                     errors: vec![error],
@@ -390,8 +395,8 @@ impl PackStore {
     }
 }
 
-fn decode_entry(raw: serde_json::Value) -> Result<InstalledPack, String> {
-    let entry: InstalledPack = serde_json::from_value(raw).map_err(|e| e.to_string())?;
+fn decode_entry(raw: &RawValue) -> Result<InstalledPack, String> {
+    let entry: InstalledPack = serde_json::from_str(raw.get()).map_err(|e| e.to_string())?;
     entry
         .package
         .validate()

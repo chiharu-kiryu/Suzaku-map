@@ -90,7 +90,22 @@ fn convert_segments(kana: &str) -> String {
 
 fn composition_kana(seed: &str) -> String {
     // Shift+Space separates romaji words, not words in the converted Japanese text.
-    seed.split_whitespace().map(romaji_to_hiragana).collect()
+    // Line boundaries are different: never join two lines to manufacture a
+    // dictionary word or an authored sentence. Preserve CRLF as two scalars too.
+    let mut output = String::new();
+    let mut start = 0;
+    for (offset, ch) in seed.char_indices().filter(|(_, ch)| ch.is_whitespace()) {
+        output.push_str(&romaji_to_hiragana(&seed[start..offset]));
+        if matches!(
+            ch,
+            '\n' | '\r' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        ) {
+            output.push(ch);
+        }
+        start = offset + ch.len_utf8();
+    }
+    output.push_str(&romaji_to_hiragana(&seed[start..]));
+    output
 }
 
 /// Complete the final reading after known dictionary words and particles. Never
@@ -117,7 +132,7 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
     while offset < kana.len() {
         let rest = &kana[offset..];
         for (reading, word) in kanji() {
-            if reading != rest
+            if (reading != rest || offset > 0)
                 && queries.iter().any(|query| {
                     query
                         .strip_prefix(&kana[..offset])
@@ -147,6 +162,11 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
         {
             prefix.push_str(word);
             offset += reading.len();
+        } else if let Some(length) = known_written_prefix_len(rest) {
+            // Continue after a known adopted spelling (including Katakana),
+            // without converting it back or scanning through arbitrary text.
+            prefix.push_str(&rest[..length]);
+            offset += length;
         } else {
             let ch = rest.chars().next().unwrap();
             if !matches!(
@@ -163,9 +183,104 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
     output
 }
 
+fn known_written_prefix_len(text: &str) -> Option<usize> {
+    vocabulary()
+        .readings()
+        .iter()
+        .filter(|entry| entry.kind == EntryKind::Word)
+        .flat_map(|entry| {
+            [
+                text.starts_with(&entry.text).then_some(entry.text.len()),
+                text.get(..entry.reading.len())
+                    .filter(|prefix| prefix.chars().eq(entry.reading.chars().map(katakana_char)))
+                    .map(str::len),
+            ]
+        })
+        .flatten()
+        .max()
+}
+
 #[cfg(test)]
 mod completion_tests {
     use super::*;
+    #[test]
+    fn authored_sentences_follow_the_whole_draft_not_only_exact_triggers() {
+        for (seed, expected) in [
+            ("予定ga", "予定が決まったら連絡します。"),
+            ("nihongo wo", "日本語を勉強しています。"),
+            ("JYUNBI GADEKI", "準備ができたら連絡します。"),
+            ("日本語を勉強して", "日本語を勉強しています。"),
+        ] {
+            let choices = mixed_candidates(seed);
+            assert!(
+                choices.iter().any(|(text, _)| text == expected),
+                "{seed}: {choices:?}"
+            );
+        }
+        let choices = mixed_candidates("日本語を勉強");
+        let study: Vec<_> = choices
+            .iter()
+            .filter(|(_, kind)| *kind == crate::ime::candidate_mix::CandidateKind::Sentence)
+            .map(|(text, _)| text.as_str())
+            .collect();
+        assert_eq!(
+            study,
+            ["日本語を勉強しています。", "日本語を勉強したいです。"]
+        );
+    }
+
+    #[test]
+    fn conversion_keeps_line_boundaries_but_joins_reading_separators() {
+        assert_eq!(
+            composition_kana("nihongo wo benkyou"),
+            "にほんごをべんきょう"
+        );
+        for boundary in [
+            "\n", "\r\n", "\u{b}", "\u{c}", "\u{85}", "\u{2028}", "\u{2029}",
+        ] {
+            let seed = format!("yotei{boundary}ga");
+            assert_eq!(composition_kana(&seed), format!("よてい{boundary}が"));
+            assert_eq!(
+                convert_segments(&composition_kana(&seed)),
+                format!("予定{boundary}が")
+            );
+        }
+    }
+
+    #[test]
+    fn complete_tail_readings_keep_homophones_after_known_prefixes() {
+        for seed in ["私はkanji", "watashihakanji", "私はかんじ"] {
+            let choices = word_completions(seed);
+            for word in ["私は漢字", "私は感じ"] {
+                assert!(
+                    choices.iter().any(|(text, kind)| text == word
+                        && *kind == crate::ime::candidate_mix::CandidateKind::Word),
+                    "{seed}: {choices:?}"
+                );
+            }
+            assert!(choices.len() <= 4);
+        }
+    }
+    #[test]
+    fn known_katakana_prefixes_keep_their_spelling_during_completion() {
+        for seed in ["ニホンゴwobenky", "ニホンゴ wo benky", "ニホンゴをべんき"] {
+            let choices = word_completions(seed);
+            assert!(
+                choices.iter().any(|(text, _)| text == "ニホンゴを勉強"),
+                "{seed}: {choices:?}"
+            );
+        }
+        for seed in [
+            "ワカラナイniho",
+            "テストniho",
+            "ニホンゴxyzniho",
+            "ニホンゴ🙂niho",
+            "ニホンゴ123niho",
+        ] {
+            assert!(word_completions(seed).is_empty(), "{seed}");
+        }
+        assert!(word_completions(&format!("{}benky", "ニ".repeat(252))).is_empty());
+    }
     #[test]
     fn incomplete_consonants_and_terminal_n_can_finish_the_last_known_word() {
         for (seed, word) in [
@@ -222,12 +337,36 @@ pub(crate) fn mixed_candidates(
         )
         .collect();
     for word in words {
-        if let Some((_, values)) = vocabulary()
+        let mut contexts: Vec<_> = vocabulary()
             .continuations()
-            .find(|(prefix, _)| *prefix == word)
-        {
+            .filter(|(prefix, values)| {
+                *prefix == word
+                    || (word.starts_with(prefix)
+                        && values
+                            .iter()
+                            .any(|text| text.len() > word.len() && text.starts_with(&word)))
+            })
+            .collect();
+        // Exact triggers retain their priority. Otherwise prefer the longest
+        // applicable context; ties preserve the lexicon's authored layer order.
+        contexts.sort_by_key(|(prefix, _)| std::cmp::Reverse(prefix.len()));
+        for (prefix, values) in contexts {
             for text in values {
+                // Match the *whole* progress, never discard an unknown prefix,
+                // conflicting tail or a line break to recover a trigger. Exact
+                // trigger behavior remains compatible with existing packs.
+                if prefix != word && (text.len() <= word.len() || !text.starts_with(&word)) {
+                    continue;
+                }
                 if !output.iter().any(|(existing, _)| existing == text) {
+                    if output
+                        .iter()
+                        .filter(|(_, kind)| *kind == CandidateKind::Sentence)
+                        .count()
+                        >= 4
+                    {
+                        return output;
+                    }
                     output.push((text.clone(), CandidateKind::Sentence));
                 }
             }
@@ -285,6 +424,9 @@ const SPECIAL: &[(&str, &str)] = &[
     ("ju", "じゅ"),
     ("jo", "じょ"),
     ("je", "じぇ"),
+    ("jya", "じゃ"),
+    ("jyu", "じゅ"),
+    ("jyo", "じょ"),
     ("fa", "ふぁ"),
     ("fi", "ふぃ"),
     ("fe", "ふぇ"),
@@ -312,21 +454,32 @@ const SPECIAL: &[(&str, &str)] = &[
 ];
 
 pub fn romaji_to_hiragana(input: &str) -> String {
-    let input = input.to_lowercase();
+    let input = input.to_ascii_lowercase();
     let mut rest = input.as_str();
     let mut output = String::new();
     while !rest.is_empty() {
         let bytes = rest.as_bytes();
-        if rest.starts_with("n'") {
+        if let Some(after) = rest.strip_prefix("n'").or_else(|| rest.strip_prefix("n’")) {
             output.push('ん');
-            rest = &rest[2..];
+            rest = after;
             continue;
         }
         if rest.starts_with('n')
             && (bytes.len() == 1 || (bytes.get(1).is_some_and(|ch| !b"aiueoy".contains(ch))))
         {
             output.push('ん');
-            let consume = if rest == "nn" { 2 } else { 1 };
+            // A completed nn stays one ん when a following consonant starts a
+            // new syllable, just as at a text boundary. Reserve the second n
+            // for live na/ni/nya/etc. syllables, repeated n, and explicit n'.
+            let consume = if rest.strip_prefix("nn").is_some_and(|tail| {
+                tail.chars().next().is_none_or(|ch| {
+                    !matches!(ch, 'a' | 'i' | 'u' | 'e' | 'o' | 'n' | 'y' | '\'' | '’')
+                })
+            }) {
+                2
+            } else {
+                1
+            };
             rest = &rest[consume..];
             continue;
         }
@@ -390,22 +543,59 @@ pub fn romaji_to_hiragana(input: &str) -> String {
     output
 }
 
+fn katakana_char(ch: char) -> char {
+    if ('ぁ'..='ゖ').contains(&ch) {
+        char::from_u32(ch as u32 + 0x60).unwrap_or(ch)
+    } else {
+        ch
+    }
+}
+
 fn hiragana_to_katakana(input: &str) -> String {
-    input
-        .chars()
-        .map(|ch| {
-            if ('ぁ'..='ゖ').contains(&ch) {
-                char::from_u32(ch as u32 + 0x60).unwrap_or(ch)
-            } else {
-                ch
-            }
-        })
-        .collect()
+    input.chars().map(katakana_char).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn terminal_n_boundaries_aliases_and_non_roman_text_are_preserved() {
+        for (input, expected) in [
+            ("nn。", "ん。"),
+            ("konn!", "こん!"),
+            ("shuudennha", "しゅうでんは"),
+            ("shuudenn", "しゅうでん"),
+            ("shuudennh", "しゅうでんh"),
+            ("dennwawo", "でんわを"),
+            ("konnbanha", "こんばんは"),
+            ("konnkaino", "こんかいの"),
+            ("nn🙂", "ん🙂"),
+            ("nn\u{3000}", "ん\u{3000}"),
+            ("shin’you", "しんよう"),
+            ("nn'ya", "んんや"),
+            ("nn’ya", "んんや"),
+            ("nna", "んな"),
+            ("nni", "んに"),
+            ("nnya", "んにゃ"),
+            ("nnna", "んんな"),
+            ("shinnyuu", "しんにゅう"),
+            ("nnn", "んん"),
+            ("nnk", "んk"),
+            ("konnichiha", "こんにちは"),
+            ("nya", "にゃ"),
+            ("jya", "じゃ"),
+            ("jyu", "じゅ"),
+            ("jyo", "じょ"),
+            ("jyuu", "じゅう"),
+            ("jyunbi", "じゅんび"),
+            ("Ωテスト", "Ωテスト"),
+            ("Σ123", "Σ123"),
+            ("İテスト", "İテスト"),
+            ("NIHONGO", "にほんご"),
+        ] {
+            assert_eq!(romaji_to_hiragana(input), expected, "{input}");
+        }
+    }
     #[test]
     fn handles_romanization_small_kana_geminates_and_syllabic_n() {
         for (input, expected) in [

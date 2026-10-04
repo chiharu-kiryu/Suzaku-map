@@ -92,6 +92,8 @@ pub mod macos_ime;
 pub mod macos_voice;
 pub mod panel_companion_dispatch;
 #[cfg(feature = "gpu")]
+pub mod panel_layout;
+#[cfg(feature = "gpu")]
 pub mod panel_text_focus;
 pub mod settings_host;
 #[cfg(test)]

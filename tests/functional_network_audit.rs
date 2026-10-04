@@ -161,6 +161,7 @@ fn audit_coalesced_frame_must_not_leave_keyboard_waiting_forever() {
         revision: 10,
         focused: true,
         private: false,
+        cursor: None,
         language: "en".into(),
         seed: "hel".into(),
         selected: 0,

@@ -16,6 +16,7 @@ impl WgpuCandidateRenderer {
             return self.build_compact_scene(snapshot, chrome, false, false);
         }
         let ui = chrome.ui_language;
+        let bottom_dock = chrome.effective_panel_layout() == PanelLayoutMode::BottomDock;
         let theme = PanelTheme::for_preset(chrome.theme_preset);
         let page_bg = theme.page_bg;
         let shell = theme.shell;
@@ -258,6 +259,8 @@ impl WgpuCandidateRenderer {
                 if chrome.input_modes_expanded && chrome.active_input_mode == InputMode::Translation
                 {
                     0
+                } else if chrome.native_candidate_page.is_some() {
+                    NativeCandidatePage::SIZE
                 } else {
                     4
                 },
@@ -274,8 +277,10 @@ impl WgpuCandidateRenderer {
                 )
             })
             .collect();
-        let hero_cards_enabled =
-            self.scene_width < 1360.0 && chrome.preview_style == PreviewStyle::Compact;
+        let hero_cards_enabled = chrome.native_candidate_page.is_none()
+            && !bottom_dock
+            && self.scene_width < 1360.0
+            && chrome.preview_style == PreviewStyle::Compact;
         let metrics = PanelSceneMetrics::new(
             self.scene_width,
             self.scene_height,
@@ -310,9 +315,27 @@ impl WgpuCandidateRenderer {
         let panel_x = metrics.panel_x;
         let panel_y = metrics.panel_y;
         let input_box_y = panel_y;
-        let tools_y = input_box_y + metrics.input_box_h + metrics.section_gap;
-        let suggestions_y =
-            tools_y + metrics.tools_header_h + metrics.tools_content_h + metrics.section_gap;
+        let candidate_section_h = (metrics.panel_height
+            - metrics.input_box_h
+            - metrics.tools_header_h
+            - metrics.tools_content_h
+            - metrics.section_gap * 2.0)
+            .max(0.0);
+        // Docked input keeps choices nearest the application and the keyboard
+        // nearest the bottom edge. Folding the drawer never folds its choices.
+        let tools_y = input_box_y
+            + metrics.input_box_h
+            + metrics.section_gap
+            + if bottom_dock {
+                candidate_section_h + metrics.section_gap
+            } else {
+                0.0
+            };
+        let suggestions_y = if bottom_dock {
+            input_box_y + metrics.input_box_h + metrics.section_gap
+        } else {
+            tools_y + metrics.tools_header_h + metrics.tools_content_h + metrics.section_gap
+        };
         let settings_panel_h = if chrome.settings_open {
             let max_allowed_settings = (self.scene_height - panel_y - metrics.panel_height)
                 .max(0.0)
@@ -335,7 +358,9 @@ impl WgpuCandidateRenderer {
         } else {
             metrics.panel_height
         };
-        let candidate_area_bottom = if chrome.settings_open {
+        let candidate_area_bottom = if bottom_dock {
+            tools_y - metrics.section_gap
+        } else if chrome.settings_open {
             panel_y + metrics.panel_height
         } else {
             panel_y + panel_height
@@ -1117,11 +1142,10 @@ impl WgpuCandidateRenderer {
         let toolbar_button_count = toolbar_buttons.len() as f32;
         let toolbar_total_w =
             toolbar_button_count * toolbar_button_size + (toolbar_button_count - 1.0) * icon_gap;
-        let trailing_toggle_w = if chrome.input_modes_expanded {
-            toolbar_button_size + 4.2 * responsive_scale
-        } else {
-            0.0
-        };
+        // The fold toggle is always present, even when Settings is the only
+        // other control. Reserve its column in both panel layouts.
+        let trailing_toggle_w =
+            toolbar_button_size + if bottom_dock { 6.0 } else { 4.2 } * responsive_scale;
         let toolbar_available_w =
             (panel_width - toolbar_margin_x * 2.0 - trailing_toggle_w).max(0.0);
         let toolbar_scale = if toolbar_total_w > toolbar_available_w && toolbar_total_w > 0.0 {
@@ -1136,6 +1160,32 @@ impl WgpuCandidateRenderer {
         let icon_x = panel_x + panel_width - toolbar_total_w - trailing_toggle_w - toolbar_margin_x;
         let toolbar_y =
             tools_y + (metrics.tools_header_h - toolbar_button_size) * 0.5 + 0.5 * responsive_scale;
+        let toggle_x = panel_x + panel_width - toolbar_button_size - 3.8 * responsive_scale;
+        let folded_divider_x = (icon_x + toolbar_total_w + toggle_x) * 0.5;
+        let toolbar_hit_rect = |rect: [f32; 4], toggle: bool| {
+            let hit_rect = interaction_hit_rect(rect);
+            if chrome.input_modes_expanded {
+                return hit_rect;
+            }
+            // Large pointer slop must not let the later toggle steal the
+            // Settings button's edge. Separate only their horizontal cells;
+            // vertical slop must keep growing for the accessibility preference.
+            let seam = 0.5 * responsive_scale;
+            let left = if toggle {
+                folded_divider_x + seam
+            } else {
+                panel_x
+            };
+            let right = if toggle {
+                panel_x + panel_width
+            } else {
+                folded_divider_x - seam
+            };
+            intersect_rect(
+                hit_rect,
+                [left, hit_rect[1], (right - left).max(0.0), hit_rect[3]],
+            )
+        };
         for (index, (kind, selected)) in toolbar_buttons.iter().enumerate() {
             let rect = [
                 icon_x + index as f32 * (toolbar_button_size + icon_gap),
@@ -1168,7 +1218,7 @@ impl WgpuCandidateRenderer {
             );
             interactive_targets.push(InteractiveTarget {
                 kind: *kind,
-                rect: interaction_hit_rect(rect),
+                rect: toolbar_hit_rect(rect, false),
             });
             let icon_color = if *selected { accent_text } else { text_primary };
             match kind {
@@ -1214,7 +1264,7 @@ impl WgpuCandidateRenderer {
         }
         {
             let toggle_rect = [
-                panel_x + panel_width - toolbar_button_size - 3.8 * responsive_scale,
+                toggle_x,
                 toolbar_y,
                 toolbar_button_size,
                 toolbar_button_size,
@@ -1233,7 +1283,7 @@ impl WgpuCandidateRenderer {
             );
             interactive_targets.push(InteractiveTarget {
                 kind: InteractionKind::InputModesToggle,
-                rect: interaction_hit_rect(toggle_rect),
+                rect: toolbar_hit_rect(toggle_rect, true),
             });
             append_chevron_icon_quads(
                 &mut quads,

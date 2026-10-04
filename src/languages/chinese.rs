@@ -150,8 +150,14 @@ fn is_tone_terminator(tail: &[char]) -> bool {
             .first()
             .is_none_or(|ch| !ch.is_alphanumeric() && !matches!(ch, '/' | '\\' | '_' | '-')),
         ',' => !rest.first().is_some_and(|ch| ch.is_numeric()),
-        '!' | '?' | ';' | ')' | ']' | '}' | '"' | '”' | '’' | '，' | '。' | '！' | '？' | '；'
-        | '：' | '、' | '…' | '）' | '】' | '》' | '」' | '』' => true,
+        // An opening aside/quote terminates the preceding syllable just like
+        // its closing partner. Chinese em dashes also delimit clauses; keep
+        // this explicit so hyphens, en-dash ranges and arithmetic stay literal.
+        '!' | '?' | ';' | '(' | ')' | '[' | ']' | '{' | '}' | '"' | '“' | '”' | '‘' | '’'
+        | '，' | '。' | '！' | '？' | '；' | '：' | '、' | '…' | '—' | '（' | '）' | '【'
+        | '】' | '〔' | '〕' | '〈' | '〉' | '《' | '》' | '「' | '」' | '『' | '』' => {
+            true
+        }
         _ => false,
     }
 }
@@ -551,7 +557,7 @@ mod tests {
 
     #[test]
     fn authored_continuations_are_unique_complete_and_preserve_padding() {
-        assert_eq!(pinyin().len(), 2175);
+        assert_eq!(pinyin().len(), 2367);
         let mut phrases = std::collections::HashSet::new();
         let mut sentences = std::collections::HashSet::new();
         for (phrase, values) in vocabulary().continuations() {

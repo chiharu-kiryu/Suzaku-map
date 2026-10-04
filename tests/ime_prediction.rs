@@ -330,6 +330,101 @@ fn unlearned_model_batches_keep_the_existing_bounded_candidate_policy() {
 }
 
 #[test]
+fn mixed_prose_model_sentences_project_words_without_losing_typed_prefixes() {
+    use suzaku_map::ime::Candidate;
+    use suzaku_map::ime::candidate_mix::{CandidateKind, CandidateSource, classify, merge_model};
+
+    for (seed, word, sentence) in [
+        (
+            "hello—wor",
+            "hello—worldwide",
+            "hello—worldwide surveys help.",
+        ),
+        (
+            "你好，hel",
+            "你好，heliosphere",
+            "你好，heliosphere studies continue.",
+        ),
+        (
+            "前文。please sen",
+            "前文。please send",
+            "前文。please send reports today.",
+        ),
+    ] {
+        assert_eq!(classify("en", seed, word), CandidateKind::Word, "{seed}");
+        let local = vec![Candidate {
+            text: seed.into(),
+            label: seed.into(),
+            kind: CandidateKind::Literal,
+            ..Default::default()
+        }];
+        let (candidates, accepted) = merge_model(
+            "en",
+            seed,
+            local,
+            vec![LlmCompletion {
+                text: sentence.into(),
+                kind: Some(CandidateKind::Sentence),
+                score_bias: 1.0,
+            }],
+            12,
+        );
+        assert!(accepted);
+        assert_eq!(candidates[0].text, seed);
+        assert_eq!(candidates[0].source, CandidateSource::Local);
+        for (text, kind) in [
+            (word, CandidateKind::Word),
+            (sentence, CandidateKind::Sentence),
+        ] {
+            let candidate = candidates
+                .iter()
+                .find(|candidate| candidate.text == text)
+                .unwrap();
+            assert_eq!(candidate.kind, kind, "{seed} -> {text}");
+            assert_eq!(candidate.source, CandidateSource::Model);
+            assert!(candidate.text.starts_with(seed));
+        }
+    }
+}
+
+#[test]
+fn mixed_prose_model_projection_does_not_split_generated_technical_or_cjk_suffixes() {
+    use suzaku_map::ime::Candidate;
+    use suzaku_map::ime::candidate_mix::{CandidateKind, merge_model};
+
+    let seed = "你好，hel";
+    // Prose boundaries in the already typed prefix do not broaden the separate
+    // model-word suffix policy: only complete, unambiguous English words split.
+    for sentence in [
+        "你好，hello.com site",
+        "你好，hello-world event",
+        "你好，hello@example.com",
+        "你好，hello，世界",
+        "你好，hello—world",
+    ] {
+        let local = vec![Candidate {
+            text: seed.into(),
+            label: seed.into(),
+            kind: CandidateKind::Literal,
+            ..Default::default()
+        }];
+        let (candidates, accepted) = merge_model("en", seed, local, answer(sentence), 12);
+        assert!(accepted);
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.text == sentence)
+        );
+        assert!(
+            !candidates
+                .iter()
+                .any(|candidate| candidate.kind == CandidateKind::Word),
+            "must not invent a standalone word from {sentence:?}"
+        );
+    }
+}
+
+#[test]
 fn slow_model_does_not_block_typing_and_never_replaces_primary_candidate() {
     let (mut engine, requests, replies) = controlled();
     let start = Instant::now();
@@ -662,6 +757,10 @@ fn large_pasted_input_avoids_token_recursion_and_is_not_sent_to_a_model() {
 
 #[test]
 fn long_local_tail_candidates_do_not_expand_the_model_request_budget() {
+    let chinese_tail = "ni".repeat(128);
+    let chinese_completed = "你".repeat(128);
+    let english_tail = format!("please{}sen", " ".repeat(247));
+    let english_completed = format!("{english_tail}d");
     for (language, prefix, tail, completed) in [
         ("en", "note ".repeat(60), "hel", "hello"),
         ("zh-Hans", "你".repeat(260), "nihao", "你好"),
@@ -670,6 +769,18 @@ fn long_local_tail_candidates_do_not_expand_the_model_request_budget() {
             "你".repeat(260),
             "你好 ",
             "你好 ，很高兴认识你。",
+        ),
+        (
+            "zh-Hans",
+            "前文。".repeat(100),
+            chinese_tail.as_str(),
+            chinese_completed.as_str(),
+        ),
+        (
+            "en",
+            "Earlier note. ".repeat(30),
+            english_tail.as_str(),
+            english_completed.as_str(),
         ),
     ] {
         for mixed in [false, true] {

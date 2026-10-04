@@ -85,6 +85,7 @@ fn frame(seed: &str, context: u64, revision: u64) -> NativeComposition {
         revision,
         focused: true,
         private: false,
+        cursor: None,
         language: "en".into(),
         seed: seed.into(),
         selected: 0,

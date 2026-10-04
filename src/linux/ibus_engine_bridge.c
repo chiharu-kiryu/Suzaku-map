@@ -44,7 +44,8 @@ extern void *suzaku_host_ime_control_start_utf8(const char *command, uint32_t ti
 extern char *suzaku_host_ime_control_poll_utf8(void *job);
 extern void suzaku_host_ime_control_free(void *job);
 extern char *suzaku_host_ime_companion_snapshot_utf8(
-    const char *host, uint64_t context, uint64_t revision, bool focused, bool private_input);
+    const char *host, uint64_t context, uint64_t revision, bool focused, bool private_input,
+    bool cursor_valid, int32_t cursor_x, int32_t cursor_y, int32_t cursor_width, int32_t cursor_height);
 
 typedef struct _SuzakuIBusEngine {
     IBusEngine parent_instance;
@@ -55,6 +56,8 @@ typedef struct _SuzakuIBusEngine {
     gboolean bypass_input;
     gboolean private_input;
     gboolean inline_preedit;
+    gboolean cursor_valid;
+    IBusRectangle cursor_rect;
     void *language_job;
     guint language_source;
     gint64 language_deadline;
@@ -74,6 +77,7 @@ static gchar *suzaku_ipc_socket_path = NULL;
 static guint suzaku_prediction_source = 0;
 static void suzaku_ibus_schedule_prediction(void);
 static void suzaku_companion_publish(void);
+static void suzaku_companion_publish_geometry(void);
 static gchar *suzaku_companion_host_id = NULL;
 static guint64 suzaku_companion_context = 0;
 static guint64 suzaku_companion_revision = 0;
@@ -385,6 +389,28 @@ static void suzaku_ibus_engine_move_selection(
     suzaku_ibus_engine_render(self);
 }
 
+static void suzaku_ibus_engine_change_page(SuzakuIBusEngine *self, gboolean forward) {
+    if (!suzaku_ibus_engine_is_focused(IBUS_ENGINE(self)) ||
+        self->bypass_input || self->input->len == 0) {
+        return;
+    }
+    size_t count = suzaku_host_ime_candidate_count();
+    size_t selected = suzaku_host_ime_selected_index();
+    if (count == 0 || selected >= count) { return; }
+    size_t start = selected / SUZAKU_LOOKUP_PAGE_SIZE * SUZAKU_LOOKUP_PAGE_SIZE;
+    /* Match the native panel arrows: select the adjacent page's first slot.
+     * A missing page is inert, not a clamped selection gesture. In particular,
+     * preserve adoption undo and pending predictions at either boundary. */
+    if ((forward && count - start <= SUZAKU_LOOKUP_PAGE_SIZE) ||
+        (!forward && start == 0)) { return; }
+    size_t target = forward ? start + SUZAKU_LOOKUP_PAGE_SIZE
+                            : start - SUZAKU_LOOKUP_PAGE_SIZE;
+    suzaku_ibus_engine_reset_compose(self);
+    g_clear_pointer(&self->completion_undo, g_free);
+    suzaku_host_ime_select_candidate(target);
+    suzaku_ibus_engine_render(self);
+}
+
 static void suzaku_ibus_engine_hold_adoption(SuzakuIBusEngine *self, guint keycode) {
     /* A physical selection/language gesture must not repeat its one-shot
      * action on autorepeat. Zero means no physical key identity (e.g. a
@@ -447,8 +473,8 @@ static gboolean suzaku_ibus_engine_process_key_event(
         switch (suzaku_host_ime_alt_shortcut(ibus_keyval_to_unicode(keyval))) {
         case 1: suzaku_ibus_engine_move_selection(self, -1); return TRUE;
         case 2: suzaku_ibus_engine_move_selection(self, 1); return TRUE;
-        case 3: suzaku_ibus_engine_move_selection(self, -SUZAKU_LOOKUP_PAGE_SIZE); return TRUE;
-        case 4: suzaku_ibus_engine_move_selection(self, SUZAKU_LOOKUP_PAGE_SIZE); return TRUE;
+        case 3: suzaku_ibus_engine_change_page(self, FALSE); return TRUE;
+        case 4: suzaku_ibus_engine_change_page(self, TRUE); return TRUE;
         case 5:
             suzaku_ibus_engine_hold_adoption(self, keycode);
             suzaku_ibus_engine_complete(self, FALSE);
@@ -509,13 +535,16 @@ static gboolean suzaku_ibus_engine_process_key_event(
         suzaku_ibus_engine_end_input(self);
         return TRUE;
     }
-    if (keyval == IBUS_KEY_Up || keyval == IBUS_KEY_Left ||
-        keyval == IBUS_KEY_Page_Up) {
+    if (keyval == IBUS_KEY_Page_Up || keyval == IBUS_KEY_Page_Down) {
+        if (self->input->len == 0) { return FALSE; }
+        suzaku_ibus_engine_change_page(self, keyval == IBUS_KEY_Page_Down);
+        return TRUE;
+    }
+    if (keyval == IBUS_KEY_Up || keyval == IBUS_KEY_Left) {
         if (self->input->len == 0) {
             return FALSE;
         }
-        suzaku_ibus_engine_move_selection(
-            self, keyval == IBUS_KEY_Page_Up ? -SUZAKU_LOOKUP_PAGE_SIZE : -1);
+        suzaku_ibus_engine_move_selection(self, -1);
         return TRUE;
     }
     if (keyval == IBUS_KEY_ISO_Left_Tab ||
@@ -526,13 +555,11 @@ static gboolean suzaku_ibus_engine_process_key_event(
         suzaku_ibus_engine_move_selection(self, -1);
         return TRUE;
     }
-    if (keyval == IBUS_KEY_Down || keyval == IBUS_KEY_Right ||
-        keyval == IBUS_KEY_Page_Down || keyval == IBUS_KEY_Tab) {
+    if (keyval == IBUS_KEY_Down || keyval == IBUS_KEY_Right || keyval == IBUS_KEY_Tab) {
         if (self->input->len == 0) {
             return FALSE;
         }
-        suzaku_ibus_engine_move_selection(
-            self, keyval == IBUS_KEY_Page_Down ? SUZAKU_LOOKUP_PAGE_SIZE : 1);
+        suzaku_ibus_engine_move_selection(self, 1);
         return TRUE;
     }
     /* Space is a separator within one writing stream, not a commit boundary.
@@ -592,8 +619,10 @@ static gboolean suzaku_ibus_engine_process_key_event(
 
 static void suzaku_ibus_engine_focus_in(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+    self->cursor_valid = FALSE;
     GObject *previous = g_weak_ref_get(&suzaku_last_focused_engine);
     if (previous != NULL && previous != G_OBJECT(engine)) {
+        ((SuzakuIBusEngine *)previous)->cursor_valid = FALSE;
         suzaku_ibus_engine_clear_local((SuzakuIBusEngine *)previous);
         suzaku_ibus_engine_hide(IBUS_ENGINE(previous));
     }
@@ -623,6 +652,7 @@ static gboolean suzaku_ibus_clear_focused_engine_if(IBusEngine *engine) {
 
 static void suzaku_ibus_engine_focus_out(IBusEngine *engine) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+    self->cursor_valid = FALSE;
     if (!suzaku_ibus_clear_focused_engine_if(engine)) {
         suzaku_ibus_engine_clear_local(self);
         suzaku_ibus_engine_hide(engine);
@@ -633,6 +663,9 @@ static void suzaku_ibus_engine_focus_out(IBusEngine *engine) {
 }
 
 static void suzaku_ibus_engine_reset(IBusEngine *engine) {
+    /* Reset ends the draft, not the input field. GTK may not resend an
+     * unchanged caret rectangle before the next key. Focus/privacy boundaries
+     * invalidate the anchor separately. */
     if (suzaku_ibus_engine_is_focused(engine)) {
         suzaku_ibus_engine_end_input((SuzakuIBusEngine *)engine);
     } else {
@@ -652,6 +685,7 @@ static void suzaku_ibus_engine_set_content_type(IBusEngine *engine, guint purpos
     /* PRIVATE was added in IBus 1.5.26; use its ABI bit for older headers as well. */
     self->private_input = self->bypass_input || (hints & (1u << 11)) != 0;
     gboolean boundary_changed = was_private != self->private_input || was_bypass != self->bypass_input;
+    if (boundary_changed || self->private_input) { self->cursor_valid = FALSE; }
     if (!suzaku_ibus_engine_is_focused(engine)) {
         if (self->bypass_input || boundary_changed) { suzaku_ibus_engine_clear_local(self); }
         return;
@@ -674,6 +708,7 @@ static void suzaku_ibus_engine_enable(IBusEngine *engine) {
 }
 
 static void suzaku_ibus_engine_disable(IBusEngine *engine) {
+    ((SuzakuIBusEngine *)engine)->cursor_valid = FALSE;
     if (!suzaku_ibus_clear_focused_engine_if(engine)) {
         suzaku_ibus_engine_clear_local((SuzakuIBusEngine *)engine);
         return;
@@ -686,18 +721,40 @@ static void suzaku_ibus_engine_cursor_up(IBusEngine *engine) {
     suzaku_ibus_engine_move_selection((SuzakuIBusEngine *)engine, -1);
 }
 
+static void suzaku_ibus_engine_set_cursor_location(
+    IBusEngine *engine, gint x, gint y, gint width, gint height) {
+    SuzakuIBusEngine *self = (SuzakuIBusEngine *)engine;
+    /* GTK/X11 already reports absolute screen pixels. Never multiply these by
+     * the panel's scale factor. Relative Wayland coordinates are not forwarded
+     * to engines by IBus, so absence must remain a safe no-anchor fallback. */
+    if (!suzaku_ibus_engine_is_focused(engine) || self->private_input) {
+        self->cursor_valid = FALSE;
+        return;
+    }
+    gboolean valid = width >= 0 && width <= 65535 && height > 0 && height <= 65535 &&
+        (gint64)x + width <= G_MAXINT32 && (gint64)y + height <= G_MAXINT32;
+    gboolean changed = self->cursor_valid != valid || (valid &&
+        (self->cursor_rect.x != x || self->cursor_rect.y != y ||
+         self->cursor_rect.width != width || self->cursor_rect.height != height));
+    self->cursor_valid = valid;
+    if (valid) {
+        self->cursor_rect = (IBusRectangle){ .x = x, .y = y, .width = width, .height = height };
+    }
+    /* A move is presentation-only: it must not retire candidate actions,
+     * alter selection/adoption undo, or revoke a native presentation lease. */
+    if (changed) { suzaku_companion_publish_geometry(); }
+}
+
 static void suzaku_ibus_engine_cursor_down(IBusEngine *engine) {
     suzaku_ibus_engine_move_selection((SuzakuIBusEngine *)engine, 1);
 }
 
 static void suzaku_ibus_engine_page_up(IBusEngine *engine) {
-    suzaku_ibus_engine_move_selection(
-        (SuzakuIBusEngine *)engine, -SUZAKU_LOOKUP_PAGE_SIZE);
+    suzaku_ibus_engine_change_page((SuzakuIBusEngine *)engine, FALSE);
 }
 
 static void suzaku_ibus_engine_page_down(IBusEngine *engine) {
-    suzaku_ibus_engine_move_selection(
-        (SuzakuIBusEngine *)engine, SUZAKU_LOOKUP_PAGE_SIZE);
+    suzaku_ibus_engine_change_page((SuzakuIBusEngine *)engine, TRUE);
 }
 
 static void suzaku_ibus_engine_candidate_clicked(
@@ -722,6 +779,7 @@ static void suzaku_ibus_engine_candidate_clicked(
 
 static void suzaku_ibus_engine_destroy(IBusObject *object) {
     SuzakuIBusEngine *self = (SuzakuIBusEngine *)object;
+    self->cursor_valid = FALSE;
     /* Destroy does not require a preceding FocusOut. Revoke this field before
      * the parent tears down its service; finalize only frees local resources.
      * A late destruction of another engine must not touch the new field. */
@@ -766,6 +824,7 @@ static void suzaku_ibus_engine_class_init(SuzakuIBusEngineClass *class) {
     engine_class->page_down = suzaku_ibus_engine_page_down;
     engine_class->candidate_clicked = suzaku_ibus_engine_candidate_clicked;
     engine_class->set_content_type = suzaku_ibus_engine_set_content_type;
+    engine_class->set_cursor_location = suzaku_ibus_engine_set_cursor_location;
 }
 
 static void suzaku_ibus_engine_init(SuzakuIBusEngine *self) {

@@ -257,3 +257,101 @@ fn english_adoption_requires_a_word_boundary_at_commit() {
         assert_eq!(ime.preference_count(), usize::from(learned), "{text}");
     }
 }
+
+fn assert_incremental_punctuation_learning(suffix: &str, learned: bool) {
+    let mut ime = engine("en", "hel");
+    choose(&mut ime, "hello");
+    assert_eq!(
+        ime.candidates()[ime.snapshot().selected_index].kind,
+        CandidateKind::Word
+    );
+    ime.stage_selected_preference();
+    assert_eq!(ime.preference_count(), 0, "adoption is not confirmation");
+
+    let mut draft = String::from("hello");
+    ime.seed(&draft);
+    for ch in suffix.chars() {
+        draft.push(ch);
+        ime.seed(&draft);
+        assert_eq!(
+            ime.preference_count(),
+            0,
+            "typing {draft:?} must not confirm the pending choice"
+        );
+        assert!(ime.snapshot().committed_text.is_empty());
+    }
+
+    // Confirm the final literal draft, not another offered completion. A dot
+    // or colon may be a sentence boundary until the following character turns
+    // it into part of the same URL/identifier token.
+    choose(&mut ime, &draft);
+    assert_eq!(ime.preference_count(), 0);
+    let result = ime.commit(CommitOptions { force: true });
+    assert!(result.ok);
+    assert_eq!(result.text.as_deref(), Some(draft.as_str()));
+    assert_eq!(ime.preference_count(), usize::from(learned), "{draft:?}");
+    assert!(ime.undo().unwrap().committed_text.is_empty());
+    assert_eq!(
+        ime.preference_count(),
+        0,
+        "undo must reverse learned feedback"
+    );
+}
+
+#[test]
+fn adopted_english_words_extended_into_tokens_do_not_learn() {
+    for suffix in [
+        ".com", ":world", "..world", "::world", "://world", ".0", ".\u{301}", "-world", "–world",
+    ] {
+        assert_incremental_punctuation_learning(suffix, false);
+    }
+}
+
+#[test]
+fn adopted_english_words_with_real_punctuation_boundaries_still_learn() {
+    for suffix in [
+        ".",
+        ". world",
+        ":",
+        ": world",
+        "...",
+        "... world",
+        "!",
+        "!\"",
+        "!\" world",
+        ".\") world",
+        "。world",
+        "—world",
+        "——继续",
+        "，world",
+        "：world",
+    ] {
+        assert_incremental_punctuation_learning(suffix, true);
+    }
+}
+
+#[test]
+fn discarded_english_adoptions_do_not_revive_when_the_spelling_is_restored() {
+    for drafts in [
+        ["hello.", "hello.c", "hello."],
+        ["hello:", "hello:w", "hello:"],
+        ["hello", "hel", "hello."], // Undo adoption, then type the same spelling.
+    ] {
+        let mut ime = engine("en", "hel");
+        choose(&mut ime, "hello");
+        ime.stage_selected_preference();
+        ime.seed("hello");
+        for draft in drafts {
+            ime.seed(draft);
+            assert_eq!(ime.preference_count(), 0);
+            assert!(ime.snapshot().committed_text.is_empty());
+        }
+        choose(&mut ime, drafts[2]);
+        let result = ime.commit(CommitOptions { force: true });
+        assert!(result.ok);
+        assert_eq!(result.text.as_deref(), Some(drafts[2]));
+        assert_eq!(ime.preference_count(), 0, "{drafts:?}");
+        assert!(ime.undo().unwrap().committed_text.is_empty());
+        assert_eq!(ime.preference_count(), 0);
+    }
+}

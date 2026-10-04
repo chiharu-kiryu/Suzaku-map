@@ -101,6 +101,7 @@ impl PanelState {
 
     pub(super) fn needs_periodic_frame(&self) -> bool {
         self.voice_frame_active()
+            || self.bottom_render_needs_retry()
             || self.chrome.voice_visual_phase != 0
             || self.commit_feedback_ticks > 0
             || self.has_timed_scene_animation()
@@ -168,6 +169,69 @@ impl PanelState {
         let bridge = shared_session_bridge();
         let _ = bridge.activate_session();
         bridge.move_selection(delta);
+    }
+
+    pub(super) fn change_native_candidate_page(&mut self, forward: bool) {
+        if !self.native.showing || self.native_candidates_busy() {
+            return;
+        }
+        let target = self
+            .native
+            .frame
+            .as_ref()
+            .filter(|frame| frame.visible())
+            .and_then(|frame| {
+                suzaku_map::ime::gpu::NativeCandidatePage::new(
+                    frame.selected,
+                    frame.candidates.len(),
+                    false,
+                )
+                .target(forward)
+            });
+        if let Some(index) = target {
+            self.native_action(suzaku_map::ime::companion::NativeOperation::Select(index));
+        }
+    }
+
+    /// Do not turn scrolling over the seed, tools or surrounding desktop into
+    /// candidate navigation. The union includes gaps between the actual cards.
+    pub(super) fn scroll_native_candidates(&mut self, delta: f32) -> bool {
+        if !self.native.showing || !delta.is_finite() || delta == 0.0 {
+            return false;
+        }
+        let Some((x, y)) = self.cursor_position else {
+            return false;
+        };
+        let bounds = self
+            .current_scene()
+            .interactive_targets
+            .iter()
+            .filter(|target| {
+                matches!(
+                    target.kind,
+                    InteractionKind::Candidate(_) | InteractionKind::NativeCandidatePage(_)
+                )
+            })
+            .fold(None::<[f32; 4]>, |bounds, target| {
+                let [left, top, width, height] = target.rect;
+                Some(match bounds {
+                    None => [left, top, left + width, top + height],
+                    Some([l, t, r, b]) => [
+                        l.min(left),
+                        t.min(top),
+                        r.max(left + width),
+                        b.max(top + height),
+                    ],
+                })
+            });
+        if bounds.is_some_and(|[left, top, right, bottom]| {
+            x >= left && x <= right && y >= top && y <= bottom
+        }) {
+            self.change_native_candidate_page(delta < 0.0);
+            true
+        } else {
+            false
+        }
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -666,7 +730,9 @@ impl PanelState {
         self.chrome.shortcut_edit_generation = other.shortcut_edit_generation;
 
         if settings_changed {
+            let previous_layout = self.chrome.effective_panel_layout();
             apply_display_settings(&mut self.chrome, &incoming_settings);
+            self.apply_panel_layout_change(previous_layout);
             self.apply_window_decorations();
             self.persist_display_settings();
         }
@@ -727,6 +793,13 @@ impl PanelState {
     pub(super) fn render(&mut self) -> Result<(), SurfaceError> {
         // A failed surface acquisition/presentation must relinquish the popup.
         self.native.presented = None;
+        if self.defer_bottom_render() {
+            // An empty keyboard can gain a full candidate page in one event.
+            // Do not present zero-height choices in the old viewport while
+            // waiting for its asynchronous size acknowledgement. The normal
+            // frame timer retries, bounded by the existing resize deadline.
+            return Ok(());
+        }
         let snapshot = self.view_snapshot();
         let (scene, overlays) = self.current_frame_with_snapshot(&snapshot);
         let next_window_title = match self.kind {
@@ -898,6 +971,57 @@ impl PanelState {
             });
             if synthetic_qa {
                 frame["draft"] = scene.draft_text.clone().into();
+                frame["seed"] = self.chrome.seed_text.clone().into();
+                frame["layout_mode"] = self.chrome.effective_panel_layout().id().into();
+                frame["layout_preference"] = self.chrome.panel_layout_mode.id().into();
+                frame["detected_layout_mode"] = self.chrome.detected_panel_layout.id().into();
+                frame["input_expanded"] = self.chrome.input_modes_expanded.into();
+                frame["controls"] =
+                    serde_json::json!(scene.interactive_targets.iter().map(|target| {
+                    serde_json::json!({"kind": format!("{:?}", target.kind), "rect": target.rect})
+                }).collect::<Vec<_>>());
+                frame["position"] =
+                    serde_json::json!(self.window.outer_position().ok().map(|p| [p.x, p.y]));
+                let size = self.window.inner_size();
+                frame["size"] = serde_json::json!([size.width, size.height]);
+                frame["native_revision"] =
+                    serde_json::json!(self.native.frame.as_ref().map(|f| f.revision));
+                frame["native_context"] =
+                    serde_json::json!(self.native.frame.as_ref().map(|f| f.context));
+                frame["native_page"] = serde_json::Value::Null;
+                if self.native.showing
+                    && let (Some(page), Some(native)) =
+                        (self.chrome.native_candidate_page, &self.native.frame)
+                {
+                    let rect_for = |kind| {
+                        scene
+                            .interactive_targets
+                            .iter()
+                            .find(|target| target.kind == kind)
+                            .map(|target| target.rect)
+                    };
+                    let candidates: Vec<_> = scene
+                        .interactive_targets
+                        .iter()
+                        .filter_map(|target| {
+                            let InteractionKind::Candidate(index) = target.kind else {
+                                return None;
+                            };
+                            native.candidates.get(index).map(|candidate| serde_json::json!({
+                            "index": index,
+                            "number": index % suzaku_map::ime::gpu::NativeCandidatePage::SIZE + 1,
+                            "text": candidate.text,
+                            "rect": target.rect,
+                        }))
+                        })
+                        .collect();
+                    frame["native_page"] = serde_json::json!({
+                        "start": page.start, "total": page.total, "selected": native.selected,
+                        "busy": page.busy, "candidates": candidates,
+                        "previous": rect_for(InteractionKind::NativeCandidatePage(false)),
+                        "next": rect_for(InteractionKind::NativeCandidatePage(true)),
+                    });
+                }
             }
             let frame = frame.to_string();
             if self.last_frame_diagnostic.as_ref() != Some(&frame) {
@@ -1000,6 +1124,9 @@ impl PanelState {
         interaction_is_truncated: bool,
     ) {
         match kind {
+            InteractionKind::NativeCandidatePage(forward) => {
+                self.change_native_candidate_page(forward)
+            }
             InteractionKind::SeedInput => {
                 self.begin_text_editing();
             }
@@ -1210,6 +1337,17 @@ impl PanelState {
                 self.interaction.settings_option_text_scroll_started_at = None;
                 self.chrome.hide_system_titlebar = hide;
                 self.apply_window_decorations();
+                self.persist_display_settings();
+            }
+            InteractionKind::SetPanelLayoutMode(mode) => {
+                let action = InteractionKind::SetPanelLayoutMode(mode);
+                if self.is_repeating_interaction(action) {
+                    return;
+                }
+                self.note_interaction_action(action);
+                let previous = self.chrome.effective_panel_layout();
+                self.chrome.panel_layout_mode = mode;
+                self.apply_panel_layout_change(previous);
                 self.persist_display_settings();
             }
             InteractionKind::SetPreviewStyle(style) => {
@@ -1641,7 +1779,10 @@ impl PanelState {
                         .sentence_candidate_scroll_started_at
                         .is_some();
 
-                if is_truncated && !is_scrolling {
+                // Numbered native cards are explicit host commits, even when
+                // their full payload needs an ellipsis. Only the independent
+                // editor uses a first click to start the scrolling preview.
+                if !self.native.showing && is_truncated && !is_scrolling {
                     self.interaction.sentence_candidate_scroll_index = Some(index);
                     self.interaction.sentence_candidate_scroll_started_at = Some(Instant::now());
                     return;

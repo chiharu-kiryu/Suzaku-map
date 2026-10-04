@@ -269,8 +269,14 @@ class X11:
 
     def type(self, text):
         for character in text:
-            assert character.isascii() and (character.islower() or character in " ,.'0123456789")
-            self.key(ord(character))
+            assert character.isascii() and (character.isalpha() or character in " ,.'0123456789"), (
+                f"Unsupported isolated keyboard fixture character: {character!r}")
+            if character.isupper():
+                # XKeysymToKeycode alone does not press Shift. Keep genuine
+                # modifier/key press and release events via the existing helper.
+                self.key(ord(character.lower()), IBus.KEY_Shift_L)
+            else:
+                self.key(ord(character))
 
     def click(self, x, y, button=1):
         assert self.xt.XTestFakeMotionEvent(self.display, -1, x, y, 0)

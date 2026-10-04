@@ -56,6 +56,7 @@ impl WgpuCandidateRenderer {
             "Text",
             "Theme",
             "Title Bar",
+            "Panel Layout",
             "Font",
             "Density",
             "Spacing",
@@ -180,6 +181,28 @@ impl WgpuCandidateRenderer {
                         chrome.hide_system_titlebar,
                     ),
                 ],
+            ),
+            (
+                SettingsCategory::Appearance,
+                "Panel Layout",
+                PanelLayoutMode::ALL
+                    .into_iter()
+                    .map(|mode| {
+                        (
+                            InteractionKind::SetPanelLayoutMode(mode),
+                            if mode == PanelLayoutMode::Auto {
+                                if chrome.detected_panel_layout == PanelLayoutMode::BottomDock {
+                                    "Auto · Bottom dock"
+                                } else {
+                                    "Auto · Follow caret"
+                                }
+                            } else {
+                                mode.label()
+                            },
+                            chrome.panel_layout_mode == mode,
+                        )
+                    })
+                    .collect(),
             ),
             (
                 SettingsCategory::Appearance,
@@ -550,7 +573,22 @@ impl WgpuCandidateRenderer {
                     || (original_sections[index].1 == "Title Bar"
                         && ["system titlebar", "gnome", "系统标题栏", "隐藏标题栏"]
                             .iter()
-                            .any(|alias| alias.contains(&search_query)));
+                            .any(|alias| alias.contains(&search_query)))
+                    || (original_sections[index].1 == "Panel Layout"
+                        && [
+                            "screen bottom",
+                            "tablet",
+                            "phone",
+                            "dock",
+                            "caret",
+                            "屏幕底部",
+                            "下屏幕",
+                            "手机",
+                            "平板",
+                            "跟随光标",
+                        ]
+                        .iter()
+                        .any(|alias| alias.contains(&search_query)));
                 for (kind, option_label, selected) in options {
                     if label_matches
                         || option_label.to_lowercase().contains(&search_query)

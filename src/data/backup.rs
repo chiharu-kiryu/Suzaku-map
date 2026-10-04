@@ -38,6 +38,7 @@ fn panel_value_valid(key: &str, value: &str) -> bool {
         "text_scale" => matches!(value, "small" | "medium" | "large"),
         "candidate_density" => matches!(value, "compact" | "cozy"),
         "preview_style" => matches!(value, "compact" | "full"),
+        "panel_layout_mode" => matches!(value, "auto" | "follow-caret" | "bottom-dock"),
         "font_face" => matches!(
             value,
             "auto" | "monaco" | "menlo" | "geneva" | "helvetica" | "pingfang" | "arial_unicode"

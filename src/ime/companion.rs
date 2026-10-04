@@ -8,6 +8,51 @@ use serde_json::{Value, json};
 pub const MAX_FRAME_BYTES: usize = 65536;
 pub const MAX_TEXT_BYTES: usize = 8192;
 pub const MAX_CANDIDATES: usize = 32;
+pub const MAX_CURSOR_DIMENSION: u32 = 65_535;
+
+/// Absolute screen pixels supplied by the native input client. Geometry is
+/// independent of candidate revisions and never contains surrounding text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NativeCursorRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl NativeCursorRect {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Option<Self> {
+        let width = u32::try_from(width).ok()?;
+        let height = u32::try_from(height).ok()?;
+        if width > MAX_CURSOR_DIMENSION || height == 0 || height > MAX_CURSOR_DIMENSION {
+            return None;
+        }
+        x.checked_add(i32::try_from(width).ok()?)?;
+        y.checked_add(i32::try_from(height).ok()?)?;
+        Some(Self {
+            x,
+            y,
+            width,
+            height,
+        })
+    }
+
+    fn parse(value: &Value) -> Result<Self, String> {
+        let component = |key: &str| {
+            value[key]
+                .as_i64()
+                .and_then(|n| i32::try_from(n).ok())
+                .ok_or_else(|| "Invalid native cursor rectangle".to_string())
+        };
+        Self::new(
+            component("x")?,
+            component("y")?,
+            component("width")?,
+            component("height")?,
+        )
+        .ok_or_else(|| "Invalid native cursor rectangle".into())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum NativeOperation {
@@ -34,6 +79,7 @@ pub struct NativeComposition {
     pub revision: u64,
     pub focused: bool,
     pub private: bool,
+    pub cursor: Option<NativeCursorRect>,
     pub language: String,
     pub seed: String,
     pub selected: usize,
@@ -48,6 +94,7 @@ impl NativeComposition {
     pub fn to_json(&self) -> Value {
         json!({"version":1,"host":self.host,"context":self.context,"revision":self.revision,
             "focused":self.focused,"private":self.private,"language":self.language,
+            "cursor":self.cursor.map(|r| json!({"x":r.x,"y":r.y,"width":r.width,"height":r.height})),
             "seed":self.seed,"selected":self.selected,"candidates":self.candidates.iter()
                 .map(|c| json!({"text":c.text,"label":c.label,"kind":c.kind.id(),"source":c.source.id(),"weight":c.weight,
                     "ibus_label":display_label_for_seed(&self.language,&self.seed,&c.text,c.kind,c.source,c.weight)})).collect::<Vec<_>>()})
@@ -124,6 +171,11 @@ impl NativeComposition {
             revision: v["revision"].as_u64().ok_or("Missing revision")?,
             focused: v["focused"].as_bool().ok_or("Missing focus")?,
             private: v["private"].as_bool().ok_or("Missing privacy")?,
+            cursor: v
+                .get("cursor")
+                .filter(|value| !value.is_null())
+                .map(NativeCursorRect::parse)
+                .transpose()?,
             language,
             seed: text(&v["seed"])?,
             selected: v["selected"]
@@ -139,6 +191,9 @@ impl NativeComposition {
         }
         if frame.selected >= frame.candidates.len().max(1) {
             return Err("Invalid native selection".into());
+        }
+        if (!frame.focused || frame.private) && frame.cursor.is_some() {
+            return Err("Non-public native cursor was not redacted".into());
         }
         Ok(frame)
     }
@@ -191,6 +246,7 @@ mod tests {
             revision: 2,
             focused: true,
             private: false,
+            cursor: None,
             language: "en".into(),
             seed: "hel".into(),
             selected: 0,
@@ -210,6 +266,90 @@ mod tests {
         );
         assert_eq!(frame.snapshot().candidate_labels, vec!["hello · AI"]);
         assert_eq!(frame.snapshot().committed_text, "");
+    }
+
+    #[test]
+    fn optional_cursor_roundtrips_zero_width_and_legacy_frames() {
+        let mut frame = sample();
+        frame.cursor = NativeCursorRect::new(-1_900, -240, 0, 24);
+        let value = frame.to_json();
+        assert_eq!(
+            NativeComposition::parse(value.to_string().as_bytes()).unwrap(),
+            frame
+        );
+        for missing in [false, true] {
+            let mut legacy = value.clone();
+            if missing {
+                legacy.as_object_mut().unwrap().remove("cursor");
+            } else {
+                legacy["cursor"] = Value::Null;
+            }
+            assert_eq!(
+                NativeComposition::parse(legacy.to_string().as_bytes())
+                    .unwrap()
+                    .cursor,
+                None
+            );
+        }
+        frame.seed.clear();
+        frame.candidates.clear();
+        assert_eq!(
+            NativeComposition::parse(frame.to_json().to_string().as_bytes()).unwrap(),
+            frame
+        );
+    }
+
+    #[test]
+    fn invalid_native_cursor_rectangles_are_rejected() {
+        let valid = json!({"x":100,"y":200,"width":0,"height":24});
+        for (key, value) in [
+            ("x", json!(i64::from(i32::MIN) - 1)),
+            ("y", json!(i64::from(i32::MAX) + 1)),
+            ("x", json!(1.5)),
+            ("y", json!("200")),
+            ("width", json!(-1)),
+            ("height", json!(-1)),
+            ("height", json!(0)),
+            ("width", json!(MAX_CURSOR_DIMENSION + 1)),
+            ("height", json!(MAX_CURSOR_DIMENSION + 1)),
+            ("height", Value::Null),
+        ] {
+            let mut raw = sample().to_json();
+            raw["cursor"] = valid.clone();
+            raw["cursor"][key] = value;
+            assert!(
+                NativeComposition::parse(raw.to_string().as_bytes()).is_err(),
+                "{raw}"
+            );
+        }
+        for cursor in [
+            json!([]),
+            json!(42),
+            json!({}),
+            json!({"x":i32::MAX,"y":0,"width":1,"height":1}),
+            json!({"x":0,"y":i32::MAX,"width":0,"height":1}),
+        ] {
+            let mut raw = sample().to_json();
+            raw["cursor"] = cursor;
+            assert!(NativeComposition::parse(raw.to_string().as_bytes()).is_err());
+        }
+        assert!(NativeCursorRect::new(i32::MIN, i32::MIN, 0, 1).is_some());
+        assert!(NativeCursorRect::new(i32::MAX, i32::MAX - 1, 0, 1).is_some());
+    }
+
+    #[test]
+    fn non_public_cursor_is_rejected_even_when_composition_is_empty() {
+        for (focused, private) in [(false, false), (true, true), (false, true)] {
+            let mut frame = sample();
+            frame.seed.clear();
+            frame.candidates.clear();
+            frame.focused = focused;
+            frame.private = private;
+            frame.cursor = NativeCursorRect::new(100, 200, 0, 24);
+            assert!(NativeComposition::parse(frame.to_json().to_string().as_bytes()).is_err());
+            frame.cursor = None;
+            assert!(NativeComposition::parse(frame.to_json().to_string().as_bytes()).is_ok());
+        }
     }
     #[test]
     fn rejects_unredacted_private_unfocused_and_empty_frames() {

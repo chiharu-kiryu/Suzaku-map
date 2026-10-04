@@ -74,13 +74,63 @@
 
 日用需求层 `daily_needs` 继续补点餐口味、天气出门和临时安排：中文新增 64 条读音，
 中英各新增 24 组语境和 48 条短句；英文只新增 `tastes`、`dessert`、`road` 三个索引词形。
-当前总量为 **6,111 项英文索引、425 组搭配、814 条英文短句；2,175 条中文读音、
+该轮总量为 **6,111 项英文索引、425 组搭配、814 条英文短句；2,175 条中文读音、
 419 组语境、836 条中文续句**。例如 `please make it mi` → `please make it mild` /
 `please make it mild.`，`shao tang` → `少糖` / `少糖就好，谢谢。`，
 `dai san` → `带伞` / `带伞出门，免得淋雨。`，`lin shi you shi` → `临时有事` /
 `临时有事，可能要晚一点。`。这些是输入表达预设，不查询天气、菜单、位置或行程，
 不依赖模型，不自动添加个人资料。旧十二层英文权重及前 2,111 条中文读音另加指纹锁定，
 短前缀仍允许旧候选竞争；词句首屏、明确分支、保真续写由固定场景测试检查。
+
+未发布的日常沟通层 `daily_coordination` 补充听懂/确认、礼貌请求、消息回应和分工：
+中文追加 64 条读音，中英各追加 24 组语境和 48 条短句。英文复用旧词，仅新增
+`hand`、`middle` 两项索引；该轮为 **6,113 项英文索引、449 组搭配、862 条英文短句；
+2,239 条中文读音、443 组语境、884 条中文续句**。例如
+`did you get my me` → `did you get my message` / `did you get my message?`，
+`bang wo kan kan` → `帮我看看` / `帮我看看有没有漏掉什么。`，
+`fa gei ni le` → `发给你了` / `发给你了，看看有没有收到。`。
+同时补齐 `mei / mei you / you mei you` → `没 / 没有 / 有没有`，支持选词后继续拼音续写。
+不会读取或发送真实消息，也不执行联系/分工操作。0.8.1 的十三层英文和 2,175 条
+中文读音新增指纹锁定；历史搭配、读音顺序、日文、候选容量和模型预算保持不变。
+资源需重建/重装才会出现在当前桌面输入法中。
+
+继续追加未发布的 `daily_social` 日常社交层，覆盖近况关心、倾听回应、邀约安排和礼貌婉拒：
+中文新增 64 条读音，中英各新增 24 组语境及 48 条预设句子。英文仅新增
+`tiring`、`quiet`、`cafe`、`shall` 四项索引；该轮总量为 **6,117 项英文索引、473 组搭配、
+910 条英文短句；2,303 条中文读音、467 组语境、932 条中文续句**。例如
+`do you want to grab co` → `do you want to grab coffee` / `do you want to grab coffee?`，
+`zhao gu hao zi ji` → `照顾好自己` / `照顾好自己，记得按时吃饭。`，
+`xie xie yao qing` → `谢谢邀请` / `谢谢邀请，我看看时间再回复你。`。
+前 14 层英文权重、2,239 条中文读音及既有中英语境/句子另加指纹锁定；不重排旧同音项，
+不改变模型接口、候选容量或 6,144 项英文索引预算。日文和可选主题包保持不变。
+这些只是项目编写的表达，不读取消息、安排出行或推断个人状况，也不代替开放式模型联想。
+
+未发布的 `daily_objects` 层继续补找物、摆放、借还、数量和尺寸：中文追加 64 条读音，
+中英各追加 24 组语境和 48 条预设句子。英文仅新增 `chairs/cups/mine/plates/scissors/tape/yours`
+七项索引；当前总量为 **6,124 项英文索引、497 组搭配、958 条英文短句；2,367 条中文读音、
+491 组语境、980 条中文续句**。例如 `have you seen my ke` → `have you seen my keys` /
+`have you seen my keys?`，`fang hui yuan chu` → `放回原处` / `放回原处之前，记得擦干净。`，
+`hai sheng duo shao` → `还剩多少` / `还剩多少，我们先数一下。`。
+这是项目原创输入表达，不探测物品位置、库存或个人活动。保留前 15 层英文的词权重和完整
+搭配/句子，以及前 2,303 条中文读音和 467 组语境的历史指纹；日文、模型接口、候选容量及
+6,144 项英文索引预算不变。与全部推荐主题包一起校验，新层避免占用烹饪包原有的
+`please pass me the` 语境，不覆盖既有包内容。内置数据需重建/重装后才会进入桌面输入法。
+
+### 日语日常基础扩充（未发布）
+
+在保留中英核心工作流的基础上，日语逐步增加日常兜底：追加 **48 条假名读音、24 组语境、
+48 条续句**，当前为 **74 条读音、38 组语境、75 条续句记录**。覆盖问候、请求、回复、
+时间安排和日常协作，例如 `sumimasen` → `すみません` / `すみません、もう一度お願いします。`，
+`yotei` → `予定` / `予定が決まったら連絡します。`。内容为项目原创，不依赖任何模型。
+原有 26 条读音的顺序与同音优先级不动；14 组旧语境完整文本另加指纹锁定。
+与可选日语铁路包共存，不覆盖其“改札／切符／乗り換え”等既有内容。
+
+词库仍只描述读音、文字和有限续句。通用的罗马音规则（如 `jya/jyu/jyo`、`n’`、
+`nn` 结束边界）及已知前缀后的同音词补全属于语言实现，不在数据中枚举算法特例。
+罗马音空格是转换分隔符；原始带空格文本仍可选，Space 不提交。
+这不是完整日语形态分析器：未知词、活用和任意长句转换仍有限；超过 256 字符的日语
+本地长稿窗口尚未扩展。片假名采用后可接续罗马音，不等于已实现任意片假名反查汉字。
+内置数据仍须重建/重装才会在桌面输入法中生效。
 
 ## 格式版本 1
 
@@ -185,6 +235,10 @@ cargo test --locked --all-features --test english_completion_quality --test chin
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test daily_english_vocabulary --test daily_chinese_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test daily_needs_english --test daily_needs_chinese -- --test-threads=1
+cargo test --locked --all-features --test daily_coordination_english --test daily_coordination_chinese -- --test-threads=1
+cargo test --locked --all-features --test daily_social_english --test daily_social_chinese -- --test-threads=1
+cargo test --locked --all-features --test daily_objects_english --test daily_objects_chinese -- --test-threads=1
+cargo test --locked --all-features --test daily_japanese_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test offline_packs -- --test-threads=1
 cargo test --locked --all-features --test offline_pack_quality -- --test-threads=1
 ```

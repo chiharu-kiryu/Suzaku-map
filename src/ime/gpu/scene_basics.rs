@@ -22,8 +22,18 @@ impl WgpuCandidateRenderer {
             f32::MAX,
             scale,
             chrome,
-            chrome.sentence_candidates.len().min(4),
-            self.scene_width < 1360.0 && chrome.preview_style == PreviewStyle::Compact,
+            chrome
+                .sentence_candidates
+                .len()
+                .min(if chrome.native_candidate_page.is_some() {
+                    NativeCandidatePage::SIZE
+                } else {
+                    4
+                }),
+            chrome.native_candidate_page.is_none()
+                && chrome.effective_panel_layout() != PanelLayoutMode::BottomDock
+                && self.scene_width < 1360.0
+                && chrome.preview_style == PreviewStyle::Compact,
         );
         (metrics.panel_height + 12.0 * scale).ceil()
     }
@@ -193,9 +203,147 @@ impl WgpuCandidateRenderer {
 }
 
 #[cfg(test)]
+#[path = "bottom_dock_tests.rs"]
+mod bottom_dock_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::ime::{EngineConfig, XRTabletImeEngine};
+
+    #[test]
+    fn native_pages_expose_every_host_slot_without_derived_numbered_chips() {
+        let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+        engine.seed("hel");
+        let mut snapshot = engine.snapshot();
+        snapshot.candidate_labels = (0..13).map(|index| format!("word{index}")).collect();
+        for width in [320.0, 520.0, 900.0] {
+            for text_scale in [
+                DisplayTextScale::Small,
+                DisplayTextScale::Medium,
+                DisplayTextScale::Large,
+            ] {
+                for expanded in [false, true] {
+                    for selected in [0, 4, 5, 6, 11, 12] {
+                        snapshot.selected_index = selected;
+                        let page = NativeCandidatePage::new(selected, 13, false);
+                        let indices: Vec<_> = (page.start
+                            ..(page.start + NativeCandidatePage::SIZE).min(13))
+                            .collect();
+                        let chrome = PanelChromeState {
+                            seed_text: "hel".into(),
+                            input_modes_expanded: expanded,
+                            text_scale,
+                            native_candidate_page: Some(page),
+                            sentence_candidates: indices
+                                .iter()
+                                .map(|&index| snapshot.candidate_labels[index].clone())
+                                .collect(),
+                            sentence_candidate_source_indices: indices.clone(),
+                            ..PanelChromeState::default()
+                        };
+                        let mut renderer = WgpuCandidateRenderer::new(width, 1.0);
+                        renderer.scene_height = renderer.preferred_input_panel_height(&chrome);
+                        let scene =
+                            renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
+                        assert_eq!(
+                            scene
+                                .hit_targets
+                                .iter()
+                                .map(|target| target.index)
+                                .collect::<Vec<_>>(),
+                            indices
+                        );
+                        for target in &scene.hit_targets {
+                            let [x, y, w, h] = target.rect;
+                            assert!(
+                                w > 0.0
+                                    && h >= 25.0
+                                    && x >= 0.0
+                                    && y >= 0.0
+                                    && x + w <= width
+                                    && y + h <= renderer.scene_height
+                            );
+                            assert_eq!(
+                                scene.hit_interaction(x + w / 2.0, y + h / 2.0),
+                                Some(InteractionKind::Candidate(target.index))
+                            );
+                        }
+                        let texts: Vec<_> = scene
+                            .text_sections
+                            .iter()
+                            .filter(|section| section.role == TextRole::CandidatePrimary)
+                            .flat_map(|section| &section.layouts)
+                            .collect();
+                        assert_eq!(texts.len(), indices.len());
+                        for (slot, layout) in texts.iter().enumerate() {
+                            assert!(layout.lines[0].starts_with(&format!("{} ", slot + 1)));
+                            assert!(
+                                !layout.truncated,
+                                "short candidate {width}/{text_scale:?}/{expanded}/{selected}"
+                            );
+                        }
+                        for forward in [false, true] {
+                            assert_eq!(
+                                scene.interactive_targets.iter().any(|target| target.kind
+                                    == InteractionKind::NativeCandidatePage(forward)),
+                                page.target(forward).is_some()
+                            );
+                        }
+                        assert!(!scene.interactive_targets.iter().any(|target| matches!(
+                            target.kind,
+                            InteractionKind::SelectNextToken(_)
+                        )));
+                        assert_eq!(
+                            renderer.preferred_input_panel_height(&chrome),
+                            renderer.scene_height
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_page_controls_are_bounded_and_disabled_until_acknowledged() {
+        for total in [0, 1, 6, 7, 12, 13, 32] {
+            for selected in 0..total.max(1) {
+                let page = NativeCandidatePage::new(selected, total, false);
+                assert_eq!(page.count(), total.div_ceil(6));
+                for forward in [false, true] {
+                    if let Some(target) = page.target(forward) {
+                        assert!(target < total && target % 6 == 0);
+                        assert_eq!(target.abs_diff(page.start), 6);
+                    }
+                    assert!(
+                        NativeCandidatePage { busy: true, ..page }
+                            .target(forward)
+                            .is_none()
+                    );
+                }
+            }
+        }
+        assert_eq!(NativeCandidatePage::new(usize::MAX, 7, false).start, 6);
+        let engine = XRTabletImeEngine::new(EngineConfig::default());
+        let mut snapshot = engine.snapshot();
+        snapshot.selected_index = 6;
+        let chrome = PanelChromeState {
+            native_candidate_page: Some(NativeCandidatePage::new(6, 13, true)),
+            sentence_candidates: (6..12).map(|index| format!("word{index}")).collect(),
+            sentence_candidate_source_indices: (6..12).collect(),
+            ..PanelChromeState::default()
+        };
+        let mut renderer = WgpuCandidateRenderer::new(900.0, 1.0);
+        renderer.scene_height = renderer.preferred_input_panel_height(&chrome);
+        let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
+        assert_eq!(scene.hit_targets.len(), 6);
+        assert!(
+            !scene
+                .interactive_targets
+                .iter()
+                .any(|target| matches!(target.kind, InteractionKind::NativeCandidatePage(_)))
+        );
+    }
 
     #[test]
     fn scaled_expanded_panel_keeps_text_inside_the_viewport() {

@@ -210,6 +210,11 @@ impl PanelState {
     pub(super) fn interaction_hint(&self, kind: InteractionKind) -> Option<String> {
         let ui = self.chrome.ui_language;
         let message: Option<String> = match kind {
+            InteractionKind::NativeCandidatePage(forward) => Some(format!(
+                "{} · {}",
+                ui.tr(if forward { "Page forward" } else { "Page back" }),
+                if forward { "PageDown" } else { "PageUp" }
+            )),
             InteractionKind::SetUiLanguage(language) => {
                 Some(format!("Interface language: {}", language.native_name()))
             }
@@ -297,6 +302,21 @@ impl PanelState {
             } else {
                 "Show the system title bar on the panel and settings".into()
             }),
+            InteractionKind::SetPanelLayoutMode(mode) => Some(format!(
+                "{}: {}",
+                ui.tr("Panel Layout"),
+                ui.tr(if mode == suzaku_map::ime::gpu::PanelLayoutMode::Auto {
+                    if self.chrome.detected_panel_layout
+                        == suzaku_map::ime::gpu::PanelLayoutMode::BottomDock
+                    {
+                        "Auto · Bottom dock"
+                    } else {
+                        "Auto · Follow caret"
+                    }
+                } else {
+                    mode.label()
+                })
+            )),
             InteractionKind::DecreaseWindowScale => Some("Shrink window scale".to_string()),
             InteractionKind::DragWindowScale => Some("Drag to resize window".to_string()),
             InteractionKind::IncreaseWindowScale => Some("Enlarge window scale".to_string()),

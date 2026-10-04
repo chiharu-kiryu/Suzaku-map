@@ -1,0 +1,2697 @@
+{
+  "schema_version": 1,
+  "snapshot": {
+    "date": "2026-10-04",
+    "head": "89d3184e095cbdf4addf27e7314b63aba1e4934b",
+    "dirty": true,
+    "source_sha256": "8eef3fdff70958eb8e186dd331b726b9698c48dd088710b4aad97193cd176f54",
+    "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging；词库扩充见 E-daily-objects；10-04崩溃调查见E-daemon-abort，尚未宣称根因修复；未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
+  },
+  "architectures": [
+    {
+      "id": "A01",
+      "title": "Linux 原生输入与宿主"
+    },
+    {
+      "id": "A02",
+      "title": "引擎、状态与候选策略"
+    },
+    {
+      "id": "A03",
+      "title": "语言与离线词库"
+    },
+    {
+      "id": "A04",
+      "title": "模型与异步任务"
+    },
+    {
+      "id": "A05",
+      "title": "IPC 与伴随一致性"
+    },
+    {
+      "id": "A06",
+      "title": "面板交互与工具"
+    },
+    {
+      "id": "A07",
+      "title": "呈现、窗口与本地化"
+    },
+    {
+      "id": "A08",
+      "title": "配置、数据与持久化"
+    },
+    {
+      "id": "A09",
+      "title": "生命周期、运维与交付"
+    },
+    {
+      "id": "A10",
+      "title": "跨平台适配"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "I",
+      "title": "实现闭环",
+      "levels": [
+        "明确未实现",
+        "接口、占位或模拟",
+        "部分真实实现，主要能力受限",
+        "声明范围内入口、结果与失败路径接通",
+        "完整产品契约及所有声明边界均有独立验收"
+      ]
+    },
+    {
+      "id": "T",
+      "title": "自动化回归",
+      "levels": [
+        "确认没有自动化覆盖",
+        "仅编译、单元或静态验证入口",
+        "有针对性跨模块/集成测试入口，未据此宣称执行通过",
+        "有针对性历史执行记录，须读取时间和范围",
+        "当前精确快照的完整专项与必要故障注入重新通过"
+      ]
+    },
+    {
+      "id": "V",
+      "title": "真实环境验收",
+      "levels": [
+        "已验收且关键路径失败",
+        "真实环境部分验证，仍有关键未通过项",
+        "有限平台/应用/设备验收通过",
+        "声明支持矩阵完整验收通过",
+        "重复升级、长期使用和用户验收均有记录"
+      ]
+    },
+    {
+      "id": "O",
+      "title": "交付准备度",
+      "levels": [
+        "明确没有交付路径",
+        "存在使用/构建说明",
+        "维护、打包与验收入口具备，但当前快照未交付",
+        "精确版本产物已验证并交付",
+        "该版本升级、回退及支持矩阵重复验收"
+      ]
+    }
+  ],
+  "semantics": {
+    "axes": "T[a,f,i,m] -> ordinal score or null；cells 按 (a,f,i) 分组存储 m=[I,T,V,O]，--coo 可展开坐标。",
+    "missing": "不存在的 (a,f,i) 表示未枚举/不适用关联，不能当作 0；已枚举 cell 的 null 表示未确认。",
+    "score_zero": "0 只表示按该项定义明确缺失或失败；不得用 null 填 0。",
+    "aggregation": "不计算总平均、百分比、完成率或跨平台均分。I/T 高分不补偿 V/O 未确认。评分仅针对 scope 内有边界的功能。",
+    "evidence": "实现路径支持 I；tests 是可复现入口而非执行证明。T>=3 必须绑定历史运行记录。V 只评当前快照真实环境，历史个人安装记录留在证据，不转抄到 V。O=2 只表示交付流程存在，不等于当前产物可下载。",
+    "coverage": "架构归属不是调用图。一个功能可在多个实现切片出现，parents 为功能分解关系，不代表运行顺序。原始 F01-F59 编号不变；F60-F68 将原先交叉能力独立索引。",
+    "exclusions": [
+      "不把 Xvfb/私有 DBus/XTest 当成人工 GNOME、native Wayland 或物理触摸验收",
+      "不把回退成功当作 LLM 质量或默认期限达标",
+      "不把测试源码、CI配置或旧 Release 说明当成本轮运行结果"
+    ]
+  },
+  "implementations": [
+    {
+      "id": "instance",
+      "a": "A09",
+      "title": "单实例启动器",
+      "scope": "Linux desktop",
+      "paths": [
+        "src/bin/panel/instance.rs",
+        "src/bin/panel.rs"
+      ],
+      "tests": [
+        "tests/linux_panel_instance_cli.rs"
+      ]
+    },
+    {
+      "id": "service",
+      "a": "A09",
+      "title": "受管宿主生命周期",
+      "scope": "Linux systemd/IBus",
+      "paths": [
+        "src/bin/panel/input_method_service.rs",
+        "src/platform/linux_ibus_recovery.rs"
+      ],
+      "tests": [
+        "scripts/test-linux-service.py"
+      ]
+    },
+    {
+      "id": "activation",
+      "a": "A09",
+      "title": "托盘输入源激活/恢复",
+      "scope": "Linux IBus",
+      "paths": [
+        "src/bin/panel/input_method.rs",
+        "src/bin/panel/tray.rs"
+      ],
+      "tests": [
+        "scripts/test-native-sync.py"
+      ]
+    },
+    {
+      "id": "diagnostics",
+      "a": "A09",
+      "title": "注册与只读诊断",
+      "scope": "Linux IBus CLI",
+      "paths": [
+        "src/bin/suzaku_tool.rs",
+        "src/platform/linux_ime_cache.rs",
+        "src/platform/ime_host_runtime.rs"
+      ],
+      "tests": [
+        "tests/linux_registration_cli.rs",
+        "src/bin/panel/status_native_test.rs"
+      ]
+    },
+    {
+      "id": "ibus",
+      "a": "A01",
+      "title": "IBus C 事件桥",
+      "scope": "Linux IBus",
+      "paths": [
+        "src/linux/ibus_engine_bridge.c",
+        "src/linux/ibus_language.inc.c"
+      ],
+      "tests": [
+        "scripts/test-native-sync.py",
+        "scripts/test-linux-keyboard.py"
+      ]
+    },
+    {
+      "id": "compose",
+      "a": "A01",
+      "title": "xkbcommon Compose",
+      "scope": "Linux IBus",
+      "paths": [
+        "src/linux/ibus_compose.inc.c",
+        "build.rs"
+      ],
+      "tests": [
+        "scripts/test-native-sync.py",
+        "scripts/fixtures/compose.XCompose"
+      ]
+    },
+    {
+      "id": "host",
+      "a": "A01",
+      "title": "Rust 原生会话与控制",
+      "scope": "Linux IBus",
+      "paths": [
+        "src/ime_host.rs",
+        "src/ime_host/control.rs"
+      ],
+      "tests": [
+        "tests/functional_network_audit.rs",
+        "scripts/test-native-sync.py"
+      ]
+    },
+    {
+      "id": "core",
+      "a": "A02",
+      "title": "组合与确认状态机",
+      "scope": "共享引擎；主验收Linux",
+      "paths": [
+        "src/ime/core_engine.rs",
+        "src/ime/core_helpers.rs"
+      ],
+      "tests": [
+        "tests/ime_engine_core.rs",
+        "tests/ime_engine.rs"
+      ]
+    },
+    {
+      "id": "mix",
+      "a": "A02",
+      "title": "候选分类/排序/字节预算",
+      "scope": "共享引擎 + IBus混排策略",
+      "paths": [
+        "src/ime/candidate_mix.rs",
+        "src/ime/companion.rs"
+      ],
+      "tests": [
+        "tests/input_edge_audit_budget.rs",
+        "tests/ime_prediction.rs"
+      ]
+    },
+    {
+      "id": "preference",
+      "a": "A02",
+      "title": "有界内存频率缓存",
+      "scope": "宿主/面板各自进程内",
+      "paths": [
+        "src/preferences.rs",
+        "src/ime/preferences.rs"
+      ],
+      "tests": [
+        "tests/preference_learning.rs",
+        "tests/ime_prediction.rs",
+        "scripts/test-native-sync.py"
+      ]
+    },
+    {
+      "id": "shortcuts",
+      "a": "A02",
+      "title": "标准/主键区快捷键策略",
+      "scope": "Linux IBus公开且聚焦的输入上下文",
+      "paths": [
+        "src/ime/shortcuts.rs",
+        "src/linux/ibus_engine_bridge.c"
+      ],
+      "tests": [
+        "scripts/test-linux-keyboard.py",
+        "scripts/test-native-sync.py",
+        "tests/settings_chain_audit.rs"
+      ]
+    },
+    {
+      "id": "languages",
+      "a": "A03",
+      "title": "语言注册与长稿窗口",
+      "scope": "共享EN/ZH/JA；长稿EN/ZH",
+      "paths": [
+        "src/languages/mod.rs",
+        "src/languages/draft.rs"
+      ],
+      "tests": [
+        "tests/ime_engine_core.rs",
+        "tests/long_draft_completion.rs",
+        "tests/long_draft_window_english.rs",
+        "tests/ime_prediction.rs",
+        "scripts/test-native-sync.py"
+      ]
+    },
+    {
+      "id": "english",
+      "a": "A03",
+      "title": "英文词/句补全",
+      "scope": "EN本地fallback",
+      "paths": [
+        "src/languages/english.rs",
+        "data/lexicons/en.json"
+      ],
+      "tests": [
+        "tests/english_completion_quality.rs",
+        "tests/input_edge_audit_english.rs",
+        "tests/daily_social_english.rs",
+        "tests/daily_objects_english.rs"
+      ]
+    },
+    {
+      "id": "chinese",
+      "a": "A03",
+      "title": "拼音与汉字续写",
+      "scope": "zh-Hans本地fallback",
+      "paths": [
+        "src/languages/chinese.rs",
+        "data/lexicons/zh-Hans.json"
+      ],
+      "tests": [
+        "tests/chinese_completion_quality.rs",
+        "tests/input_edge_audit_chinese.rs",
+        "tests/chinese_sentence_continuation.rs",
+        "tests/daily_objects_chinese.rs"
+      ]
+    },
+    {
+      "id": "japanese",
+      "a": "A03",
+      "title": "罗马音/假名与有限汉字",
+      "scope": "JA基础罗马音/假名、日常fallback与已知前缀续写；非完整形态分析",
+      "paths": [
+        "src/languages/japanese.rs",
+        "data/lexicons/ja.json"
+      ],
+      "tests": [
+        "src/languages/japanese.rs",
+        "tests/lexicon_resources.rs",
+        "tests/daily_japanese_vocabulary.rs",
+        "tests/japanese_sentence_progress.rs",
+        "tests/fallback_vocabulary.rs",
+        "scripts/test-native-sync.py",
+        "scripts/test-linux-vocabulary.py"
+      ]
+    },
+    {
+      "id": "lexicon",
+      "a": "A03",
+      "title": "版本化词库资源",
+      "scope": "共享数据接口，启动冻结",
+      "paths": [
+        "src/lexicon.rs",
+        "data/lexicons/en.json",
+        "data/lexicons/zh-Hans.json",
+        "data/lexicons/ja.json"
+      ],
+      "tests": [
+        "tests/lexicon_resources.rs",
+        "tests/offline_vocabulary_quality.rs",
+        "tests/fallback_vocabulary.rs",
+        "scripts/test-linux-vocabulary.py"
+      ]
+    },
+    {
+      "id": "packs",
+      "a": "A03",
+      "title": "纯数据扩展包与注册表",
+      "scope": "Linux宿主/面板启动加载",
+      "paths": [
+        "src/lexicon/packs.rs",
+        "src/bin/suzaku_tool/pack.rs"
+      ],
+      "tests": [
+        "tests/offline_packs.rs",
+        "tests/offline_pack_quality.rs",
+        "tests/input_edge_audit_packs.rs"
+      ]
+    },
+    {
+      "id": "sdk",
+      "a": "A03",
+      "title": "离线包小型SDK/集合",
+      "scope": "Python3标准库/EN-ZH-JA",
+      "paths": [
+        "sdk/offline-packs/suzaku_pack.py",
+        "sdk/offline-packs/example.py",
+        "data/offline-packs/en-cooking.json",
+        "data/offline-packs/en-outdoors.json",
+        "data/offline-packs/en-study.json",
+        "data/offline-packs/en-travel.json",
+        "data/offline-packs/en-work.json",
+        "data/offline-packs/ja-rail.json",
+        "data/offline-packs/zh-Hans-cooking.json",
+        "data/offline-packs/zh-Hans-outdoors.json",
+        "data/offline-packs/zh-Hans-study.json",
+        "data/offline-packs/zh-Hans-travel.json",
+        "data/offline-packs/zh-Hans-work.json"
+      ],
+      "tests": [
+        "scripts/test-linux-package.sh",
+        "tests/offline_packs.rs"
+      ]
+    },
+    {
+      "id": "model",
+      "a": "A04",
+      "title": "协议/授权/结果校验",
+      "scope": "本地Ollama + 显式授权compatible HTTPS",
+      "paths": [
+        "src/languages/model.rs",
+        "src/languages/model/transport.rs",
+        "src/bin/suzaku_tool/model.rs"
+      ],
+      "tests": [
+        "tests/model_provider_cli.rs",
+        "tests/ime_prediction.rs",
+        "tests/functional_network_audit.rs"
+      ]
+    },
+    {
+      "id": "discovery",
+      "a": "A04",
+      "title": "本机发现/探针/预热",
+      "scope": "固定loopback端点；预热限Ollama",
+      "paths": [
+        "src/languages/model/runtime.rs"
+      ],
+      "tests": [
+        "src/languages/model/runtime.rs",
+        "tests/model_provider_cli.rs",
+        "scripts/test-linux-model-live.py"
+      ]
+    },
+    {
+      "id": "prediction",
+      "a": "A04",
+      "title": "防抖工作线程/取消",
+      "scope": "共享引擎；本地连接后可取消",
+      "paths": [
+        "src/ime/prediction.rs",
+        "src/languages/model/transport.rs"
+      ],
+      "tests": [
+        "tests/ime_prediction.rs",
+        "src/languages/model/cancellation_tests.rs",
+        "tests/fallback_vocabulary.rs"
+      ]
+    },
+    {
+      "id": "translation",
+      "a": "A04",
+      "title": "八语显式翻译任务",
+      "scope": "模型功能，不是8套输入法",
+      "paths": [
+        "src/languages/translation.rs",
+        "src/languages/translation/worker.rs",
+        "src/languages/model/translation.rs"
+      ],
+      "tests": [
+        "tests/model_translation_live.rs",
+        "tests/ime_translation_ui.rs"
+      ]
+    },
+    {
+      "id": "ipc",
+      "a": "A05",
+      "title": "版本化快照/动作/ACK",
+      "scope": "本用户Unix通道/Linux IBus",
+      "paths": [
+        "src/platform/linux_ime_sync.rs",
+        "src/linux/ibus_companion.inc.c",
+        "src/bin/panel/native_sync.rs",
+        "src/bin/panel/native_typing.rs"
+      ],
+      "tests": [
+        "src/bin/panel/native_sync_test.rs",
+        "src/bin/panel/native_action_audit_test.rs",
+        "scripts/test-native-sync.py"
+      ]
+    },
+    {
+      "id": "lease",
+      "a": "A05",
+      "title": "已绘制候选显示租约",
+      "scope": "Linux X11/XWayland无焦点伴随",
+      "paths": [
+        "src/bin/panel/native_presentation.rs",
+        "src/linux/ibus_presentation.inc.c"
+      ],
+      "tests": [
+        "scripts/test-linux-native-candidates.py",
+        "src/bin/panel/native_sync_test.rs",
+        "scripts/test-linux-gtk3.py"
+      ]
+    },
+    {
+      "id": "editor",
+      "a": "A06",
+      "title": "独立编辑器与确认发送",
+      "scope": "Linux面板；共享引擎独立实例",
+      "paths": [
+        "src/bin/panel/keyboard.rs",
+        "src/bin/panel/composition.rs",
+        "src/bin/panel/controller.rs",
+        "src/platform/text_output_host.rs"
+      ],
+      "tests": [
+        "src/bin/panel/keyboard_native_test.rs",
+        "src/bin/panel/functional_network_audit_test.rs"
+      ]
+    },
+    {
+      "id": "handwriting",
+      "a": "A06",
+      "title": "有限笔迹识别与回填",
+      "scope": "桌面鼠标/触摸事件",
+      "paths": [
+        "src/bin/panel/handwriting.rs",
+        "src/panel_support.rs"
+      ],
+      "tests": [
+        "tests/ime_handwriting_layout.rs",
+        "src/bin/panel/tool_chain_audit_test.rs"
+      ]
+    },
+    {
+      "id": "voice",
+      "a": "A06",
+      "title": "语音工具/模拟桥",
+      "scope": "Linux模拟，不是麦克风ASR",
+      "paths": [
+        "src/bin/panel/voice.rs",
+        "src/platform/linux_voice.rs",
+        "src/linux/speech_bridge.c"
+      ],
+      "tests": [
+        "src/bin/panel/tool_chain_audit_test.rs",
+        "src/platform/linux_voice.rs"
+      ]
+    },
+    {
+      "id": "toolfill",
+      "a": "A06",
+      "title": "工具来源/译文回填",
+      "scope": "Linux原生与独立编辑",
+      "paths": [
+        "src/bin/panel/translation.rs",
+        "src/bin/panel/native_sync.rs"
+      ],
+      "tests": [
+        "src/bin/panel/tool_chain_audit_test.rs",
+        "tests/ime_translation_ui.rs"
+      ]
+    },
+    {
+      "id": "window",
+      "a": "A07",
+      "title": "窗口、拖动与内容适配",
+      "scope": "Linux X11/XWayland为主",
+      "paths": [
+        "src/bin/panel/windowing.rs",
+        "src/bin/panel/controller.rs",
+        "src/bin/panel/input.rs",
+        "src/ime/gpu/panel_scene.rs"
+      ],
+      "tests": [
+        "tests/ime_panel_content_fit.rs",
+        "tests/ime_panel_drag_regions.rs",
+        "src/bin/panel/windowing_native_test.rs",
+        "src/bin/panel/native_action_audit_test.rs"
+      ]
+    },
+    {
+      "id": "theme",
+      "a": "A07",
+      "title": "主题与精细图标",
+      "scope": "桌面GPU面板/托盘",
+      "paths": [
+        "src/ime/gpu/brand.rs",
+        "src/ime/gpu/theme_metrics.rs",
+        "src/bin/panel/tray.rs"
+      ],
+      "tests": [
+        "tests/ime_panel_theme.rs",
+        "tests/ime_engine_ui_alignment.rs"
+      ]
+    },
+    {
+      "id": "font",
+      "a": "A07",
+      "title": "字体栅格与图集",
+      "scope": "桌面GPU文本",
+      "paths": [
+        "src/bin/panel/font_raster.rs",
+        "src/bin/panel/font_atlas.rs",
+        "src/bin/panel/render.rs"
+      ],
+      "tests": [
+        "src/bin/panel/font_atlas_visual_tests.rs",
+        "tests/ime_engine_ui_alignment.rs"
+      ]
+    },
+    {
+      "id": "settings-ui",
+      "a": "A07",
+      "title": "设置布局/标题栏",
+      "scope": "桌面GPU设置窗口",
+      "paths": [
+        "src/ime/gpu/settings_scene.rs",
+        "src/bin/panel/settings_keyboard.rs",
+        "src/bin/panel/input.rs",
+        "src/bin/panel/windowing.rs",
+        "src/bin/panel/app_state.rs"
+      ],
+      "tests": [
+        "src/bin/panel/settings_native_test.rs",
+        "src/bin/panel/native_action_audit_test.rs",
+        "tests/ime_engine_ui_alignment.rs"
+      ]
+    },
+    {
+      "id": "i18n",
+      "a": "A07",
+      "title": "八语界面资源",
+      "scope": "en/zh/ja/ko/es/fr/de/pt UI",
+      "paths": [
+        "src/ui.rs",
+        "src/ui/catalog.tsv"
+      ],
+      "tests": [
+        "tests/ui_localization.rs"
+      ]
+    },
+    {
+      "id": "paging",
+      "a": "A07",
+      "title": "自绘六槽分页",
+      "scope": "Linux伴随候选",
+      "paths": [
+        "src/ime/gpu/panel_scene_native_candidates_block.rs",
+        "src/bin/panel/controller.rs",
+        "src/bin/panel/input.rs"
+      ],
+      "tests": [
+        "scripts/test-linux-native-candidates.py",
+        "src/bin/panel/native_action_audit_test.rs"
+      ]
+    },
+    {
+      "id": "position",
+      "a": "A07",
+      "title": "光标跟随与边界避让",
+      "scope": "公开IBus光标矩形/X11坐标",
+      "paths": [
+        "src/bin/panel/native_position.rs",
+        "src/bin/panel/windowing.rs",
+        "src/linux/ibus_companion.inc.c",
+        "src/linux/ibus_engine_bridge.c"
+      ],
+      "tests": [
+        "src/bin/panel/native_position.rs",
+        "scripts/test-linux-native-candidates.py"
+      ]
+    },
+    {
+      "id": "bottom",
+      "a": "A07",
+      "title": "底部触控布局",
+      "scope": "桌面面板；未物理触屏验收",
+      "paths": [
+        "src/bin/panel/bottom_layout.rs",
+        "src/ime/gpu/panel_scene.rs",
+        "src/ime/gpu/panel_scene_keyboard_body_block.rs"
+      ],
+      "tests": [
+        "src/ime/gpu/bottom_dock_tests.rs",
+        "scripts/test-linux-native-candidates.py"
+      ]
+    },
+    {
+      "id": "auto-layout",
+      "a": "A10",
+      "title": "平台布局能力探测",
+      "scope": "桌面/移动启发式；允许手动覆盖",
+      "paths": [
+        "src/platform/panel_layout.rs",
+        "src/bin/panel/bottom_layout.rs",
+        "src/bin/panel/app_state.rs"
+      ],
+      "tests": [
+        "tests/panel_layout_settings.rs",
+        "src/platform/panel_layout.rs",
+        "scripts/test-linux-native-candidates.py"
+      ]
+    },
+    {
+      "id": "settings",
+      "a": "A08",
+      "title": "异步设置保存与确认",
+      "scope": "Linux宿主/面板双配置",
+      "paths": [
+        "src/ime/settings.rs",
+        "src/ime_host/control.rs",
+        "src/bin/panel/prediction_settings.rs",
+        "src/bin/panel/app_state.rs"
+      ],
+      "tests": [
+        "tests/settings_chain_audit.rs",
+        "src/bin/panel/settings_chain_audit_test.rs"
+      ]
+    },
+    {
+      "id": "files",
+      "a": "A08",
+      "title": "数据路径/特殊文件/锁",
+      "scope": "Linux/XDG及明确覆盖路径",
+      "paths": [
+        "src/data/paths.rs",
+        "src/data/files.rs",
+        "src/bin/suzaku_tool/data.rs"
+      ],
+      "tests": [
+        "tests/data_locking.rs",
+        "tests/data_management_cli.rs"
+      ]
+    },
+    {
+      "id": "backup",
+      "a": "A08",
+      "title": "白名单备份/预览/恢复",
+      "scope": "apply恢复仅Linux",
+      "paths": [
+        "src/data/backup.rs",
+        "src/data/files.rs",
+        "src/bin/suzaku_tool/data.rs"
+      ],
+      "tests": [
+        "src/data/backup_tests.rs",
+        "tests/data_chain_audit.rs"
+      ]
+    },
+    {
+      "id": "folders",
+      "a": "A08",
+      "title": "目录打开适配",
+      "scope": "Linux FileManager1",
+      "paths": [
+        "src/data.rs",
+        "src/bin/suzaku_tool/data.rs"
+      ],
+      "tests": [
+        "scripts/test-data-folders.py"
+      ]
+    },
+    {
+      "id": "package",
+      "a": "A09",
+      "title": "Linux构建/包内容验收",
+      "scope": "Ubuntu24.04 amd64发布基线",
+      "paths": [
+        "scripts/package-linux.sh",
+        "packaging/linux/dev.suzaku.Suzaku.desktop",
+        "scripts/check-package-audit-links.py"
+      ],
+      "tests": [
+        "tests/linux_package_cli.rs",
+        "scripts/test-linux-package.sh"
+      ]
+    },
+    {
+      "id": "install",
+      "a": "A09",
+      "title": "安装与用户注册",
+      "scope": "Linux包与用户级IBus/systemd",
+      "paths": [
+        "src/platform/linux_ime_command.rs",
+        "src/bin/suzaku_tool.rs",
+        "scripts/fixtures/linux-install-container.sh"
+      ],
+      "tests": [
+        "tests/linux_registration_cli.rs",
+        "scripts/test-linux-install.sh"
+      ]
+    },
+    {
+      "id": "ci",
+      "a": "A09",
+      "title": "分层门禁编排",
+      "scope": "Linux全功能；macOS/Windows仅编译",
+      "paths": [
+        "scripts/test-linux-ci.sh",
+        "scripts/test-linux-apps.sh",
+        ".github/workflows/ci.yml"
+      ],
+      "tests": [
+        "scripts/test-linux-ci.sh",
+        "scripts/test-linux-apps.sh",
+        "scripts/test-linux-apps.py",
+        "scripts/test-native-ibus-trace.py",
+        "scripts/test-ibus-signal-lifetime.py",
+        "scripts/fixtures/native_probe_cleanup.py"
+      ]
+    },
+    {
+      "id": "macos",
+      "a": "A10",
+      "title": "IMK控制器/打包桥",
+      "scope": "macOS实验；无当前原生验收",
+      "paths": [
+        "src/platform/macos_ime.rs",
+        "src/macos/ime_host_bridge/controller.inc.m",
+        "src/bin/macos_bundle.rs"
+      ],
+      "tests": [
+        ".github/workflows/ci.yml",
+        "src/platform/macos_ime.rs"
+      ]
+    },
+    {
+      "id": "windows",
+      "a": "A10",
+      "title": "TSF能力占位",
+      "scope": "Windows原生输入未接通",
+      "paths": [
+        "src/platform/windows_ime.rs",
+        "src/platform/text_output_host.rs"
+      ],
+      "tests": [
+        ".github/workflows/ci.yml",
+        "src/platform/windows_ime.rs"
+      ]
+    },
+    {
+      "id": "android",
+      "a": "A10",
+      "title": "InputMethodService/JNI",
+      "scope": "Android实验；无当前CI/真机结果",
+      "paths": [
+        "android/app/src/main/java/dev/suzaku/android/ime/SuzakuInputMethodService.kt",
+        "src/platform/android_jni_bridge.rs",
+        "scripts/android-build-native.sh"
+      ],
+      "tests": [
+        "android/app/src/test/java/dev/suzaku/android/ime/SuzakuEditorPolicyTest.kt"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "id": "F01",
+      "title": "单实例启动",
+      "parents": []
+    },
+    {
+      "id": "F02",
+      "title": "宿主服务联动",
+      "parents": []
+    },
+    {
+      "id": "F03",
+      "title": "激活并记录原输入法",
+      "parents": []
+    },
+    {
+      "id": "F04",
+      "title": "释放并恢复原输入法",
+      "parents": []
+    },
+    {
+      "id": "F05",
+      "title": "显隐、收球与关闭到托盘",
+      "parents": []
+    },
+    {
+      "id": "F06",
+      "title": "安全退出与停止宿主",
+      "parents": []
+    },
+    {
+      "id": "F07",
+      "title": "分层状态诊断",
+      "parents": []
+    },
+    {
+      "id": "F08",
+      "title": "输入事件和用途分流",
+      "parents": []
+    },
+    {
+      "id": "F09",
+      "title": "Compose与死键",
+      "parents": []
+    },
+    {
+      "id": "F10",
+      "title": "连续原文草稿",
+      "parents": []
+    },
+    {
+      "id": "F11",
+      "title": "导航、选择与采用",
+      "parents": []
+    },
+    {
+      "id": "F12",
+      "title": "单步补全撤回与清稿",
+      "parents": []
+    },
+    {
+      "id": "F13",
+      "title": "完整候选精确提交",
+      "parents": []
+    },
+    {
+      "id": "F14",
+      "title": "目标、焦点与隐私隔离",
+      "parents": []
+    },
+    {
+      "id": "F15",
+      "title": "输入语言注册与切换",
+      "parents": []
+    },
+    {
+      "id": "F16",
+      "title": "英文词前缀补全",
+      "parents": []
+    },
+    {
+      "id": "F17",
+      "title": "英文下一词与句子续写",
+      "parents": []
+    },
+    {
+      "id": "F18",
+      "title": "中文拼音与已转换前缀续写",
+      "parents": []
+    },
+    {
+      "id": "F19",
+      "title": "日文罗马音与假名转换",
+      "parents": []
+    },
+    {
+      "id": "F20",
+      "title": "词句混排、权重与来源",
+      "parents": []
+    },
+    {
+      "id": "F21",
+      "title": "信号降级与确认门控",
+      "parents": []
+    },
+    {
+      "id": "F22",
+      "title": "模型配置和显式云授权",
+      "parents": []
+    },
+    {
+      "id": "F23",
+      "title": "本机模型自动发现",
+      "parents": []
+    },
+    {
+      "id": "F24",
+      "title": "模型状态与显式探针",
+      "parents": []
+    },
+    {
+      "id": "F25",
+      "title": "显式本地模型预热",
+      "parents": []
+    },
+    {
+      "id": "F26",
+      "title": "异步防抖与过期任务取消",
+      "parents": []
+    },
+    {
+      "id": "F27",
+      "title": "模型结果验证与候选合并",
+      "parents": []
+    },
+    {
+      "id": "F28",
+      "title": "模型失败、关闭与隐私回退",
+      "parents": []
+    },
+    {
+      "id": "F29",
+      "title": "原生镜像与系统候选回退",
+      "parents": []
+    },
+    {
+      "id": "F30",
+      "title": "屏幕键盘续写与ACK屏障",
+      "parents": []
+    },
+    {
+      "id": "F31",
+      "title": "独立编辑与确认发送",
+      "parents": []
+    },
+    {
+      "id": "F32",
+      "title": "有限手写与结果回填",
+      "parents": []
+    },
+    {
+      "id": "F33",
+      "title": "语音工具与转写回填",
+      "parents": []
+    },
+    {
+      "id": "F34",
+      "title": "八语模型翻译",
+      "parents": []
+    },
+    {
+      "id": "F35",
+      "title": "工具采用、取消与失效",
+      "parents": []
+    },
+    {
+      "id": "F36",
+      "title": "内容缩放与窗口适配",
+      "parents": []
+    },
+    {
+      "id": "F37",
+      "title": "非功能区拖动与吸边",
+      "parents": []
+    },
+    {
+      "id": "F38",
+      "title": "朱雀与其他主题",
+      "parents": []
+    },
+    {
+      "id": "F39",
+      "title": "清晰文本与字体回退",
+      "parents": []
+    },
+    {
+      "id": "F40",
+      "title": "设置布局与窗口装饰",
+      "parents": []
+    },
+    {
+      "id": "F41",
+      "title": "八语界面本地化",
+      "parents": []
+    },
+    {
+      "id": "F42",
+      "title": "多入口设置同步与确认",
+      "parents": []
+    },
+    {
+      "id": "F43",
+      "title": "XDG路径与数据状态",
+      "parents": []
+    },
+    {
+      "id": "F44",
+      "title": "设置保存和模型重载",
+      "parents": []
+    },
+    {
+      "id": "F45",
+      "title": "白名单配置备份",
+      "parents": []
+    },
+    {
+      "id": "F46",
+      "title": "备份验证与恢复预览",
+      "parents": []
+    },
+    {
+      "id": "F47",
+      "title": "配置恢复与失败回退",
+      "parents": []
+    },
+    {
+      "id": "F48",
+      "title": "打开数据目录",
+      "parents": []
+    },
+    {
+      "id": "F49",
+      "title": "运行锁与维护锁",
+      "parents": []
+    },
+    {
+      "id": "F50",
+      "title": "Linux分发包构建",
+      "parents": []
+    },
+    {
+      "id": "F51",
+      "title": "包内容与文档链接验收",
+      "parents": []
+    },
+    {
+      "id": "F52",
+      "title": "安装、注册、升级与移除",
+      "parents": []
+    },
+    {
+      "id": "F53",
+      "title": "分层CI与发行门禁",
+      "parents": []
+    },
+    {
+      "id": "F54",
+      "title": "macOS原生IMK实验",
+      "parents": []
+    },
+    {
+      "id": "F55",
+      "title": "Windows TSF预留",
+      "parents": []
+    },
+    {
+      "id": "F56",
+      "title": "Android原生IME实验",
+      "parents": []
+    },
+    {
+      "id": "F57",
+      "title": "离线包契约与小型SDK",
+      "parents": []
+    },
+    {
+      "id": "F58",
+      "title": "离线包安装和注册表事务",
+      "parents": []
+    },
+    {
+      "id": "F59",
+      "title": "启动冻结扩展词库",
+      "parents": []
+    },
+    {
+      "id": "F60",
+      "title": "原生候选分页与六槽操作",
+      "parents": [
+        "F11",
+        "F13",
+        "F29"
+      ]
+    },
+    {
+      "id": "F61",
+      "title": "光标跟随与屏幕避让",
+      "parents": [
+        "F29",
+        "F36"
+      ]
+    },
+    {
+      "id": "F62",
+      "title": "底部屏幕布局",
+      "parents": [
+        "F29",
+        "F36"
+      ]
+    },
+    {
+      "id": "F63",
+      "title": "平台探测与自动布局",
+      "parents": [
+        "F36",
+        "F40"
+      ]
+    },
+    {
+      "id": "F64",
+      "title": "中英长草稿局部续写",
+      "parents": [
+        "F17",
+        "F18"
+      ]
+    },
+    {
+      "id": "F65",
+      "title": "候选字节预算与索引一致",
+      "parents": [
+        "F13",
+        "F20",
+        "F27",
+        "F29"
+      ]
+    },
+    {
+      "id": "F66",
+      "title": "偏好频率学习、衰减与清除",
+      "parents": [
+        "F11",
+        "F20",
+        "F27"
+      ]
+    },
+    {
+      "id": "F67",
+      "title": "词库数据与算法解耦",
+      "parents": [
+        "F16",
+        "F18",
+        "F19",
+        "F59"
+      ]
+    },
+    {
+      "id": "F68",
+      "title": "人机工程学快捷键方案",
+      "parents": [
+        "F11",
+        "F12",
+        "F15",
+        "F42"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-japanese-progress",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md"],
+      "scope": "2026-10-04日语完整草稿前缀续句与行边界",
+      "note": "Japanese sentence progress：沿active词库续句匹配整个转换草稿，保留exact trigger顺序，不裁掉未知首尾；水平分隔契约不变，竖直行边界不再吞掉。全包回归发现并修复nn接辅音重复ん。独立固定进展/包/原生/GTK入口及红测执行记录见开发记录；不声称句子级读音推断、完整形态分析或个人装机验收，评分不变。"
+    },
+    {
+      "id": "E-japanese-daily",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md"],
+      "scope": "2026-10-04渐进日语支持；日常独立词库、罗马音边界与已采用表记后续词",
+      "note": "Gradual Japanese everyday input：48读音、24语境48句，仅追加且锁定旧数据；修复nn边界、n’、jya/jyu/jyo、非ASCII大小写及尾部同音/片假名前缀补全。新增源码/提供器错误/词库包/私有IBus与GTK入口；确切执行和初始红测见开发记录。单假名宽前缀和原文后页遵守现有候选契约；非完整形态分析、个人装机或真实模型质量验收，不提高评分。"
+    },
+    {
+      "id": "E-daily-objects",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md",
+        "data/lexicons/README.md"
+      ],
+      "scope": "2026-10-04中英日用物品/借还/数量尺寸词库；独立固定预期、推荐包共存及输入链路回归",
+      "note": "Unreleased — Everyday objects bilingual fallback：中英各24语境48句、中文64读音、英文7索引词形；只追加数据，保留历史排序/全文指纹及6144索引预算。首次全包检查发现 cooking 上下文冲突，仅调整新内置表达；保留红测。确切执行范围见开发记录，不以源码测试冒充实体键盘、个人安装或真实模型质量验收，不提高评分。"
+    },
+    {
+      "id": "E-prose-paging",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md",
+        "docs/shortcuts.md"
+      ],
+      "scope": "2026-10-04英语中英混写边界、词句泛化及EN/ZH候选翻页人机工程；源码和私有IBus回归",
+      "note": "Unreleased — Prose boundaries and consistent candidate paging：统一8种显式标点的词/句/上下文/长稿边界；保护URL等技术词元，保留模型预算及exact prefix；em dash续写保留待确认偏好。三种IBus翻页入口匹配面板页首，边界不改选择/撤回/在途预测。执行范围与红测、夹具契约修正见开发记录；非个人安装、实体键盘或真实模型质量验收，不提高成熟度评分。"
+    },
+    {
+      "id": "E-daemon-abort",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md"
+      ],
+      "scope": "2026-10-04恢复原私有IBus崩溃现场；Ubuntu26.04/IBus1.5.34rc2/GLib2.88，非生产修复",
+      "note": "原PID/时间/socket精确匹配：已确认daemon SIGABRT；无效sender导致NULL请求入队后GIO断言。具体sender失效原因仍待证，连接名称生命周期竞态仅假设。无Suzaku的600连接/38400合法请求及完整inline门禁通过但未复现；同bus重复N45两轮因面板事件缺失停止、daemon存活，非同故障。未安装/升级依赖，原始core未入库，评分未提升。"
+    },
+    {
+      "id": "E-recovery-fixture",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md"
+      ],
+      "scope": "2026-10-03 N45/N44 私有 IBus 回归夹具与诊断；非生产断连根因修复",
+      "note": "Unreleased — Native recovery fixture diagnostics and cleanup：23项Python、6项真实GLib/C、21项矩阵校验及默认/行内双模式完整私有IBus通过；取消自有延迟回调、显式传播异步错误、保留首错和daemon日志。双模式未复现旧断连，但原行内N45断连仍未确认根因；不外推真实桌面或提高评分，未重跑普通Rust/Clippy。"
+    },
+    {
+      "id": "E-window-boundary",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md"
+      ],
+      "scope": "2026-10-03 长稿窗口边界源码回归；EN/ZH，本地引擎、受控模型提供器和私有IBus双预编辑模式",
+      "note": "Unreleased — Exact local-window boundary：38项定向及1116项常规回归通过，27项opt-in另行处理；双模式完整IBus最终各含新增14组通过。行内首轮N45连接断开，独立恢复/原样完整复跑通过但根因未明，保留失败与红测/沙箱日志。只多检查前置分隔符，实际tail/模型仍256；非个人安装/物理键盘验收，评分未提升。"
+    },
+    {
+      "id": "E-pointer-preference",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md"
+      ],
+      "scope": "2026-10-03 后续源码修复；常规回归、私有 Xvfb/winit 事件分发及 IBus 偏好边界",
+      "note": "Unreleased — Pointer deltas and English preference boundaries：1110常规项、70无效/28有效手势分发、默认/行内两种完整IBus含10组英文续写、双传输GTK候选52组及严格Clippy通过。保留红测、沙箱端点拒绝和设置夹具修正记录。不是物理触控、个人安装或整个布局验收，评分未提升。"
+    },
+    {
+      "id": "E-current",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md"
+      ],
+      "scope": "2026-10-03 源码构建，Linux 私有 GTK/IBus/X11；不是本轮重跑",
+      "note": "Unreleased — Input and offline-pack boundary fixes：1104常规项在最后单击修复前通过；修复后228面板项、原生动作专项、严格Clippy及三布局双传输190组通过。27项opt-in不是已全跑。"
+    },
+    {
+      "id": "E-native",
+      "kind": "historical_run",
+      "paths": [
+        "docs/functional-network.md",
+        "DEVELOPMENT.md"
+      ],
+      "scope": "2026-10-03 及此前的默认自绘候选、分页、定位、布局开发阶段",
+      "note": "按文档各阶段分开读取；底部/自动与最后点击修复仅源码私有X11门禁，不是当前个人安装已验收。"
+    },
+    {
+      "id": "E-lifecycle",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-lifecycle-2026-09-13.md",
+        "docs/bug-audit-service-recovery-2026-09-24.md"
+      ],
+      "scope": "历史受控生命周期/服务恢复专项",
+      "note": "保护原输入源、取消排队启动与有界恢复；不外推当前用户桌面登录/注销。"
+    },
+    {
+      "id": "E-input",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-keyboard-layouts-2026-09-24.md",
+        "docs/bug-audit-content-type-2026-09-23.md",
+        "docs/bug-audit-commit-target-2026-09-23.md"
+      ],
+      "scope": "历史私有 IBus/GTK 原生键盘、用途和目标边界",
+      "note": "读取原文的平台与失败记录；非所有键盘布局、应用的兼容性担保。"
+    },
+    {
+      "id": "E-language",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-bilingual-core-2026-09-24.md",
+        "docs/bug-audit-english-context-2026-09-28.md",
+        "DEVELOPMENT.md"
+      ],
+      "scope": "中英作者样例、源码常规回归和私有应用门禁",
+      "note": "固定词条回归不是独立语料准确率；新增数据不提升开放生成能力的证据。"
+    },
+    {
+      "id": "E-model",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-model-2026-09-13.md",
+        "docs/bug-audit-model-cancellation-2026-09-24.md",
+        "docs/bug-audit-model-latency-2026-09-24.md"
+      ],
+      "scope": "历史受控 HTTP、取消、实模安全/延迟检查",
+      "note": "默认1200ms的本地CPU LLaMA不稳定；翻译仍有语义问题。只支持协议/回退/隔离判断，不证明模型质量合格。"
+    },
+    {
+      "id": "E-tools",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-tools-2026-09-13.md",
+        "docs/bug-audit-translation-2026-09-23.md",
+        "docs/bug-audit-insertion-followup-2026-09-23.md"
+      ],
+      "scope": "历史受控工具回填与版本屏障",
+      "note": "Linux语音模拟桥、有限手写；与麦克风/通用OCR准确率无关。"
+    },
+    {
+      "id": "E-settings",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-settings-2026-09-13.md",
+        "docs/bug-audit-settings-io-2026-09-27.md"
+      ],
+      "scope": "历史设置冲突、条件保存及慢刷盘测试",
+      "note": "输入线程确认与后台I/O分离；不是所有文件系统断电保证。"
+    },
+    {
+      "id": "E-data",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-data-2026-09-13.md"
+      ],
+      "scope": "历史临时目录、锁/恢复及目录打开专项",
+      "note": "不代表当前个人配置已备份或已恢复。"
+    },
+    {
+      "id": "E-package",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-packaging-2026-09-13.md",
+        "docs/releases/0.8.1.md"
+      ],
+      "scope": "历史 Linux 包内容/干净容器验收与0.8.1发布记录",
+      "note": "当前dirty快照的包未重新构建/验证；未查询远端附件或CI。"
+    },
+    {
+      "id": "E-preference",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-preference-model-2026-09-27.md"
+      ],
+      "scope": "N57 偏好与模型候选有界池专项",
+      "note": "确认选择后内存频率排序；不是持久化学习。"
+    },
+    {
+      "id": "E-long",
+      "kind": "historical_run",
+      "paths": [
+        "docs/bug-audit-long-draft-window-2026-09-25.md",
+        "docs/bug-audit-sentence-progress-2026-09-27.md"
+      ],
+      "scope": "历史中英有界长稿/逐词继续回归",
+      "note": "保存完整字面前缀，局部尾部生成；不支持任意长句完整语法转换。"
+    },
+    {
+      "id": "E-install-old",
+      "kind": "manual_acceptance",
+      "paths": [
+        "docs/install-audit-0.7.0-2026-09-27.md",
+        "docs/ibus-candidates.md"
+      ],
+      "scope": "历史指定安装版/开发快照 GNOME 桌面记录，不是当前工作区",
+      "note": "保留旧版实际成功与未完成事项；V未继承，须按当前精确源/安装重新验收。"
+    },
+    {
+      "id": "E-linux-delivery",
+      "kind": "delivery_contract",
+      "paths": [
+        "docs/linux-packaging-data.md",
+        "DEVELOPMENT.md"
+      ],
+      "scope": "Linux Ubuntu24.04/amd64，IBus X11/GNOME XWayland",
+      "note": "0.8.0起要求正式Release安装附件；需同clean提交CI、内容和容器验收。O2只表示流程存在，不宣称本快照已发布。"
+    },
+    {
+      "id": "E-platform-contract",
+      "kind": "delivery_contract",
+      "paths": [
+        "docs/known-limitations.md",
+        "android/README.md"
+      ],
+      "scope": "macOS/Windows编译检查；Android实验工程",
+      "note": "没有当前原生平台验收；Android不在现有CI任务中，Windows TSF未接通。"
+    },
+    {
+      "id": "E-limits",
+      "kind": "source",
+      "paths": [
+        "docs/known-limitations.md",
+        "docs/privacy.md"
+      ],
+      "scope": "当前文档中的能力/隐私限制",
+      "note": "源码与静态检查边界，不是执行记录。"
+    }
+  ],
+  "cells": [
+    {
+      "a": "A09",
+      "f": "F01",
+      "i": "instance",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "锁或唤出失败不无锁多开；发送成功不等于窗口已显示。"
+    },
+    {
+      "a": "A09",
+      "f": "F02",
+      "i": "service",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-lifecycle",
+        "E-linux-delivery"
+      ],
+      "limit": "只管理已注册用户服务；不启动模型服务、不重启IBus。"
+    },
+    {
+      "a": "A09",
+      "f": "F03",
+      "i": "activation",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-lifecycle",
+        "E-linux-delivery"
+      ],
+      "limit": "读回确认；超时保留恢复目标；显隐准备不能覆盖用户后续手动选择。"
+    },
+    {
+      "a": "A09",
+      "f": "F04",
+      "i": "activation",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-daemon-abort",
+        "E-recovery-fixture",
+        "E-lifecycle",
+        "E-linux-delivery"
+      ],
+      "limit": "尊重已手动切走的输入源；不是默认猜一个输入法，也不停止服务。"
+    },
+    {
+      "a": "A07",
+      "f": "F05",
+      "i": "window",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "隐藏释放候选显示租约；无可用托盘时关闭唯一窗口走安全退出。"
+    },
+    {
+      "a": "A09",
+      "f": "F06",
+      "i": "service",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-lifecycle",
+        "E-linux-delivery"
+      ],
+      "limit": "恢复/停止失败保留界面；不更改锁定键、系统布局或其他输入源。"
+    },
+    {
+      "a": "A09",
+      "f": "F07",
+      "i": "diagnostics",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "注册文件、运行报告和实际原生可用性必须分开；外部查询有界。"
+    },
+    {
+      "a": "A01",
+      "f": "F08",
+      "i": "ibus",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-input",
+        "E-linux-delivery"
+      ],
+      "limit": "密码/PIN/数字用途绕过；依赖客户端正确声明用途。"
+    },
+    {
+      "a": "A01",
+      "f": "F09",
+      "i": "compose",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "真实xkbcommon组合；不能覆盖所有布局；缺表/控制字符不伪造输出。"
+    },
+    {
+      "a": "A01",
+      "f": "F10",
+      "i": "host",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-input",
+        "E-linux-delivery"
+      ],
+      "limit": "空格和标点不自动提交；显示截取不损坏完整草稿。"
+    },
+    {
+      "a": "A01",
+      "f": "F11",
+      "i": "ibus",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-input",
+        "E-linux-delivery"
+      ],
+      "limit": "数字为当前页槽位；Alt数字/小键盘字面输入；长按采用只执行一次。"
+    },
+    {
+      "a": "A01",
+      "f": "F12",
+      "i": "ibus",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-input",
+        "E-linux-delivery"
+      ],
+      "limit": "仅最近一次采用撤回；不修改已提交给外部应用的历史。"
+    },
+    {
+      "a": "A01",
+      "f": "F13",
+      "i": "host",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "只有明确提交才结束草稿；新目标使旧动作失效；见面板实现切片。"
+    },
+    {
+      "a": "A01",
+      "f": "F14",
+      "i": "host",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-input",
+        "E-linux-delivery"
+      ],
+      "limit": "PRIVATE可本地转换但禁模型/公开镜像/注入；不采集周边文本。"
+    },
+    {
+      "a": "A03",
+      "f": "F15",
+      "i": "languages",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "EN/ZH/JA；快捷键切换可保稿，托盘切换清理；与UI/翻译语言独立。"
+    },
+    {
+      "a": "A03",
+      "f": "F16",
+      "i": "english",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-language",
+        "E-prose-paging",
+        "E-daily-objects",
+        "E-linux-delivery"
+      ],
+      "limit": "有限词表；大小写/撇号保真；不强制纠错URL、标识符。采用后词元变化的学习边界见F66/preference，不属于词库实现。"
+    },
+    {
+      "a": "A03",
+      "f": "F17",
+      "i": "english",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-language",
+        "E-prose-paging",
+        "E-daily-objects",
+        "E-linux-delivery"
+      ],
+      "limit": "有界作者搭配，不是通用语法/拼写纠错；句子语境不跨行。"
+    },
+    {
+      "a": "A03",
+      "f": "F18",
+      "i": "chinese",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-language",
+        "E-daily-objects",
+        "E-linux-delivery"
+      ],
+      "limit": "有限词表、声调/音节边界；未知输入保原文，非完整长句统计拼音引擎。"
+    },
+    {
+      "a": "A03",
+      "f": "F19",
+      "i": "japanese",
+      "m": [
+        2,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-japanese-progress",
+        "E-japanese-daily",
+        "E-linux-delivery"
+      ],
+      "limit": "基础促音/拨音、日常词句及已知表记续写；没有完整形态分析器、任意片假名反查或日语长稿窗口。"
+    },
+    {
+      "a": "A02",
+      "f": "F20",
+      "i": "mix",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "最多12项/6槽；原文锚点和锁定选择受保护；权重不是概率。"
+    },
+    {
+      "a": "A02",
+      "f": "F21",
+      "i": "core",
+      "m": [
+        2,
+        1,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "状态机/内存undo存在；眼动、手追踪只是信号类型，没有设备采集闭环。"
+    },
+    {
+      "a": "A04",
+      "f": "F22",
+      "i": "model",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-model",
+        "E-linux-delivery"
+      ],
+      "limit": "模型与功能解耦；密钥仅保存环境变量名；不证明某云供应商当前可用。"
+    },
+    {
+      "a": "A04",
+      "f": "F23",
+      "i": "discovery",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "固定loopback端点优先LLaMA；不扫局域网、不下载权重或启动模型服务。"
+    },
+    {
+      "a": "A04",
+      "f": "F24",
+      "i": "discovery",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-model",
+        "E-linux-delivery"
+      ],
+      "limit": "status不生成；probe会发送合成输入且云端可能计费；可用不等于质量合格。"
+    },
+    {
+      "a": "A04",
+      "f": "F25",
+      "i": "discovery",
+      "m": [
+        3,
+        1,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "仅本地Ollama；5分钟keep-alive是服务参数，不是接管模型进程。"
+    },
+    {
+      "a": "A04",
+      "f": "F26",
+      "i": "prediction",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-model",
+        "E-linux-delivery"
+      ],
+      "limit": "120ms防抖、单worker；本地连接后协作取消不代表云端/服务器计算可撤销。"
+    },
+    {
+      "a": "A04",
+      "f": "F27",
+      "i": "model",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-model",
+        "E-linux-delivery"
+      ],
+      "limit": "结构/前缀/预算检查不保证语义；偏好必须先于最终裁剪；不覆盖锁定选择。"
+    },
+    {
+      "a": "A04",
+      "f": "F28",
+      "i": "prediction",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-model",
+        "E-language",
+        "E-linux-delivery"
+      ],
+      "limit": "本地候选不中断，不暗转云；已发送内容无法撤回；非模型效果验收。"
+    },
+    {
+      "a": "A05",
+      "f": "F29",
+      "i": "ipc",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "同一宿主候选的镜像，不是第二引擎；只保留最新公开状态。"
+    },
+    {
+      "a": "A05",
+      "f": "F30",
+      "i": "ipc",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "单在途替换；ACK+匹配快照齐备才续写；拒绝/超时不自动重放。"
+    },
+    {
+      "a": "A06",
+      "f": "F31",
+      "i": "editor",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "面板独立引擎；发送失败保稿；不能把本地成功当作外部交付。"
+    },
+    {
+      "a": "A06",
+      "f": "F32",
+      "i": "handwriting",
+      "m": [
+        2,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-tools",
+        "E-linux-delivery"
+      ],
+      "limit": "启发式识别，不是通用OCR；失败保留笔迹；工具回填不直接提交。"
+    },
+    {
+      "a": "A06",
+      "f": "F33",
+      "i": "voice",
+      "m": [
+        1,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-tools",
+        "E-linux-delivery"
+      ],
+      "limit": "Linux模拟桥；高回填测试分不表示实时麦克风ASR已实现。"
+    },
+    {
+      "a": "A04",
+      "f": "F34",
+      "i": "translation",
+      "m": [
+        2,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-model",
+        "E-tools",
+        "E-linux-delivery"
+      ],
+      "limit": "需要模型，无离线翻译fallback；仍有漏义/混语等质量限制。"
+    },
+    {
+      "a": "A06",
+      "f": "F35",
+      "i": "toolfill",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-tools",
+        "E-linux-delivery"
+      ],
+      "limit": "绑定源稿/目标；换框或编辑使旧结果失效；不可撤回远端已收请求。"
+    },
+    {
+      "a": "A07",
+      "f": "F36",
+      "i": "window",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-pointer-preference",
+        "E-linux-delivery"
+      ],
+      "limit": "零值/非有限滚轮和捏合不缩放，有限垂直手势有正对照；内容/DPI/尺寸反馈受限，未证明任意屏幕和组合设置均视觉正常。"
+    },
+    {
+      "a": "A07",
+      "f": "F37",
+      "i": "window",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "按钮/画布不是拖动区；无焦点路径以X11/XWayland为主。"
+    },
+    {
+      "a": "A07",
+      "f": "F38",
+      "i": "theme",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "主题不改输入语言/模型；不是无障碍或所有主题对比度认证。"
+    },
+    {
+      "a": "A07",
+      "f": "F39",
+      "i": "font",
+      "m": [
+        3,
+        1,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "实际像素栅格和缓存；缺字依赖系统字体；不能保证所有文字系统排版。"
+    },
+    {
+      "a": "A07",
+      "f": "F40",
+      "i": "settings-ui",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-pointer-preference",
+        "E-linux-delivery"
+      ],
+      "limit": "设置重排、搜索、滚动和标题栏开关；保留应用内关闭控件。独立窗口滚动覆盖零值/非有限输入及有限正反向事件，不代替完整视觉验收。"
+    },
+    {
+      "a": "A07",
+      "f": "F41",
+      "i": "i18n",
+      "m": [
+        3,
+        1,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "静态资源独立于输入/翻译；外部诊断和路径可保留原文。"
+    },
+    {
+      "a": "A08",
+      "f": "F42",
+      "i": "settings",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-settings",
+        "E-linux-delivery"
+      ],
+      "limit": "状态刷新不当写入ACK；失败回退未再修改的控件；单个在途补丁。"
+    },
+    {
+      "a": "A08",
+      "f": "F43",
+      "i": "files",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-data",
+        "E-linux-delivery"
+      ],
+      "limit": "不扫描输入历史/模型；特殊文件拒绝；XDG非法值回退。"
+    },
+    {
+      "a": "A08",
+      "f": "F44",
+      "i": "settings",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-settings",
+        "E-linux-delivery"
+      ],
+      "limit": "后台准备、主线程确认；条件保存冲突拒绝；不热加载词库。"
+    },
+    {
+      "a": "A08",
+      "f": "F45",
+      "i": "backup",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-data",
+        "E-linux-delivery"
+      ],
+      "limit": "无草稿/词包/权重/密钥值；地址与偏好未加密。"
+    },
+    {
+      "a": "A08",
+      "f": "F46",
+      "i": "backup",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-data",
+        "E-linux-delivery"
+      ],
+      "limit": "裸restore只预览；不自动停服务或写入。"
+    },
+    {
+      "a": "A08",
+      "f": "F47",
+      "i": "backup",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-data",
+        "E-linux-delivery"
+      ],
+      "limit": "仅Linux apply；逐文件原子替换，不是两文件断电事务；撤销云授权。"
+    },
+    {
+      "a": "A08",
+      "f": "F48",
+      "i": "folders",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-data",
+        "E-linux-delivery"
+      ],
+      "limit": "FileManager1不可用给明确错误与路径；不重启文件管理器。"
+    },
+    {
+      "a": "A08",
+      "f": "F49",
+      "i": "files",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-data",
+        "E-linux-delivery"
+      ],
+      "limit": "协作式共享/独占锁；不夺锁、不杀进程，不抵御外部任意改向文件。"
+    },
+    {
+      "a": "A09",
+      "f": "F50",
+      "i": "package",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-package",
+        "E-linux-delivery"
+      ],
+      "limit": "Ubuntu24.04 amd64；附SDK/11可选包；不带个人配置/模型，不是静态万能包。"
+    },
+    {
+      "a": "A09",
+      "f": "F51",
+      "i": "package",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-package",
+        "E-linux-delivery"
+      ],
+      "limit": "成对产物/逐文件/依赖/文档检查；SHA256仅完整性，不是来源签名。"
+    },
+    {
+      "a": "A09",
+      "f": "F52",
+      "i": "install",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-package",
+        "E-install-old",
+        "E-linux-delivery"
+      ],
+      "limit": "安装不自动注册激活；保留个人数据/自启偏好；当前dirty快照未重新安装。"
+    },
+    {
+      "a": "A09",
+      "f": "F53",
+      "i": "ci",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-daemon-abort",
+        "E-recovery-fixture",
+        "E-current",
+        "E-package",
+        "E-linux-delivery"
+      ],
+      "limit": "当前远端CI未查询；没有自动Release上传；普通测试跳过的opt-in须单独跑。"
+    },
+    {
+      "a": "A10",
+      "f": "F54",
+      "i": "macos",
+      "m": [
+        2,
+        1,
+        null,
+        1
+      ],
+      "evidence": [
+        "E-platform-contract"
+      ],
+      "limit": "有真实控制器/候选桥，不是空stub；编译检查不能证明原生焦点/提交成功。"
+    },
+    {
+      "a": "A10",
+      "f": "F55",
+      "i": "windows",
+      "m": [
+        1,
+        1,
+        null,
+        1
+      ],
+      "evidence": [
+        "E-platform-contract"
+      ],
+      "limit": "注册、marked-text、commit、candidate ready均false；原生闭环未实现。"
+    },
+    {
+      "a": "A10",
+      "f": "F56",
+      "i": "android",
+      "m": [
+        2,
+        1,
+        null,
+        1
+      ],
+      "evidence": [
+        "E-platform-contract"
+      ],
+      "limit": "真实Kotlin/JNI与策略测试源码；没有当前CI任务/执行结果/真机验收，不继承Linux规则。"
+    },
+    {
+      "a": "A03",
+      "f": "F57",
+      "i": "sdk",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "按语言/主题纯数据打包；不执行插件代码/联网；许可声明不是验签。"
+    },
+    {
+      "a": "A03",
+      "f": "F58",
+      "i": "packs",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "独立锁和单文件原子写；重复字段拒绝；坏记录隔离、坏表拒写。"
+    },
+    {
+      "a": "A03",
+      "f": "F59",
+      "i": "packs",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "宿主和面板各自加载，二者都须重启；无热更新/GUI管理/市场。"
+    },
+    {
+      "a": "A07",
+      "f": "F60",
+      "i": "paging",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-native",
+        "E-pointer-preference",
+        "E-prose-paging",
+        "E-linux-delivery"
+      ],
+      "limit": "翻页同步宿主选中索引/版本，不采用或提交正文；三种IBus入口与面板统一跳相邻页首，首末页越界无动作并保留撤回/预测；按页映射槽位；长标签仍提交完整正文。水平/零值/非有限垂直滚动不翻页，未物理触控验收。"
+    },
+    {
+      "a": "A07",
+      "f": "F61",
+      "i": "position",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "公开光标矩形与monitor边界，不是桌面工作区；无坐标不猜，多屏仅计算回归；X11/XWayland为主。"
+    },
+    {
+      "a": "A07",
+      "f": "F62",
+      "i": "bottom",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "候选/键盘底部布局，设置可选；未物理触屏与桌面软键盘避让验收。"
+    },
+    {
+      "a": "A10",
+      "f": "F63",
+      "i": "auto-layout",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "启发式默认建议，手动覆盖优先；平台判定不是平板姿态/硬件能力认证。"
+    },
+    {
+      "a": "A03",
+      "f": "F64",
+      "i": "languages",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-long",
+        "E-window-boundary",
+        "E-prose-paging",
+        "E-linux-delivery"
+      ],
+      "limit": "只对安全尾部生成，字面前缀精确保留；边界符留在前文，尾部可恰好256码点，257不可强行截词或恢复冻结语境；不扩大模型/字节预算，不覆盖日文长稿。"
+    },
+    {
+      "a": "A02",
+      "f": "F65",
+      "i": "mix",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "8192字节单项/65536字节帧；真实候选列表裁剪，不能只截镜像。"
+    },
+    {
+      "a": "A02",
+      "f": "F66",
+      "i": "preference",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-preference",
+        "E-pointer-preference",
+        "E-prose-paging",
+        "E-linux-delivery"
+      ],
+      "limit": "进程内有界指纹缓存；确认选择才学习，不保存正文/跨重启历史。英文采用后变为.com/:world等词元即取消暂存；真实标点边界保留，删除回旧拼写不复活选择。"
+    },
+    {
+      "a": "A03",
+      "f": "F67",
+      "i": "lexicon",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-daily-objects",
+        "E-japanese-progress",
+        "E-japanese-daily",
+        "E-linux-delivery"
+      ],
+      "limit": "固定schema/独立JSON/启动缓存；本地词库是模型不可用时fallback，不是模型替代。"
+    },
+    {
+      "a": "A02",
+      "f": "F68",
+      "i": "shortcuts",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-prose-paging",
+        "E-linux-delivery"
+      ],
+      "limit": "公开且聚焦的IBus上下文；候选操作需非空草稿，切语言可空草稿；无全局键盘hook。"
+    },
+    {
+      "a": "A07",
+      "f": "F13",
+      "i": "paging",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "卡片权重/角标不写入正文；最新长候选单击修复仅工作区源码门禁。"
+    },
+    {
+      "a": "A05",
+      "f": "F14",
+      "i": "ipc",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-input",
+        "E-linux-delivery"
+      ],
+      "limit": "面板异步动作也绑定目标epoch与revision，不能跨入下一字段。"
+    },
+    {
+      "a": "A01",
+      "f": "F15",
+      "i": "ibus",
+      "m": [
+        3,
+        2,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-linux-delivery"
+      ],
+      "limit": "Ctrl+Shift+Space确认保存后保稿；托盘真切换仍清理。"
+    },
+    {
+      "a": "A02",
+      "f": "F27",
+      "i": "mix",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-preference",
+        "E-linux-delivery"
+      ],
+      "limit": "模型合并池先偏好加权后最终裁剪；已有锁定选择与本地锚点不被覆盖。"
+    },
+    {
+      "a": "A05",
+      "f": "F29",
+      "i": "lease",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-native",
+        "E-linux-delivery"
+      ],
+      "limit": "只凭已绘制版本和有效心跳持租约；隐藏/失焦/崩溃后系统候选兜底。"
+    },
+    {
+      "a": "A06",
+      "f": "F34",
+      "i": "toolfill",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-tools",
+        "E-linux-delivery"
+      ],
+      "limit": "UI预览/采用/取消真实接通；不等于翻译语义效果成熟。"
+    },
+    {
+      "a": "A01",
+      "f": "F42",
+      "i": "host",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-settings",
+        "E-linux-delivery"
+      ],
+      "limit": "保存刷盘不阻塞输入线程，主线程检查客户端期限与当前设置后发布。"
+    },
+    {
+      "a": "A03",
+      "f": "F57",
+      "i": "packs",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "Rust加载/组合预算与SDK共享数据契约；不自动信任第三方包声明。"
+    },
+    {
+      "a": "A05",
+      "f": "F65",
+      "i": "ipc",
+      "m": [
+        3,
+        3,
+        null,
+        2
+      ],
+      "evidence": [
+        "E-current",
+        "E-linux-delivery"
+      ],
+      "limit": "镜像和提交使用同一真实列表；JSON转义总帧预算与单项UTF8预算不同。"
+    }
+  ]
+}

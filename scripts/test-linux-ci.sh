@@ -31,7 +31,29 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$suzaku_ci_mode" == ibus ]]; then
-  cargo build --locked --all-features --bin linux_ime_host --bin linux_ime_probe --bin suzaku_tool
+  if [[ -z ${SUZAKU_NATIVE_QA_BIN_DIR:-} ]]; then
+    cargo build --locked --all-features --bin linux_ime_host --bin linux_ime_probe --bin suzaku_tool
+    suzaku_ci_native_bins=$(realpath -e -- "$suzaku_ci_script_dir/../target/debug")
+  else
+    suzaku_ci_native_bins=$(realpath -e -- "$SUZAKU_NATIVE_QA_BIN_DIR") || {
+      printf 'Native QA binary directory does not exist: %s\n' "$SUZAKU_NATIVE_QA_BIN_DIR" >&2
+      exit 1
+    }
+  fi
+  [[ -d "$suzaku_ci_native_bins" ]] || {
+    printf 'Native QA binary path is not a directory: %s\n' "$suzaku_ci_native_bins" >&2
+    exit 1
+  }
+  for suzaku_ci_native_binary in linux_ime_host linux_ime_probe suzaku_tool; do
+    [[ -f "$suzaku_ci_native_bins/$suzaku_ci_native_binary" && -x "$suzaku_ci_native_bins/$suzaku_ci_native_binary" ]] || {
+      printf 'Missing executable native QA binary: %s/%s\n' "$suzaku_ci_native_bins" "$suzaku_ci_native_binary" >&2
+      exit 1
+    }
+  done
+  # The override selects the host/probe/tool under test; activation checks still
+  # need the source-built panel test executable. Installed panel coverage belongs
+  # to the application gates with SUZAKU_APP_QA_BIN_DIR.
+  printf 'Native QA host/probe/tool: %s (panel activation tests are source-built)\n' "$suzaku_ci_native_bins"
   suzaku_ci_panel_test=$(cargo test --locked --all-features --bin panel --no-run --message-format=json |
     jq -r 'select(.reason == "compiler-artifact" and .target.name == "panel" and .profile.test == true) | .executable // empty')
   [[ -x "$suzaku_ci_panel_test" ]] || { printf 'Missing panel test executable.\n' >&2; exit 1; }
@@ -49,8 +71,9 @@ if [[ "$suzaku_ci_mode" == ibus ]]; then
     SUZAKU_LINUX_IME_SOCKET="$suzaku_ci_tmp/suzaku-ime/host.sock" \
     IBUS_ADDRESS="unix:path=$suzaku_ci_tmp/ibus.sock" \
     SUZAKU_NATIVE_SYNC_QA=1 \
+    SUZAKU_NATIVE_QA_BIN_DIR="$suzaku_ci_native_bins" \
     SUZAKU_NATIVE_ACTIVATION_TEST="$suzaku_ci_panel_test" \
-    /usr/bin/python3 scripts/test-native-sync.py
+    /usr/bin/python3 -u scripts/test-native-sync.py
 else
   suzaku_ci_tmp="$(mktemp -d /tmp/suzaku-ui-qa.XXXXXX)"
   mkdir -m 700 "$suzaku_ci_tmp/runtime"

@@ -1,7 +1,7 @@
 use suzaku_map::ime::gpu::{
     CandidateDensity, DisplayTextScale, FontFaceChoice, LlmModelPreset, LlmTemperaturePreset,
-    PANEL_SCALE_MAX, PANEL_SCALE_MIN, PanelChromeState, PreviewStyle, TextSmoothing, TextSpacing,
-    ThemePreset,
+    PANEL_SCALE_MAX, PANEL_SCALE_MIN, PanelChromeState, PanelLayoutMode, PreviewStyle,
+    TextSmoothing, TextSpacing, ThemePreset,
 };
 use suzaku_map::platform::settings_host::display_settings_path;
 use suzaku_map::platform::voice_host::HostSpeechRecognizer;
@@ -25,6 +25,7 @@ pub(crate) struct PersistedDisplaySettings {
     pub(crate) text_smoothing: TextSmoothing,
     pub(crate) theme_preset: ThemePreset,
     pub(crate) hide_system_titlebar: bool,
+    pub(crate) panel_layout_mode: PanelLayoutMode,
     pub(crate) ui_language: suzaku_map::ui::UiLanguage,
     pub(crate) voice_auto_insert: bool,
     pub(crate) llm_enabled: bool,
@@ -74,6 +75,7 @@ impl From<&PanelChromeState> for PersistedDisplaySettings {
             text_smoothing: chrome.text_smoothing,
             theme_preset: chrome.theme_preset,
             hide_system_titlebar: chrome.hide_system_titlebar,
+            panel_layout_mode: chrome.panel_layout_mode,
             ui_language: chrome.ui_language,
             voice_auto_insert: chrome.voice_auto_insert,
             llm_enabled: chrome.llm_enabled,
@@ -99,6 +101,7 @@ pub(crate) fn apply_display_settings(
     chrome.text_smoothing = settings.text_smoothing;
     chrome.theme_preset = settings.theme_preset;
     chrome.hide_system_titlebar = settings.hide_system_titlebar;
+    chrome.panel_layout_mode = settings.panel_layout_mode;
     chrome.ui_language = settings.ui_language;
     chrome.voice_auto_insert = settings.voice_auto_insert;
     chrome.llm_enabled = settings.llm_enabled;
@@ -120,7 +123,7 @@ pub(crate) fn save_display_settings(settings: &PersistedDisplaySettings) -> std:
 
 fn encode_display_settings(settings: &PersistedDisplaySettings) -> String {
     format!(
-        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nhide_system_titlebar={}\nui_language={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
+        "text_scale={}\ncandidate_density={}\npreview_style={}\nfont_face={}\ntext_spacing={}\ntext_smoothing={}\ntheme_preset={}\nhide_system_titlebar={}\npanel_layout_mode={}\nui_language={}\nvoice_auto_insert={}\nllm_enabled={}\nllm_model={}\nllm_temperature={}\npointer_tap_slop_tenths={}\npointer_tap_max_ms={}\npointer_target_slop_tenths={}\nwindow_scale={}\n",
         encode_text_scale(settings.text_scale),
         encode_candidate_density(settings.candidate_density),
         encode_preview_style(settings.preview_style),
@@ -129,6 +132,7 @@ fn encode_display_settings(settings: &PersistedDisplaySettings) -> String {
         encode_text_smoothing(settings.text_smoothing),
         encode_theme_preset(settings.theme_preset),
         settings.hide_system_titlebar,
+        settings.panel_layout_mode.id(),
         settings.ui_language.id(),
         if settings.voice_auto_insert {
             "true"
@@ -168,6 +172,7 @@ fn decode_display_settings_payload(contents: &str) -> PersistedDisplaySettings {
         text_smoothing: TextSmoothing::Smooth,
         theme_preset: ThemePreset::Suzaku,
         hide_system_titlebar: false,
+        panel_layout_mode: PanelLayoutMode::default(),
         ui_language: Default::default(),
         voice_auto_insert: true,
         llm_enabled: false,
@@ -227,6 +232,11 @@ fn decode_display_settings_payload(contents: &str) -> PersistedDisplaySettings {
             "hide_system_titlebar" => {
                 if let Ok(parsed) = value.trim().parse::<bool>() {
                     settings.hide_system_titlebar = parsed;
+                }
+            }
+            "panel_layout_mode" => {
+                if let Some(parsed) = PanelLayoutMode::from_id(value.trim()) {
+                    settings.panel_layout_mode = parsed;
                 }
             }
             "voice_auto_insert" => settings.voice_auto_insert = value.trim() == "true",
@@ -542,6 +552,7 @@ mod tests {
                     text_smoothing: TextSmoothing::Sharp,
                     theme_preset: ThemePreset::DeviceDark,
                     hide_system_titlebar: true,
+                    panel_layout_mode: PanelLayoutMode::BottomDock,
                     ui_language: Default::default(),
                     voice_auto_insert: false,
                     llm_enabled: false,
@@ -564,6 +575,7 @@ mod tests {
                     text_smoothing: TextSmoothing::Smooth,
                     theme_preset: ThemePreset::HighContrast,
                     hide_system_titlebar: false,
+                    panel_layout_mode: PanelLayoutMode::FollowCaret,
                     ui_language: Default::default(),
                     voice_auto_insert: true,
                     llm_enabled: true,
@@ -586,6 +598,7 @@ mod tests {
                     text_smoothing: TextSmoothing::Smooth,
                     theme_preset: ThemePreset::Daylight,
                     hide_system_titlebar: true,
+                    panel_layout_mode: PanelLayoutMode::BottomDock,
                     ui_language: Default::default(),
                     voice_auto_insert: false,
                     llm_enabled: true,
@@ -600,6 +613,78 @@ mod tests {
         ];
 
         run_display_settings_codec_round_trip_cases(&cases);
+    }
+
+    #[test]
+    fn panel_layout_preference_defaults_to_auto_and_round_trips() {
+        for payload in [
+            "",
+            "theme_preset=baihu\n",
+            "panel_layout_mode=invalid\n",
+            "panel_layout_mode=\n",
+        ] {
+            assert_eq!(
+                decode_display_settings_payload(payload).panel_layout_mode,
+                PanelLayoutMode::Auto,
+                "{payload}"
+            );
+        }
+        assert_eq!(
+            decode_display_settings_payload(" panel_layout_mode = bottom-dock \n")
+                .panel_layout_mode,
+            PanelLayoutMode::BottomDock
+        );
+        for mode in PanelLayoutMode::ALL {
+            let original = PanelChromeState {
+                panel_layout_mode: mode,
+                detected_panel_layout: PanelLayoutMode::BottomDock,
+                theme_preset: ThemePreset::Baihu,
+                hide_system_titlebar: true,
+                window_scale: 0.9,
+                ..Default::default()
+            };
+            let settings = PersistedDisplaySettings::from(&original);
+            let encoded = encode_display_settings(&settings);
+            assert!(encoded.contains(&format!("panel_layout_mode={}\n", mode.id())));
+            assert!(!encoded.contains("detected_panel_layout"));
+            let decoded = decode_display_settings_payload(&encoded);
+            assert_eq!(decoded, settings);
+            let mut restored = PanelChromeState::default();
+            apply_display_settings(&mut restored, &decoded);
+            assert_eq!(PersistedDisplaySettings::from(&restored), settings);
+            assert_eq!(restored.detected_panel_layout, PanelLayoutMode::FollowCaret);
+            assert_eq!(
+                restored.effective_panel_layout(),
+                if mode == PanelLayoutMode::Auto {
+                    PanelLayoutMode::FollowCaret
+                } else {
+                    mode
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn automatic_layout_does_not_persist_or_overwrite_platform_detection() {
+        let mut chrome = PanelChromeState {
+            detected_panel_layout: PanelLayoutMode::BottomDock,
+            ..Default::default()
+        };
+        let saved = PersistedDisplaySettings::from(&chrome);
+        assert_eq!(saved.panel_layout_mode, PanelLayoutMode::Auto);
+        assert_eq!(chrome.effective_panel_layout(), PanelLayoutMode::BottomDock);
+        let encoded = encode_display_settings(&saved);
+        assert!(encoded.contains("panel_layout_mode=auto\n"));
+        assert!(!encoded.contains("bottom-dock"));
+        apply_display_settings(&mut chrome, &decode_display_settings_payload(&encoded));
+        assert_eq!(chrome.detected_panel_layout, PanelLayoutMode::BottomDock);
+        assert_eq!(chrome.effective_panel_layout(), PanelLayoutMode::BottomDock);
+        chrome.detected_panel_layout = PanelLayoutMode::FollowCaret;
+        assert_eq!(PersistedDisplaySettings::from(&chrome), saved);
+        assert_eq!(
+            chrome.effective_panel_layout(),
+            PanelLayoutMode::FollowCaret
+        );
     }
 
     #[test]
@@ -716,6 +801,7 @@ mod tests {
                 text_smoothing: TextSmoothing::Sharp,
                 theme_preset: ThemePreset::Daylight,
                 hide_system_titlebar: false,
+                panel_layout_mode: PanelLayoutMode::FollowCaret,
                 ui_language: Default::default(),
                 voice_auto_insert: true,
                 llm_enabled: false,
@@ -813,6 +899,7 @@ mod tests {
             text_smoothing: TextSmoothing::Sharp,
             theme_preset: ThemePreset::Daylight,
             hide_system_titlebar: false,
+            panel_layout_mode: PanelLayoutMode::FollowCaret,
             ui_language: Default::default(),
             voice_auto_insert: true,
             llm_enabled: false,
@@ -913,6 +1000,7 @@ mod tests {
             text_smoothing: TextSmoothing::Sharp,
             theme_preset: ThemePreset::Daylight,
             hide_system_titlebar: false,
+            panel_layout_mode: PanelLayoutMode::FollowCaret,
             ui_language: Default::default(),
             voice_auto_insert: true,
             llm_enabled: false,

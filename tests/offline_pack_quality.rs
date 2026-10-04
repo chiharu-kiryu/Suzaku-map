@@ -338,6 +338,111 @@ fn recommended_collections_keep_word_sentence_and_fallback_workflows() {
     assert_eq!(report.loaded.len(), 11);
     assert!(report.errors.is_empty(), "{report:?}");
 
+    // New built-in daily expressions must coexist with the old cooking pack,
+    // including its longer context. Do not change a shipped pack to make a new
+    // built-in key collision disappear; these expectations are independent.
+    for (language, seed, word, sentence) in [
+        (
+            "en",
+            "could you bring the cu",
+            "could you bring the cups",
+            "could you bring the cups?",
+        ),
+        (
+            "en",
+            "could you bring the measuring spo",
+            "could you bring the measuring spoons",
+            "could you bring the measuring spoons from the drawer?",
+        ),
+        (
+            "en",
+            "could you pass me the sa",
+            "could you pass me the salt",
+            "could you pass me the salt?",
+        ),
+        (
+            "en",
+            "please pass me the col",
+            "please pass me the colander",
+            "please pass me the colander from the cupboard.",
+        ),
+        (
+            "zh-Hans",
+            "fang hui yuan chu",
+            "放回原处",
+            "放回原处之前，记得擦干净。",
+        ),
+        (
+            "zh-Hans",
+            "gou'bu'gou",
+            "够不够",
+            "够不够，不够我再拿一点。",
+        ),
+        ("ja", "yotei", "予定", "予定が決まったら連絡します。"),
+        ("ja", "JYUNBI", "準備", "準備ができたら連絡します。"),
+        ("ja", "kaisatsu", "改札", "改札はどこですか。"),
+    ] {
+        for chosen in [word, sentence] {
+            let mut ime = engine(language);
+            ime.seed(seed);
+            check(&ime, seed, word, sentence);
+            commit(&mut ime, chosen);
+            assert_eq!(ime.snapshot().committed_text, chosen);
+            assert!(ime.undo().unwrap().committed_text.is_empty());
+        }
+    }
+
+    // Sentence progress uses the active data catalog, not a built-in-only
+    // trigger table. These rail expectations stay fixed while all 11 packs are
+    // enabled; a word followed by a particle is not mislabeled as a word here.
+    for (seed, sentence) in [
+        ("kaisatsuha", "改札はどこですか。"),
+        ("改札は", "改札はどこですか。"),
+        ("かいさつは", "改札はどこですか。"),
+        ("kippuwo", "切符を買いたいです。"),
+        ("切符を", "切符を買いたいです。"),
+        ("きっぷを", "切符を買いたいです。"),
+        ("shuudennha", "終電は何時ですか。"),
+        ("shuudenha", "終電は何時ですか。"),
+        ("終電は", "終電は何時ですか。"),
+        ("しゅうでんは", "終電は何時ですか。"),
+    ] {
+        for chosen in [sentence, seed] {
+            let mut ime = engine("ja");
+            ime.seed(seed);
+            assert_eq!(ime.prediction_status(), PredictionStatus::Disabled);
+            assert_eq!(ime.snapshot().seed_text, seed);
+            assert!(ime.snapshot().committed_text.is_empty());
+            assert!(ime.candidates().len() <= 12);
+            assert!(
+                ime.candidates()
+                    .iter()
+                    .all(|candidate| candidate.source == CandidateSource::Local)
+            );
+            assert_eq!(
+                ime.candidates().len(),
+                ime.candidates()
+                    .iter()
+                    .map(|candidate| &candidate.text)
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+            );
+            assert!(ime.candidates().iter().any(|candidate| {
+                candidate.text == seed && candidate.kind == CandidateKind::Literal
+            }));
+            has(&ime, sentence, CandidateKind::Sentence);
+            commit(&mut ime, chosen);
+            assert_eq!(ime.snapshot().committed_text, chosen);
+            assert!(ime.candidates().is_empty());
+            let repeated = ime.commit(CommitOptions { force: true });
+            assert!(!repeated.ok);
+            assert!(repeated.text.is_none());
+            assert_eq!(ime.snapshot().committed_text, chosen);
+            assert!(ime.undo().unwrap().committed_text.is_empty());
+            assert!(ime.undo().is_none());
+        }
+    }
+
     // Every authored form is usable, not just the examples advertised below.
     for collection in collections.iter().filter(|pack| {
         pack.manifest.topics.iter().any(|topic| {

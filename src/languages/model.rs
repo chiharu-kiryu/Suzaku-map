@@ -1385,6 +1385,53 @@ mod tests {
     }
 
     #[test]
+    fn english_model_completion_after_prose_boundaries_preserves_the_literal_prefix() {
+        let provider = LlamaProvider::new(Default::default());
+        for boundary in ['—', '，', '。', '！', '？', '；', '：', '、'] {
+            for (tail, mode, completion, invalid_suffix) in [
+                ("hel", "complete_word", "hello", "hel there"),
+                (
+                    "please sen",
+                    "complete_word",
+                    "please send the report.",
+                    "please sen the report.",
+                ),
+                ("hello", "next_word", "hello there", "hello"),
+                ("can", "complete_or_continue", "can't wait", "can"),
+            ] {
+                let prefix = format!("  前文{boundary}");
+                let seed = format!("{prefix}{tail}");
+                let request = LlmCompletionRequest {
+                    seed_text: seed.clone(),
+                    normalized_phrase: seed.clone(),
+                    ..request("en")
+                };
+                let body: Value = serde_json::from_str(&provider.request_body(&request)).unwrap();
+                let input: Value =
+                    serde_json::from_str(body["messages"][1]["content"].as_str().unwrap()).unwrap();
+                assert_eq!(input["suggestion_mode"], mode, "{seed:?}");
+                assert_eq!(input["raw_composition"], seed);
+                assert_eq!(input["local_conversion"], seed);
+                assert!(
+                    useful_candidate(&format!("{prefix}{completion}"), &request),
+                    "{seed:?} -> {completion:?}"
+                );
+                for invalid in [
+                    format!("{prefix}{invalid_suffix}"),
+                    completion.to_owned(),
+                    format!("{}{}", prefix.trim_start(), completion),
+                    format!("  前文 {completion}"),
+                ] {
+                    assert!(
+                        !useful_candidate(&invalid, &request),
+                        "must reject a skipped partial word or rewritten prefix: {seed:?} -> {invalid:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn cjk_prediction_preserves_mixed_language_input_without_a_local_conversion() {
         for language in ["zh-Hans", "ja"] {
             let request = LlmCompletionRequest {

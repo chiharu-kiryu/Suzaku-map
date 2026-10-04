@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.8.1 — Native candidates and everyday bilingual fallback**.
+Current source version: **0.8.2 — Adaptive panels and continuous multilingual fallback**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -13,8 +13,9 @@ Simplified Chinese focuses on continuous/separated Pinyin, unfinished readings, 
 choices and continued typing after conversion. Both must retain literal input, deliberate adoption,
 one-step completion undo, Space continuity and exact explicit submission, with or without a model.
 
-Keep Japanese and the existing interface/translation languages compatible; do not remove them or
-equate eight interface languages with eight complete native input systems. Mixed Chinese/English,
+Gradually extend basic Japanese Romaji/Kana and everyday fallback while keeping Chinese/English
+as the core. Preserve the existing interface/translation languages; do not equate eight interface
+languages with eight complete native input systems. Mixed Chinese/English,
 broader vocabulary and real-model latency/quality still need work. Treat input-state correctness,
 authored offline examples and real-model quality as separate acceptance gates.
 
@@ -40,6 +41,495 @@ checks and clean-container installation checks to pass before publication. Other
 are added only after their own acceptance, not implied by the shared version number.
 This is a release requirement, not a claim that automatic publication is implemented or
 that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.8.2 release preparation (2026-10-04)
+
+The accumulated development sections below are included in 0.8.2; their
+"Unreleased" headings and validation statements retain their historical scope.
+See [0.8.2 release notes](docs/releases/0.8.2.md) for the consolidated changes,
+platform limits and installation instructions. Rust/lockfile, both macOS bundles
+and Android now share version 0.8.2, with platform build number 32. Only the
+root package version changes in Cargo.lock; dependency versions are unchanged.
+CI also explicitly validates the functional tensor and its 21 fixture tests.
+Publication still requires the exact commit's complete CI and clean-container
+package acceptance, followed by permanent Release attachments. Local validation
+logs for this preparation are under `/tmp/suzaku-release-0.8.2.H7rcvj/`.
+After the metadata bump, 1,155 ordinary all-features Rust tests and strict
+all-target Clippy passed again (27 opt-in tests stay separate), together with
+formatting, shell syntax, 21 tensor tests and staged/full-history secret scans.
+Local ShellCheck is not installed; the mandatory CI gate remains enabled.
+
+### Unreleased — Japanese sentence progress (2026-10-04)
+
+- Fix authored sentences disappearing once Japanese input advances beyond an
+  exact trigger: `予定ga`, `nihongo wo` and `JYUNBI GADEKI` now retain matching
+  sentences. Match the whole converted draft, prefer longer applicable contexts
+  stably, deduplicate and bound added sentence choices. Existing exact-trigger
+  order remains covered independently; unknown prefixes/conflicting tails are
+  never removed to recover an unrelated sentence.
+- Continue consuming horizontal Romaji reading separators only in converted
+  choices, while the literal draft remains exactly selectable. Preserve LF,
+  CR, CRLF, vertical tab, form feed, NEL and Unicode line/paragraph separators;
+  conversion and sentence matching must not silently join separate lines.
+- The first full regression run exposed another real boundary in a new rail-pack
+  case: `shuudennha` became `終電んは`, although `shuudenn` already ended in one
+  `ん`. Keep a completed `nn` as one `ん` before the next consonant; preserve
+  `nna`, `nni`, `nnya`, `nnna`, repeated n and both explicit apostrophe rules.
+  Fixed unit expectations cover the intermediate `shuudennh` state too, with
+  a private IBus `denn` → `dennwa` → `電話` adoption/undo/commit workflow.
+- No new vocabulary or model-specific path: the implementation consumes the
+  active lexicon. Six new independent engine tests cover 21 particle/progress
+  spellings, every literal prefix of three fixed sentences, adoption, negative
+  boundaries and exact commits/undo. Ten rail-pack progress spellings exercise
+  the same behavior with all eleven recommended collections enabled.
+- Red runs reproduced both issues: two unit failures and five of six new engine
+  test failures. The subsequent full-run rail failure and focused `nn` red test
+  are also retained; the original test was not removed or relaxed. Logs remain
+  in `/tmp/suzaku-ja-progress.LS2hah/`. The first
+  purported inline invocation used an unrecognized environment variable and
+  was another default-mode run (`native-extra-default.log`); the corrected
+  `SUZAKU_IBUS_INLINE_PREEDIT=1` run is recorded separately as `native-inline.log`.
+- Final validation passed 1,155 non-ignored all-features Rust tests, strict
+  all-target Clippy, formatting, diff checks and 21 tensor checks. The 27 opt-in
+  Rust tests remain separate. This includes the ten rail progress cases in the
+  all-eleven-pack fixture; the first failing full run is not reported as a pass.
+- Focused private IBus passed again after the `nn` fix in default and inline modes, retaining the old
+  Japanese cases and adding three sentence-progress and three conflicting-tail
+  workflows plus the `nn` consonant transition, with numeric adoption, exact
+  spelling undo and single Enter commits.
+  Four focused GTK/XTest workflows passed, including new adopted-word + Space
+  + `ga` sentence selection/undo and observed exact editor saves for `予定` and
+  `準備`. Final owned editor artifacts: `/tmp/suzaku-app-qa.G0s3jy` (the earlier
+  pre-`nn` run remains at `/tmp/suzaku-app-qa.klFSAZ`).
+- This round does not rerun full IBus, full 89-workflow GTK, personal installation,
+  physical keyboard, native Wayland or live-model quality acceptance. It does
+  not infer readings of unknown Kanji in sentences (`予定がkima`), perform full
+  morphological analysis, scan arbitrary history or extend the Japanese
+  256-scalar local window. Version, dependencies, personal input source and
+  service installation remain unchanged; no commit or push is performed.
+
+### Unreleased — Gradual Japanese everyday input (2026-10-04)
+
+- Japanese now begins a bounded expansion alongside the English/Chinese core.
+  Append 48 authored readings and 24 pairs of continuations: 74 readings,
+  38 contexts and 75 continuation records in total. The original 26-reading
+  fingerprint remains, and a new fingerprint freezes all 14 original contexts.
+  All English/Chinese resources and recommended packs remain unchanged this round.
+- Fix terminal `nn` before punctuation/non-Romaji text duplicating `ん`, recognize
+  curly `n’` alongside `n'`, and accept `jya/jyu/jyo` aliases. ASCII-only case
+  normalization protects unrelated Unicode such as `Ω`, `Σ` and `İ`; uppercase
+  Romaji still works. Preserve the old `nn'` interpretation rather than leaking
+  an apostrophe through the new terminal-n folding branch.
+- Exact final readings after known prefixes now retain homophones:
+  `watashihakanji` offers `私は漢字` and `私は感じ`. Known adopted spellings,
+  including `ニホンゴ`, can precede partial Romaji (`wobenky` → `を勉強`)
+  without replacing that spelling. Prefix matching is allocation-free and bounded;
+  arbitrary unknown prefixes, digits and emoji are not skipped to find a suffix.
+- Independent daily tests cover complete/partial Romaji and Hiragana, uppercase,
+  first-page words/sentences, original text, exact single commits and undo.
+  Typed missing/error/timeout/503/empty providers cover the new vocabulary without
+  pretending to be live-model evidence. Full-pack tests check new Japanese words
+  alongside the existing rail collection. New private IBus and GTK vocabulary
+  scenarios cover actual key delivery and editable adoption; their execution
+  results are recorded below, separately from test-source coverage.
+- Initial red tests reproduced lost suffix homophones, failed adopted Katakana
+  completion and repeated `ん`. A data test additionally assumed literal input
+  must be on page one; `as` legitimately retains that choice on the next page.
+  The test now searches the full list only for Literal, while words and sentences
+  still require page one for complete/specific spellings. The next run exposed
+  the same overbroad assumption for a single Kana (`あ`); those broad prefixes
+  instead require reachability within the bounded list, retaining old word ranks.
+  A native keyboard case explicitly selects the later literal row. Logs and
+  retained failures: `/tmp/suzaku-japanese.3vStYH/`.
+- Final validation passed 1,147 non-ignored all-features Rust tests, strict
+  all-target Clippy, formatting and 21 tensor checks; 27 opt-in Rust tests remain
+  separate. Default-mode full private IBus passed, including 88 EN/ZH workflows
+  and the new Japanese suite (eight daily word/sentence routes, two homophones,
+  adopted Katakana and later-page literal). The focused Japanese suite also
+  passed with inline preedit; this is not an inline full-suite claim.
+  Four focused Japanese GTK/XTest workflows passed with actual key delivery,
+  observed editor buffers and exact saved commits, including uppercase `JYUNBI`.
+  All new cases are also included in the default full vocabulary gate, now
+  86 vocabulary cases plus three Chinese sentence-progress controls; that
+  complete 89-workflow GTK gate was not rerun this round. No personal-desktop,
+  native Wayland, physical-keyboard or live-model quality acceptance is claimed.
+- This is not a complete morphological analyzer or arbitrary Kana/Kanji converter.
+  The 256-scalar local/model budget, Japanese long-draft limitation, model interfaces,
+  candidate capacities and Space-as-reading-separator contract remain unchanged.
+  No personal installation, input source, dependency, version, commit or push is changed.
+
+### Unreleased — Everyday objects bilingual fallback (2026-10-04)
+
+- Append-only `daily_objects` data covers finding/placing belongings, borrowing
+  and returning items, small requests, quantities and sizes. English adds 24
+  contexts and 48 authored sentences, reusing existing vocabulary except seven
+  explicit forms: `chairs/cups/mine/plates/scissors/tape/yours`. Chinese adds 64
+  readings, 24 contexts and 48 continuations. Current totals: 6,124 English
+  indexed forms / 497 contexts / 958 sentences; 2,367 Chinese readings / 491
+  contexts / 980 continuations. Japanese and recommended pack contents are unchanged.
+- Vocabulary remains independent JSON and a model-unavailable fallback, not a
+  replacement for open-ended generation. No decoder/model branches, candidate
+  capacities or index budgets change. New snapshots freeze the previous 15
+  English layers' ranks, all 473 contexts/910 sentences and the previous 2,303
+  Chinese readings/467 contexts; every older snapshot remains in place.
+- Independent fixed expectations cover all new expressions, both sentence
+  branches, partial/separated Pinyin, case/apostrophes/spacing, long mixed
+  prefixes, literal choices, exact commits and undo. Six new bilingual scenarios
+  join typed provider-error fallback, native IBus and GTK/XTest vocabulary gates.
+  Full-pack regression also checks new built-ins and the old cooking pack together.
+- The first package regression caught a real new-data collision:
+  `please pass me the` already belongs to the cooking pack. Only the new built-in
+  context was changed to `could you pass me the`; the shipped pack and its
+  `colander/spatula` choices remain intact. Logs, including the original failed
+  run, are retained in `/tmp/suzaku-vocab-objects.7nYSBX/`.
+- The first GTK full-vocabulary run stopped before delivering `There's a spare ch`:
+  its typing fixture explicitly rejected uppercase ASCII. The helper now sends
+  uppercase letters through the existing physical Shift/key press/release path;
+  lowercase, digits and supported punctuation retain their old mapping, and
+  unsupported characters are still rejected. The uppercase scenario and exact
+  text assertions remain unchanged. A display-free mapping check verifies this
+  fixture correction; the original failure and owned QA artifacts are retained.
+- Final source validation: 1,138 non-ignored all-features Rust tests, strict
+  all-target Clippy, formatting and 21 functional-tensor tests passed. The 27
+  opt-in tests remain distinct from that Rust count. Default and inline-preedit
+  full private IBus gates passed, each including 88 bilingual vocabulary
+  word/sentence adoption/undo/continuation/commit workflows. The default gate
+  still emitted the previously investigated IBus invalid-sender GIO warning but
+  completed successfully; this data change does not claim to fix that dependency
+  issue. Source fingerprints and evidence are updated without raising scores.
+- After the fixture correction, the full isolated GTK editor vocabulary gate
+  passed both mixed-language partitions: 41 vocabulary cases plus three Chinese
+  sentence-progress controls in part 1, and 41 vocabulary cases in part 2 (85
+  workflows total). This includes the uppercase English example and all six
+  added bilingual cases, with real XTest delivery, observed editor buffers and
+  exact saved word/sentence commits. The original per-session deadlines and all
+  assertions remain unchanged. Fourteen editor-observer unit checks also passed.
+  Xvfb/XTest is not a physical-keyboard, native Wayland or personal-desktop test;
+  no live-model quality, package installation or GPU visual acceptance is claimed.
+- This source expansion does not change the personal installation, version or
+  desktop input source. Rebuilding/reinstalling is needed to use the compiled-in
+  additions on the desktop; no release, commit or push is part of this round.
+
+### Unreleased — Prose boundaries and consistent candidate paging (2026-10-04)
+
+- English mode now completes words and authored sentences after explicit prose
+  boundaries `—，。！？；：、`, without requiring an extra ASCII space. Examples:
+  `前文，hel` → `前文，hello` / `前文，hello, how are you?`, and
+  `说明—please sen` → `说明—please send` / `说明—please send me the details.`.
+  Exact prefixes, case and spacing remain intact. Word, sentence, committed-context
+  and long-draft paths share a linear boundary scan; ASCII URL/path/identifier
+  syntax prevents a punctuation cut from exposing a fabricated natural-language
+  suffix. The 160-scalar context and 256-scalar local/model budgets are unchanged.
+  Final review caught repeated scanning of already-finished session history;
+  the scan now starts at the current window's containing whitespace-delimited
+  token. Structural tests exclude old history from the scanned slice, and 350
+  boundary combinations compare it with the initial full-scan semantics. An
+  unbroken token still retains its complete syntax for conservative URL protection.
+- English adoption followed by an em dash retains pending preference feedback
+  until explicit commit; undo still reverses it. ASCII hyphens, en dashes, URLs
+  and identifiers do not become word boundaries for preference learning. This
+  changes neither vocabulary resources nor model/provider coupling. Generated
+  model suffixes with CJK punctuation remain whole sentence candidates, not
+  automatically projected word candidates.
+- IBus PageUp/Down, home-row Alt+H/L and IBus page events now select the adjacent
+  page's first row, matching native panel arrows. Unavailable pages are inert:
+  selection, revision, adoption undo and in-flight predictions remain unchanged.
+  Draft page keys remain consumed; empty/private/unfocused targets retain the
+  existing pass-through behavior. Row navigation and explicit adoption are unchanged.
+- Red tests established missing mixed-prose completions, lost `hello—world`
+  preference feedback, and first-page PageUp changing native revision. The new
+  native fixture initially assumed a settings file already existed; it now saves
+  the loaded default settings when starting fresh. A new test also incorrectly
+  demanded typed sentence candidates from the short legacy nonmixed API; it now
+  respects that existing untyped-word contract, while IBus and both long-draft
+  modes still require first-page words and sentences. Original failures and
+  subsequent validation logs are retained in `/tmp/suzaku-input-ux.6wkCJf/`.
+- Final source validation: 1,126 non-ignored all-features Rust tests passed,
+  with 27 native/opt-in tests kept separate; strict all-target Clippy, formatting,
+  23 native-fixture diagnostic tests and 21 functional-tensor tests passed.
+  Default and inline-preedit complete private IBus gates both passed on the final
+  source, including the new EN/ZH three-entry page checks and four mixed-prose
+  word/sentence adoption/undo/Space/exact-commit workflows. This is synthetic
+  native protocol coverage, not physical keyboard, GPU redraw or real-model
+  quality acceptance; those independent UI/installation gates were not rerun.
+  The tensor source fingerprint is updated without increasing maturity scores.
+- The earlier dependency crash investigation is parked, not declared fixed.
+  No personal input source, installation, system dependency or version is changed.
+
+### Investigation — IBus daemon abort recovered from the original crash (2026-10-04)
+
+- Recovered the original Apport report at `/var/crash/_usr_bin_ibus-daemon.1000.crash`.
+  Its 2026-10-03 21:57:46 +08:00 timestamp, daemon PID 2497370, parent fixture
+  PID 2497361 and private `suzaku-sync-qa.NUQA9k/ibus.sock` address match the failed
+  inline gate. Report SHA-256:
+  `4f6da2c2944ba735473c638d2a9344f845cbaaa814e3aa5972ca58a3cd7bbd4b`.
+  This establishes a daemon SIGABRT, not merely a client disconnect, OOM kill or
+  outer test timeout. It does not imply that the user's desktop daemon crashed.
+- The exact GIO Build-ID `a9791477ead64658f8936bdcc9e63a5d3f02a4f0` debug symbols
+  confirm `call_in_idle_cb(user_data=0x0)`, `invocation=0x0`, at
+  `gio/gdbusconnection.c:5474`. The assertion is
+  `vtable != NULL && vtable->method_call != NULL`. Core-resident diagnostic text
+  also retains the earlier `_g_dbus_method_invocation_new` sender-name validation
+  failure. Thus an invalid non-null sender caused construction to return NULL;
+  scheduling that NULL invocation led to the later assertion and daemon abort.
+  The worker had already returned to its event loop: the actual sender bytes,
+  method and corruption origin cannot be reliably recovered from this core.
+- Scope: Ubuntu 26.04, IBus `1.5.34~rc2-1`, GLib `2.88.0-1ubuntu0.1`.
+  This is not the Ubuntu 24.04 CI baseline. Official GLib
+  [dispatch source](https://github.com/GNOME/glib/blob/2.88.0/gio/gdbusconnection.c)
+  and [invocation construction](https://github.com/GNOME/glib/blob/2.88.0/gio/gdbusmethodinvocation.c)
+  explain the observed failure chain; matching symbols were downloaded only into
+  a private temporary directory, not installed as system packages.
+- Still a hypothesis: the IBus worker's
+  [sender assignment](https://github.com/ibus/ibus/blob/1.5.34-rc2/bus/dbusimpl.c#L1554)
+  borrows the connection name while
+  [connection destruction](https://github.com/ibus/ibus/blob/1.5.34-rc2/bus/connection.c#L80)
+  can release it after removing the filter. GLib documents that filter removal
+  does not wait for an already-running callback. However, the sender setter also
+  validates before copying; proving this particular race requires observing the
+  narrow lifetime window, not merely finding the static code pattern. No evidence
+  establishes that the separately published engine-request cancellation fix is
+  the same bug, or that a system upgrade alone resolves this failure.
+- Diagnostic results: a no-Suzaku private IBus control survived 600 connection
+  open/close cycles and 38,400 valid no-reply ListNames requests. The unchanged
+  complete inline gate passed again, including N45/N44. These are negative
+  reproduction results, not proof of a fix. Two temporary attempts to repeat N45
+  on one bus stopped at iteration 2 with missing panel content-type events while
+  the daemon remained alive; adding an inter-case drain did not resolve that
+  harness-reuse limitation. Neither reproduced the historical daemon abort.
+- Logs, temporary diagnostic drivers, matching symbols and the privately unpacked
+  crash remain under `/tmp/suzaku-disconnect-investigation.TDhKk6/`. Raw core and
+  environment data are not added to the repository or uploaded. The initial
+  diagnostic-run approval timed out; the permitted retry executed normally.
+  Next useful experiment is instrumented/ASan validation of sender ownership on
+  a disposable upstream daemon, not changing product sleeps or suppressing errors.
+  No production code, dependencies, personal input source, installation or version
+  was changed. Ordinary Rust/Clippy and default-mode full gates were not rerun.
+
+### Unreleased — Native recovery fixture diagnostics and cleanup
+
+- Investigated the previous inline N45 connection loss. The original run discarded
+  `ibus-daemon` stderr, and a failed panel-name release replaced the first engine
+  query assertion. The surviving evidence cannot distinguish daemon termination
+  from a single client disconnect; no production root cause is established.
+- Keep daemon stderr and unbuffered Python output in the gate log. Before teardown
+  changes process status, record the phase, local connection flags, daemon PID/exit
+  status and the last eight owned children. No diagnostic D-Bus RPC is sent and
+  full child arguments are not logged. Broken observation/stderr cannot hide the
+  original error; this is a test-fixture diagnostic, not new product telemetry.
+- N45 now owns and retires its delayed GLib source IDs, disconnects the panel
+  handler and cancels remaining callbacks before the next recovery workflow.
+  This replaces the old fixed 120 ms cleanup pump, not the 350 ms restoration
+  stability check. Every cleanup stage is attempted, preserving the first failure
+  and attaching later errors. PASS is printed only after cleanup succeeds.
+- PyGObject can swallow asynchronous callback exceptions. Save the first callback
+  exception and explicitly check it in the probe wait, stability loop and cleanup;
+  bound additional error notes. Recheck every switch ACK after the stability loop
+  so a late false result cannot pass merely because the engine was already right.
+- Validation: 23 isolation/cleanup/diagnostic Python tests and six real GLib/C
+  signal-lifetime tests passed, including callback failure and cancellation.
+  Both complete default/inline private IBus suites passed, including N45/N44;
+  neither reproduced the old disconnect. Shell syntax, ShellCheck, Python syntax,
+  diff checks, 21 inventory tests and the refreshed source digest passed. Logs are retained in
+  `/tmp/suzaku-recovery-audit.DwfJcp/`; the previous connection-loss log remains in
+  `/tmp/suzaku-long-chain.WpURFn/ibus-inline.log`.
+  The early scoped inline recovery run also passed. The initial bare `shellcheck`
+  invocation was unavailable on PATH; validation used the already-installed
+  `target/linux-lint.hijeqZ/root/usr/bin/shellcheck`, with no package download.
+  No production Rust/C, personal installation/input source, model, vocabulary or
+  version changed. This round does not rerun the ordinary Rust/Clippy suite or
+  claim physical-keyboard, GNOME/Wayland, remote CI or release acceptance.
+
+### Unreleased — Exact local-window boundary
+
+- Follow-up on F64/F17/F18: the 256-scalar local-tail search did not inspect the
+  separator immediately before a full-sized tail. Chinese could lose all local
+  conversion for an otherwise decodable 256-character reading; English could
+  discard the first complete word and lose its authored sentence continuation.
+- Inspect one extra boundary scalar, then leave that scalar in the frozen prefix.
+  The actual decoder window remains at most 256 Unicode scalars. Do not change
+  the last-Han/CJK-prefix freezing policy, split protected tokens, normalize the
+  preserved prefix or enlarge the whole-draft model/transport limits.
+- Recorded red tests independently reproduced Chinese missing conversion and
+  English missing sentence context at exactly 256; their short and over-budget
+  controls passed. Added tests cover 254/255/256/257 boundaries, both candidate
+  policies, Unicode/whitespace prefixes, exact commits and undo, protected tokens,
+  and a valid 8,192-byte draft whose expanded conversion must be filtered intact.
+  Controlled-provider tests retain the long-draft no-request check and a positive
+  exact-256 short-draft request after shortening; no real model is called.
+- The private IBus fixture adds 14 compact boundary workflows: owned full-text
+  replacement or a final real host key event, word/sentence adoption, exact
+  Backspace restoration and one full-payload Enter commit. A 257-scalar reading
+  remains literal; English may complete its final word but not reuse frozen
+  phrase context, including on later candidate pages. This is not physical-keyboard
+  or personal-desktop acceptance, and does not require a personal installation.
+- The 38 targeted long-draft/English-window/prediction tests passed after allowing
+  the prediction suite's private local endpoint. The first sandboxed attempt hit
+  `PermissionDenied` in an existing endpoint fixture; no assertions were relaxed.
+  The subsequent complete all-feature Rust run passed 1,116 ordinary tests;
+  27 opt-in gates remain separately enabled, not implicitly passed.
+  Default private IBus passed the complete suite, including all 14 new boundary
+  workflows. The first inline run passed those workflows and later input/host
+  restart checks, then its existing IBus connection closed during the final N45
+  password probe. The engine query failed, followed by the panel-name release;
+  this was not the outer 120-second timeout. The unchanged isolated N45/N44
+  recovery gate and an unchanged complete inline rerun both passed. Both final
+  preedit modes include all 14 new boundary workflows. No cause of that connection
+  loss is established; the first failure remains in `ibus-inline.log`, not erased
+  by the passing `ibus-inline-recovery.log` and `ibus-inline-rerun.log`.
+  Strict all-feature/all-target Clippy, formatting, diff checks, the 21 inventory
+  tests and the refreshed source-digest check passed. No hardware/GUI acceptance,
+  reinstall, packaging, version change, commit or push was performed this round.
+  Logs, including both independent red tests, are in `/tmp/suzaku-long-chain.WpURFn/`.
+  No vocabulary data, model provider, version, personal input source or install changed.
+
+### Unreleased — Pointer deltas and English preference boundaries
+
+- Follow-up from the sparse inventory, along F60/F36/F40 and F66/F16: signed-zero
+  pixel-wheel and pinch events previously became ±1 through `signum`, causing
+  horizontal/no-motion gestures to page candidates or resize the panel. Nonfinite
+  deltas could also trigger actions or contaminate the settings scroll position.
+  Check the original vertical value before taking its sign/narrowing precision;
+  keep finite line-wheel magnitudes and existing nonzero gesture-phase behavior.
+- The production event dispatcher now has 70 inert-event and 28 valid-event cases
+  in the existing private native-action gate, covering candidate pages, Ctrl-wheel
+  zoom, pinch and settings. These dispatch synthetic winit events inside owned
+  Xvfb windows; they are not physical touchpad/touchscreen acceptance.
+- English `hel -> hello` adoption no longer teaches that word when subsequent
+  typing makes `hello.com`, `hello:world` or another attached period/colon token.
+  Sentence endings, whitespace, closing punctuation and CJK separators retain
+  their existing learning behavior. Canceled pending choices do not resurrect
+  after deleting back to the old spelling; confirmed feedback still has undo.
+  This is a choice-lifecycle guard, not a dictionary/parser dependency or new
+  persistent cache. The private IBus fixture also checks ten token/punctuation
+  continuations with exact commits and no learning while typing.
+- Before the fixes, two ordinary gesture tests and the private native-action
+  dispatcher gate failed; the new English preference regression recorded one
+  erroneous learned entry for `hello.com` while its punctuation controls passed.
+  Reproduction and validation logs are under `/tmp/suzaku-chain-audit.Vwd7sH/`.
+  No personal installation, input source, vocabulary, model or version is changed.
+- Validation: 1,110 ordinary all-feature Rust tests passed; 27 opt-in gates remain
+  separately enabled, not implicitly passed. The updated private native-action
+  gate passed all 70 inert and 28 finite-event checks, including real separate
+  settings-window dispatch. Both complete private IBus preedit modes passed the
+  ten English continuation cases and existing input/lifecycle/model-fixture checks.
+  Real GTK/IBus/XTest candidate workflows passed 26 cases per default/synchronous
+  client transport (52 total), including paging, word adoption/undo and exact long
+  English/Chinese candidate clicks. Strict all-feature/all-target Clippy, formatting,
+  diff checks, all 21 inventory tests and the refreshed source digest passed.
+  Application fixture artifacts remain in `/tmp/suzaku-app-qa.KFvSY9/` and
+  `/tmp/suzaku-app-qa.efxBx0/`; these owned X11 fixtures are not personal desktop tests.
+- Retain intermediate diagnostics: the first ordinary run could not bind its
+  fixture endpoints under the sandbox; the permitted local-fixture rerun passed.
+  The settings positive control initially failed because the probe rendered the
+  main window, which deliberately excludes settings. The fixture now opens a real
+  settings window with a scrollable viewport and retains its nonzero-range and
+  bidirectional assertions. A missing test-only enum import briefly blocked the
+  first inline-mode attempt before it ran; the corrected compile and gate passed.
+  Private Xvfb software-renderer DRI3 and IBus portal startup warnings are retained
+  in logs; these are not proof of physical GPU/desktop acceptance.
+
+### Unreleased — Architecture/function/implementation maturity inventory
+
+- Preserve F01–F59 and index nine existing cross-cutting capabilities as F60–F68:
+  native paging, caret placement, bottom layout, automatic platform layout, long
+  drafts, payload budgets, preference frequency, resource decoupling and shortcuts.
+- `docs/functional-tensor.json` records 10 architecture domains, 68 functions,
+  47 scoped implementations and 77 sparse relationships (308 maturity coordinates).
+  Implementation, regression, real-environment acceptance and delivery readiness
+  remain separate ordinal scores; unknown is null, never an implied zero/pass.
+- The read-only `scripts/functional-tensor.py` validates references, evidence,
+  paths, score constraints and a digest of the declared implementation/test files;
+  it can slice by architecture/function/implementation or export COO records.
+  The network document explains the rubric and retains historical evidence.
+- This is a documentation/data inventory, not a product behavior change. Historical
+  source-build/Xvfb results, personal installations and releases are not promoted
+  to current dirty-snapshot acceptance. No new Cargo/GUI run, installation,
+  remote CI inspection, version change, commit or publication is implied.
+- Inventory validation passed 21 isolated Python tests, all 68 unique function IDs,
+  both identical Mermaid projections, direct documentation links and source-digest
+  checks. Interactive slices and evidence disclosure were checked at 736/320px.
+  Linux package documentation now includes the JSON inventory; shell syntax and
+  static link checks passed, but packages were not rebuilt or installed this round.
+
+### Unreleased — Input and offline-pack boundary fixes
+
+- Pinyin tone digits now terminate before paired ASCII/CJK aside punctuation and
+  Chinese em dashes. Numeric literals, decimals, versions, times and ranges retain
+  their digits; conversion, original-text selection, exact commit and undo are covered.
+- English contexts and phrase endings use startup-cached canonical keys for case,
+  spacing and straight/curly apostrophes. Equivalent appended contexts keep the first
+  authored entry. Sentence-only contractions are indexed and completed as whole words,
+  preserving the typed prefix and existing vocabulary ranks.
+- Offline registry records retain raw JSON until strict typed decoding, rejecting
+  duplicate fields instead of silently using the last value. Startup isolates only
+  damaged records; listing/mutations report corruption without overwriting the file.
+  This enables the existing `serde_json/raw_value` feature, without a version change.
+- Short-draft pack candidates now share the native byte/frame budgets already used
+  for long drafts. Oversized alternatives are filtered from the actual candidate list,
+  never truncated only in the mirror; literal input and rendered commit indices stay
+  aligned. Model merges apply the final byte budget after preference ranking.
+- Native numbered candidate cards commit the full text with one click even when
+  their label is truncated. The independent editor keeps its existing first-click
+  scrolling preview; stale-revision and duplicate-release guards remain in place.
+- Independent `input_edge_audit_{chinese,english,packs,budget}` regressions cover these
+  boundaries, including legal Unicode/JSON-escaped long entries and single-row limits.
+  The initial failing reproductions are retained separately from validation results.
+  No dictionary data, protocol limits, personal installation or version is changed.
+- Local validation on 2026-10-03 passed 1,104 ordinary all-features tests (27 opt-in
+  tests remain separate). After the final native-click change, all 228 ordinary panel
+  tests, the expanded private native-action test and strict Clippy passed again.
+  Both IBus transports of follow-caret/bottom/auto passed 26/33/36 workflows each:
+  190 real private GTK/IBus/XTest workflows, including all three long-pack cases.
+- First runs are retained in `/tmp/suzaku-input-audit.jMX1kg/`: regression testing
+  caught an empty-list fallback and a test's incorrect assumption about the IBus
+  12-candidate convenience switch. GUI failure persisted after strengthening the
+  undo geometry-readiness check, exposing the native first-click-preview bug; its
+  independent mouse/touch red test then passed after the guarded production fix.
+  No failed action is retried, no deadline is extended, and these source-build gates
+  do not establish personal GNOME/Wayland or physical-touch acceptance.
+
+### Unreleased — Everyday social fallback
+
+- Adds a separate `daily_social` English data layer and append-only Chinese readings for
+  social check-ins, listening/support, invitations and polite declines. Both languages add
+  24 contexts and 48 authored sentences; Chinese adds 64 readings.
+- English adds only four indexed forms (`tiring`, `quiet`, `cafe`, `shall`), reaching 6,117
+  indexed forms, 473 contexts and 910 sentences. Chinese reaches 2,303 readings,
+  467 contexts and 932 sentences. Earlier ranks, homophone order, kinds and separator flags
+  remain unchanged; additional fingerprints lock all pre-existing contexts and wording.
+- Fixed-expectation tests cover offline first-page word/sentence choices, partial spellings,
+  exact commits/undo, literal spacing/case/apostrophes and continued long drafts. Six added
+  GTK scenarios exercise physical spelling/adoption/Space and saved commits; the full gate
+  contains 79 workflows split into two mixed-language sessions with unchanged deadlines.
+  Synthetic unavailable/timeout/HTTP-error/empty-model outcomes cover the new phrases too.
+  These are finite authored expressions, not live message access or a model-quality claim;
+  personal installation, Japanese resources and optional packs are unchanged.
+- Local validation on 2026-10-03 passed 1,091 ordinary all-features tests (27 opt-in tests
+  remain separate), strict Clippy, formatting checks and the complete 79-workflow private
+  GTK gate (41 + 38). New phrases were actually selected, undone, continued with Space
+  and saved exactly. The first language-only run caught an old aggregate count assertion;
+  only its measured totals were updated, retaining every historical rank/content fingerprint.
+  Private portal inhibition warnings remain visible; this is source-build validation, not
+  a personal installation, native Wayland acceptance or real model-quality evaluation.
+
+### Unreleased — Everyday communication and coordination
+
+- Appends a model-independent `daily_coordination` English layer and Chinese daily phrases
+  for clarification, confirmation, polite requests, sharing messages and coordinating help.
+  Both languages add 24 contexts and 48 authored sentences; Chinese adds 64 readings.
+- English reuses the existing vocabulary except for `hand` and `middle`, reaching 6,113
+  indexed forms, 449 contexts and 862 sentences. Chinese reaches 2,239 readings,
+  443 contexts and 884 sentences. The released 13 English layers and 2,175 Chinese readings
+  are protected by additional rank/order fingerprints; earlier snapshots remain unchanged.
+- Extends fixed-expectation word/sentence, literal-prefix, long-draft and unavailable-model
+  regression coverage, plus six real GTK input scenarios and a physical consecutive-word
+  continuation through `帮我看看` / `有没有`. At that stage the complete vocabulary gate
+  contained 73 workflows in two mixed-language sessions with unchanged per-session deadlines.
+  Native HTTP 503/deadline checks also cover the new English/Chinese phrases. An explicit
+  `SUZAKU_NATIVE_QA_BIN_DIR` override selects installed host/probe/tool binaries; source-built
+  panel tests remain distinct from the installed panel's application checks.
+  These are finite fallback expressions, not live message access or model-generated suggestions.
 
 ### 0.8.1 — Native candidates and everyday bilingual fallback
 
@@ -1567,6 +2057,72 @@ Framework selection is shared with bootstrap:
 - default remains IBus when not set
 
 Fcitx currently retains marker/status support; a native Fcitx engine service is still pending.
+
+## Optional bottom panel layout (unreleased)
+
+Display settings persist `panel_layout_mode=auto|follow-caret|bottom-dock`; missing or invalid
+values default to Auto. Existing explicit values remain manual overrides. Backup validation
+accepts all three preferences, never the machine-specific `detected_panel_layout` runtime field.
+`PanelChromeState::effective_panel_layout()` resolves Auto before rendering, positioning and
+native input lifecycle decisions; settings windows inherit the main window's cached detection.
+The automatic option displays the detected choice even when another layout is selected.
+
+`src/platform/panel_layout.rs` performs a bounded, local startup probe: Android prefers bottom;
+desktop/unknown operating systems prefer caret following. Linux recognizes exact mobile/gaming
+session tokens, then valid `/etc/machine-info` `CHASSIS`, DMI chassis type, and DeviceTree chassis
+type in that order. A configured desktop/laptop classification overrides contradictory hardware
+fallbacks. Unknown metadata, missing/unreadable files, convertibles and detachable devices without
+a known posture remain caret-following. Mere touchscreen presence, display size, distribution,
+or `XDG_CURRENT_DESKTOP=gamescope` from a nested game do not trigger the bottom layout.
+The conservative chassis categories follow the [systemd hostnamed mapping](https://github.com/systemd/systemd/blob/main/src/hostname/hostnamed.c).
+No device event stream, device identifier, external command or network request is used. Detection
+is not live posture/hot-plug monitoring and does not qualify native mobile window integration.
+
+The GPU layout is separate from Linux caret tracking: `PanelLayoutMode` changes scene ordering
+and touch target sizes, while `src/bin/panel/bottom_layout.rs` owns monitor bounds, size/position
+requests and restoring the previous floating width. Bottom dock is an overlay, not a reserved
+desktop work area or a native Wayland input-method surface.
+
+An expanded native keyboard may remain after submission only for the already-woken public
+host/context. Context changes, privacy, focus loss, disconnect and local editing clear that
+retention; empty fields alone do not authorize it. Asynchronous window growth waits for a
+size acknowledgement before drawing the enlarged page, with the existing bounded resize
+deadline preventing a permanent wait on a clamping window manager.
+
+`bash scripts/test-linux-apps.sh bottom-layout` exercises actual settings clicks and restart
+persistence, all native candidate slots, pagination, screen-key continuation after commit,
+orb restoration, folding and switching back to caret following on an owned 1024×768 Xvfb
+display. Run both the default and `SUZAKU_GTK3_QA_SYNC_MODE=1` transports; screenshots/logs are
+retained with `SUZAKU_APP_QA_KEEP=1`. `candidates` remains the separate full caret-follow gate.
+`auto-layout` starts without saved settings in a private Phosh-labelled session and uses the
+production detector. Its 36 workflows include actual manual override, restarting with that
+override, restoring Auto, restarting again, and the shared bottom-layout input checks.
+Each layout now includes three private offline-pack byte-budget workflows: Unicode
+single-entry overflow, aggregate-frame overflow and JSON escaping. They install with the
+adjacent `suzaku_tool` before host startup, then verify real drawing, number adoption,
+Backspace undo and exact card-click submission. Current follow/bottom/auto counts are
+26/33/36 per transport; the previous counts below are historical validation records.
+Both transports of all three suites are included in the Linux CI workflow. This does not qualify
+physical touch, GNOME Shell/native Wayland positioning, or install the changed binaries into a
+desktop session.
+
+Local validation on 2026-10-03 passed the all-features regression, final panel regression,
+strict Clippy, ShellCheck, 17 private native UI checks, and both IBus transports for all
+30 bottom-layout plus 23 follow-caret workflows. First failures exposed hidden-window
+fixture clicks, overlapping collapsed controls, an over-constrained vertical hit tolerance,
+and candidate rendering before the resize acknowledgement; the fixes retain the original
+timeouts and assertions. The follow-restore fixture now moves to a genuinely different
+vertical caret anchor rather than requiring movement from an already edge-clamped position.
+
+The automatic-layout follow-up passed 1,079 non-ignored all-features tests, strict Clippy,
+ShellCheck, the 17 opt-in native UI checks, both transports of the 33 Auto and 23 caret-follow
+workflows, and the 30 manual-bottom workflows with the default transport. The desktop fixture
+resolved this machine to `follow-caret` via `linux-dmi-non-mobile`; the private Phosh fixture
+resolved to `bottom-dock` while preserving explicit overrides across process restarts.
+An extra `cargo check --locked --no-default-features --all-targets` did not pass: unchanged
+core icon/platform modules still import GPU types and `winit` without feature guards. This
+existing feature-boundary issue is not repaired by the layout work; the validated build uses
+`--all-features`. Its first failure is retained separately from the passing regression logs.
 
 ## Refactor Policy
 

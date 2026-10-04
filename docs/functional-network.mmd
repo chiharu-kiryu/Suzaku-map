@@ -1,4 +1,8 @@
 %% Suzaku functional network: 2026-10-03 source snapshot for 0.8.1 including leased native candidates, daily-chat/daily-needs vocabulary and F57-F59 offline data packs/SDK (eleven optional collections). Startup-only frozen catalogs, no executable plugins or hot reload; personal installation unchanged. Historical unreleased labels below record development stages; binary publication requires same-commit CI and installation acceptance.
+%% Unreleased input/pack boundary fixes reuse F16-F18/F20/F29/F57-F59: paired punctuation/em-dash Pinyin tone termination; cached case/apostrophe context keys and whole-word contractions with first-authored priority; raw registry records reject duplicate fields without erasing bad data; short-draft alternatives share existing native byte budgets and actual commit indices, with model byte pruning after preference ranking. No data, protocol-limit, installation or release change.
+%% Native numbered cards commit full text on one click even when the label is truncated; only standalone cards retain first-click scrolling preview. Real private GUI fixtures exercise oversized Unicode/aggregate/escaped candidates in all three layouts and both IBus transports, with geometry readiness but no input retries or relaxed deadlines.
+%% Post-0.8.1 unreleased daily_coordination reuses F16-F18/F20/F26-F28: 6,113 English indexed forms, 2,239 Chinese readings, 862 English / 884 Chinese authored sentences. Same routes/budgets; thirteen released English layers and first 2,175 Chinese readings stay intact. At that stage the full private GTK vocabulary gate contained 72 workflows; no personal installation or publication implied.
+%% Unreleased daily_social reuses the same routes: 6,117 English forms / 910 sentences, 2,303 Chinese readings / 932 sentences. Old 14 English layers, 2,239 Chinese readings and all prior contexts/wording stay intact. Six more physical cases retain multi-stage 帮我看看 -> 有没有 -> 漏掉什么: current GTK all=79 (41+38), daily=27, home=7, packs=11; complete native modes still require 32 HTTP 503/deadline workflows. SUZAKU_NATIVE_QA_BIN_DIR selects installed host/probe/tool but retains source-built panel activation/recovery tests; installed panel coverage uses SUZAKU_APP_QA_BIN_DIR application gates. Requirements only, not new pass results or GNOME/Wayland acceptance.
 %% The errands layer reuses F16-F18/F20/F26-F28: 6,102 English forms, 2,043 Chinese readings, 718 English / 736 Chinese authored sentences. Old ten English layers, first 1,984 Chinese readings, 353 Chinese contexts and Japanese data remain intact; no algorithm/provider branch, larger budget or installation change.
 %% Errands validation: 980 Rust tests passed/27 opt-in skipped, strict Clippy, both complete private IBus modes (28 real HTTP failure/deadline cases each, no floating-object warnings), all 54 GTK workflows passed. Original 120/240-second deadlines and Ubuntu 24.04 package baseline retained; no release or personal installation change.
 %% The home layer reuses F16-F18/F20/F26-F28: 6,074 English forms, 1,984 Chinese readings, 686 English / 704 Chinese authored sentences. Earlier layers, contexts, Japanese data and budgets stay intact; Ubuntu 26.04 local QA does not expand the package baseline.
@@ -45,6 +49,9 @@
 %% 0.6.7 round 39 extends to 44 keyboard workflows with key-up across two real windows; no new confirmed product defect.
 %% Solid edges: implemented logical routes. Dotted edges: optional model requests.
 %% Reused engine/provider code does not mean shared state across processes.
+%% This is a logical routing projection, not a maturity score or complete call graph.
+%% docs/functional-tensor.json: A01-A10 x F01-F68 x scoped implementations x I/T/V/O.
+%% Missing coordinates and null scores are not zero. Source/isolated X11 validation does not certify deployment.
 flowchart TB
     APP["目标应用 / 实体键盘"]
     INPUT["IBus 宿主：事件、隐私门控、连续草稿"]
@@ -65,6 +72,12 @@ flowchart TB
     PACKSDK["语言/主题集合 + 纯数据制包 SDK"]
     PACKSTORE["离线包 CLI：校验、启停、原子注册表"]
     PACKSNAP["启动冻结词表：内置 + 有界扩展；坏包隔离"]
+    LONG["F64 中英局部长稿：精确保留字面前缀"]
+    BUDGET["F65 候选真实列表：单项 / 整帧字节预算"]
+    LEASE["F29 已绘制版本租约；失效恢复系统候选"]
+    PAGING["F60 自绘六槽分页与完整候选操作"]
+    PLACE["F61 光标定位 / F62 底部覆盖布局"]
+    AUTO["F63 启动平台探测；显式选择优先"]
 
     APP -->|输入事件| INPUT
     INPUT -->|当前草稿| CORE
@@ -72,10 +85,22 @@ flowchart TB
     PREF -->|只给现有候选加权；隐私字段禁用| CORE
     TRAY -->|清除确认与待确认偏好| PREF
     CORE -->|候选与选中状态| CAND
+    CORE -->|超过短稿窗口| LONG
+    LONG -->|安全尾部生成后拼回前缀| CORE
+    CORE -->|本地与模型偏好排序后| BUDGET
+    BUDGET -->|真实列表与完整载荷一致| IPC
     CAND -->|采用后继续写| INPUT
     CAND -->|回车或主按钮点击提交| APP
     INPUT -->|当前公开快照| IPC
     IPC -->|镜像| PANEL
+    PANEL -->|实际绘制的版本| LEASE
+    LEASE -->|仅展示互斥，不改草稿| CAND
+    PANEL -->|当前页与忙态| PAGING
+    PAGING -->|页内映射到带版本的真实索引| IPC
+    IPC -->|公开光标矩形，不读周边文本| PLACE
+    AUTO -->|跟随或底部的默认建议| PLACE
+    UISET -->|手动布局覆盖| PLACE
+    PLACE -->|窗口几何，不是输入状态| PANEL
     PANEL -->|带版本的动作或独立文本发送| IPC
     IPC -->|校验后执行并确认| INPUT
     PANEL -->|进入独立编辑| LOCAL

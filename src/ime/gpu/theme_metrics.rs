@@ -1,4 +1,7 @@
-use super::{CandidateDensity, DisplayTextScale, PanelChromeState, PreviewStyle, ThemePreset};
+use super::{
+    CandidateDensity, DisplayTextScale, PanelChromeState, PanelLayoutMode, PreviewStyle,
+    ThemePreset,
+};
 
 /// Theme swatches are authored in sRGB; wgpu's sRGB targets expect linear input.
 pub fn srgb_color(hex: u32) -> [f32; 4] {
@@ -298,6 +301,8 @@ impl PanelSceneMetrics {
         let translating = chrome.input_modes_expanded
             && chrome.active_input_mode == super::InputMode::Translation;
         let sentence_count = if translating { 0 } else { sentence_count };
+        let native_page = chrome.native_candidate_page.is_some() && !translating;
+        let bottom_dock = chrome.effective_panel_layout() == PanelLayoutMode::BottomDock;
         let collapsed_daily_mode = !chrome.input_modes_expanded;
         let scene_margin = (4.2 * responsive_scale).max(3.0);
         let max_panel_width = (scene_width - scene_margin * 2.0).max(0.0);
@@ -330,18 +335,23 @@ impl PanelSceneMetrics {
         // Header controls and editable text occupy separate rows, including at Large text size.
         let input_box_h =
             29.0 * responsive_scale + input_value_px * 7.0 + 9.0 * responsive_scale * spacing_scale;
-        let tools_header_h = if collapsed_daily_mode {
+        let tools_header_h = if bottom_dock {
+            38.0 * responsive_scale
+        } else if collapsed_daily_mode {
             21.0 * responsive_scale
         } else {
             19.0 * responsive_scale
         };
-        let tool_button_h = 16.2 * responsive_scale * spacing_scale;
-        let tool_gap = 2.8 * responsive_scale * spacing_scale;
+        let tool_button_h =
+            if bottom_dock { 32.0 } else { 16.2 } * responsive_scale * spacing_scale;
+        let tool_gap = if bottom_dock { 6.0 } else { 2.8 } * responsive_scale * spacing_scale;
         let section_gap = 2.9 * responsive_scale * spacing_scale;
 
         let expanded_input_panel_h = if chrome.input_modes_expanded {
             match chrome.active_input_mode {
-                crate::ime::gpu::InputMode::VirtualKeyboard => 145.0 * responsive_scale,
+                crate::ime::gpu::InputMode::VirtualKeyboard => {
+                    (if bottom_dock { 228.0 } else { 145.0 }) * responsive_scale
+                }
                 crate::ime::gpu::InputMode::Dictation => 170.0 * responsive_scale,
                 // Real title/hint line heights plus a readable footer and drawing area.
                 crate::ime::gpu::InputMode::Handwriting => 220.0 * responsive_scale,
@@ -397,23 +407,57 @@ impl PanelSceneMetrics {
         } else {
             sentence_count
         };
-        let sentence_columns = if collapsed_daily_mode {
-            sentence_count.clamp(1, 4)
-        } else if panel_width >= 900.0 && alternate_count >= 3 {
-            3
-        } else if panel_width >= 520.0 && alternate_count >= 2 {
-            2
-        } else {
-            1
-        };
+        let sentence_columns =
+            if native_page && bottom_dock && panel_width >= 720.0 * responsive_scale {
+                3
+            } else if native_page {
+                if panel_width >= 420.0 { 2 } else { 1 }
+            } else if collapsed_daily_mode {
+                sentence_count.clamp(1, 4)
+            } else if panel_width >= 900.0 && alternate_count >= 3 {
+                3
+            } else if panel_width >= 520.0 && alternate_count >= 2 {
+                2
+            } else {
+                1
+            };
 
-        let sentence_rows = if collapsed_daily_mode {
+        let sentence_rows = if native_page {
+            sentence_count.div_ceil(sentence_columns)
+        } else if collapsed_daily_mode {
             if sentence_count == 0 { 0 } else { 1 }
         } else {
             alternate_count.div_ceil(sentence_columns)
         };
 
-        let mut sentence_height = if collapsed_daily_mode {
+        // Native pages need room for every host slot, including choices 5/6.
+        // The previous one-row compact sizing silently clipped those choices.
+        let native_row_height = match chrome.text_scale {
+            DisplayTextScale::Small => {
+                if bottom_dock {
+                    44.0
+                } else {
+                    39.0
+                }
+            }
+            DisplayTextScale::Medium => {
+                if bottom_dock {
+                    46.0
+                } else {
+                    43.0
+                }
+            }
+            DisplayTextScale::Large => 49.0,
+        } * responsive_scale;
+        let mut sentence_height = if native_page {
+            if sentence_count == 0 {
+                0.0
+            } else {
+                (if bottom_dock { 40.0 } else { 31.0 }) * responsive_scale
+                    + sentence_rows as f32 * (native_row_height + 4.0 * responsive_scale)
+                    + 3.0 * responsive_scale
+            }
+        } else if collapsed_daily_mode {
             if sentence_count == 0 {
                 0.0
             } else {
@@ -491,7 +535,9 @@ impl PanelSceneMetrics {
                 item_height *= height_scale;
                 item_gap *= height_scale;
                 hero_item_height = item_height + 10.0 * responsive_scale * height_scale;
-                sentence_height = if collapsed_daily_mode {
+                sentence_height = if native_page {
+                    sentence_height.min(available_sentence_h)
+                } else if collapsed_daily_mode {
                     if sentence_count == 0 {
                         0.0
                     } else {

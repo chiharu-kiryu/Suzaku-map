@@ -150,6 +150,56 @@ fn resource_and_text_limits_are_checked_before_consumption() {
     assert!(Lexicon::from_json(&json).unwrap_err().contains("layers"));
 }
 
+// Snapshot wording, not just counts/ranks. NUL/0xff cannot occur in valid entries.
+fn hash_pairs<'a>(pairs: impl Iterator<Item = (&'a str, &'a [String])>) -> u64 {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for (context, values) in pairs {
+        for text in std::iter::once(context).chain(values.iter().map(String::as_str)) {
+            for byte in text.bytes().chain([0]) {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        hash = (hash ^ 0xff).wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+#[test]
+fn social_expansion_keeps_every_previous_context_and_sentence_unchanged() {
+    let en = builtin("en").unwrap();
+    let zh = builtin("zh-Hans").unwrap();
+    assert_eq!(hash_pairs(en.next_words().take(449)), 0xfd567d3db4e0b922);
+    assert_eq!(
+        hash_pairs(en.sentences().take(862).map(|sentence| (sentence, &[][..]))),
+        0xb512ac9b73b22b7d
+    );
+    assert_eq!(hash_pairs(zh.continuations().take(443)), 0xbc3c15e3a06455a1);
+}
+
+#[test]
+fn objects_expansion_keeps_social_contexts_and_sentences_unchanged() {
+    let en = builtin("en").unwrap();
+    let zh = builtin("zh-Hans").unwrap();
+    assert_eq!(hash_pairs(en.next_words().take(473)), 0x34af3fa752860cdf);
+    assert_eq!(
+        hash_pairs(en.sentences().take(910).map(|sentence| (sentence, &[][..]))),
+        0x8a60dd1c50380604
+    );
+    assert_eq!(hash_pairs(zh.continuations().take(467)), 0x99b4be328206d04d);
+}
+
+#[test]
+fn japanese_daily_expansion_keeps_the_original_continuations_unchanged() {
+    let ja = builtin("ja").unwrap();
+    assert_eq!(hash_pairs(ja.continuations().take(14)), 0xdc98b98ae666f412);
+    assert_eq!(
+        ja.continuations()
+            .map(|(_, values)| values.len())
+            .sum::<usize>(),
+        75
+    );
+}
+
 #[test]
 fn migrated_readings_preserve_every_original_position_and_flag() {
     // FNV-1a snapshots taken from the original Rust tables, not the loader's
@@ -177,6 +227,12 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
         ("zh-Hans", 2047, 0x4f38a2847da90928_u64),
         // Freeze daily chat before appending food/weather/arrangement expressions.
         ("zh-Hans", 2111, 0x51d7947dfa3aed3a_u64),
+        // Freeze the released daily-needs vocabulary before coordination phrases.
+        ("zh-Hans", 2175, 0xe17ae047667a8cf5_u64),
+        // Freeze coordination before the daily social fallback expansion.
+        ("zh-Hans", 2239, 0x1b004562577bd470_u64),
+        // Freeze social before everyday object, quantity and placement phrases.
+        ("zh-Hans", 2303, 0x16edb6e92561eb5c_u64),
         ("ja", 26, 0xf2e1aa0ec03a7e38_u64),
     ] {
         let entries = builtin(language).unwrap().readings();
@@ -204,18 +260,18 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
             "{language} first {count} readings changed existing data/rank"
         );
     }
-    assert_eq!(builtin("en").unwrap().next_words().count(), 425);
-    assert_eq!(builtin("en").unwrap().sentences().count(), 814);
-    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2175);
-    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 419);
+    assert_eq!(builtin("en").unwrap().next_words().count(), 497);
+    assert_eq!(builtin("en").unwrap().sentences().count(), 958);
+    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2367);
+    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 491);
     assert_eq!(
         builtin("zh-Hans")
             .unwrap()
             .continuations()
             .map(|(_, values)| values.len())
             .sum::<usize>(),
-        836
+        980
     );
-    assert_eq!(builtin("ja").unwrap().readings().len(), 26);
-    assert_eq!(builtin("ja").unwrap().continuations().count(), 14);
+    assert_eq!(builtin("ja").unwrap().readings().len(), 74);
+    assert_eq!(builtin("ja").unwrap().continuations().count(), 38);
 }

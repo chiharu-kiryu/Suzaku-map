@@ -79,6 +79,36 @@ fn guardian_themes_and_smooth_system_font_survive_backup_round_trip() {
 }
 
 #[test]
+fn panel_layout_preference_survives_backup_restore_and_rejects_invalid_modes() {
+    let fixture = Fixture::new();
+    for mode in ["auto", "follow-caret", "bottom-dock"] {
+        files::atomic_write(
+            &fixture.paths.panel,
+            format!("panel_layout_mode={mode}\nfont_face=auto\n").as_bytes(),
+        )
+        .unwrap();
+        let backup = Backup::collect(&fixture.paths).unwrap();
+        let restored = Backup::parse(&backup.to_json().to_string()).unwrap();
+        assert_eq!(restored.panel.as_ref().unwrap()["panel_layout_mode"], mode);
+        files::atomic_write(&fixture.paths.panel, b"theme_preset=suzaku\n").unwrap();
+        restore_locked(&fixture.paths, &restored).unwrap();
+        assert_eq!(
+            Backup::collect(&fixture.paths).unwrap().panel,
+            restored.panel
+        );
+    }
+    for invalid in ["", "floating", "bottom-dock\nwindow_scale=9", "BOTTOM-DOCK"] {
+        assert!(!panel_value_valid("panel_layout_mode", invalid));
+        let mut backup = Backup::collect(&fixture.paths).unwrap().to_json();
+        backup["panel"]["panel_layout_mode"] = invalid.into();
+        assert!(Backup::parse(&backup.to_string()).is_err(), "{invalid:?}");
+    }
+    files::atomic_write(&fixture.paths.panel, b"panel_layout_mode=invalid\n").unwrap();
+    assert!(Backup::collect(&fixture.paths).is_err());
+    assert!(!panel_value_valid("detected_panel_layout", "bottom-dock"));
+}
+
+#[test]
 fn system_titlebar_preference_survives_backup_and_restore() {
     let fixture = Fixture::new();
     for hide in ["true", "false"] {

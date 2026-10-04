@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 #[path = "panel/app_state.rs"]
 mod app_state;
+#[path = "panel/bottom_layout.rs"]
+mod bottom_layout;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "panel/candidates_native_test.rs"]
 mod candidates_native_test;
@@ -36,6 +38,8 @@ mod keyboard;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "panel/keyboard_native_test.rs"]
 mod keyboard_native_test;
+#[path = "panel/native_position.rs"]
+mod native_position;
 #[path = "panel/native_presentation.rs"]
 mod native_presentation;
 #[path = "panel/native_sync.rs"]
@@ -796,6 +800,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                         self.native_auto_shown = false;
                     }
                     panel.receive_native_frame(update);
+                    panel.update_native_position();
                     // A public empty snapshot may only be the intermediate
                     // deletion/commit: queued screen-keyboard input can already
                     // have started a new draft. Keep that visible until settled.
@@ -884,6 +889,7 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                 tooltip_deadline = Some(now + Duration::from_millis(30));
             }
             state.fit_window_to_content();
+            state.update_native_position();
             if state.interaction.tooltip.advance(now) {
                 state.window.request_redraw();
             }
@@ -978,6 +984,8 @@ struct PanelState {
     text_focus: suzaku_map::platform::panel_text_focus::PanelTextFocus,
     text_input: keyboard::TextInputState,
     native: native_sync::NativeView,
+    native_position: native_position::NativePosition,
+    bottom_layout: bottom_layout::BottomLayoutState,
     input_dispatch_guard: bool,
     last_commit_attempt: Option<CommitAttempt>,
     last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
@@ -1203,6 +1211,8 @@ impl PanelState {
             text_smoothing: TextSmoothing::Smooth,
             theme_preset: suzaku_map::ime::gpu::ThemePreset::Suzaku,
             hide_system_titlebar: false,
+            panel_layout_mode: Default::default(),
+            detected_panel_layout: suzaku_map::ime::gpu::PanelLayoutMode::FollowCaret,
             ui_language: Default::default(),
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
@@ -1228,6 +1238,7 @@ impl PanelState {
             next_token_candidates: Vec::new(),
             sentence_candidates: Vec::new(),
             sentence_candidate_source_indices: Vec::new(),
+            native_candidate_page: None,
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
@@ -1239,6 +1250,19 @@ impl PanelState {
         });
         if let Some(saved) = persisted_settings.as_ref() {
             apply_display_settings(&mut chrome, saved);
+        }
+        if kind == PanelWindowKind::Main {
+            // Probe once during startup, never from rendering or input events.
+            // A settings window inherits this cached result from its main panel.
+            let detected = suzaku_map::platform::panel_layout::detect();
+            chrome.detected_panel_layout = detected.mode;
+            eprintln!(
+                "Suzaku panel layout: preference={} detected={} effective={} reason={}",
+                chrome.panel_layout_mode.id(),
+                detected.mode.id(),
+                chrome.effective_panel_layout().id(),
+                detected.reason,
+            );
         }
         let ime_settings = if kind == PanelWindowKind::Main {
             suzaku_map::ime::settings::ImeSettings::load().ok()
@@ -1388,6 +1412,8 @@ impl PanelState {
             text_focus: Default::default(),
             text_input: Default::default(),
             native: Default::default(),
+            native_position: Default::default(),
+            bottom_layout: Default::default(),
             input_dispatch_guard: false,
             last_commit_attempt: None,
             last_interaction_action: None,
@@ -1407,6 +1433,7 @@ impl PanelState {
         }
 
         state.apply_window_decorations();
+        state.apply_panel_layout_change(suzaku_map::ime::gpu::PanelLayoutMode::FollowCaret);
         state.sync_text_input_state();
         Ok(state)
     }

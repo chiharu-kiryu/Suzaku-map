@@ -184,7 +184,7 @@ pub fn offline(
         pool.push(candidate(seed.into(), CandidateKind::Literal, 55.0));
     }
     let pinned = pinned_count(language, &pool);
-    balance(pool, pinned, limit)
+    native_payload_budget(seed, balance(pool, pinned, limit), limit)
 }
 
 fn pinned_count(language: &str, pool: &[Candidate]) -> usize {
@@ -207,9 +207,8 @@ pub(crate) fn offline_long_draft(
     base: Vec<Candidate>,
     limit: usize,
 ) -> Vec<Candidate> {
-    use super::companion::{MAX_FRAME_BYTES, MAX_TEXT_BYTES};
     let seed = format!("{prefix}{tail}");
-    let pool: Vec<_> = offline(language, tail, "", base, limit)
+    let mut pool: Vec<_> = offline(language, tail, "", base, limit)
         .into_iter()
         .map(|mut item| {
             item.text.insert_str(0, prefix);
@@ -217,27 +216,50 @@ pub(crate) fn offline_long_draft(
             item
         })
         .collect();
+    // Long drafts deliberately retain the exact original even at a one-row
+    // limit. Short CJK input instead keeps its primary conversion at that limit.
+    if !pool.iter().any(|item| item.text == seed) {
+        pool.push(candidate(seed.clone(), CandidateKind::Literal, 100.0));
+    }
+    native_payload_budget(&seed, pool, limit)
+}
+
+/// Apply the same transport bounds to short and long drafts, and again after
+/// model merging and preference ranking. A valid pack may contain 4096
+/// *characters*, exceeding the native byte budget even for a tiny reading.
+/// Filter the authoritative list, never just its mirror, so native clicks and
+/// keyboard indices still agree.
+fn native_payload_budget(seed: &str, pool: Vec<Candidate>, limit: usize) -> Vec<Candidate> {
+    use super::companion::{MAX_CANDIDATES, MAX_FRAME_BYTES, MAX_TEXT_BYTES};
+    // No active composition is different from a nonempty list whose unsafe
+    // alternatives were filtered out. Never invent a candidate after clearing.
+    if pool.is_empty() {
+        return pool;
+    }
+    let limit = limit.clamp(1, MAX_CANDIDATES);
     // Include a conservative allowance for metadata and the <=42-character
     // annotated preview. No text is truncated to fit these transport bounds.
     let text_cost = |text: &str| serde_json::to_string(text).unwrap().len();
     let cost = |item: &Candidate| text_cost(&item.text) + text_cost(&item.label) + 1024;
-    let literal = pool
-        .iter()
-        .find(|item| item.text == seed)
-        .cloned()
-        .unwrap_or_else(|| candidate(seed.clone(), CandidateKind::Literal, 100.0));
-    let mut remaining = MAX_FRAME_BYTES.saturating_sub(text_cost(&seed) + 1024 + cost(&literal));
+    let literal = pool.iter().find(|item| item.text == seed).cloned();
+    let preserve_literal = literal.is_some();
+    let literal = literal.unwrap_or_else(|| candidate(seed.into(), CandidateKind::Literal, 100.0));
+    let mut remaining = MAX_FRAME_BYTES.saturating_sub(text_cost(seed) + 1024 + cost(&literal));
     let mut output = Vec::new();
     for item in pool {
         if item.text == seed {
             output.push(item);
-        } else if item.text.len() <= MAX_TEXT_BYTES && cost(&item) <= remaining {
+        } else if item.text.len() <= MAX_TEXT_BYTES
+            && item.label.len() <= MAX_TEXT_BYTES
+            && cost(&item) <= remaining
+        {
             remaining -= cost(&item);
             output.push(item);
         }
     }
-    if !output.iter().any(|item| item.text == seed) {
-        output.truncate(limit.max(1).saturating_sub(1));
+    output.truncate(limit);
+    if (preserve_literal || output.is_empty()) && !output.iter().any(|item| item.text == seed) {
+        output.truncate(limit.saturating_sub(1));
         output.push(literal);
     }
     output
@@ -328,12 +350,13 @@ pub(crate) fn personalize(
         }
     }
     if !changed {
-        return if pool.len() > limit {
+        let pool = if pool.len() > limit {
             let pinned = pinned_count(language, &pool);
             balance(pool, pinned, limit)
         } else {
             pool
         };
+        return native_payload_budget(seed, pool, limit);
     }
     if !freeze_anchors {
         // English preserves the literal row; CJK may learn a preferred word
@@ -359,7 +382,9 @@ pub(crate) fn personalize(
     for candidate in &mut pool {
         candidate.score = candidate.score.clamp(0.0, 100.0);
     }
-    pool
+    // Budget only after the preference bonus, just like the display-count
+    // limit: a learned model reply must get its chance before byte pruning.
+    native_payload_budget(seed, pool, limit)
 }
 
 fn balance(mut pool: Vec<Candidate>, pinned: usize, limit: usize) -> Vec<Candidate> {
@@ -601,6 +626,61 @@ mod tests {
         engine.enable_ibus_candidate_mix();
         engine.seed(seed);
         engine
+    }
+
+    #[test]
+    fn native_frame_budget_applies_after_model_preference_ranking() {
+        use crate::ime::companion::{MAX_FRAME_BYTES, NativeCandidate, NativeComposition};
+        let seed = "ce'shi";
+        let mut local = vec![candidate("测试".into(), CandidateKind::Word, 100.0)];
+        local.extend((0..5).map(|index| {
+            candidate(
+                format!("{}{index}", "文".repeat(1800)),
+                CandidateKind::Word,
+                90.0,
+            )
+        }));
+        local.push(candidate(seed.into(), CandidateKind::Literal, 55.0));
+        let replies: Vec<_> = (0..6)
+            .map(|index| LlmCompletion {
+                text: format!("{}{index}", "候".repeat(155)),
+                kind: Some(CandidateKind::Sentence),
+                score_bias: 0.0,
+            })
+            .collect();
+        let preferred = replies.last().unwrap().text.clone();
+        let (merged, accepted) = merge_model("zh-Hans", seed, local, replies, usize::MAX);
+        assert!(accepted);
+        let choices = personalize("zh-Hans", seed, merged, true, 12, |item| {
+            if item.text == preferred { 24.0 } else { 0.0 }
+        });
+        assert_eq!(choices[0].text, "测试");
+        assert!(choices.iter().take(PAGE_SIZE).any(|c| c.text == preferred));
+        assert!(choices.iter().any(|c| c.text == seed));
+        let frame = NativeComposition {
+            host: "00000000-0000-0000-0000-000000000001".into(),
+            context: 1,
+            revision: 1,
+            focused: true,
+            private: false,
+            cursor: None,
+            language: "zh-Hans".into(),
+            seed: seed.into(),
+            selected: 0,
+            candidates: choices
+                .into_iter()
+                .map(|c| NativeCandidate {
+                    text: c.text,
+                    label: c.label,
+                    kind: c.kind,
+                    source: c.source,
+                    weight: c.score as u8,
+                })
+                .collect(),
+        };
+        let raw = frame.to_json().to_string();
+        assert!(raw.len() < MAX_FRAME_BYTES);
+        assert_eq!(NativeComposition::parse(raw.as_bytes()).unwrap(), frame);
     }
 
     #[test]

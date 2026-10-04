@@ -119,6 +119,7 @@ mod tests {
             revision,
             focused: true,
             private: false,
+            cursor: None,
             language: "en".into(),
             seed: text.into(),
             selected: 0,

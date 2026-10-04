@@ -125,6 +125,38 @@ pub enum PreviewStyle {
     Full,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PanelLayoutMode {
+    #[default]
+    Auto,
+    FollowCaret,
+    BottomDock,
+}
+
+impl PanelLayoutMode {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::FollowCaret, Self::BottomDock];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::FollowCaret => "follow-caret",
+            Self::BottomDock => "bottom-dock",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|mode| mode.id() == id)
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::FollowCaret => "Follow caret",
+            Self::BottomDock => "Bottom dock",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FontFaceChoice {
     Auto,
@@ -288,6 +320,44 @@ impl SettingsCategory {
     }
 }
 
+/// Native IBus candidates keep the host's six-slot pages and absolute indices.
+/// This is presentation state only; a page gesture is a revision-bound Select.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NativeCandidatePage {
+    pub start: usize,
+    pub total: usize,
+    pub busy: bool,
+}
+
+impl NativeCandidatePage {
+    pub const SIZE: usize = 6;
+
+    pub fn new(selected: usize, total: usize, busy: bool) -> Self {
+        Self {
+            start: selected.min(total.saturating_sub(1)) / Self::SIZE * Self::SIZE,
+            total,
+            busy,
+        }
+    }
+
+    pub fn count(self) -> usize {
+        self.total.div_ceil(Self::SIZE)
+    }
+
+    pub fn target(self, forward: bool) -> Option<usize> {
+        if self.busy || self.total == 0 {
+            return None;
+        }
+        if forward {
+            self.start
+                .checked_add(Self::SIZE)
+                .filter(|next| *next < self.total)
+        } else {
+            self.start.checked_sub(Self::SIZE)
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PanelChromeState {
     pub seed_text: String,
@@ -309,6 +379,9 @@ pub struct PanelChromeState {
     pub text_smoothing: TextSmoothing,
     pub theme_preset: ThemePreset,
     pub hide_system_titlebar: bool,
+    pub panel_layout_mode: PanelLayoutMode,
+    /// Runtime platform detection, never persisted as a user layout preference.
+    pub detected_panel_layout: PanelLayoutMode,
     pub ui_language: crate::ui::UiLanguage,
     pub voice_state: VoiceCaptureState,
     pub voice_permission: VoicePermissionState,
@@ -336,6 +409,7 @@ pub struct PanelChromeState {
     pub next_token_candidates: Vec<String>,
     pub sentence_candidates: Vec<String>,
     pub sentence_candidate_source_indices: Vec<usize>,
+    pub native_candidate_page: Option<NativeCandidatePage>,
     pub handwriting_strokes: Vec<Vec<[f32; 2]>>,
     pub handwriting_candidates: Vec<String>,
     pub handwriting_hint: String,
@@ -369,6 +443,8 @@ impl Default for PanelChromeState {
             text_smoothing: TextSmoothing::Smooth,
             theme_preset: ThemePreset::Suzaku,
             hide_system_titlebar: false,
+            panel_layout_mode: PanelLayoutMode::default(),
+            detected_panel_layout: PanelLayoutMode::FollowCaret,
             ui_language: Default::default(),
             voice_state: VoiceCaptureState::Idle,
             voice_permission: VoicePermissionState::Unknown,
@@ -394,6 +470,7 @@ impl Default for PanelChromeState {
             next_token_candidates: Vec::new(),
             sentence_candidates: Vec::new(),
             sentence_candidate_source_indices: Vec::new(),
+            native_candidate_page: None,
             handwriting_strokes: Vec::new(),
             handwriting_candidates: Vec::new(),
             handwriting_hint: "Draw a seed word with mouse or touch.".to_string(),
@@ -407,6 +484,14 @@ impl Default for PanelChromeState {
 }
 
 impl PanelChromeState {
+    pub const fn effective_panel_layout(&self) -> PanelLayoutMode {
+        match (self.panel_layout_mode, self.detected_panel_layout) {
+            (PanelLayoutMode::Auto, PanelLayoutMode::BottomDock) => PanelLayoutMode::BottomDock,
+            (PanelLayoutMode::Auto, _) => PanelLayoutMode::FollowCaret,
+            (manual, _) => manual,
+        }
+    }
+
     pub fn focus_input(&mut self) {
         self.input_focused = true;
         self.caret_index = self.caret_index.min(self.seed_text.chars().count());
@@ -523,6 +608,7 @@ pub enum InteractionKind {
     SetTextSmoothing(TextSmoothing),
     SetThemePreset(ThemePreset),
     SetHideSystemTitlebar(bool),
+    SetPanelLayoutMode(PanelLayoutMode),
     SetUiLanguage(crate::ui::UiLanguage),
     DecreaseWindowScale,
     IncreaseWindowScale,
@@ -553,6 +639,7 @@ pub enum InteractionKind {
     ClearHandwriting,
     UseHandwritingCandidate(usize),
     Candidate(usize),
+    NativeCandidatePage(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

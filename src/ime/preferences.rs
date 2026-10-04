@@ -7,6 +7,39 @@ use std::{collections::VecDeque, time::Instant};
 const MAX_PENDING: usize = 32;
 const MAX_UNDO: usize = 64;
 
+fn english_word_boundary(tail: &str) -> bool {
+    // Periods and colons are provisional: later typing can make them part of
+    // a URL/identifier. Check every new draft, including punctuation runs,
+    // without discarding ordinary sentence endings or closing punctuation.
+    tail.trim_start_matches(['.', ':'])
+        .chars()
+        .next()
+        .is_none_or(|ch| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    ',' | ';'
+                        | '!'
+                        | '?'
+                        | ')'
+                        | ']'
+                        | '}'
+                        | '"'
+                        | '—'
+                        | '、'
+                        | '，'
+                        | '。'
+                        | '？'
+                        | '！'
+                        | '；'
+                        | '：'
+                        | '）'
+                        | '」'
+                        | '』'
+                )
+        })
+}
+
 struct PendingChoice {
     key: PreferenceKey,
     prefix: PreferenceKey,
@@ -57,35 +90,7 @@ impl SelectionPreferences {
             draft
                 .get(..choice.bytes)
                 .is_some_and(|prefix| self.cache.fingerprint(&prefix) == choice.prefix)
-                && (!choice.english_word
-                    || draft[choice.bytes..].chars().next().is_none_or(|ch| {
-                        // Appending letters, digits, identifier separators or
-                        // combining marks edits the chosen word. Only clear
-                        // whitespace/sentence boundaries confirm it as a word.
-                        ch.is_whitespace()
-                            || matches!(
-                                ch,
-                                '.' | ','
-                                    | ';'
-                                    | ':'
-                                    | '!'
-                                    | '?'
-                                    | ')'
-                                    | ']'
-                                    | '}'
-                                    | '"'
-                                    | '、'
-                                    | '，'
-                                    | '。'
-                                    | '？'
-                                    | '！'
-                                    | '；'
-                                    | '：'
-                                    | '）'
-                                    | '」'
-                                    | '』'
-                            )
-                    }))
+                && (!choice.english_word || english_word_boundary(&draft[choice.bytes..]))
         });
     }
 

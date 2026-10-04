@@ -1,7 +1,7 @@
 //! Native candidate actions and follow-up keys, without a real host or target app.
 use super::tests::{assert_panel_visibility, keyboard_frame, publish_wake_frames};
 use super::*;
-use crate::{PanelApp, PanelChromeState, panel_window_attributes};
+use crate::{PanelApp, PanelChromeState, PanelWindowKind, panel_window_attributes};
 use suzaku_map::ime::gpu::{InputMode, VirtualKeyboardKey};
 use winit::{
     application::ApplicationHandler,
@@ -34,6 +34,12 @@ fn native_candidate_actions_preserve_followup_input() {
             let mut app = PanelApp::new(self.proxy.clone(), None);
             app.panel = Some(panel);
             let mut failures = Vec::new();
+            for language in ["en", "zh-Hans"] {
+                for touch in [false, true] {
+                    check_truncated_native_commit(&mut app, events, language, touch);
+                    check_truncated_standalone_preview(&mut app, events, language, touch);
+                }
+            }
             for touch in [false, true] {
                 for boundary in [
                     "normal",
@@ -77,6 +83,7 @@ fn native_candidate_actions_preserve_followup_input() {
                 }
                 check_late_reply_boundaries(&mut app, events, case);
             }
+            check_native_pointer_delta_dispatch(&mut app, events, &mut failures);
             assert!(
                 failures.is_empty(),
                 "N26/N27: candidate action follow-ups: {failures:?}"
@@ -92,6 +99,12 @@ fn native_candidate_actions_preserve_followup_input() {
             );
             println!(
                 "PASS: N37 12 keyboard-flight cases retire external commits without replay or stale presses; acknowledged same-target edits still continue"
+            );
+            println!(
+                "PASS: truncated English/Chinese native cards commit once on the first mouse/touch click, cancel stale presses, and leave standalone first-click previews intact"
+            );
+            println!(
+                "PASS: production wheel/pinch dispatch ignores horizontal, zero and nonfinite deltas, including settings scroll; finite vertical events still page, zoom or scroll settings"
             );
             self.completed = true;
             events.exit();
@@ -150,6 +163,219 @@ fn prepare(app: &mut PanelApp, events: &ActiveEventLoop) -> mpsc::Receiver<Actio
     receiver
 }
 
+fn prepare_paged_pointer(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+) -> mpsc::Receiver<ActionRequest> {
+    use suzaku_map::ime::companion::NativeCandidate;
+    let receiver = prepare(app, events);
+    {
+        let state = app.panel.as_mut().unwrap();
+        state.modifiers = Default::default();
+        state.set_window_scale_continuous(1.0);
+    }
+    let mut frame = keyboard_frame("hel", 11);
+    frame.selected = 6;
+    frame.candidates = (0..13)
+        .map(|index| NativeCandidate {
+            text: format!("hello {index}"),
+            label: format!("hello {index}"),
+            ..Default::default()
+        })
+        .collect();
+    publish_wake_frames(app, events, [Some(frame)]);
+    let state = app.panel.as_mut().unwrap();
+    assert_eq!(state.chrome.native_candidate_page.unwrap().start, 6);
+    let rect = state
+        .interaction_rect(InteractionKind::Candidate(6))
+        .unwrap();
+    state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+    assert!(!state.native_candidates_busy());
+    receiver
+}
+
+fn prepare_scrollable_settings(app: &mut PanelApp, events: &ActiveEventLoop) {
+    // Main-window rendering deliberately excludes settings. Exercise the real
+    // separate settings window with a viewport that requires vertical scroll.
+    app.open_settings(events);
+    let sender = app.panel.as_ref().unwrap().native.sender.clone();
+    let state = app.settings.as_mut().unwrap();
+    assert_eq!(state.kind, PanelWindowKind::Settings);
+    state.native = Default::default();
+    state.native.sender = sender;
+    state.modifiers = Default::default();
+    // Focus events are not pumped during this synchronous dispatch probe.
+    state.set_window_focus(true);
+    state.chrome.settings_category = suzaku_map::ime::gpu::SettingsCategory::Appearance;
+    state.chrome.settings_search_query.clear();
+    state.chrome.settings_keyboard_focus = None;
+    state.chrome.settings_scroll_offset = 0.0;
+    state.resize(400, 270);
+    state.last_scene = None;
+    state.current_scene();
+    assert!(state.interaction.settings_scroll_max_offset > 24.0);
+    state.set_settings_scroll_offset(24.0);
+    assert_eq!(state.chrome.settings_scroll_offset, 24.0);
+}
+
+fn check_native_pointer_delta_dispatch(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    failures: &mut Vec<String>,
+) {
+    use winit::{
+        dpi::PhysicalPosition,
+        event::{DeviceId, MouseScrollDelta, TouchPhase},
+        keyboard::ModifiersState,
+    };
+
+    // Drive the actual event dispatcher: a helper-only test would miss routing
+    // through candidate paging, Ctrl-wheel zoom or the independent pinch arm.
+    for phase in [TouchPhase::Moved, TouchPhase::Ended] {
+        for delta in [0.0, -0.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            for route in [
+                "pixel page",
+                "line page",
+                "pixel zoom",
+                "line zoom",
+                "pixel settings",
+                "line settings",
+                "pinch",
+            ] {
+                let receiver = prepare_paged_pointer(app, events);
+                let state = if route.ends_with("settings") {
+                    prepare_scrollable_settings(app, events);
+                    app.settings.as_mut().unwrap()
+                } else {
+                    app.panel.as_mut().unwrap()
+                };
+                let frame = state.native.frame.clone();
+                let page = state.chrome.native_candidate_page;
+                let scale = state.window_scale;
+                if route.ends_with("zoom") {
+                    state.modifiers = ModifiersState::CONTROL;
+                }
+                let scroll_offset = state.chrome.settings_scroll_offset;
+                let event = if route == "pinch" {
+                    WindowEvent::PinchGesture {
+                        device_id: DeviceId::dummy(),
+                        delta,
+                        phase,
+                    }
+                } else {
+                    WindowEvent::MouseWheel {
+                        device_id: DeviceId::dummy(),
+                        delta: if route.starts_with("pixel") {
+                            MouseScrollDelta::PixelDelta(PhysicalPosition::new(60.0, delta))
+                        } else {
+                            MouseScrollDelta::LineDelta(1.0, delta as f32)
+                        },
+                        phase,
+                    }
+                };
+                crate::input::handle_panel_window_event(state, events, event, false);
+                if receiver.try_recv().is_ok()
+                    || state.native.pending.is_some()
+                    || state.native.frame != frame
+                    || state.chrome.native_candidate_page != page
+                    || state.window_scale != scale
+                    || state.chrome.settings_scroll_offset != scroll_offset
+                {
+                    failures.push(format!(
+                        "inert {route} delta={delta:?}, phase={phase:?} changed page/scale/settings or sent an action"
+                    ));
+                }
+            }
+        }
+    }
+
+    // Preserve the pre-existing policy for finite deltas, including nonzero
+    // Ended events; this fix must not redefine platform gesture phases.
+    for phase in [TouchPhase::Moved, TouchPhase::Ended] {
+        for (delta, target) in [(0.25, 0), (-0.25, 12)] {
+            for route in [
+                "pixel page",
+                "line page",
+                "pixel zoom",
+                "line zoom",
+                "pixel settings",
+                "line settings",
+                "pinch",
+            ] {
+                let receiver = prepare_paged_pointer(app, events);
+                let state = if route.ends_with("settings") {
+                    prepare_scrollable_settings(app, events);
+                    app.settings.as_mut().unwrap()
+                } else {
+                    app.panel.as_mut().unwrap()
+                };
+                let frame = state.native.frame.clone();
+                let page = state.chrome.native_candidate_page;
+                let scale = state.window_scale;
+                if route.ends_with("zoom") {
+                    state.modifiers = ModifiersState::CONTROL;
+                }
+                let scroll_offset = state.chrome.settings_scroll_offset;
+                let event = if route == "pinch" {
+                    WindowEvent::PinchGesture {
+                        device_id: DeviceId::dummy(),
+                        delta,
+                        phase,
+                    }
+                } else {
+                    WindowEvent::MouseWheel {
+                        device_id: DeviceId::dummy(),
+                        delta: if route.starts_with("pixel") {
+                            MouseScrollDelta::PixelDelta(PhysicalPosition::new(60.0, delta))
+                        } else {
+                            MouseScrollDelta::LineDelta(1.0, delta as f32)
+                        },
+                        phase,
+                    }
+                };
+                crate::input::handle_panel_window_event(state, events, event, false);
+                if route.ends_with("page") {
+                    let request = receiver
+                        .try_recv()
+                        .expect("finite vertical wheel must page");
+                    assert!(request.command.ends_with(&format!(" N{target}")));
+                    assert!(state.native.pending.is_some());
+                    assert_eq!(state.window_scale, scale);
+                } else if route.ends_with("settings") {
+                    assert!(receiver.try_recv().is_err());
+                    assert!(state.native.pending.is_none());
+                    assert_eq!(state.window_scale, scale);
+                    if delta > 0.0 {
+                        assert!(state.chrome.settings_scroll_offset > scroll_offset);
+                    } else {
+                        assert!(state.chrome.settings_scroll_offset < scroll_offset);
+                    }
+                } else {
+                    assert!(receiver.try_recv().is_err());
+                    assert!(state.native.pending.is_none());
+                    if delta > 0.0 {
+                        assert!(state.window_scale > scale);
+                    } else {
+                        assert!(state.window_scale < scale);
+                    }
+                }
+                assert_eq!(state.native.frame, frame);
+                let expected_page = page.map(|mut page| {
+                    // A valid native page request enters flight without moving
+                    // its displayed range until acknowledgement. Settings and
+                    // zoom gestures must preserve the entire optional state.
+                    if route.ends_with("page") {
+                        page.busy = true;
+                    }
+                    page
+                });
+                assert_eq!(state.chrome.native_candidate_page, expected_page);
+            }
+        }
+    }
+    app.panel.as_mut().unwrap().modifiers = Default::default();
+}
+
 fn click(state: &mut PanelState, action: InteractionKind, touch: bool) {
     let rect = state
         .interaction_rect(action)
@@ -158,6 +384,161 @@ fn click(state: &mut PanelState, action: InteractionKind, touch: bool) {
     state.begin_primary_press(touch);
     assert_eq!(state.interaction.pressed_interaction, Some(action));
     state.complete_primary_release(touch);
+}
+
+fn long_candidate(language: &str) -> String {
+    if language == "en" {
+        format!("{}.", "candidate ".repeat(200))
+    } else {
+        format!("{}。", "候选".repeat(1000))
+    }
+}
+
+fn press_truncated_candidate(state: &mut PanelState, index: usize, touch: bool) {
+    let action = InteractionKind::Candidate(index);
+    let scene = state.current_scene();
+    assert!(
+        scene.sentence_candidate_truncated.contains(&index),
+        "the real rendered card must truncate this fixture before testing its gesture"
+    );
+    let rect = scene
+        .interactive_targets
+        .iter()
+        .find(|target| target.kind == action)
+        .expect("visible truncated candidate")
+        .rect;
+    let point = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
+    assert_eq!(scene.hit_interaction(point.0, point.1), Some(action));
+    state.last_scene = Some(scene);
+    state.cursor_position = Some(point);
+    state.begin_primary_press(touch);
+    assert_eq!(state.interaction.pressed_interaction, Some(action));
+}
+
+fn check_truncated_native_commit(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    language: &str,
+    touch: bool,
+) {
+    use suzaku_map::ime::{candidate_mix::CandidateKind, companion::NativeCandidate};
+    let receiver = prepare(app, events);
+    let text = long_candidate(language);
+    assert_eq!(text.chars().count(), 2001);
+    let mut frame = keyboard_frame(
+        if language == "en" {
+            "candidate"
+        } else {
+            "houxuan"
+        },
+        11,
+    );
+    frame.language = language.into();
+    frame.candidates = vec![
+        NativeCandidate {
+            text: frame.seed.clone(),
+            label: frame.seed.clone(),
+            kind: CandidateKind::Literal,
+            ..Default::default()
+        },
+        NativeCandidate {
+            text: text.clone(),
+            label: text.clone(),
+            kind: CandidateKind::Sentence,
+            ..Default::default()
+        },
+    ];
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+
+    // A newer revision cancels a held card even when its text and index match.
+    press_truncated_candidate(app.panel.as_mut().unwrap(), 1, touch);
+    frame.revision += 1;
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    let state = app.panel.as_mut().unwrap();
+    assert!(state.interaction.pressed_interaction.is_none());
+    state.complete_primary_release(touch);
+    assert!(receiver.try_recv().is_err(), "a stale card press committed");
+    assert!(state.interaction.sentence_candidate_scroll_index.is_none());
+
+    // A fresh gesture is a full host commit, not the standalone marquee preview.
+    press_truncated_candidate(state, 1, touch);
+    state.complete_primary_release(touch);
+    let request = receiver.try_recv().unwrap_or_else(|error| {
+        panic!("truncated native first click did not commit: {language}/{touch}: {error}")
+    });
+    assert_eq!(
+        request.command,
+        suzaku_map::platform::linux_ime_sync::action_command(&frame, &NativeOperation::Commit(1))
+            .unwrap()
+    );
+    assert_eq!(
+        state.native.frame.as_ref().unwrap().candidates[1].text,
+        text
+    );
+    assert!(state.interaction.sentence_candidate_scroll_index.is_none());
+    state.complete_primary_release(touch);
+    assert!(
+        receiver.try_recv().is_err(),
+        "duplicate release resent commit"
+    );
+    assert!(state.engine.snapshot().committed_text.is_empty());
+
+    acknowledge(app, events, request);
+    frame.revision += 1;
+    frame.context += 1;
+    frame.seed.clear();
+    frame.candidates.clear();
+    publish_wake_frames(app, events, [Some(frame)]);
+    app.panel.as_mut().unwrap().complete_primary_release(touch);
+    assert!(
+        receiver.try_recv().is_err(),
+        "duplicate release after acknowledgement resent commit"
+    );
+}
+
+fn check_truncated_standalone_preview(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    language: &str,
+    touch: bool,
+) {
+    let receiver = prepare(app, events);
+    app.native_sync = None;
+    let state = app.panel.as_mut().unwrap();
+    state.native = Default::default();
+    state.chrome.native_candidate_page = None;
+    state.chrome.input_modes_expanded = false;
+    state.last_scene = None;
+    state.last_interaction_action = None;
+    state.last_commit_feedback = None;
+    // If this control regresses into commit, the focused panel must trap it;
+    // this test never sends text to a real host or any external target app.
+    state.is_focused = true;
+    let text = long_candidate(language);
+    let previous_language = state.engine.snapshot().active_language;
+    state.engine.set_language(language);
+    state.chrome.set_seed_text(text.clone());
+    state.engine.seed(&text);
+    state.chrome.sentence_candidates = vec![text.clone()];
+    state.chrome.sentence_candidate_source_indices = vec![0];
+    state.clear_sentence_candidate_scroll();
+    press_truncated_candidate(state, 0, touch);
+    state.complete_primary_release(touch);
+    assert_eq!(state.interaction.sentence_candidate_scroll_index, Some(0));
+    assert!(
+        state
+            .interaction
+            .sentence_candidate_scroll_started_at
+            .is_some()
+    );
+    assert!(state.last_interaction_action.is_none());
+    assert!(state.last_commit_feedback.is_none());
+    assert_eq!(state.chrome.seed_text, text);
+    assert!(state.engine.snapshot().committed_text.is_empty());
+    state.complete_primary_release(touch);
+    assert!(state.last_commit_feedback.is_none());
+    assert!(receiver.try_recv().is_err());
+    state.engine.set_language(previous_language);
 }
 
 fn key(state: &mut PanelState, character: char, touch: bool) {
@@ -174,23 +555,15 @@ fn key(state: &mut PanelState, character: char, touch: bool) {
 fn start_action(state: &mut PanelState, case: &str, touch: bool) -> (NativeOperation, String) {
     match case {
         "word" => {
-            let text = state.next_token_completions[0].seed_after.clone();
-            let index = state
-                .native
-                .frame
-                .as_ref()
-                .unwrap()
-                .candidates
-                .iter()
-                .position(|candidate| candidate.text == text);
-            click(state, InteractionKind::SelectNextToken(0), touch);
-            (
-                index.map_or_else(
-                    || NativeOperation::Replace(text.clone()),
-                    NativeOperation::Adopt,
-                ),
-                text,
-            )
+            // Native numeric adoption addresses the host's real candidate;
+            // standalone next-token chips are deliberately not mirrored here.
+            assert!(state.next_token_completions.is_empty());
+            let index = 0;
+            let text = state.native.frame.as_ref().unwrap().candidates[index]
+                .text
+                .clone();
+            state.continue_sentence_candidate(index);
+            (NativeOperation::Adopt(index), text)
         }
         "sentence" => {
             let frame = state.native.frame.as_ref().unwrap();

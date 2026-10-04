@@ -297,24 +297,31 @@ pub extern "C" fn suzaku_host_ime_companion_snapshot_utf8(
     revision: u64,
     focused: bool,
     private: bool,
+    cursor_valid: bool,
+    cursor_x: i32,
+    cursor_y: i32,
+    cursor_width: i32,
+    cursor_height: i32,
 ) -> *mut std::os::raw::c_char {
-    use crate::ime::companion::{MAX_FRAME_BYTES, NativeCandidate, NativeComposition};
+    use crate::ime::companion::{
+        MAX_FRAME_BYTES, NativeCandidate, NativeComposition, NativeCursorRect,
+    };
     let Some(host) = read_optional_utf8(host) else {
         return std::ptr::null_mut();
     };
     let mut frame = with_shared_host_ime_session(|session| {
         let snapshot = session.engine.snapshot();
-        let visible = focused
-            && session.active
-            && !private
-            && !session.private
-            && !snapshot.seed_text.is_empty();
+        let public = focused && session.active && !private && !session.private;
+        let visible = public && !snapshot.seed_text.is_empty();
         NativeComposition {
             host,
             context,
             revision,
             focused,
             private: private || session.private,
+            cursor: (public && cursor_valid)
+                .then(|| NativeCursorRect::new(cursor_x, cursor_y, cursor_width, cursor_height))
+                .flatten(),
             language: snapshot.active_language,
             seed: if visible {
                 snapshot.seed_text
@@ -344,6 +351,7 @@ pub extern "C" fn suzaku_host_ime_companion_snapshot_utf8(
     // Fail closed rather than truncating a composition into a different candidate.
     if raw.len() >= MAX_FRAME_BYTES || NativeComposition::parse(raw.as_bytes()).is_err() {
         frame.private = true;
+        frame.cursor = None;
         frame.seed.clear();
         frame.candidates.clear();
         frame.selected = 0;
@@ -1110,6 +1118,56 @@ mod tests {
     }
 
     #[test]
+    fn companion_cursor_is_public_bounded_and_does_not_change_composition() {
+        use crate::ime::companion::{NativeComposition, NativeCursorRect};
+
+        let _guard = host_bridge_test_lock();
+        for (active, focused, private, session_private, valid, width) in [
+            (true, true, false, false, true, 0),
+            (true, true, false, false, false, 0),
+            (true, true, false, false, true, -1),
+            (true, true, false, false, true, 65_536),
+            (true, false, false, false, true, 0),
+            (true, true, true, false, true, 0),
+            (true, true, false, true, true, 0),
+            (false, true, false, false, true, 0),
+        ] {
+            reset_host_bridge_session();
+            super::with_shared_host_ime_session(|session| {
+                if active {
+                    session.activate();
+                }
+                session.private = session_private;
+            });
+            let before = host_bridge_snapshot();
+            let raw = c_string_to_owned(super::suzaku_host_ime_companion_snapshot_utf8(
+                c"00000000-0000-0000-0000-000000000001".as_ptr(),
+                7,
+                42,
+                focused,
+                private,
+                valid,
+                -200,
+                300,
+                width,
+                24,
+            ))
+            .unwrap();
+            let frame = NativeComposition::parse(raw.as_bytes()).unwrap();
+            let expected =
+                if active && focused && !private && !session_private && valid && width == 0 {
+                    NativeCursorRect::new(-200, 300, 0, 24)
+                } else {
+                    None
+                };
+            assert_eq!(frame.cursor, expected);
+            assert_eq!((frame.context, frame.revision), (7, 42));
+            assert_eq!(host_bridge_snapshot(), before);
+        }
+        reset_host_bridge_session();
+    }
+
+    #[test]
     fn companion_byte_limits_hide_only_the_view_and_preserve_native_text() {
         use crate::ime::companion::{MAX_FRAME_BYTES, MAX_TEXT_BYTES, NativeComposition};
         use crate::languages::BuiltinLanguage;
@@ -1151,6 +1209,11 @@ mod tests {
                         42,
                         true,
                         false,
+                        true,
+                        100,
+                        200,
+                        0,
+                        24,
                     ))
                     .unwrap();
                     assert!(raw.ends_with('\n') && raw.len() <= MAX_FRAME_BYTES);
@@ -1160,9 +1223,14 @@ mod tests {
                     assert!(frame.focused);
                     assert_eq!(frame.private, overflow);
                     if overflow {
+                        assert!(frame.cursor.is_none());
                         assert!(frame.seed.is_empty() && frame.candidates.is_empty());
                         assert_eq!(frame.selected, 0);
                     } else {
+                        assert_eq!(
+                            frame.cursor,
+                            crate::ime::companion::NativeCursorRect::new(100, 200, 0, 24)
+                        );
                         assert_eq!(frame.seed, text);
                         assert_eq!(frame.candidates.len(), 1);
                         assert_eq!(frame.candidates[0].text, text);

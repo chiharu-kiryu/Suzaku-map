@@ -326,6 +326,7 @@ fn long_candidate_payloads_fit_the_existing_native_frame_without_losing_literal_
             revision: 1,
             focused: true,
             private: false,
+            cursor: None,
             language: language.into(),
             seed: seed.clone(),
             selected: 0,
@@ -417,4 +418,109 @@ fn chinese_long_candidate_labels_reveal_differences_but_commit_full_text() {
         engine.commit(CommitOptions { force: true }).text.as_deref(),
         Some(format!("{prefix}北京").as_str())
     );
+}
+
+fn commit_exactly_then_undo(ime: &mut XRTabletImeEngine, expected: &str) {
+    let index = ime
+        .candidates()
+        .iter()
+        .position(|candidate| candidate.text == expected)
+        .expect("exact candidate must be available");
+    ime.select_candidate(index);
+    assert!(ime.snapshot().committed_text.is_empty());
+    let result = ime.commit(CommitOptions { force: true });
+    assert!(result.ok);
+    assert_eq!(result.text.as_deref(), Some(expected));
+    assert!(ime.snapshot().seed_text.is_empty());
+    assert!(ime.undo().unwrap().committed_text.is_empty());
+    assert!(ime.undo().is_none());
+}
+
+#[test]
+fn chinese_long_tail_uses_all_256_reading_characters_after_a_safe_boundary() {
+    let full_tail = "ni".repeat(128);
+    let full_conversion = "你".repeat(128);
+    for mixed in [false, true] {
+        // The exact same 256-character reading already fits the ordinary decoder.
+        let mut short = engine("zh-Hans", &full_tail, mixed);
+        assert_eq!(short.candidates()[0].text, full_conversion);
+        assert!(short.candidates().iter().any(|c| c.text == full_tail));
+        commit_exactly_then_undo(&mut short, &full_conversion);
+
+        for prefix in ["文".repeat(260), "前文。".repeat(100)] {
+            for (tail, conversion, length) in [
+                ("ni".repeat(127), "你".repeat(127), 254),
+                (
+                    format!("{}hao", "ni".repeat(126)),
+                    format!("{}好", "你".repeat(126)),
+                    255,
+                ),
+                (full_tail.clone(), full_conversion.clone(), 256),
+            ] {
+                assert_eq!(tail.chars().count(), length);
+                let seed = format!("{prefix}{tail}");
+                let expected = format!("{prefix}{conversion}");
+                let mut ime = engine("zh-Hans", &seed, mixed);
+                assert_eq!(
+                    ime.candidates()[0].text,
+                    expected,
+                    "tail={length}, mixed={mixed}, boundary={:?}",
+                    prefix.chars().next_back()
+                );
+                assert!(ime.candidates().iter().any(|c| c.text == seed));
+                assert!(ime.candidates().iter().all(|c| {
+                    c.text.starts_with(&prefix) && c.source == CandidateSource::Local
+                }));
+                assert_eq!(ime.snapshot().seed_text, seed);
+                commit_exactly_then_undo(&mut ime, &expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn chinese_long_tail_does_not_split_257_characters_or_hide_protected_tokens() {
+    let oversized = format!("{}n", "ni".repeat(128));
+    assert_eq!(oversized.chars().count(), 257);
+    let full_tail = "ni".repeat(128);
+    for mixed in [false, true] {
+        let mut seeds = ["文".repeat(260), "前文。".repeat(100)]
+            .map(|prefix| format!("{prefix}{oversized}"))
+            .to_vec();
+        // Looking one scalar farther back for a 256-character window must not
+        // hide URL, path, identifier or email syntax behind its Han boundary.
+        for token in ["https://中文", "dir\\中文", "user_中文", "person@中文"] {
+            seeds.push(format!("{}{token}{full_tail}", "前文。".repeat(100)));
+        }
+        for seed in seeds {
+            let mut ime = engine("zh-Hans", &seed, mixed);
+            assert_eq!(
+                ime.candidates()
+                    .iter()
+                    .map(|candidate| candidate.text.as_str())
+                    .collect::<Vec<_>>(),
+                [seed.as_str()],
+                "mixed={mixed}, seed_bytes={}",
+                seed.len()
+            );
+            assert_eq!(ime.snapshot().seed_text, seed);
+            commit_exactly_then_undo(&mut ime, &seed);
+        }
+    }
+}
+
+#[test]
+fn full_chinese_window_still_obeys_the_native_text_byte_budget() {
+    use suzaku_map::ime::companion::MAX_TEXT_BYTES;
+
+    // A valid 256-scalar reading can expand past the transport's independent
+    // byte limit. Filter the conversion, never truncate it or drop the literal.
+    let seed = format!(" {}{}", "你".repeat(2645), "ni".repeat(128));
+    assert_eq!(seed.len(), MAX_TEXT_BYTES);
+    for mixed in [false, true] {
+        let mut ime = engine("zh-Hans", &seed, mixed);
+        assert_eq!(ime.candidates().len(), 1);
+        assert_eq!(ime.candidates()[0].text, seed);
+        commit_exactly_then_undo(&mut ime, &seed);
+    }
 }

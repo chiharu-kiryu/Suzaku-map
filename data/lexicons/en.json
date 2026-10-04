@@ -10032,6 +10032,694 @@
         "i'll send you the address.",
         "i'll send you the details soon."
       ]
+    },
+    {
+      "id": "daily_coordination",
+      "words": [
+        "hand",
+        "middle"
+      ],
+      "next_words": [
+        [
+          "did you get my",
+          [
+            "message",
+            "email"
+          ]
+        ],
+        [
+          "have you checked the",
+          [
+            "time",
+            "address"
+          ]
+        ],
+        [
+          "are we still meeting",
+          [
+            "today",
+            "tomorrow"
+          ]
+        ],
+        [
+          "does that work for",
+          [
+            "you",
+            "everyone"
+          ]
+        ],
+        [
+          "can you let me know",
+          [
+            "today",
+            "tomorrow"
+          ]
+        ],
+        [
+          "could you tell me",
+          [
+            "when",
+            "where"
+          ]
+        ],
+        [
+          "could you say it",
+          [
+            "again",
+            "slowly"
+          ]
+        ],
+        [
+          "i didn't hear",
+          [
+            "you",
+            "the"
+          ]
+        ],
+        [
+          "do you mean",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "i meant the",
+          [
+            "other",
+            "first"
+          ]
+        ],
+        [
+          "can we confirm the",
+          [
+            "time",
+            "place"
+          ]
+        ],
+        [
+          "i'll check it",
+          [
+            "now",
+            "again"
+          ]
+        ],
+        [
+          "please tell me what",
+          [
+            "happened",
+            "changed"
+          ]
+        ],
+        [
+          "thanks for getting",
+          [
+            "back",
+            "in"
+          ]
+        ],
+        [
+          "sorry i missed your",
+          [
+            "call",
+            "message"
+          ]
+        ],
+        [
+          "i was away from my",
+          [
+            "phone",
+            "desk"
+          ]
+        ],
+        [
+          "i'm in the middle of",
+          [
+            "something",
+            "dinner"
+          ]
+        ],
+        [
+          "can i call you",
+          [
+            "now",
+            "later"
+          ]
+        ],
+        [
+          "please leave me a",
+          [
+            "message",
+            "note"
+          ]
+        ],
+        [
+          "could you hold",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "could you give me a",
+          [
+            "hand",
+            "minute"
+          ]
+        ],
+        [
+          "would you like me to",
+          [
+            "wait",
+            "help"
+          ]
+        ],
+        [
+          "we can do it",
+          [
+            "together",
+            "tomorrow"
+          ]
+        ],
+        [
+          "i'll take care of",
+          [
+            "it",
+            "this"
+          ]
+        ]
+      ],
+      "sentences": [
+        "did you get my message?",
+        "did you get my email?",
+        "have you checked the time?",
+        "have you checked the address?",
+        "are we still meeting today?",
+        "are we still meeting tomorrow?",
+        "does that work for you?",
+        "does that work for everyone?",
+        "can you let me know today?",
+        "can you let me know tomorrow?",
+        "could you tell me when to come?",
+        "could you tell me where to wait?",
+        "could you say it again, please?",
+        "could you say it slowly, please?",
+        "i didn't hear you.",
+        "i didn't hear the last part.",
+        "do you mean this one?",
+        "do you mean that one?",
+        "i meant the other one.",
+        "i meant the first one.",
+        "can we confirm the time?",
+        "can we confirm the place?",
+        "i'll check it now.",
+        "i'll check it again.",
+        "please tell me what happened.",
+        "please tell me what changed.",
+        "thanks for getting back to me.",
+        "thanks for getting in touch.",
+        "sorry i missed your call.",
+        "sorry i missed your message.",
+        "i was away from my phone.",
+        "i was away from my desk.",
+        "i'm in the middle of something.",
+        "i'm in the middle of dinner.",
+        "can i call you now?",
+        "can i call you later?",
+        "please leave me a message.",
+        "please leave me a note.",
+        "could you hold this for a moment?",
+        "could you hold that for a moment?",
+        "could you give me a hand?",
+        "could you give me a minute?",
+        "would you like me to wait here?",
+        "would you like me to help with that?",
+        "we can do it together.",
+        "we can do it tomorrow.",
+        "i'll take care of it.",
+        "i'll take care of this."
+      ]
+    },
+    {
+      "id": "daily_social",
+      "words": [
+        "tiring",
+        "quiet",
+        "cafe",
+        "shall"
+      ],
+      "next_words": [
+        [
+          "it's good to",
+          [
+            "see",
+            "hear"
+          ]
+        ],
+        [
+          "i haven't seen you",
+          [
+            "lately",
+            "before"
+          ]
+        ],
+        [
+          "how have you been",
+          [
+            "lately",
+            "feeling"
+          ]
+        ],
+        [
+          "did you have a",
+          [
+            "good",
+            "nice"
+          ]
+        ],
+        [
+          "i hope you're",
+          [
+            "doing",
+            "feeling"
+          ]
+        ],
+        [
+          "are you feeling",
+          [
+            "better",
+            "okay"
+          ]
+        ],
+        [
+          "have you been sleeping",
+          [
+            "well",
+            "better"
+          ]
+        ],
+        [
+          "remember to take a",
+          [
+            "break",
+            "moment"
+          ]
+        ],
+        [
+          "you don't have to",
+          [
+            "rush",
+            "apologize"
+          ]
+        ],
+        [
+          "i'm here if you",
+          [
+            "need",
+            "want"
+          ]
+        ],
+        [
+          "i'm sorry to hear",
+          [
+            "that",
+            "about"
+          ]
+        ],
+        [
+          "that must have been",
+          [
+            "hard",
+            "tiring"
+          ]
+        ],
+        [
+          "do you want to grab",
+          [
+            "lunch",
+            "coffee"
+          ]
+        ],
+        [
+          "would you like to join",
+          [
+            "us",
+            "me"
+          ]
+        ],
+        [
+          "are you doing anything",
+          [
+            "tonight",
+            "tomorrow"
+          ]
+        ],
+        [
+          "let's do something",
+          [
+            "fun",
+            "quiet"
+          ]
+        ],
+        [
+          "i know a nice",
+          [
+            "cafe",
+            "place"
+          ]
+        ],
+        [
+          "shall we meet",
+          [
+            "outside",
+            "there"
+          ]
+        ],
+        [
+          "i'd love to come",
+          [
+            "along",
+            "over"
+          ]
+        ],
+        [
+          "thanks for inviting",
+          [
+            "me",
+            "us"
+          ]
+        ],
+        [
+          "i already have",
+          [
+            "plans",
+            "something"
+          ]
+        ],
+        [
+          "maybe we could try",
+          [
+            "another",
+            "next"
+          ]
+        ],
+        [
+          "i'll have to pass",
+          [
+            "today",
+            "tonight"
+          ]
+        ],
+        [
+          "please enjoy the",
+          [
+            "evening",
+            "party"
+          ]
+        ]
+      ],
+      "sentences": [
+        "it's good to see you again.",
+        "it's good to hear from you.",
+        "i haven't seen you lately.",
+        "i haven't seen you before.",
+        "how have you been lately?",
+        "how have you been feeling?",
+        "did you have a good weekend?",
+        "did you have a nice trip?",
+        "i hope you're doing well.",
+        "i hope you're feeling better.",
+        "are you feeling better?",
+        "are you feeling okay?",
+        "have you been sleeping well?",
+        "have you been sleeping better?",
+        "remember to take a break.",
+        "remember to take a moment for yourself.",
+        "you don't have to rush.",
+        "you don't have to apologize.",
+        "i'm here if you need me.",
+        "i'm here if you want to talk.",
+        "i'm sorry to hear that.",
+        "i'm sorry to hear about your bad day.",
+        "that must have been hard.",
+        "that must have been tiring.",
+        "do you want to grab lunch?",
+        "do you want to grab coffee?",
+        "would you like to join us for dinner?",
+        "would you like to join me for a walk?",
+        "are you doing anything tonight?",
+        "are you doing anything tomorrow?",
+        "let's do something fun this weekend.",
+        "let's do something quiet tonight.",
+        "i know a nice cafe nearby.",
+        "i know a nice place to eat.",
+        "shall we meet outside the cafe?",
+        "shall we meet there at six?",
+        "i'd love to come along.",
+        "i'd love to come over for dinner.",
+        "thanks for inviting me.",
+        "thanks for inviting us.",
+        "i already have plans tonight.",
+        "i already have something planned.",
+        "maybe we could try another day?",
+        "maybe we could try next week?",
+        "i'll have to pass today, but thank you.",
+        "i'll have to pass tonight, but thank you.",
+        "please enjoy the evening.",
+        "please enjoy the party."
+      ]
+    },
+    {
+      "id": "daily_objects",
+      "words": [
+        "chairs",
+        "cups",
+        "mine",
+        "plates",
+        "scissors",
+        "tape",
+        "yours"
+      ],
+      "next_words": [
+        [
+          "have you seen my",
+          [
+            "keys",
+            "phone"
+          ]
+        ],
+        [
+          "where did you put the",
+          [
+            "scissors",
+            "tape"
+          ]
+        ],
+        [
+          "is it in the",
+          [
+            "drawer",
+            "bag"
+          ]
+        ],
+        [
+          "i put it on the",
+          [
+            "table",
+            "shelf"
+          ]
+        ],
+        [
+          "it's next to the",
+          [
+            "door",
+            "window"
+          ]
+        ],
+        [
+          "check under the",
+          [
+            "chair",
+            "bed"
+          ]
+        ],
+        [
+          "could you pass me the",
+          [
+            "salt",
+            "pepper"
+          ]
+        ],
+        [
+          "could you bring the",
+          [
+            "cups",
+            "plates"
+          ]
+        ],
+        [
+          "can you move this",
+          [
+            "box",
+            "chair"
+          ]
+        ],
+        [
+          "please put it back on the",
+          [
+            "shelf",
+            "table"
+          ]
+        ],
+        [
+          "can i borrow your",
+          [
+            "charger",
+            "umbrella"
+          ]
+        ],
+        [
+          "i'll give it back",
+          [
+            "tomorrow",
+            "tonight"
+          ]
+        ],
+        [
+          "have you returned the",
+          [
+            "book",
+            "keys"
+          ]
+        ],
+        [
+          "you can keep the",
+          [
+            "bag",
+            "box"
+          ]
+        ],
+        [
+          "does this belong to",
+          [
+            "you",
+            "someone"
+          ]
+        ],
+        [
+          "i think this is",
+          [
+            "yours",
+            "mine"
+          ]
+        ],
+        [
+          "do we have enough",
+          [
+            "cups",
+            "plates"
+          ]
+        ],
+        [
+          "we need two more",
+          [
+            "chairs",
+            "towels"
+          ]
+        ],
+        [
+          "i only need one",
+          [
+            "spoon",
+            "fork"
+          ]
+        ],
+        [
+          "could i get a smaller",
+          [
+            "bag",
+            "box"
+          ]
+        ],
+        [
+          "this one is too",
+          [
+            "big",
+            "small"
+          ]
+        ],
+        [
+          "i'd like the same",
+          [
+            "size",
+            "color"
+          ]
+        ],
+        [
+          "there's a spare",
+          [
+            "key",
+            "charger"
+          ]
+        ],
+        [
+          "please keep them in the",
+          [
+            "drawer",
+            "cupboard"
+          ]
+        ]
+      ],
+      "sentences": [
+        "have you seen my keys?",
+        "have you seen my phone?",
+        "where did you put the scissors?",
+        "where did you put the tape?",
+        "is it in the drawer?",
+        "is it in the bag?",
+        "i put it on the table.",
+        "i put it on the shelf.",
+        "it's next to the door.",
+        "it's next to the window.",
+        "check under the chair.",
+        "check under the bed.",
+        "could you pass me the salt?",
+        "could you pass me the pepper?",
+        "could you bring the cups?",
+        "could you bring the plates?",
+        "can you move this box?",
+        "can you move this chair?",
+        "please put it back on the shelf.",
+        "please put it back on the table.",
+        "can i borrow your charger?",
+        "can i borrow your umbrella?",
+        "i'll give it back tomorrow.",
+        "i'll give it back tonight.",
+        "have you returned the book?",
+        "have you returned the keys?",
+        "you can keep the bag.",
+        "you can keep the box.",
+        "does this belong to you?",
+        "does this belong to someone else?",
+        "i think this is yours.",
+        "i think this is mine.",
+        "do we have enough cups?",
+        "do we have enough plates?",
+        "we need two more chairs.",
+        "we need two more towels.",
+        "i only need one spoon.",
+        "i only need one fork.",
+        "could i get a smaller bag?",
+        "could i get a smaller box?",
+        "this one is too big.",
+        "this one is too small.",
+        "i'd like the same size.",
+        "i'd like the same color.",
+        "there's a spare key in the drawer.",
+        "there's a spare charger on the table.",
+        "please keep them in the drawer.",
+        "please keep them in the cupboard."
+      ]
     }
   ],
   "phrase_endings": [

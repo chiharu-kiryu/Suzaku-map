@@ -7,13 +7,10 @@ use std::sync::{
     mpsc::{self, SyncSender},
 };
 use std::thread::JoinHandle;
-use suzaku_map::{
-    ime::{
-        Mode, Snapshot,
-        companion::{NativeComposition, NativeOperation},
-        gpu::InteractionKind,
-    },
-    panel_support::composition_candidate_previews,
+use suzaku_map::ime::{
+    Mode, Snapshot,
+    companion::{NativeComposition, NativeOperation},
+    gpu::{InputMode, InteractionKind, NativeCandidatePage, PanelLayoutMode},
 };
 use winit::event_loop::EventLoopProxy;
 
@@ -42,6 +39,9 @@ pub(super) struct NativeView {
     pub(super) presented: Option<super::native_presentation::PresentationTarget>,
     pub(super) occluded: bool,
     draft: Option<(String, usize, bool)>,
+    // Only an already displayed public composition may retain its empty docked
+    // keyboard. View ownership alone survives focus/disconnect boundaries.
+    retained_keyboard_context: Option<(String, u64)>,
     pub sender: Option<SyncSender<ActionRequest>>,
     pending: Option<PendingAction>,
     typing: Option<NativeTyping>,
@@ -349,14 +349,24 @@ impl PanelState {
             || (!self.native.showing && self.chrome.input_focused)
     }
 
-    /// Stay visible while either the public host draft or queued keyboard draft
-    /// is nonempty. A tentative local deletion has not yet emptied the host.
+    /// Nonempty public/queued drafts keep the candidate popup visible. Once a
+    /// public native context has been displayed, its expanded bottom keyboard
+    /// also stays after commit/deletion so the next draft can start without a
+    /// physical key. Empty fields cannot inherit retention from another context
+    /// or across focus/privacy/disconnect boundaries.
     pub(super) fn native_composition_visible(&self) -> bool {
         self.native.showing
             && self.native.frame.as_ref().is_some_and(|frame| {
                 frame.focused
                     && !frame.private
                     && (!frame.seed.is_empty()
+                        || (self.chrome.effective_panel_layout() == PanelLayoutMode::BottomDock
+                            && !self.chrome.compact_mode
+                            && self.chrome.input_modes_expanded
+                            && self.chrome.active_input_mode == InputMode::VirtualKeyboard
+                            && self.native.retained_keyboard_context.as_ref().is_some_and(
+                                |(host, context)| host == &frame.host && *context == frame.context,
+                            ))
                         || self.native.typing.as_ref().is_some_and(|typing| {
                             typing.matches(frame) && !typing.draft.is_empty()
                         }))
@@ -399,7 +409,26 @@ impl PanelState {
             && previous.host == next.host
             && previous.revision >= next.revision
         {
+            if let Some(cursor) = super::native_position::geometry_update(previous, next) {
+                // Moving the caret is not a new draft. Preserve queued edits,
+                // ACK barriers and a still-valid press on the current page.
+                self.native.frame.as_mut().unwrap().cursor = cursor;
+                self.update_native_position();
+                self.window.request_redraw();
+            }
             return;
+        }
+        if self
+            .native
+            .retained_keyboard_context
+            .as_ref()
+            .is_some_and(|(host, context)| {
+                frame.as_ref().is_none_or(|next| {
+                    !next.focused || next.private || &next.host != host || next.context != *context
+                })
+            })
+        {
+            self.native.retained_keyboard_context = None;
         }
         // With no follow-up edit, the latest snapshot wins, even if the mailbox
         // skipped the action's intermediate frame after a physical edit.
@@ -454,7 +483,11 @@ impl PanelState {
         if updates_native_view
             && (matches!(
                 self.interaction.pressed_interaction,
-                Some(InteractionKind::Candidate(_) | InteractionKind::SelectNextToken(_))
+                Some(
+                    InteractionKind::Candidate(_)
+                        | InteractionKind::SelectNextToken(_)
+                        | InteractionKind::NativeCandidatePage(_)
+                )
             ) || (!input_target_unchanged
                 && matches!(
                     self.interaction.pressed_interaction,
@@ -491,11 +524,24 @@ impl PanelState {
             self.native.showing = true;
             self.pause_voice_capture_if_target_changed();
             self.engine.configure_prediction(None);
-            self.chrome.input_modes_expanded = false;
+            if self.chrome.effective_panel_layout() == PanelLayoutMode::FollowCaret {
+                self.chrome.input_modes_expanded = false;
+            }
+        }
+        // This must stay after the local-ownership return: receiving a frame
+        // while editing our own window is not an external native wakeup.
+        if visible && let Some(frame) = &self.native.frame {
+            self.native.retained_keyboard_context = Some((frame.host.clone(), frame.context));
         }
         self.flush_native_typing();
         self.refresh_native_view();
         self.window.request_redraw();
+    }
+
+    pub(super) fn native_candidates_busy(&self) -> bool {
+        self.native.pending.is_some()
+            || self.native.typing.is_some()
+            || self.native.confirmed_action.is_some()
     }
 
     pub(super) fn refresh_native_view(&mut self) {
@@ -509,44 +555,54 @@ impl PanelState {
         if self.native.typing.is_some() {
             candidates.clear();
         }
-        let previews = composition_candidate_previews(
-            &snapshot.seed_text,
-            &snapshot.active_language,
-            &candidates,
-            6,
-            4,
+        let page = NativeCandidatePage::new(
+            snapshot.selected_index,
+            candidates.len(),
+            self.native_candidates_busy(),
         );
         self.chrome.set_seed_text(snapshot.seed_text);
         self.chrome.move_caret_to_end();
         self.chrome.blur_input();
         self.chrome.composed_tokens.clear();
-        self.chrome.next_token_candidates = previews
-            .next_tokens
-            .iter()
-            .map(|e| e.label.clone())
-            .collect();
-        self.next_token_completions = previews.next_tokens;
+        // Derived English chips are useful in the standalone editor, but their
+        // numbering does not describe IBus's actual six numeric choices.
+        self.chrome.next_token_candidates.clear();
+        self.next_token_completions.clear();
         (
             self.chrome.sentence_candidate_source_indices,
             self.chrome.sentence_candidates,
-        ) = previews.sentences.into_iter().unzip();
+        ) = candidates
+            .iter()
+            .enumerate()
+            .skip(page.start)
+            .take(NativeCandidatePage::SIZE)
+            .map(|(index, candidate)| (index, candidate.label.clone()))
+            .unzip();
+        self.chrome.native_candidate_page = Some(page);
         self.clear_sentence_candidate_scroll();
         self.last_scene = None;
         self.poll_translation();
     }
 
     pub(super) fn leave_native_view(&mut self) {
+        self.native.retained_keyboard_context = None;
         if !self.native.showing {
             return;
         }
         self.native.showing = false;
+        self.chrome.native_candidate_page = None;
         self.pause_voice_capture_if_target_changed();
         self.native.typing = None;
         self.native.confirmed_action = None;
         if let Some((seed, caret, expanded)) = self.native.draft.take() {
             self.chrome.set_seed_text(seed);
             self.chrome.caret_index = caret;
-            self.chrome.input_modes_expanded = expanded;
+            // The dock's drawer is an explicit layout choice, not temporary
+            // candidate-popup chrome. Do not undo a fold or mode change made
+            // while the external native draft owned the view.
+            if self.chrome.effective_panel_layout() != PanelLayoutMode::BottomDock {
+                self.chrome.input_modes_expanded = expanded;
+            }
         }
         self.reconfigure_model_provider();
         self.last_scene = None;
@@ -634,6 +690,10 @@ impl PanelState {
                     insertion,
                     replacement,
                 });
+                if let Some(page) = &mut self.chrome.native_candidate_page {
+                    page.busy = true;
+                }
+                self.last_scene = None;
                 return true;
             }
         }
@@ -706,6 +766,10 @@ impl PanelState {
             self.commit_feedback_ticks = 120;
             self.window.request_redraw();
         }
+        if self.native.showing {
+            self.refresh_native_view();
+            self.window.request_redraw();
+        }
     }
 
     pub(super) fn native_translation_replacement_visible(&self) -> bool {
@@ -773,6 +837,7 @@ pub(super) fn assert_native_view(state: &mut PanelState) {
         language: "en".into(),
         seed: "hel".into(),
         selected: 1,
+        cursor: None,
         candidates: vec![
             NativeCandidate {
                 text: "hello".into(),
@@ -828,8 +893,320 @@ pub(super) fn assert_native_view(state: &mut PanelState) {
     assert_eq!(state.chrome.seed_text, "manual draft");
     assert!(!state.native.showing);
     state.native = Default::default();
+    assert_native_paging(state);
+    assert_bottom_dock_native_lifecycle(state);
     state.chrome.set_seed_text(String::new());
     state.refresh_seed();
     state.last_commit_feedback = None;
     state.commit_feedback_ticks = 0;
+}
+
+#[cfg(test)]
+fn assert_bottom_dock_native_lifecycle(state: &mut PanelState) {
+    let saved_chrome = state.chrome.clone();
+    state.chrome.panel_layout_mode = PanelLayoutMode::BottomDock;
+    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+    state.chrome.input_modes_expanded = true;
+    state.chrome.compact_mode = false;
+    state.chrome.settings_open = false;
+    state.chrome.input_focused = false;
+    let mut frame = NativeComposition {
+        host: "00000000-0000-0000-0000-000000000004".into(),
+        context: 4,
+        revision: 1,
+        focused: true,
+        private: false,
+        language: "en".into(),
+        seed: String::new(),
+        selected: 0,
+        cursor: None,
+        candidates: Vec::new(),
+    };
+    state.receive_native_frame(Some(frame.clone()));
+    assert!(
+        !state.native.showing,
+        "an untouched empty field must not wake the dock"
+    );
+    assert!(!state.native_composition_visible());
+    frame.revision += 1;
+    frame.seed = "hel".into();
+    state.receive_native_frame(Some(frame.clone()));
+    assert!(state.native.showing);
+    assert!(state.chrome.input_modes_expanded);
+    frame.revision += 1;
+    frame.seed.clear();
+    state.receive_native_frame(Some(frame.clone()));
+    assert!(
+        state.native_composition_visible(),
+        "the next draft needs its screen keyboard"
+    );
+
+    for layout in [PanelLayoutMode::FollowCaret, PanelLayoutMode::BottomDock] {
+        for expanded in [false, true] {
+            for compact in [false, true] {
+                for mode in [
+                    InputMode::VirtualKeyboard,
+                    InputMode::Dictation,
+                    InputMode::Handwriting,
+                    InputMode::Translation,
+                ] {
+                    state.chrome.panel_layout_mode = layout;
+                    state.chrome.input_modes_expanded = expanded;
+                    state.chrome.compact_mode = compact;
+                    state.chrome.active_input_mode = mode;
+                    assert_eq!(
+                        state.native_composition_visible(),
+                        layout == PanelLayoutMode::BottomDock
+                            && expanded
+                            && !compact
+                            && mode == InputMode::VirtualKeyboard,
+                        "empty native view: {layout:?}/{expanded}/{compact}/{mode:?}"
+                    );
+                }
+            }
+        }
+    }
+    state.chrome.panel_layout_mode = PanelLayoutMode::BottomDock;
+    state.chrome.input_modes_expanded = true;
+    state.chrome.compact_mode = false;
+    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+    let (sender, receiver) = mpsc::sync_channel(1);
+    state.native.sender = Some(sender);
+    assert!(state.native_keyboard_edit(Some("x")));
+    let request = receiver
+        .try_recv()
+        .expect("empty native draft accepts a screen key");
+    assert!(request.command.ends_with(" 3 Tx"));
+    assert_eq!(state.view_snapshot().seed_text, "x");
+    frame.revision += 1;
+    frame.seed = "x".into();
+    state.receive_native_frame(Some(frame.clone()));
+    state.native_action_finished(request.host, request.revision, Ok(true));
+    assert!(state.native.typing.is_none());
+    assert!(state.native.pending.is_none());
+    assert!(
+        receiver.try_recv().is_err(),
+        "the key must not replay after confirmation"
+    );
+
+    for boundary in ["context", "host", "private", "focus", "disconnect"] {
+        // A real public draft may establish retention again, but an empty
+        // snapshot after any boundary may not resurrect the previous wakeup.
+        frame.revision += 1;
+        frame.seed = "hello".into();
+        state.receive_native_frame(Some(frame.clone()));
+        frame.revision += 1;
+        frame.seed.clear();
+        state.receive_native_frame(Some(frame.clone()));
+        assert!(state.native_composition_visible());
+        let mut next = frame.clone();
+        next.revision += 1;
+        match boundary {
+            "context" => next.context += 1,
+            "host" => next.host = "00000000-0000-0000-0000-000000000005".into(),
+            "private" => next.private = true,
+            "focus" => next.focused = false,
+            "disconnect" => {}
+            _ => unreachable!(),
+        }
+        state.receive_native_frame((boundary != "disconnect").then_some(next));
+        assert!(
+            !state.native_composition_visible(),
+            "dock crossed {boundary} boundary"
+        );
+        assert!(state.native.retained_keyboard_context.is_none());
+        frame.revision += 2;
+        state.receive_native_frame(Some(frame.clone()));
+        assert!(
+            !state.native_composition_visible(),
+            "empty frame revived a {boundary} wakeup"
+        );
+    }
+    state.receive_native_frame(None);
+    assert!(!state.native_composition_visible());
+    state.leave_native_view();
+    assert!(state.native.retained_keyboard_context.is_none());
+    state.native = Default::default();
+    state.chrome.input_focused = true;
+    frame.revision += 1;
+    frame.seed = "local editor owns this update".into();
+    state.receive_native_frame(Some(frame.clone()));
+    assert!(!state.native.showing);
+    assert!(state.native.retained_keyboard_context.is_none());
+    state.chrome.input_focused = false;
+    frame.revision += 1;
+    frame.seed.clear();
+    state.receive_native_frame(Some(frame.clone()));
+    assert!(
+        !state.native_composition_visible(),
+        "local editing must not authorize a native empty wakeup"
+    );
+    state.native = Default::default();
+
+    // Native/local transitions preserve the current dock choice, whereas the
+    // ordinary popup still restores its independent pre-native local drawer.
+    for layout in [PanelLayoutMode::FollowCaret, PanelLayoutMode::BottomDock] {
+        for prior_expanded in [false, true] {
+            state.chrome.panel_layout_mode = layout;
+            state.chrome.input_modes_expanded = prior_expanded;
+            state.chrome.input_focused = false;
+            frame.revision += 1;
+            frame.focused = true;
+            frame.private = false;
+            frame.seed = "hello".into();
+            state.receive_native_frame(Some(frame.clone()));
+            assert!(state.native.showing);
+            state.chrome.input_modes_expanded = !prior_expanded;
+            state.leave_native_view();
+            assert_eq!(
+                state.chrome.input_modes_expanded,
+                if layout == PanelLayoutMode::BottomDock {
+                    !prior_expanded
+                } else {
+                    prior_expanded
+                }
+            );
+            state.native = Default::default();
+        }
+    }
+    state.chrome = saved_chrome;
+    state.last_scene = None;
+}
+
+#[cfg(test)]
+fn assert_native_paging(state: &mut PanelState) {
+    use suzaku_map::ime::companion::NativeCandidate;
+    let mut frame = NativeComposition {
+        host: "00000000-0000-0000-0000-000000000003".into(),
+        context: 3,
+        revision: 1,
+        focused: true,
+        private: false,
+        language: "en".into(),
+        seed: "candidate".into(),
+        selected: 0,
+        cursor: None,
+        candidates: (0..13)
+            .map(|index| NativeCandidate {
+                text: format!("candidate {index}"),
+                label: format!("candidate {index}"),
+                ..Default::default()
+            })
+            .collect(),
+    };
+    let (sender, receiver) = mpsc::sync_channel(8);
+    state.native.sender = Some(sender);
+    for selected in [0, 4, 5, 6, 11, 12, 0] {
+        frame.selected = selected;
+        frame.revision += 1;
+        state.receive_native_frame(Some(frame.clone()));
+        let start = selected / 6 * 6;
+        assert_eq!(
+            state.chrome.sentence_candidate_source_indices,
+            (start..(start + 6).min(13)).collect::<Vec<_>>()
+        );
+        assert!(state.chrome.next_token_candidates.is_empty());
+        assert!(state.next_token_completions.is_empty());
+        let scene = state.current_scene();
+        for index in start..(start + 6).min(13) {
+            assert!(
+                scene
+                    .interactive_targets
+                    .iter()
+                    .any(|target| target.kind == InteractionKind::Candidate(index))
+            );
+        }
+        assert!(
+            !scene
+                .interactive_targets
+                .iter()
+                .any(|target| matches!(target.kind, InteractionKind::SelectNextToken(_)))
+        );
+    }
+    // A frame arriving between down/up invalidates page controls just like cards.
+    for touch in [false, true] {
+        let rect = state
+            .interaction_rect(InteractionKind::NativeCandidatePage(true))
+            .unwrap();
+        state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+        state.begin_primary_press(touch);
+        assert_eq!(
+            state.interaction.pressed_interaction,
+            Some(InteractionKind::NativeCandidatePage(true))
+        );
+        frame.cursor = suzaku_map::ime::companion::NativeCursorRect::new(200, 100, 0, 20);
+        state.receive_native_frame(Some(frame.clone()));
+        assert_eq!(state.native.frame.as_ref().unwrap().cursor, frame.cursor);
+        assert_eq!(
+            state.interaction.pressed_interaction,
+            Some(InteractionKind::NativeCandidatePage(true)),
+            "caret movement alone must preserve a valid candidate press"
+        );
+        frame.revision += 1;
+        state.receive_native_frame(Some(frame.clone()));
+        assert!(state.interaction.pressed_interaction.is_none());
+        state.complete_primary_release(touch);
+        assert!(receiver.try_recv().is_err());
+    }
+    // Wheel over the input is not paging; a real candidate region is.
+    state.cursor_position = Some((0.0, 0.0));
+    assert!(!state.scroll_native_candidates(-1.0));
+    assert!(receiver.try_recv().is_err());
+    for frame_first in [false, true] {
+        frame.selected = 0;
+        frame.revision += 1;
+        state.receive_native_frame(Some(frame.clone()));
+        state.change_native_candidate_page(false);
+        assert!(receiver.try_recv().is_err());
+        let rect = state
+            .interaction_rect(InteractionKind::Candidate(5))
+            .unwrap();
+        state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
+        assert!(state.scroll_native_candidates(-1.0));
+        let request = receiver.try_recv().unwrap();
+        assert!(request.command.ends_with(" N6"));
+        assert!(state.chrome.native_candidate_page.unwrap().busy);
+        assert!(
+            state
+                .interaction_rect(InteractionKind::NativeCandidatePage(true))
+                .is_none()
+        );
+        state.change_native_candidate_page(true);
+        assert!(receiver.try_recv().is_err());
+        frame.selected = 6;
+        frame.revision += 1;
+        if frame_first {
+            state.receive_native_frame(Some(frame.clone()));
+        }
+        state.native_action_finished(request.host, request.revision, Ok(true));
+        if !frame_first {
+            assert!(state.chrome.native_candidate_page.unwrap().busy);
+            let mut geometry = state.native.frame.clone().unwrap();
+            geometry.cursor = suzaku_map::ime::companion::NativeCursorRect::new(400, 100, 0, 20);
+            state.receive_native_frame(Some(geometry));
+            assert!(state.native.confirmed_action.is_some());
+            assert!(state.chrome.native_candidate_page.unwrap().busy);
+            state.change_native_candidate_page(true);
+            assert!(receiver.try_recv().is_err());
+            state.receive_native_frame(Some(frame.clone()));
+        }
+        assert!(!state.chrome.native_candidate_page.unwrap().busy);
+        assert_eq!(
+            state.chrome.sentence_candidate_source_indices,
+            [6, 7, 8, 9, 10, 11]
+        );
+    }
+    frame.selected = 12;
+    frame.revision += 1;
+    state.receive_native_frame(Some(frame));
+    state.change_native_candidate_page(true);
+    assert!(receiver.try_recv().is_err());
+    assert!(
+        state
+            .interaction_rect(InteractionKind::Candidate(13))
+            .is_none()
+    );
+    state.leave_native_view();
+    assert!(state.chrome.native_candidate_page.is_none());
+    state.native = Default::default();
 }

@@ -229,6 +229,7 @@ mod tests {
             revision: 4,
             focused: true,
             private: false,
+            cursor: None,
             language: "ja".into(),
             seed: "nihongo".into(),
             selected: 0,
