@@ -4,7 +4,7 @@
     "date": "2026-10-04",
     "head": "89d3184e095cbdf4addf27e7314b63aba1e4934b",
     "dirty": true,
-    "source_sha256": "8eef3fdff70958eb8e186dd331b726b9698c48dd088710b4aad97193cd176f54",
+    "source_sha256": "b17207bb25c5e2966eba9b934521de618358c1240965e2e76bed3526c3b4e6f5",
     "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging；词库扩充见 E-daily-objects；10-04崩溃调查见E-daemon-abort，尚未宣称根因修复；未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
   },
   "architectures": [
@@ -174,7 +174,8 @@
       ],
       "tests": [
         "scripts/test-native-sync.py",
-        "scripts/test-linux-keyboard.py"
+        "scripts/test-linux-keyboard.py",
+        "scripts/test-linux-candidate-window.py"
       ]
     },
     {
@@ -1245,7 +1246,7 @@
         "docs/shortcuts.md"
       ],
       "scope": "2026-10-04英语中英混写边界、词句泛化及EN/ZH候选翻页人机工程；源码和私有IBus回归",
-      "note": "Unreleased — Prose boundaries and consistent candidate paging：统一8种显式标点的词/句/上下文/长稿边界；保护URL等技术词元，保留模型预算及exact prefix；em dash续写保留待确认偏好。三种IBus翻页入口匹配面板页首，边界不改选择/撤回/在途预测。执行范围与红测、夹具契约修正见开发记录；非个人安装、实体键盘或真实模型质量验收，不提高成熟度评分。"
+      "note": "Unreleased — Prose boundaries and consistent candidate paging：统一8种显式标点的词/句/上下文/长稿边界；保护URL等技术词元，保留模型预算及exact prefix；em dash续写保留待确认偏好。三种IBus翻页入口匹配面板页首，边界不改选择/撤回/在途预测。0.8.2首轮CI发现stock-popup夹具仍期待旧clamp，修正后47项真实点击专项通过，失败记录及最终提交发布门禁见开发记录；非个人安装、实体键盘或真实模型质量验收，不提高成熟度评分。"
     },
     {
       "id": "E-daemon-abort",

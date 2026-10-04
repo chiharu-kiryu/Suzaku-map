@@ -59,6 +59,21 @@ all-target Clippy passed again (27 opt-in tests stay separate), together with
 formatting, shell syntax, 21 tensor tests and staged/full-history secret scans.
 Local ShellCheck is not installed; the mandatory CI gate remains enabled.
 
+The first [0.8.2 CI run](https://github.com/chiharu-kiryu/Suzaku-map/actions/runs/37182510232)
+passed Rust, both complete IBus modes, UI, native layout/candidate gates, the
+complete GTK vocabulary gate and physical keyboard checks. Stock-popup navigation
+then failed: its old fixture expected row 9 on a second Down click with ten
+candidates, although the new page-start contract correctly retained row 6.
+The failed log remains at `ci-failed.log` in the preparation directory above.
+The fixture now explicitly requires a partial second page and expects Down
+`6,6,6` / Up `0,0,0`, while preserving all real XTest, accessibility, focus,
+literal draft and exact-save assertions. It additionally checks every observed
+navigation snapshot for page-start selection and unchanged draft/candidate state.
+All 47 stock-popup workflows, including 18 ordinal-glyph checks, passed locally
+after this fixture-only correction (`popup-fixed.log`, owned files at
+`/tmp/suzaku-app-qa.eBXOyy`). Product code and timeouts were not changed; no failed
+CI is reclassified as success, and final-commit CI/packaging must run again.
+
 ### Unreleased — Japanese sentence progress (2026-10-04)
 
 - Fix authored sentences disappearing once Japanese input advances beyond an

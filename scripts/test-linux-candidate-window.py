@@ -164,14 +164,24 @@ def check_popup(bus, x, popup, window, document):
         popup.click(row_text(frame, 0), button)
         qa.wait(lambda: qa.watch.latest["selected"] == expected, "physical scroll moves selection")
         assert qa.seed_is("hel")
-    for control, expected in [("Down", 6), ("Down", len(frame["candidates"]) - 1),
-                              ("Down", len(frame["candidates"]) - 1),
-                              ("Up", len(frame["candidates"]) - 7), ("Up", 0), ("Up", 0)]:
+    assert 6 < len(frame["candidates"]) < 12, "navigation must exercise a partial final page"
+    navigation_frames = len(qa.watch.frames)
+    # Match the shared page-start contract, not the old row-offset clamping:
+    # the final partial page starts at six, and requests beyond either end do nothing.
+    for control, expected in [("Down", 6), ("Down", 6), ("Down", 6),
+                              ("Up", 0), ("Up", 0), ("Up", 0)]:
         popup.click(control)
         qa.wait(lambda: qa.watch.latest["selected"] == expected, "bounded popup page navigation")
         popup.expect_page()
         assert qa.seed_is("hel") and x.focused() == window
     qa.save_document(x, document, "")
+    # Observe the whole navigation interval, including any asynchronously
+    # delivered snapshots from boundary clicks. No transient last-row clamp,
+    # context reset, draft rewrite or candidate replacement is acceptable.
+    for observed in qa.watch.frames[navigation_frames:]:
+        assert observed["selected"] in {0, 6}, ("navigation left a page start", observed)
+        for field in ["host", "context", "version", "language", "seed", "candidates"]:
+            assert observed[field] == frame[field], ("paging changed draft state", field, observed)
     x.key(qa.IBus.KEY_Escape)
     qa.wait(lambda: qa.seed_is(""), "cancel navigation draft")
     popup.expect_hidden()
