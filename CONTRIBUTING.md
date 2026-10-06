@@ -63,10 +63,21 @@ cargo test --locked --all-features --test offline_pack_quality -- --test-threads
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test daily_social_english --test daily_social_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_objects_english --test daily_objects_chinese -- --test-threads=1
+cargo test --locked --all-features --test daily_choices_english --test daily_choices_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_japanese_vocabulary -- --test-threads=1
+cargo test --locked --all-features --test daily_choices_japanese -- --test-threads=1
 cargo test --locked --all-features --test japanese_sentence_progress -- --test-threads=1
+cargo test --locked --all-features --test japanese_reading_boundaries -- --test-threads=1
 cargo test --locked --all-features --test chinese_sentence_continuation -- --test-threads=1
+cargo test --locked --all-features --test chinese_reading_boundaries -- --test-threads=1
+cargo test --locked --all-features --test prediction_protocol --test ime_prediction -- --test-threads=1
+cargo test --locked --all-features --test prediction_preservation --test english_prediction_spacing --test english_protected_context -- --test-threads=1
 ```
+
+To run only the private English/Pinyin word-and-sentence keyboard workflows, use
+`SUZAKU_NATIVE_BILINGUAL_ONLY=1 bash scripts/test-linux-ci.sh ibus` under the same
+serial/resource-safe environment above. Repeat with `SUZAKU_IBUS_INLINE_PREEDIT=1`
+for the alternate preedit mode. A focused pass does not replace the complete IBus gate.
 
 Offline-pack tests use owned data directories and fresh subprocesses, covering the CLI/SDK,
 schema/decoder profiles, append-only rank preservation, conflicts, limits, locks, malformed records,
@@ -87,7 +98,7 @@ adoption/undo and exact commits; see the [N59 audit](docs/bug-audit-english-cont
 Chinese covers 40 known word/phrase
 cases in four spelling forms (160 primary-conversion checks), plus boundary, completion, literal and
 commit checks. These are project-authored regressions, not independent corpus accuracy. The native
-`ibus` gate adds 88 bilingual numeric-adoption/undo/continuation/explicit-commit workflows and
+`ibus` gate adds 96 bilingual numeric-adoption/undo/continuation/explicit-commit workflows and
 the Japanese daily/prefix workflows described below, plus
 64 literal-boundary workflows using owned-prefix key continuation and companion replacement.
 Chinese literal padding, non-Pinyin case and line boundaries also have direct-engine regressions.
@@ -302,8 +313,15 @@ For basic Japanese only, `SUZAKU_VOCABULARY_QA_SCOPE=japanese` exercises four GT
 `SUZAKU_NATIVE_JAPANESE_ONLY=1 bash scripts/test-linux-ci.sh ibus` exercises daily word/sentence
 adoption, exact undo, Space continuity, a later-page literal choice, tail homophones and adopted
 Katakana continuation through private IBus; run both default and inline-preedit modes.
-Independent Japanese data coverage is in `tests/daily_japanese_vocabulary.rs`; reading spaces are
+Independent Japanese data coverage is in `tests/daily_japanese_vocabulary.rs` and
+`tests/daily_choices_japanese.rs`; the latter adds comparisons, preferences and conditions,
+partial Romaji, adopted-word particles and exact word/sentence commits. Reading spaces are
 still conversion separators, with the exact original text available as a literal choice.
+`tests/japanese_reading_boundaries.rs` separately checks unfinished readings before trailing
+horizontal separators, adopted mixed-script word boundaries, exact literal commits and
+non-crossing line boundaries. The private Japanese IBus fixture also exercises actual Space
+events after partial Romaji and `同じ` adoption followed by `kanji`; no physical keyboard
+or personal desktop acceptance is implied.
 For the optional bilingual study/cooking/travel/work packs, use
 `SUZAKU_VOCABULARY_QA_SCOPE=packs bash scripts/test-linux-apps.sh vocabulary`.
 This separate gate uses the selected installation's adjacent `suzaku_tool` to export/install

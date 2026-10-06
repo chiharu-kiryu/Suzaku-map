@@ -606,6 +606,10 @@ static gboolean suzaku_ibus_engine_process_key_event(
         (language == 2 && g_unichar_isalpha(character) &&
          g_unichar_get_script(character) == G_UNICODE_SCRIPT_LATIN) ||
         (language == 1 && (character == 0xfc || character == 0xdc || character == ':')) ||
+        /* The Japanese converter accepts Hiragana seeds as well as Romaji.
+         * Other scripts still pass through outside an active draft. */
+        (language == 3 && g_unichar_isalpha(character) &&
+         g_unichar_get_script(character) == G_UNICODE_SCRIPT_HIRAGANA) ||
         (language == 3 && character == '-') ||
         (self->input->len > 0 && character != 0 && g_unichar_isprint(character))) {
         /* Language converters normalize case themselves; retain the literal fallback here. */

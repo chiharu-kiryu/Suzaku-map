@@ -8,9 +8,10 @@ use crate::languages::{
 
 use super::{PredictionStatus, prediction::PredictionWorker};
 use super::{build_combinations, clamp01, tokenize_seed};
-use crate::languages::llm::{
-    LlmCompletionProvider, LlmCompletionRequest, LlmProviderError, MAX_PREDICTION_SEED_CHARS,
-    completion_fits_budget, normalize_completion_text,
+use crate::languages::llm::{LegacyPredictionAdapter, LlmCompletionProvider};
+use crate::prediction::{
+    MAX_CONTEXT_CHARS, MAX_PREDICTION_SEED_CHARS, PredictionError, PredictionInput,
+    PredictionProvider, completion_fits_budget, normalize_completion_text,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,7 +229,7 @@ pub struct XRTabletImeEngine {
     state: CompositionState,
     prediction: Option<PredictionWorker>,
     prediction_status: PredictionStatus,
-    prediction_error: Option<LlmProviderError>,
+    prediction_error: Option<PredictionError>,
     selection_locked: bool,
     ibus_candidate_mix: bool,
     preferences: super::preferences::SelectionPreferences,
@@ -571,6 +572,13 @@ impl XRTabletImeEngine {
     }
 
     pub fn configure_prediction(&mut self, provider: Option<Arc<dyn LlmCompletionProvider>>) {
+        self.configure_prediction_provider(provider.map(|provider| {
+            Arc::new(LegacyPredictionAdapter(provider)) as Arc<dyn PredictionProvider>
+        }));
+    }
+
+    /// Model-independent prediction entry point. The legacy LLM API bridges here.
+    pub fn configure_prediction_provider(&mut self, provider: Option<Arc<dyn PredictionProvider>>) {
         self.prediction = provider
             .map(|provider| PredictionWorker::new(provider, std::time::Duration::from_millis(120)));
         self.prediction_status = if self.prediction.is_some() {
@@ -585,7 +593,7 @@ impl XRTabletImeEngine {
         self.prediction_status
     }
 
-    pub fn prediction_error(&self) -> Option<&LlmProviderError> {
+    pub fn prediction_error(&self) -> Option<&PredictionError> {
         self.prediction_error.as_ref()
     }
 
@@ -641,7 +649,7 @@ impl XRTabletImeEngine {
             })
             .collect();
         if self.ibus_candidate_mix {
-            let (merged, accepted) = super::candidate_mix::merge_model(
+            let (merged, accepted) = super::candidate_mix::merge_predictions(
                 &self.state.active_language,
                 &self.state.seed_text,
                 local,
@@ -658,7 +666,7 @@ impl XRTabletImeEngine {
                 PredictionStatus::Unavailable
             };
             if !accepted {
-                self.prediction_error = Some(LlmProviderError::NoCandidates);
+                self.prediction_error = Some(PredictionError::NoCandidates);
             }
             let previous = std::mem::replace(&mut self.state.candidates, merged);
             self.apply_preferences(true);
@@ -700,14 +708,14 @@ impl XRTabletImeEngine {
                 label: format!("{text} · AI"),
                 text,
                 score: self.state.confidence,
-                kind: completion.kind.unwrap_or_default(),
+                kind: completion.kind.map(Into::into).unwrap_or_default(),
                 source: super::candidate_mix::CandidateSource::Model,
             });
         }
         self.prediction_status = if merged.len() > pinned_count {
             PredictionStatus::Ready
         } else {
-            self.prediction_error = Some(LlmProviderError::NoCandidates);
+            self.prediction_error = Some(PredictionError::NoCandidates);
             PredictionStatus::Unavailable
         };
         for candidate in local.into_iter().skip(pinned_count) {
@@ -794,12 +802,12 @@ impl XRTabletImeEngine {
             .committed_text
             .chars()
             .rev()
-            .take(160)
+            .take(MAX_CONTEXT_CHARS)
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect();
-        let requested = worker.request(LlmCompletionRequest {
+        let requested = worker.request(PredictionInput {
             language_id: self.state.active_language.clone(),
             seed_text: self.state.seed_text.clone(),
             normalized_phrase: self

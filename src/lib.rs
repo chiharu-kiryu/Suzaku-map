@@ -7,5 +7,6 @@ pub mod languages;
 pub mod lexicon;
 pub mod panel_support;
 pub mod platform;
+pub mod prediction;
 pub mod preferences;
 pub mod ui;

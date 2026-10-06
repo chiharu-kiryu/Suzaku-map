@@ -3,7 +3,7 @@
 A local-first, continuous-writing input method with word and sentence candidates,
 optional language models, and a compact floating companion panel.
 
-**0.8.2 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
+**0.8.3 · Linux / IBus Alpha preview.** Current validation targets **Ubuntu 24.04,
 amd64, IBus, X11 or GNOME with XWayland**. Keep your usual input method available
 as a fallback. Other platforms remain experimental.
 
@@ -34,20 +34,21 @@ as a fallback. Other platforms remain experimental.
   these are **not** eight native input dictionaries.
 - Linux configuration backup and preview-first restore. Packages do not collect personal data.
 
-0.8.2 improves native candidate paging/caret following and adds bottom-docked and platform-aware
-layout choices, retaining leased fallback to the system IBus UI. Built-in fallback now contains
-**6,124 indexed English forms and 2,367 Chinese readings**, with 958 / 980 English / Chinese
-authored sentences, including everyday coordination, social replies and household objects.
+0.8.3 introduces a model-independent prediction protocol with typed word/sentence candidates,
+cancellation, bounded responses and immediate local fallback. Shared validation protects English
+draft prefixes and spacing without restricting model vocabulary to the local dictionary.
+Built-in fallback now contains **6,127 indexed English forms and 2,432 Chinese readings**, with
+1,006 / 1,028 English / Chinese authored sentences, including comparisons, preferences and alternatives.
 Optional packs append to built-ins at process startup; both host and panel need a restart after
 pack changes. Literal spacing, adopted text, Ctrl+Shift+Space and explicit submission remain unchanged.
 **In-memory candidate preferences** still learn only confirmed choices and keep learned local
 sentences available during model refreshes; no typed history is saved. See the
-[release notes](docs/releases/0.8.2.md) and [lexicon scope](data/lexicons/README.md).
+[release notes](docs/releases/0.8.3.md) and [lexicon scope](data/lexicons/README.md).
 Publishing source does not update an existing installation.
 
-Japanese gains 48 additional everyday readings and 48 authored continuations, Romaji boundary
-fixes, suffix homophones and continued typing after a known Katakana choice. Matching sentence
-candidates now survive particles/continued text; line breaks and double-n boundaries are preserved.
+Japanese gains another 48 readings and 48 authored continuations, reaching 122 readings and
+123 continuation records. Fixes preserve known mixed-script words, partial Romaji choices after
+spaces and first-page continuations; Japanese Hiragana can also start a native IBus draft.
 The optional catalog remains eleven data-only packs. This is a small, model-independent fallback, not a full
 Japanese morphological analyzer; see [the data scope](data/lexicons/README.md#日语日常基础扩充未发布).
 
@@ -60,11 +61,11 @@ Get the matching `.deb` and `.sha256` from [Releases](https://github.com/chiharu
 For 0.7.x, source tags can precede downloadable packages; use a release with attached packages or
 build from source. Starting with **0.8.0**, downloadable Linux packages and checksums are a
 [release requirement](docs/linux-packaging-data.md#从-080-开始的发布要求).
-Use the matching 0.8.2 Release assets in the download directory on Ubuntu 24.04 amd64:
+Once published, use the matching 0.8.3 Release assets in the download directory on Ubuntu 24.04 amd64:
 
 ```bash
-sha256sum -c suzaku_0.8.2_amd64.deb.sha256
-sudo apt install ./suzaku_0.8.2_amd64.deb
+sha256sum -c suzaku_0.8.3_amd64.deb.sha256
+sudo apt install ./suzaku_0.8.3_amd64.deb
 ```
 
 Installation alone does not activate an input method or start a user service. Register once
@@ -183,7 +184,7 @@ keys, never real typing logs or credentials. For security concerns, read [SECURI
 - [Keyboard shortcuts / 快捷键](docs/shortcuts.md) — EN/ZH toggle, opt-in IBus home-row layout and in-panel reference
 - [Translation](docs/translation.md) · [Interface languages](docs/interface-languages.md)
 - [Linux installation/data](docs/linux-packaging-data.md) · [Known limitations](docs/known-limitations.md)
-- [0.8.2 release notes](docs/releases/0.8.2.md) · [Development history and architecture](DEVELOPMENT.md)
+- [0.8.3 release notes](docs/releases/0.8.3.md) · [Development history and architecture](DEVELOPMENT.md)
 
 MIT licensed; see [LICENSE](LICENSE). Packages include dependency license metadata and available
 license/notice files. External model weights have their own licenses.

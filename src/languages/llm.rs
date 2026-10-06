@@ -1,36 +1,21 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 
 use crate::ime::{Candidate, LanguagePlugin, build_sentence_candidates_for_variants};
+use crate::languages::BuiltinLanguage;
 
-pub(crate) const MAX_PREDICTION_SEED_CHARS: usize = 256;
-pub(crate) const MAX_GENERATED_CHARS: usize = 160;
-
-/// A complete replacement may repeat the bounded input prefix plus a bounded
-/// addition. Without that exact prefix, retain the small conversion-text cap.
-/// This only checks size; callers still validate prefix semantics and controls.
-pub(crate) fn completion_fits_budget(text: &str, prefix: Option<&str>) -> bool {
-    if text.chars().count() <= MAX_GENERATED_CHARS {
-        return true;
-    }
-    prefix
-        .filter(|prefix| prefix.chars().count() <= MAX_PREDICTION_SEED_CHARS)
-        .and_then(|prefix| text.strip_prefix(prefix))
-        .is_some_and(|suffix| suffix.chars().count() <= MAX_GENERATED_CHARS)
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LlmCompletionRequest {
-    pub language_id: String,
-    pub seed_text: String,
-    pub normalized_phrase: String,
-    /// Only this focused session's own recent commits; never desktop-wide surrounding text.
-    pub context_before_cursor: String,
-    pub confidence: f32,
-    pub degraded: bool,
-}
+// Source-compatible legacy API. New backends implement PredictionProvider.
+#[cfg(test)]
+use crate::prediction::MAX_GENERATED_CHARS;
+pub(crate) use crate::prediction::{
+    MAX_PREDICTION_SEED_CHARS, completion_fits_budget, normalize_completion_text,
+};
+pub use crate::prediction::{
+    PredictionCancellation as LlmCancellation, PredictionError as LlmProviderError,
+    PredictionInput as LlmCompletionRequest,
+};
+use crate::prediction::{
+    PredictionCandidate, PredictionKind, PredictionProvider, PredictionRequest, PredictionResponse,
+};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LlmCompletion {
@@ -38,75 +23,6 @@ pub struct LlmCompletion {
     pub score_bias: f32,
     /// Older/plain-text providers may omit this; the language profile then classifies it.
     pub kind: Option<crate::ime::candidate_mix::CandidateKind>,
-}
-
-/// Trim response padding, never a prefix that already belongs to the user's composition.
-/// This preserves exact indentation/spacing without inventing text the provider omitted.
-pub(crate) fn normalize_completion_text<'a>(text: &'a str, prefix: Option<&str>) -> &'a str {
-    if let Some(prefix) = prefix.filter(|prefix| !prefix.is_empty() && text.starts_with(prefix)) {
-        &text[..text.trim_end().len().max(prefix.len())]
-    } else {
-        text.trim()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LlmProviderError {
-    Cancelled,
-    InvalidEndpoint,
-    Unavailable,
-    Timeout,
-    HttpStatus(u16),
-    InvalidResponse,
-    ResponseTooLarge,
-    NoCandidates,
-    NoLocalModel,
-    CloudConsentRequired,
-    MissingCredentials,
-}
-
-impl std::fmt::Display for LlmProviderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::Cancelled => "模型请求已取消，本地输入不受影响",
-            Self::InvalidEndpoint => "模型配置无效：本地需回环 HTTP，云端需 HTTPS 和明确模型",
-            Self::Unavailable => "模型服务不可用或安全连接失败，本地候选仍可使用",
-            Self::Timeout => "模型请求超时，本地候选仍可使用",
-            Self::HttpStatus(401 | 403) => "模型服务拒绝授权，请检查密钥与访问权限",
-            Self::HttpStatus(404) => "模型或接口不存在，请检查模型配置",
-            Self::HttpStatus(_) => "模型服务返回错误，请检查服务状态",
-            Self::InvalidResponse => "模型响应格式无效，已保留本地候选",
-            Self::ResponseTooLarge => "模型响应过大，已拒绝处理",
-            Self::NoCandidates => "模型未返回有效候选，已保留本地候选",
-            Self::NoLocalModel => "未发现可用本机模型，请启动本地服务或指定模型；未访问云端",
-            Self::CloudConsentRequired => "云端联想尚未授权，输入内容不会发送到云端",
-            Self::MissingCredentials => "模型密钥环境变量未设置或格式无效",
-        })
-    }
-}
-impl std::error::Error for LlmProviderError {}
-
-/// One-way, per-request cancellation. Signalling only sets an atomic flag; it
-/// never waits for network I/O or runs provider code on the input/UI thread.
-#[derive(Clone, Debug, Default)]
-pub struct LlmCancellation(Arc<AtomicBool>);
-
-impl LlmCancellation {
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-
-    pub fn check(&self) -> Result<(), LlmProviderError> {
-        if self.is_cancelled() {
-            Err(LlmProviderError::Cancelled)
-        } else {
-            Ok(())
-        }
-    }
 }
 
 pub trait LlmCompletionProvider: Send + Sync {
@@ -132,6 +48,81 @@ pub trait LlmCompletionProvider: Send + Sync {
         let result = self.generate_checked(request);
         cancellation.check()?;
         result
+    }
+}
+
+impl From<LlmCompletion> for PredictionCandidate {
+    fn from(completion: LlmCompletion) -> Self {
+        use crate::ime::candidate_mix::CandidateKind;
+        Self {
+            text: completion.text,
+            score_bias: completion.score_bias,
+            kind: match completion.kind {
+                Some(CandidateKind::Word) => Some(PredictionKind::Word),
+                Some(CandidateKind::Sentence) => Some(PredictionKind::Sentence),
+                _ => None,
+            },
+        }
+    }
+}
+
+impl From<PredictionCandidate> for LlmCompletion {
+    fn from(candidate: PredictionCandidate) -> Self {
+        use crate::ime::candidate_mix::CandidateKind;
+        Self {
+            text: candidate.text,
+            score_bias: candidate.score_bias,
+            kind: candidate.kind.map(|kind| match kind {
+                PredictionKind::Word => CandidateKind::Word,
+                PredictionKind::Sentence => CandidateKind::Sentence,
+            }),
+        }
+    }
+}
+
+/// Compatibility bridge for existing custom providers; no new methods required.
+pub struct LegacyPredictionAdapter(pub Arc<dyn LlmCompletionProvider>);
+
+impl PredictionProvider for LegacyPredictionAdapter {
+    fn predict(
+        &self,
+        request: &PredictionRequest,
+        cancellation: &LlmCancellation,
+    ) -> Result<PredictionResponse, LlmProviderError> {
+        cancellation.check()?;
+        request.validate()?;
+        let result = self.0.generate_cancellable(&request.input, cancellation);
+        cancellation.check()?;
+        let completions = result?;
+        // Legacy lists were filtered individually by the engine. Keep that
+        // behaviour while ensuring only bounded, well-formed protocol rows cross
+        // the new boundary. Do not let a bad row erase other valid suggestions.
+        let prefix = Some(
+            if BuiltinLanguage::resolve(&request.input.language_id)
+                == Some(BuiltinLanguage::English)
+            {
+                request.input.seed_text.as_str()
+            } else {
+                request.input.normalized_phrase.as_str()
+            },
+        );
+        let candidates = completions
+            .into_iter()
+            .take(crate::prediction::MAX_CANDIDATES)
+            .filter_map(|completion| {
+                let mut candidate: PredictionCandidate = completion.into();
+                candidate.text = normalize_completion_text(&candidate.text, prefix).to_owned();
+                PredictionResponse::new(request, vec![candidate.clone()])
+                    .validate_for(request)
+                    .is_ok()
+                    .then_some(candidate)
+            })
+            .take(request.limits.max_candidates)
+            .collect();
+        let response = PredictionResponse::new(request, candidates);
+        response.validate_for(request)?;
+        cancellation.check()?;
+        Ok(response)
     }
 }
 
@@ -217,6 +208,48 @@ impl LanguagePlugin for LlmLanguagePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_adapter_keeps_raw_english_spacing_when_conversion_differs() {
+        struct Provider;
+        impl LlmCompletionProvider for Provider {
+            fn provider_id(&self) -> &str {
+                "synthetic"
+            }
+
+            fn generate(&self, _: &LlmCompletionRequest) -> Vec<LlmCompletion> {
+                vec![
+                    LlmCompletion::default(),
+                    LlmCompletion {
+                        text: "  help  ".into(),
+                        score_bias: 0.5,
+                        kind: None,
+                    },
+                ]
+            }
+        }
+        let mut request = PredictionRequest::new(
+            1,
+            LlmCompletionRequest {
+                language_id: "en".into(),
+                seed_text: "  hel".into(),
+                normalized_phrase: "  helmet".into(),
+                context_before_cursor: String::new(),
+                confidence: 1.0,
+                degraded: false,
+            },
+        );
+        request.limits.max_candidates = 1;
+        for language in ["en", "en-US", "en_GB"] {
+            request.input.language_id = language.into();
+            let response = LegacyPredictionAdapter(Arc::new(Provider))
+                .predict(&request, &LlmCancellation::default())
+                .unwrap();
+            assert_eq!(response.candidates.len(), 1, "{language}");
+            assert_eq!(response.candidates[0].text, "  help", "{language}");
+            response.validate_for(&request).unwrap();
+        }
+    }
 
     #[test]
     fn completion_budget_bounds_generated_text_without_charging_for_the_typed_prefix() {

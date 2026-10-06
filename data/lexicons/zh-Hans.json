@@ -2368,7 +2368,72 @@
     {"reading": "huan'ge'xiao'de", "text": "换个小的", "kind": "word"},
     {"reading": "zai'gao'yi'dian", "text": "再高一点", "kind": "word"},
     {"reading": "zai'di'yi'dian", "text": "再低一点", "kind": "word"},
-    {"reading": "zhe'yang'zheng'hao", "text": "这样正好", "kind": "word"}
+    {"reading": "zhe'yang'zheng'hao", "text": "这样正好", "kind": "word"},
+    {"reading": "na'ge'geng'hao", "text": "哪个更好", "kind": "word"},
+    {"reading": "na'ge'he'shi", "text": "哪个合适", "kind": "word"},
+    {"reading": "you'shen'me'qu'bie", "text": "有什么区别", "kind": "word"},
+    {"reading": "cha'bie'da'ma", "text": "差别大吗", "kind": "word"},
+    {"reading": "cha'bu'tai'duo", "text": "差不太多", "kind": "word"},
+    {"reading": "ge'you'hao'chu", "text": "各有好处", "kind": "word"},
+    {"reading": "ge'you'you'dian", "text": "各有优点", "kind": "word"},
+    {"reading": "bi'zhi'qian'hao", "text": "比之前好", "kind": "word"},
+    {"reading": "bi'xiang'xiang'zhong'hao", "text": "比想象中好", "kind": "word"},
+    {"reading": "bi'zhe'ge'pian'yi", "text": "比这个便宜", "kind": "word"},
+    {"reading": "geng'fang'bian'yi'xie", "text": "更方便一些", "kind": "word"},
+    {"reading": "geng'sheng'shi'jian", "text": "更省时间", "kind": "word"},
+    {"reading": "geng'rong'yi'yi'xie", "text": "更容易一些", "kind": "word"},
+    {"reading": "mei'na'me'fu'za", "text": "没那么复杂", "kind": "word"},
+    {"reading": "cha'zai'na'li", "text": "差在哪里", "kind": "word"},
+    {"reading": "xian'bi'jiao'yi'xia", "text": "先比较一下", "kind": "word"},
+    {"reading": "wo'geng'xi'huan", "text": "我更喜欢", "kind": "word"},
+    {"reading": "wo'bi'jiao'xi'huan", "text": "我比较喜欢", "kind": "word"},
+    {"reading": "wo'qing'xiang'yu", "text": "我倾向于", "kind": "word"},
+    {"reading": "wo'geng'yuan'yi", "text": "我更愿意", "kind": "word"},
+    {"reading": "wo'xiang'xuan'zhe'ge", "text": "我想选这个", "kind": "word"},
+    {"reading": "wo'xuan'zhe'ge", "text": "我选这个", "kind": "word"},
+    {"reading": "ni'geng'xi'huan'na'ge", "text": "你更喜欢哪个", "kind": "word"},
+    {"reading": "ni'xiang'xuan'na'ge", "text": "你想选哪个", "kind": "word"},
+    {"reading": "an'ni'de'xi'hao", "text": "按你的喜好", "kind": "word"},
+    {"reading": "an'shi'ji'xu'yao", "text": "按实际需要", "kind": "word"},
+    {"reading": "zhe'ge'geng'he'shi", "text": "这个更合适", "kind": "word"},
+    {"reading": "na'ge'ye'bu'cuo", "text": "那个也不错", "kind": "word"},
+    {"reading": "mei'you'te'bie'pian'hao", "text": "没有特别偏好", "kind": "word"},
+    {"reading": "wo'bu'tai'jie'yi", "text": "我不太介意", "kind": "word"},
+    {"reading": "dou'ting'hao'de", "text": "都挺好的", "kind": "word"},
+    {"reading": "xuan'ni'xi'huan'de", "text": "选你喜欢的", "kind": "word"},
+    {"reading": "ru'guo'ke'yi'de'hua", "text": "如果可以的话", "kind": "word"},
+    {"reading": "ru'guo'lai'de'ji", "text": "如果来得及", "kind": "word"},
+    {"reading": "ru'guo'bu'fang'bian", "text": "如果不方便", "kind": "word"},
+    {"reading": "yao'shi'you'kong", "text": "要是有空", "kind": "word"},
+    {"reading": "yao'shi'xia'yu", "text": "要是下雨", "kind": "word"},
+    {"reading": "you'xu'yao'de'hua", "text": "有需要的话", "kind": "word"},
+    {"reading": "bu'zhao'ji'de'hua", "text": "不着急的话", "kind": "word"},
+    {"reading": "shi'jian'yun'xu'de'hua", "text": "时间允许的话", "kind": "word"},
+    {"reading": "kan'tian'qi'zai'ding", "text": "看天气再定", "kind": "word"},
+    {"reading": "kan'qing'kuang'zai'shuo", "text": "看情况再说", "kind": "word"},
+    {"reading": "dao'shi'hou'zai'jue'ding", "text": "到时候再决定", "kind": "word"},
+    {"reading": "zhi'yao'he'shi", "text": "只要合适", "kind": "word"},
+    {"reading": "zhi'yao'fang'bian", "text": "只要方便", "kind": "word"},
+    {"reading": "bu'yi'ding'fei'yao", "text": "不一定非要", "kind": "word"},
+    {"reading": "deng'que'ren'yi'hou", "text": "等确认以后", "kind": "word"},
+    {"reading": "xian'bie'ji'zhe'jue'ding", "text": "先别急着决定", "kind": "word"},
+    {"reading": "huan'ge'ban'fa", "text": "换个办法", "kind": "word"},
+    {"reading": "huan'yi'zhong'fang'shi", "text": "换一种方式", "kind": "word"},
+    {"reading": "hai'you'bie'de'ma", "text": "还有别的吗", "kind": "word"},
+    {"reading": "you'mei'you'bie'de'xuan'ze", "text": "有没有别的选择", "kind": "word"},
+    {"reading": "yao'bu'huan'yi'ge", "text": "要不换一个", "kind": "word"},
+    {"reading": "yao'bu'gai'tian'ba", "text": "要不改天吧", "kind": "word"},
+    {"reading": "xian'shi'shi'kan", "text": "先试试看", "kind": "word"},
+    {"reading": "shi'shi'ling'yi'zhong", "text": "试试另一种", "kind": "word"},
+    {"reading": "shi'zai'bu'xing", "text": "实在不行", "kind": "word"},
+    {"reading": "bu'xing'zai'huan", "text": "不行再换", "kind": "word"},
+    {"reading": "ye'ke'yi'zhe'yang", "text": "也可以这样", "kind": "word"},
+    {"reading": "zhe'yang'ye'xing", "text": "这样也行", "kind": "word"},
+    {"reading": "bu'ru'xian'zhe'yang", "text": "不如先这样", "kind": "word"},
+    {"reading": "xian'an'zhe'ge'lai", "text": "先按这个来", "kind": "word"},
+    {"reading": "liu'ge'bei'xuan", "text": "留个备选", "kind": "word"},
+    {"reading": "zai'xiang'xiang'ban'fa", "text": "再想想办法", "kind": "word"},
+    {"reading": "zhe'ge", "text": "这个", "kind": "word"}
   ],
   "continuations": [
     [
@@ -5804,6 +5869,174 @@
       [
         "换个小的吧，这个放不进去。",
         "换个小的就够了，带着也方便。"
+      ]
+    ],
+    [
+      "哪个更好",
+      [
+        "哪个更好，我们一起看看。",
+        "哪个更好，要看你更在意什么。"
+      ]
+    ],
+    [
+      "有什么区别",
+      [
+        "有什么区别，可以具体说说吗？",
+        "有什么区别，我们对照着看一下。"
+      ]
+    ],
+    [
+      "差别大吗",
+      [
+        "差别大吗，值得换一个吗？",
+        "差别大吗，我想先了解一下。"
+      ]
+    ],
+    [
+      "各有优点",
+      [
+        "各有优点，选适合自己的就好。",
+        "各有优点，我们再比较一下。"
+      ]
+    ],
+    [
+      "更省时间",
+      [
+        "更省时间的话，就按这个办法来。",
+        "更省时间，也方便大家安排。"
+      ]
+    ],
+    [
+      "先比较一下",
+      [
+        "先比较一下价格和使用体验。",
+        "先比较一下，再决定选哪一个。"
+      ]
+    ],
+    [
+      "我更喜欢",
+      [
+        "我更喜欢这个，简单又方便。",
+        "我更喜欢安静一点的地方。"
+      ]
+    ],
+    [
+      "我倾向于",
+      [
+        "我倾向于先试一试，再做决定。",
+        "我倾向于选更方便的那个。"
+      ]
+    ],
+    [
+      "你更喜欢哪个",
+      [
+        "你更喜欢哪个，我们可以一起选。",
+        "你更喜欢哪个颜色？"
+      ]
+    ],
+    [
+      "这个更合适",
+      [
+        "这个更合适，就先用这个吧。",
+        "这个更合适，带着也方便。"
+      ]
+    ],
+    [
+      "没有特别偏好",
+      [
+        "没有特别偏好，你来选就好。",
+        "没有特别偏好，只要方便就行。"
+      ]
+    ],
+    [
+      "选你喜欢的",
+      [
+        "选你喜欢的，不用迁就我。",
+        "选你喜欢的颜色就好。"
+      ]
+    ],
+    [
+      "如果来得及",
+      [
+        "如果来得及，我们就一起过去。",
+        "如果来得及，我想再检查一遍。"
+      ]
+    ],
+    [
+      "如果不方便",
+      [
+        "如果不方便，我们就换个时间。",
+        "如果不方便，不用勉强。"
+      ]
+    ],
+    [
+      "有需要的话",
+      [
+        "有需要的话，随时告诉我。",
+        "有需要的话，我可以帮你看看。"
+      ]
+    ],
+    [
+      "不着急的话",
+      [
+        "不着急的话，我们明天再处理。",
+        "不着急的话，可以多比较几种。"
+      ]
+    ],
+    [
+      "看天气再定",
+      [
+        "看天气再定，下雨就换个安排。",
+        "看天气再定，出门前再确认一下。"
+      ]
+    ],
+    [
+      "等确认以后",
+      [
+        "等确认以后再决定，先不用着急。",
+        "等确认以后，我再告诉你结果。"
+      ]
+    ],
+    [
+      "换个办法",
+      [
+        "换个办法之前，我们先看看问题在哪里。",
+        "换个办法试试，也许会更顺利。"
+      ]
+    ],
+    [
+      "还有别的吗",
+      [
+        "还有别的吗，我想再看看。",
+        "还有别的吗，这个不太合适。"
+      ]
+    ],
+    [
+      "要不换一个",
+      [
+        "要不换一个，试试别的颜色。",
+        "要不换一个时间，大家都方便些。"
+      ]
+    ],
+    [
+      "先试试看",
+      [
+        "先试试看效果，不合适再调整。",
+        "先试试看，不用现在就决定。"
+      ]
+    ],
+    [
+      "实在不行",
+      [
+        "实在不行，我们就改天再试。",
+        "实在不行，先用原来的办法。"
+      ]
+    ],
+    [
+      "留个备选",
+      [
+        "留个备选，免得临时来不及。",
+        "留个备选方案，会更安心一些。"
       ]
     ]
   ]

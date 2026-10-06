@@ -10720,6 +10720,234 @@
         "please keep them in the drawer.",
         "please keep them in the cupboard."
       ]
+    },
+    {
+      "id": "daily_choices",
+      "words": [
+        "depends",
+        "hurry",
+        "simpler"
+      ],
+      "next_words": [
+        [
+          "which one would you",
+          [
+            "choose",
+            "recommend"
+          ]
+        ],
+        [
+          "i prefer the",
+          [
+            "first",
+            "second"
+          ]
+        ],
+        [
+          "i'd rather",
+          [
+            "go",
+            "stay"
+          ]
+        ],
+        [
+          "would you rather",
+          [
+            "walk",
+            "wait"
+          ]
+        ],
+        [
+          "either option is",
+          [
+            "fine",
+            "possible"
+          ]
+        ],
+        [
+          "both options look",
+          [
+            "good",
+            "reasonable"
+          ]
+        ],
+        [
+          "this looks",
+          [
+            "better",
+            "easier"
+          ]
+        ],
+        [
+          "that seems a little",
+          [
+            "expensive",
+            "complicated"
+          ]
+        ],
+        [
+          "could we try something",
+          [
+            "simpler",
+            "different"
+          ]
+        ],
+        [
+          "can we compare the",
+          [
+            "prices",
+            "sizes"
+          ]
+        ],
+        [
+          "what matters most is",
+          [
+            "comfort",
+            "time"
+          ]
+        ],
+        [
+          "i care more about",
+          [
+            "quality",
+            "convenience"
+          ]
+        ],
+        [
+          "if there's enough",
+          [
+            "time",
+            "room"
+          ]
+        ],
+        [
+          "if it doesn't",
+          [
+            "work",
+            "fit"
+          ]
+        ],
+        [
+          "we could always",
+          [
+            "try",
+            "ask"
+          ]
+        ],
+        [
+          "another option would be",
+          [
+            "waiting",
+            "leaving"
+          ]
+        ],
+        [
+          "instead of",
+          [
+            "going",
+            "waiting"
+          ]
+        ],
+        [
+          "let's keep our",
+          [
+            "options",
+            "plans"
+          ]
+        ],
+        [
+          "we don't have to",
+          [
+            "decide",
+            "hurry"
+          ]
+        ],
+        [
+          "i'm happy with",
+          [
+            "either",
+            "this"
+          ]
+        ],
+        [
+          "i'm not sure which",
+          [
+            "one",
+            "way"
+          ]
+        ],
+        [
+          "it depends on the",
+          [
+            "price",
+            "weather"
+          ]
+        ],
+        [
+          "as long as it's",
+          [
+            "quiet",
+            "nearby"
+          ]
+        ],
+        [
+          "we can choose a",
+          [
+            "different",
+            "simpler"
+          ]
+        ]
+      ],
+      "sentences": [
+        "which one would you choose?",
+        "which one would you recommend?",
+        "i prefer the first one.",
+        "i prefer the second one.",
+        "i'd rather go together.",
+        "i'd rather stay here.",
+        "would you rather walk or take the bus?",
+        "would you rather wait or come back later?",
+        "either option is fine with me.",
+        "either option is possible if we plan ahead.",
+        "both options look good to me.",
+        "both options look reasonable to me.",
+        "this looks better than the other one.",
+        "this looks easier than i expected.",
+        "that seems a little expensive for me.",
+        "that seems a little complicated for now.",
+        "could we try something simpler first?",
+        "could we try something different this time?",
+        "can we compare the prices first?",
+        "can we compare the sizes first?",
+        "what matters most is comfort for me.",
+        "what matters most is time today.",
+        "i care more about quality than color.",
+        "i care more about convenience than price.",
+        "if there's enough time, we can walk.",
+        "if there's enough room, we can sit together.",
+        "if it doesn't work, we can try again.",
+        "if it doesn't fit, we can get another one.",
+        "we could always try a different way.",
+        "we could always ask for help.",
+        "another option would be waiting until tomorrow.",
+        "another option would be leaving a little earlier.",
+        "instead of going now, we could wait.",
+        "instead of waiting here, we could come back later.",
+        "let's keep our options open.",
+        "let's keep our plans simple.",
+        "we don't have to decide right now.",
+        "we don't have to hurry if you need more time.",
+        "i'm happy with either option.",
+        "i'm happy with this choice.",
+        "i'm not sure which one to choose.",
+        "i'm not sure which way is easier.",
+        "it depends on the price.",
+        "it depends on the weather.",
+        "as long as it's quiet, i'm happy.",
+        "as long as it's nearby, we can walk.",
+        "we can choose a different place.",
+        "we can choose a simpler plan."
+      ]
     }
   ],
   "phrase_endings": [

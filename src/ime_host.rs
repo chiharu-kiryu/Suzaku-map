@@ -118,9 +118,9 @@ impl HostImeSession {
         }
         let provider = (settings.llm_enabled && !self.private).then(|| {
             Arc::new(HttpModelProvider::new(settings.provider.clone()))
-                as Arc<dyn crate::languages::llm::LlmCompletionProvider>
+                as Arc<dyn crate::prediction::PredictionProvider>
         });
-        self.engine.configure_prediction(provider);
+        self.engine.configure_prediction_provider(provider);
         self.settings = settings;
     }
 

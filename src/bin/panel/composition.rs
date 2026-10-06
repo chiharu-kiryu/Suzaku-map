@@ -79,9 +79,10 @@ impl PanelState {
                         self.last_commit_feedback = None;
                         self.commit_feedback_ticks = 0;
                     }
-                    self.engine.configure_prediction(Some(std::sync::Arc::new(
-                        HttpModelProvider::new(config),
-                    )));
+                    self.engine
+                        .configure_prediction_provider(Some(std::sync::Arc::new(
+                            HttpModelProvider::new(config),
+                        )));
                 }
                 Err(_) => {
                     self.engine.configure_prediction(None);

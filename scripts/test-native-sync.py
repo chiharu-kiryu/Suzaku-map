@@ -3258,14 +3258,33 @@ def check_japanese_daily_workflows(bus):
         wait(lambda: watch.latest["focused"] and watch.latest["context"] > previous_context,
              "Japanese fixture owns a fresh input context")
 
-        def start(seed):
+        def reset_draft():
             previous_context = watch.latest["context"]
             peer.event("Reset")
             wait(lambda: watch.latest["context"] > previous_context and not watch.latest["seed"],
                  "Japanese reset acknowledged before typing")
+
+        def start(seed):
+            reset_draft()
             type_seed(peer, seed)
             wait(lambda: watch.latest["seed"] == seed and watch.latest["language"] == "ja",
-                 "Japanese romaji draft")
+                 "Japanese reading draft")
+
+        def rejected_starters(label, keys):
+            baseline, before = watch.latest, len(peer.commits)
+            assert not baseline["seed"] and not baseline["candidates"], (label, baseline)
+            for key, mask in keys:
+                assert not peer.process_key_event(key, 0, mask), (label, hex(key), int(mask))
+            # EnginePeer events are synchronous. A new snapshot then observes
+            # their completed effects instead of mistaking a quiet watch for a no-op.
+            current = Watch()
+            try:
+                wait(lambda: current.latest is not None, f"{label} starter boundary snapshot")
+                assert current.latest == baseline, (label, baseline, current.latest)
+                assert len(peer.commits) == before, (label, peer.commits[before:])
+            finally:
+                watchers.remove(current)
+                current.sock.close()
 
         def select(text):
             index = next(i for i, item in enumerate(watch.latest["candidates"]) if item["text"] == text)
@@ -3280,8 +3299,11 @@ def check_japanese_daily_workflows(bus):
                  "Japanese keyboard candidate selection")
 
         def adopt(text, kind="word"):
-            index = next(i for i, item in enumerate(watch.latest["candidates"][:6])
-                         if item["text"] == text and item["kind"] == kind and item["source"] == "local")
+            matches = [i for i, item in enumerate(watch.latest["candidates"][:6])
+                       if item["text"] == text and item["kind"] == kind and item["source"] == "local"]
+            assert matches, {"seed": watch.latest["seed"], "expected": text, "kind": kind,
+                             "candidates": watch.latest["candidates"]}
+            index = matches[0]
             assert watch.latest["selected"] < 6, "numeric adoption starts on the first page"
             before = len(peer.commits)
             assert peer.process_key_event(IBus.KEY_1 + index)
@@ -3301,11 +3323,66 @@ def check_japanese_daily_workflows(bus):
                  and watch.latest["context"] > previous_context,
                  "Japanese explicit Enter submits exactly one payload")
 
+        hiragana_key = IBus.unicode_to_keyval("ひ")
+        start("")
+        before = len(peer.commits)
+        assert peer.process_key_event(hiragana_key), "Japanese Hiragana first key leaked to the application"
+        wait(lambda: watch.latest["seed"] == "ひ", "Hiragana begins an empty Japanese draft")
+        assert len(peer.commits) == before
+        type_seed(peer, "かく")
+        wait(lambda: watch.latest["seed"] == "ひかく", "Hiragana continues without losing its first key")
+        for kind, text in [("word", "比較"), ("sentence", "比較してから決めたいです。")]:
+            assert any(item["text"] == text and item["kind"] == kind and item["source"] == "local"
+                       for item in watch.latest["candidates"][:6]), (text, watch.latest)
+        assert len(peer.commits) == before
+
+        start("")
+        rejected_starters("Japanese non-reading idle keys", [
+            (IBus.unicode_to_keyval(char), 0) for char in ["、", "。", "「", " ", "0", "9", "９", "ヒ", "日", "😀", "\u3099"]
+        ] + [(IBus.KEY_KP_1, 0)])
+        rejected_starters("Japanese application chords and release", [
+            (hiragana_key, mask) for mask in [IBus.ModifierType.CONTROL_MASK, IBus.ModifierType.MOD1_MASK,
+                                            IBus.ModifierType.SUPER_MASK, IBus.ModifierType.RELEASE_MASK]
+        ])
+        for language in ["en", "zh-Hans"]:
+            assert json.loads(command("L" + language))["ok"]
+            wait(lambda: watch.latest["language"] == language and not watch.latest["seed"],
+                 "confirm non-Japanese starter language")
+            reset_draft()
+            rejected_starters(language + " Hiragana pass-through", [(hiragana_key, 0)])
+        assert json.loads(command("Lja"))["ok"]
+        wait(lambda: watch.latest["language"] == "ja" and not watch.latest["seed"],
+             "restore Japanese starter language")
+        for purpose in [IBus.InputPurpose.PASSWORD, IBus.InputPurpose.PIN, IBus.InputPurpose.DIGITS,
+                        IBus.InputPurpose.NUMBER, IBus.InputPurpose.PHONE]:
+            # These purposes bypass all composition; FREE_FORM + PRIVATE hint
+            # deliberately still permits local typing and is not a bypass case.
+            peer.set_content_type(purpose)
+            wait(lambda: watch.latest["private"] and not watch.latest["seed"],
+                 "confirm Japanese bypass input purpose")
+            rejected_starters(f"Japanese bypass purpose {int(purpose)}", [(hiragana_key, 0)])
+            peer.set_content_type(IBus.InputPurpose.FREE_FORM)
+            wait(lambda: not watch.latest["private"] and not watch.latest["seed"],
+                 "restore public Japanese starter input")
+        previous_context = watch.latest["context"]
+        peer.event("FocusOut")
+        wait(lambda: watch.latest["context"] > previous_context and not watch.latest["focused"]
+             and not watch.latest["seed"], "confirm Japanese starter focus-out")
+        rejected_starters("unfocused Japanese Hiragana", [(hiragana_key, 0)])
+        previous_context = watch.latest["context"]
+        peer.event("FocusIn")
+        wait(lambda: watch.latest["context"] > previous_context and watch.latest["focused"]
+             and not watch.latest["seed"], "restore Japanese starter focus")
+
         daily_cases = [
             ("sumimasen", "すみません", "すみません、もう一度お願いします。"),
             ("onegaishimasu", "お願いします", "お願いします。終わったら教えてください。"),
             ("yotei", "予定", "予定が決まったら連絡します。"),
             ("JYUNBI", "準備", "準備ができたら連絡します。"),
+            ("KONOMI", "好み", "好みに合わせて選んでください。"),
+            ("jouke", "条件", "条件が合えば、こちらを選びます。"),
+            ("ひかく", "比較", "比較してから決めたいです。"),
+            ("yo  san", "予算", "予算に合わせて選びましょう。"),
         ]
         for seed, word, sentence in daily_cases:
             for kind, expected in [("word", word), ("sentence", sentence)]:
@@ -3321,10 +3398,38 @@ def check_japanese_daily_workflows(bus):
                 adopt(expected, kind)
                 submit(expected)
 
+        partial_space_cases = [
+            ("nihong", "日本語", "日本語を勉強しています。"),
+            ("JYUNB", "準備", "準備ができたら連絡します。"),
+            ("jouk", "条件", "条件が合えば、こちらを選びます。"),
+        ]
+        for seed, word, sentence in partial_space_cases:
+            for kind, expected in [("word", word), ("sentence", sentence)]:
+                start(seed)
+                before = len(peer.commits)
+                assert any(item["text"] == expected and item["kind"] == kind and item["source"] == "local"
+                           for item in watch.latest["candidates"][:6]), (seed, expected, watch.latest)
+                assert peer.process_key_event(IBus.KEY_space)
+                spaced = seed + " "
+                wait(lambda: watch.latest["seed"] == spaced, "Space preserves the unfinished Japanese reading")
+                assert len(peer.commits) == before
+                adopt(expected, kind)
+                undo(spaced)
+                assert len(peer.commits) == before
+                submit(spaced)
+                start(seed)
+                assert peer.process_key_event(IBus.KEY_space)
+                wait(lambda: watch.latest["seed"] == spaced, "repeat the unfinished reading with literal Space")
+                adopt(expected, kind)
+                submit(expected)
+                assert peer.commits[before:] == [spaced, expected]
+
         continuation_cases = [
             ("yotei", "予定", "ga", "予定が決まったら連絡します。"),
             ("nihongo", "日本語", "wo", "日本語を勉強しています。"),
             ("JYUNBI", "準備", "gadeki", "準備ができたら連絡します。"),
+            ("KONOMI", "好み", "ni", "好みに合わせて選んでください。"),
+            ("jouke", "条件", "ga", "条件が合えば、こちらを選びます。"),
         ]
         for seed, word, suffix, sentence in continuation_cases:
             start(seed)
@@ -3365,6 +3470,22 @@ def check_japanese_daily_workflows(bus):
             adopt(alternate)
             submit(alternate)
 
+        start("onaji")
+        before = len(peer.commits)
+        adopt("同じ")
+        type_seed(peer, "kanji")
+        wait(lambda: watch.latest["seed"] == "同じkanji", "romaji follows the adopted mixed-script word")
+        assert watch.latest["candidates"][0]["text"] == "同じ漢字", watch.latest
+        # The adopted final じ must not be consumed as the start of じかん/時間.
+        # The existing explicit Katakana variant remains a separate valid choice.
+        assert all(item["text"] != "同時間じ" for item in watch.latest["candidates"]), watch.latest
+        adopt("同じ感じ")
+        undo("同じkanji")
+        assert len(peer.commits) == before
+        adopt("同じ感じ")
+        submit("同じ感じ")
+        assert peer.commits[before:] == ["同じ感じ"]
+
         start("denn")
         before = len(peer.commits)
         assert any(item["text"] == "でん" for item in watch.latest["candidates"]), \
@@ -3378,20 +3499,30 @@ def check_japanese_daily_workflows(bus):
         submit("電話")
         assert peer.commits[before:] == ["電話"]
 
-        start("nihongo")
-        adopt("ニホンゴ")
-        type_seed(peer, "wobenky")
-        wait(lambda: watch.latest["seed"] == "ニホンゴwobenky", "romaji continues the adopted katakana")
-        adopt("ニホンゴを勉強")
-        undo("ニホンゴwobenky")
-        adopt("ニホンゴを勉強")
-        submit("ニホンゴを勉強")
+        for trailing_space in [False, True]:
+            start("nihongo")
+            before = len(peer.commits)
+            adopt("ニホンゴ")
+            type_seed(peer, "wobenky")
+            wait(lambda: watch.latest["seed"] == "ニホンゴwobenky", "romaji continues the adopted katakana")
+            raw = "ニホンゴwobenky"
+            if trailing_space:
+                assert peer.process_key_event(IBus.KEY_space)
+                raw += " "
+                wait(lambda: watch.latest["seed"] == raw, "Space keeps the adopted katakana and partial reading")
+                assert len(peer.commits) == before
+            adopt("ニホンゴを勉強")
+            undo(raw)
+            assert len(peer.commits) == before
+            adopt("ニホンゴを勉強")
+            submit("ニホンゴを勉強")
+            assert peer.commits[before:] == ["ニホンゴを勉強"]
         start("as")
         literal_index = next(i for i, item in enumerate(watch.latest["candidates"])
                              if item["text"] == "as" and item["kind"] == "literal")
         assert literal_index >= 6, "Japanese literal fixture must exercise a later candidate page"
         submit("as")
-        print(f"PASS: {len(daily_cases) * 2} JA daily word/sentence workflows, {len(continuation_cases)} sentence-progress and {len(continuation_cases)} conflicting-tail workflows, 2 homophone variants, nn/consonant transition, adopted katakana continuation and later-page literal submission preserve numeric adoption, spelling undo, literal Space and exact Enter commits")
+        print(f"PASS: JA Hiragana first-key entry and language/punctuation/digit/Katakana/modifier/bypass/focus guards; {len(daily_cases) * 2} JA daily word/sentence workflows, {len(partial_space_cases) * 2} unfinished-reading Space workflows, {len(continuation_cases)} sentence-progress and {len(continuation_cases)} conflicting-tail workflows, 2 homophone variants, adopted mixed-script prefix isolation, nn/consonant transition, adopted katakana continuation before/after Space and later-page literal submission preserve numeric adoption, spelling undo, literal Space and exact Enter commits")
     finally:
         peer.close()
         assert json.loads(command("L" + saved["language"]))["ok"]
@@ -3699,6 +3830,9 @@ def check_bilingual_core_completion(context, watch, commits):
         ("en", "please send", "please send me", "please send me the details."),
         ("en", "thank you", "thank you for", "thank you for your help"),
         ("zh-Hans", "shu ru fa", "输入法", "输入法支持多种语言。"),
+        ("zh-Hans", "ZHONG W ", "中文", "中文输入很方便。"),
+        ("zh-Hans", "shu ru f  ", "输入法", "输入法支持多种语言。"),
+        ("zh-Hans", "fa yin ke y ", "发音可以", "发音可以再示范一下吗？"),
         ("zh-Hans", "ji xu", "继续", "继续完善这个功能。"),
         ("zh-Hans", "wo xi huan bei j", "我喜欢北京", "我喜欢北京的文化。"),
         ("en", "please attach the inv", "please attach the invoice", "please attach the invoice."),
@@ -3735,6 +3869,10 @@ def check_bilingual_core_completion(context, watch, commits):
         ("zh-Hans", "fang hui yuan chu", "放回原处", "放回原处之前，记得擦干净。"),
         ("zh-Hans", "gou'bu'gou", "够不够", "够不够，不够我再拿一点。"),
         ("zh-Hans", "hai sheng duo shao", "还剩多少", "还剩多少，我们先数一下。"),
+        ("en", "I’d rather st", "I’d rather stay", "I’d rather stay here."),
+        ("en", "i  prefer  the  se", "i  prefer  the  second", "i  prefer  the  second one."),
+        ("zh-Hans", "WO GENG XI HUAN", "我更喜欢", "我更喜欢这个，简单又方便。"),
+        ("zh-Hans", "ru guo bu fang bia", "如果不方便", "如果不方便，我们就换个时间。"),
     ]
 
     def adopt(text):
@@ -3744,9 +3882,11 @@ def check_bilingual_core_completion(context, watch, commits):
 
     for language, seed, word, sentence in cases:
         for kind, selected in [("word", word), ("sentence", sentence)]:
+            previous_context = watch.latest["context"]
             context.reset()
+            wait(lambda: watch.latest["context"] > previous_context and not watch.latest["seed"],
+                 "bilingual reset acknowledged before language or typing")
             assert json.loads(command("L" + language))["ok"]
-            wait(lambda: not watch.latest["seed"], "clear bilingual test draft")
             before = len(commits)
             type_seed(context, seed)
             wait(lambda: watch.latest["seed"] == seed, "spaces/apostrophes do not end the draft")
@@ -5595,6 +5735,17 @@ try:
         raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_JAPANESE_ONLY") == "1":
         check_japanese_daily_workflows(bus)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_BILINGUAL_ONLY") == "1":
+        context = create_context(bus, "suzaku-bilingual-qa")
+        commits = []
+        context.connect("commit-text", lambda _, text: commits.append(text.get_text()))
+        context.focus_in()
+        assert bus.set_global_engine("dev.suzaku.linux.ime")
+        assert json.loads(command("P0"))["ok"]
+        watch = Watch()
+        wait(lambda: watch.latest is not None and watch.latest["focused"], "bilingual-only context")
+        check_bilingual_core_completion(context, watch, commits)
         raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_SHORTCUTS_ONLY") == "1":
         check_candidate_page_boundaries(bus)

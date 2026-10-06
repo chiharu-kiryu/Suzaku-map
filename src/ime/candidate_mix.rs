@@ -7,6 +7,7 @@ use crate::languages::{
         LlmCompletion, MAX_PREDICTION_SEED_CHARS, completion_fits_budget, normalize_completion_text,
     },
 };
+use crate::prediction::{PredictionCandidate, PredictionKind};
 use std::collections::HashSet;
 
 pub const PAGE_SIZE: usize = 6;
@@ -36,6 +37,15 @@ impl CandidateKind {
             "word" => Some(Self::Word),
             "sentence" => Some(Self::Sentence),
             _ => None,
+        }
+    }
+}
+
+impl From<PredictionKind> for CandidateKind {
+    fn from(kind: PredictionKind) -> Self {
+        match kind {
+            PredictionKind::Word => Self::Word,
+            PredictionKind::Sentence => Self::Sentence,
         }
     }
 }
@@ -135,9 +145,9 @@ pub fn offline(
     if seed.chars().count() > MAX_PREDICTION_SEED_CHARS {
         return vec![candidate(seed.into(), CandidateKind::Literal, 100.0)];
     }
-    let is_chinese = matches!(
+    let is_cjk = matches!(
         BuiltinLanguage::resolve(language),
-        Some(BuiltinLanguage::ChineseSimplified)
+        Some(BuiltinLanguage::ChineseSimplified | BuiltinLanguage::Japanese)
     );
     let mut pool: Vec<_> = base
         .into_iter()
@@ -152,10 +162,11 @@ pub fn offline(
                 100.0
             } else if kind == CandidateKind::Literal {
                 55.0
-            } else if is_chinese && kind == CandidateKind::Sentence {
-                // Alternative Pinyin paths such as 你号/呢好 are not authored
-                // continuations. Keep them below explicit local/model sentences
-                // without displacing the primary conversion or known-word choices.
+            } else if is_cjk && kind == CandidateKind::Sentence {
+                // Alternative Pinyin paths or Japanese script variants are
+                // conversions, not authored continuations. Keep them below
+                // explicit local/model sentences without displacing the primary
+                // conversion or known-word choices.
                 74.0 - index as f32 * 0.5
             } else {
                 94.0 - index as f32 * 2.0
@@ -268,8 +279,25 @@ fn native_payload_budget(seed: &str, pool: Vec<Candidate>, limit: usize) -> Vec<
 pub fn merge_model(
     language: &str,
     seed: &str,
-    mut local: Vec<Candidate>,
+    local: Vec<Candidate>,
     completions: Vec<LlmCompletion>,
+    limit: usize,
+) -> (Vec<Candidate>, bool) {
+    merge_predictions(
+        language,
+        seed,
+        local,
+        completions.into_iter().map(Into::into).collect(),
+        limit,
+    )
+}
+
+/// Mix provider-neutral replacements without exposing backend or UI metadata to providers.
+pub fn merge_predictions(
+    language: &str,
+    seed: &str,
+    mut local: Vec<Candidate>,
+    completions: Vec<PredictionCandidate>,
     limit: usize,
 ) -> (Vec<Candidate>, bool) {
     let pinned = pinned_count(language, &local);
@@ -289,10 +317,11 @@ pub fn merge_model(
         {
             continue;
         }
-        let kind = match completion.kind {
+        let hint = completion.kind.map(CandidateKind::from);
+        let kind = match hint {
             // A provider's type hint cannot turn an English sentence into a word.
             Some(CandidateKind::Word) if language == "en" => classify(language, seed, &text),
-            Some(CandidateKind::Word | CandidateKind::Sentence) => completion.kind.unwrap(),
+            Some(CandidateKind::Word | CandidateKind::Sentence) => hint.unwrap(),
             _ => classify(language, seed, &text),
         };
         let weight = (if kind == CandidateKind::Word {

@@ -108,6 +108,52 @@ fn particles_after_known_words_keep_matching_authored_sentences_on_page_one() {
 }
 
 #[test]
+fn authored_progress_survives_extra_word_and_katakana_competition_on_page_one() {
+    for (seed, katakana, katakana_kind) in [
+        ("準備gadeki", "準備ガデキ", CandidateKind::Sentence),
+        (
+            "JYUNBI GADEKI",
+            "ジュンビガデキ",
+            CandidateKind::Unspecified,
+        ),
+        (
+            "じゅんびができ",
+            "ジュンビガデキ",
+            CandidateKind::Unspecified,
+        ),
+        (
+            "じゅんび ができ",
+            "ジュンビガデキ",
+            CandidateKind::Unspecified,
+        ),
+    ] {
+        let mut ime = engine(seed);
+        assert_local_draft(&ime, seed);
+        // Both an alternate script conversion and the newer できれば word
+        // completion compete here. Neither may push the authored continuation
+        // off page one or replace the user's primary unfinished conversion.
+        let primary = &ime.candidates()[0];
+        assert_eq!(primary.text, "準備ができ", "{seed:?}");
+        assert_eq!(primary.kind, CandidateKind::Sentence);
+        assert_eq!(primary.score, 100.0);
+        // Pure phonetic variants remain untyped; a mixed written conversion
+        // is a Sentence. Ranking must not relabel either to manufacture a slot.
+        assert!(
+            ime.candidates()
+                .iter()
+                .any(|candidate| { candidate.text == katakana && candidate.kind == katakana_kind })
+        );
+        assert!(ime.candidates().iter().any(|candidate| {
+            candidate.text == "準備ができれば" && candidate.kind == CandidateKind::Word
+        }));
+        index(&ime, READY, CandidateKind::Sentence);
+        commit_once_and_undo(&mut ime, READY, CandidateKind::Sentence);
+        commit_once_and_undo(&mut engine(seed), "準備ができ", CandidateKind::Sentence);
+        commit_once_and_undo(&mut engine(seed), seed, CandidateKind::Literal);
+    }
+}
+
+#[test]
 fn every_typed_literal_prefix_of_an_authored_sentence_is_preserved() {
     for (trigger, expected) in [("予定", PLAN), ("日本語", STUDY), ("準備", READY)] {
         let mut ime = engine(trigger);
@@ -167,6 +213,11 @@ fn unknown_prefixes_or_conflicting_tails_cannot_be_dropped_to_offer_known_senten
         "前置き予定が".to_owned(),
         "https://予定が".to_owned(),
         "yoteigakim".to_owned(),
+        "準備gadekixyz".to_owned(),
+        "JYUNBI GADEKIMASEN".to_owned(),
+        "じゅんびができない".to_owned(),
+        "🙂準備gadeki".to_owned(),
+        "xyzJYUNBI GADEKI".to_owned(),
         format!("{}予定が", "前文".repeat(150)),
     ];
     for seed in unsupported {

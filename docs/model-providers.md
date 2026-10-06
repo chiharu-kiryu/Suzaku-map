@@ -1,8 +1,61 @@
 # 模型服务：本地优先，与具体模型解耦
 
-中、英、日文共用 `LlmCompletionProvider` 候选接口。`HttpModelProvider` 根据协议封装请求，
-不根据模型名称判断行为。`languages::llama` 与 `suzaku_tool llama` 保留兼容入口；
-新增适配器可以实现该候选接口，不必改动键盘事件、离线词库或语言转换。
+中、英、日文共用模型无关的 `prediction::PredictionProvider` 候选协议。
+`HttpModelProvider` 根据服务协议封装请求，不根据模型名称判断行为。
+旧 `LlmCompletionProvider`、`languages::llama` 与 `suzaku_tool llama` 保留兼容入口；
+新增适配器实现统一预测协议，不必改动键盘事件、离线词库或语言转换。
+
+## 输入预测协议 v1（开发版）
+
+实际调用链为：引擎 → 有界异步 worker → `PredictionProvider` → 后端适配器。
+Linux 宿主和独立面板都走此入口；本地发现、云端授权及传输仍由 HTTP 适配器负责。
+这是应用内可序列化的任务协议，**不是新增网络监听服务，也不是要求模型直接输出协议包**。
+它与配置中的 `llm_protocol` 不同：后者选择 Ollama 或 compatible 的 HTTP 外层格式。
+
+公开类型位于 [`src/prediction/mod.rs`](../src/prediction/mod.rs)：
+
+| 类型 | 契约 |
+| --- | --- |
+| `PredictionRequest` | `version`、`request_id`、`input`、`output`、`limits` |
+| `PredictionInput` | 语言 ID、精确原始草稿、本地转换、会话提交上下文、置信度与降级状态 |
+| `PredictionOutput` | v1 只接受 `complete_draft_replacement`：完整替换当前可编辑草稿，不是追加 token 或提交命令 |
+| `PredictionResponse` | 对应版本和请求编号，以及候选列表；编号由适配器回传，不让语言模型生成 |
+| `PredictionCandidate` | 纯正文、相对排序提示、可选 `word` / `sentence` 类型；没有 UI 标签或原样输入类型 |
+| `PredictionCancellation` / `PredictionError` | 协作取消、结构错误和后端失败；失败保持离线输入可用 |
+
+`PredictionRequest::new(id, input)` 使用 v1 默认预算：最多 6 条候选，原始草稿最多
+256 个 Unicode 字符、会话提交上下文最多 160 字符；本地转换传入上限为 416 字符。
+候选默认最多新增 160 字符，只有精确匹配且不超过 256 字符的本地转换前缀才不计入
+新增预算；其他替换正文整体限 160 字符。调用方可缩小候选数和新增字符预算，不能扩张
+全局上限。HTTP 适配器过滤超限项而不截断正文。权重不是概率，其影响仍由引擎限幅。
+
+请求和响应支持 Serde JSON 往返，保留 Unicode、缩进及连续空格。worker 在调用前
+验证请求、调用后验证版本/编号/数量/字符预算/控制字符/有限权重，同时保留自身的
+revision 屏障，不信任响应编号来替代本地过期判断。结构校验不是语言质量认证；
+语言前缀与补全规则、词句混排分别属于任务策略和引擎。
+
+2026-10-06 补齐了所有后端共用的草稿保护：结构校验后，worker 通过
+[`prediction/policy.rs`](../src/prediction/policy.rs) 逐项过滤丢失英文前文/缩进、
+仅回显原稿或生成请求字段的候选，再交给面板/IBus 限额与混排。坏候选不会遮住同批
+有效候选，全无效时保留完整本地候选并报告 `NoCandidates`。
+英文以原始草稿为准，不强制采用本地首选词；有本地补全证据的半词如 `hel` 不能
+变成 `hel there`，但仅仅未收录本地词库的词不会因此禁止独立后端继续预测。
+拼音、罗马音与同音转换不受英文前缀规则约束。字段回显判断只检查生成段，保留用户
+已输入的 JSON、Unicode 前缀以及合法的中日文转换。HTTP 原有的转换前缀和短句策略仍
+独立保留；这些检查不代表对任意语言的正确性保证。
+
+新增后端只需实现 `PredictionProvider::predict`，并通过引擎的
+`configure_prediction_provider` 接入；既可以适配聊天模型，也可以直接返回预测结构。
+适配器应先检查取消和请求有效性，限制自己的 I/O，返回 `PredictionResponse::new`
+关联的完整结果。端点、模型标识、认证、采样参数和发现缓存均不属于输入协议。
+旧 `configure_prediction` 通过 `LegacyPredictionAdapter` 桥接；旧实现不需新增方法，
+旧请求的字段与候选 struct literal 保留。旧候选列表的逐项过滤行为也保留。
+
+[`prediction/prompt.rs`](../src/prediction/prompt.rs) 集中管理聊天模型的输入字段、
+语言提示、精简 schema 和候选内容解析；HTTP 模块只组合供应商 envelope 并处理
+传输及外层完成状态。当前仍发送原来的双字符串候选提示，不因分层改变小模型负担。
+v1 不增加桌面周边文本采集、不扩大上下文、不支持 token 流式展示、任意编辑范围或
+工具调用；这些需要后续明确协议扩展与独立验收，不能用此重构宣称预测质量已提升。
 
 显式[文本翻译](translation.md)使用独立的 `TranslationProvider` 接口和翻译提示，共用同一个
 `HttpModelProvider` 配置与安全传输。翻译总超时为 30 秒，不使用候选联想的 20–5000 ms

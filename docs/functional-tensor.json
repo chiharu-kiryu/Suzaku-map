@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "snapshot": {
-    "date": "2026-10-04",
-    "head": "89d3184e095cbdf4addf27e7314b63aba1e4934b",
+    "date": "2026-10-06",
+    "head": "a019b7cab9e065ea4c722c916af050b3cd4cdf6d",
     "dirty": true,
-    "source_sha256": "b17207bb25c5e2966eba9b934521de618358c1240965e2e76bed3526c3b4e6f5",
-    "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging；词库扩充见 E-daily-objects；10-04崩溃调查见E-daemon-abort，尚未宣称根因修复；未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
+    "source_sha256": "bb23a161449df8587e25d70aa07af082fdc065a75a4c5b5ce7ad232f9d834c1a",
+    "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging、E-chinese-partial-spacing；词库扩充见 E-daily-objects、E-daily-choices、E-japanese-choices；10-04崩溃调查见E-daemon-abort，按用户要求暂缓而非已修复；当前未提交快照未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
   },
   "architectures": [
     {
@@ -231,6 +231,7 @@
       ],
       "tests": [
         "tests/input_edge_audit_budget.rs",
+        "tests/english_prediction_spacing.rs",
         "tests/ime_prediction.rs"
       ]
     },
@@ -292,9 +293,12 @@
       ],
       "tests": [
         "tests/english_completion_quality.rs",
+        "tests/english_protected_context.rs",
+        "tests/english_prediction_spacing.rs",
         "tests/input_edge_audit_english.rs",
         "tests/daily_social_english.rs",
-        "tests/daily_objects_english.rs"
+        "tests/daily_objects_english.rs",
+        "tests/daily_choices_english.rs"
       ]
     },
     {
@@ -310,7 +314,9 @@
         "tests/chinese_completion_quality.rs",
         "tests/input_edge_audit_chinese.rs",
         "tests/chinese_sentence_continuation.rs",
-        "tests/daily_objects_chinese.rs"
+        "tests/chinese_reading_boundaries.rs",
+        "tests/daily_objects_chinese.rs",
+        "tests/daily_choices_chinese.rs"
       ]
     },
     {
@@ -326,7 +332,9 @@
         "src/languages/japanese.rs",
         "tests/lexicon_resources.rs",
         "tests/daily_japanese_vocabulary.rs",
+        "tests/daily_choices_japanese.rs",
         "tests/japanese_sentence_progress.rs",
+        "tests/japanese_reading_boundaries.rs",
         "tests/fallback_vocabulary.rs",
         "scripts/test-native-sync.py",
         "scripts/test-linux-vocabulary.py"
@@ -397,11 +405,16 @@
       "scope": "本地Ollama + 显式授权compatible HTTPS",
       "paths": [
         "src/languages/model.rs",
+        "src/prediction/mod.rs",
+        "src/prediction/prompt.rs",
+        "src/prediction/policy.rs",
         "src/languages/model/transport.rs",
         "src/bin/suzaku_tool/model.rs"
       ],
       "tests": [
         "tests/model_provider_cli.rs",
+        "tests/prediction_protocol.rs",
+        "tests/prediction_preservation.rs",
         "tests/ime_prediction.rs",
         "tests/functional_network_audit.rs"
       ]
@@ -423,14 +436,19 @@
     {
       "id": "prediction",
       "a": "A04",
-      "title": "防抖工作线程/取消",
+      "title": "统一预测协议/防抖工作线程/取消",
       "scope": "共享引擎；本地连接后可取消",
       "paths": [
         "src/ime/prediction.rs",
+        "src/prediction/mod.rs",
+        "src/prediction/policy.rs",
+        "src/languages/llm.rs",
         "src/languages/model/transport.rs"
       ],
       "tests": [
         "tests/ime_prediction.rs",
+        "tests/prediction_protocol.rs",
+        "tests/prediction_preservation.rs",
         "src/languages/model/cancellation_tests.rs",
         "tests/fallback_vocabulary.rs"
       ]
@@ -1213,6 +1231,34 @@
   ],
   "evidence": [
     {
+      "id": "E-chinese-partial-spacing",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md"],
+      "scope": "2026-10-04未完成拼音尾水平空白与词句候选衔接",
+      "note": "Chinese partial-reading spacing：七个独立集成测试先得五失败二通过，匹配视图只去除尾水平空白，Exact偏移和原文不变；汉字间距、内部音节、required_separator、引号及竖直边界仍保留。追加模型失败、全推荐包、原生Space/数字采用/撤回/单次提交；具体执行见开发记录，数据、容量、模型协议不变。不外推个人安装或完整原生门禁，不提升评分；偶发daemon崩溃按用户要求暂缓而非已修复。"
+    },
+    {
+      "id": "E-japanese-boundaries",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "docs/ibus-candidates.md"],
+      "scope": "2026-10-04日语未完成读音的尾部空白及已采用表记边界",
+      "note": "Japanese reading boundaries：独立红测复现尾水平空白丢词句及同じkanji错误跨词转换；主转换/末词补全共享最长已知表记与读音选择，保留更长读音及同长原顺序。七类竖直边界不跨越，未知文本和原文精确保留。错误提供器、全推荐包、私有IBus及完整回归执行范围见开发记录；不扩词库、候选预算、模型协议、形态分析或内部跨空白音节重组，不外推个人装机/GTK，评分不变。"
+    },
+    {
+      "id": "E-japanese-choices",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md"],
+      "scope": "2026-10-04日语比较、偏好、条件与替代方案；罗马音词句、采用后助词续写与IBus平假名起笔",
+      "note": "Japanese choices fallback：追加独立日语数据，锁定原74条读音和38组语境，保留旧同音顺序；中英、模型接口、候选预算不变。原生回归补齐仅JA平假名字母起笔，并检查其他语言、非读音字符、快捷键、硬隐私用途及失焦透传；扩词挤走旧续句的红测促使仅降低日语次级基础Sentence转换权重，保留主转换、Word/Unspecified权重和原文。固定期望覆盖变体拼写、部分罗马音、词句候选、已采用表记与助词、原文及提交撤回；错误提供器、全包兼容与原生执行范围见开发记录，不外推完整形态分析、JIS布局、长稿、个人装机或真实模型质量，评分不变。"
+    },
+    {
+      "id": "E-daily-choices",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md"],
+      "scope": "2026-10-04中英比较、偏好、条件和替代方案；独立词库与离线输入回归",
+      "note": "Daily choices bilingual fallback：独立固定期望先复现缺词句，只追加数据并锁定0.8.2旧词权重、读音及语境全文；6144索引预算、模型/语言算法、候选容量不变。确切新增数量、红绿测试、推荐包兼容及原生执行结果见开发记录；不外推个人安装、GTK/实体键盘或真实模型质量，不提高评分。"
+    },
+    {
       "id": "E-japanese-progress",
       "kind": "historical_run",
       "paths": ["DEVELOPMENT.md", "docs/functional-network.md"],
@@ -1256,7 +1302,7 @@
         "docs/functional-network.md"
       ],
       "scope": "2026-10-04恢复原私有IBus崩溃现场；Ubuntu26.04/IBus1.5.34rc2/GLib2.88，非生产修复",
-      "note": "原PID/时间/socket精确匹配：已确认daemon SIGABRT；无效sender导致NULL请求入队后GIO断言。具体sender失效原因仍待证，连接名称生命周期竞态仅假设。无Suzaku的600连接/38400合法请求及完整inline门禁通过但未复现；同bus重复N45两轮因面板事件缺失停止、daemon存活，非同故障。未安装/升级依赖，原始core未入库，评分未提升。"
+      "note": "原PID/时间/socket精确匹配：已确认daemon SIGABRT；无效sender导致NULL请求入队后GIO断言。具体sender失效原因仍待证，连接名称生命周期竞态仅假设。无Suzaku的600连接/38400合法请求及完整inline门禁通过但未复现；同bus重复N45两轮因面板事件缺失停止、daemon存活，非同故障。后续Japanese reading boundaries完整默认门禁在托盘激活阶段再次出现同样断言，daemon PID3441209/-6、bus断开；未到达日语用例，保留失败及新Apport报告，未以专项绿灯替代全门禁。未安装/升级依赖，原始core未入库，评分未提升。"
     },
     {
       "id": "E-recovery-fixture",
@@ -1338,6 +1384,27 @@
       ],
       "scope": "中英作者样例、源码常规回归和私有应用门禁",
       "note": "固定词条回归不是独立语料准确率；新增数据不提升开放生成能力的证据。"
+    },
+    {
+      "id": "E-prediction-preservation",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/model-providers.md",
+        "docs/ibus-candidates.md"
+      ],
+      "scope": "10-06统一预测草稿保护、额外空白词投影、受保护英文token边界",
+      "note": "原始红灯和修复执行范围见开发记录；使用合成新旧provider与引擎，不代表真实模型语义、全原生门禁或真人键盘验收。词库、模型预算和成熟度分数不变。"
+    },
+    {
+      "id": "E-prediction-protocol",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/model-providers.md"
+      ],
+      "scope": "10-04 统一预测协议v1、旧接口桥接、合成provider和受控HTTP验收",
+      "note": "版本/关联/预算、EN/ZH/JA、取消/过期/上下文、两种HTTP封装回归；执行数量见开发记录。不代表实模质量、token流式、真人键盘或完整原生验收；评分不变。"
     },
     {
       "id": "E-model",
@@ -1574,6 +1641,7 @@
         2
       ],
       "evidence": [
+        "E-japanese-choices",
         "E-input",
         "E-linux-delivery"
       ],
@@ -1704,6 +1772,7 @@
         "E-language",
         "E-prose-paging",
         "E-daily-objects",
+        "E-daily-choices",
         "E-linux-delivery"
       ],
       "limit": "有限词表；大小写/撇号保真；不强制纠错URL、标识符。采用后词元变化的学习边界见F66/preference，不属于词库实现。"
@@ -1719,10 +1788,12 @@
         2
       ],
       "evidence": [
+        "E-prediction-preservation",
         "E-current",
         "E-language",
         "E-prose-paging",
         "E-daily-objects",
+        "E-daily-choices",
         "E-linux-delivery"
       ],
       "limit": "有界作者搭配，不是通用语法/拼写纠错；句子语境不跨行。"
@@ -1738,9 +1809,11 @@
         2
       ],
       "evidence": [
+        "E-chinese-partial-spacing",
         "E-current",
         "E-language",
         "E-daily-objects",
+        "E-daily-choices",
         "E-linux-delivery"
       ],
       "limit": "有限词表、声调/音节边界；未知输入保原文，非完整长句统计拼音引擎。"
@@ -1756,6 +1829,8 @@
         2
       ],
       "evidence": [
+        "E-japanese-boundaries",
+        "E-japanese-choices",
         "E-japanese-progress",
         "E-japanese-daily",
         "E-linux-delivery"
@@ -1773,6 +1848,7 @@
         2
       ],
       "evidence": [
+        "E-japanese-choices",
         "E-current",
         "E-linux-delivery"
       ],
@@ -1804,6 +1880,7 @@
         2
       ],
       "evidence": [
+        "E-prediction-protocol",
         "E-model",
         "E-linux-delivery"
       ],
@@ -1866,6 +1943,8 @@
         2
       ],
       "evidence": [
+        "E-prediction-preservation",
+        "E-prediction-protocol",
         "E-model",
         "E-linux-delivery"
       ],
@@ -1882,6 +1961,8 @@
         2
       ],
       "evidence": [
+        "E-prediction-preservation",
+        "E-prediction-protocol",
         "E-model",
         "E-linux-delivery"
       ],
@@ -1898,6 +1979,8 @@
         2
       ],
       "evidence": [
+        "E-prediction-preservation",
+        "E-prediction-protocol",
         "E-model",
         "E-language",
         "E-linux-delivery"
@@ -2527,7 +2610,11 @@
         2
       ],
       "evidence": [
+        "E-chinese-partial-spacing",
+        "E-japanese-boundaries",
         "E-daily-objects",
+        "E-daily-choices",
+        "E-japanese-choices",
         "E-japanese-progress",
         "E-japanese-daily",
         "E-linux-delivery"

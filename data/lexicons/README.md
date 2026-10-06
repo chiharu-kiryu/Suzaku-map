@@ -116,6 +116,26 @@
 6,144 项英文索引预算不变。与全部推荐主题包一起校验，新层避免占用烹饪包原有的
 `please pass me the` 语境，不覆盖既有包内容。内置数据需重建/重装后才会进入桌面输入法。
 
+### 0.8.2 后的比较与选择表达（未发布）
+
+`daily_choices` 复用日常常用词来表达比较、偏好、条件和替代方案：中英各追加
+**24 组语境、48 条原创短句**，中文另追加 **65 条读音**。英文只新增
+`depends/hurry/simpler` 三项索引；总量为 **6,127 项英文索引、521 组搭配、1,006 句；
+2,432 条中文读音、515 组语境、1,028 条续句**。例如 `I’d rather st` →
+`I’d rather stay` / `I’d rather stay here.`，`wo geng xi huan` → `我更喜欢` /
+`我更喜欢这个，简单又方便。`，`ru guo bu fang bia` → `如果不方便` /
+`如果不方便，我们就换个时间。`。
+连续输入回归还发现旧库只有“这个词／这个意思”而缺少独立“这个”；追加基础
+`zhe'ge → 这个` 后，“我更喜欢”接 `zhe ge` 可继续匹配整句，不加特定句子的解码分支。
+
+先固定独立预期复现缺口，再追加数据；新增历史指纹锁定 0.8.2 的全部 16 层英文权重、
+497 组搭配、958 句及中文 2,367 条读音、491 组语境。原有指纹、日文、推荐包、
+6,144 项索引预算和候选容量均不变。词库仍独立于模型与输入实现；这些是有限表达预设，
+不是任意句式的生成模型，也不根据用户历史推断个人偏好。
+新回归检查大小写/弯撇号/空格、四种拼音写法和部分末音节、选词后的续句、长前缀保真、
+原文可选及一次提交/撤回，并与所有推荐包和模型失败回退一起校验。
+执行范围见 [开发记录](../../DEVELOPMENT.md)；当前桌面须重建/重装才会使用新数据。
+
 ### 日语日常基础扩充（未发布）
 
 在保留中英核心工作流的基础上，日语逐步增加日常兜底：追加 **48 条假名读音、24 组语境、
@@ -131,6 +151,25 @@
 这不是完整日语形态分析器：未知词、活用和任意长句转换仍有限；超过 256 字符的日语
 本地长稿窗口尚未扩展。片假名采用后可接续罗马音，不等于已实现任意片假名反查汉字。
 内置数据仍须重建/重装才会在桌面输入法中生效。
+
+### 日语比较与选择表达（0.8.2 后，未发布）
+
+沿用独立 JSON 数据补充比较、偏好、条件和替代方案：追加 **48 条读音、24 组语境、
+48 条续句**，当前共 **122 条读音、62 组语境、123 条续句记录**。例如
+`KONOMI` → `好み` / `好みに合わせて選んでください。`，
+`jouke` → `条件` / `条件が合えば、こちらを選びます。`。
+采用“好み”后接 `ni`、采用“条件”后接 `ga`，使用已有完整草稿前缀规则保持相应续句。
+罗马音、平假名、大写、水平分隔和部分拼写分别验收；已经输入的纯假名词可以是
+Literal 原文，不制造重复 Word 候选。宽前缀仍受原候选数量和旧顺序限制。
+私有 IBus 回归另发现并补齐日语平假名首键入口：`ひかく` 可从空草稿开始；
+仅日语平假名字母纳入该入口，不扩展到独立片假名/汉字，也不改变其他语言和隐私用途分流。
+
+追加前先固定测试期望并确认缺口；原 74 条读音、38 组语境的完整内容和顺序新增
+历史指纹保护，保留最初 26 条／14 组快照。与铁路包以及全部推荐包一起检查，
+不覆盖包内容，不修改上一轮中英文数据或绑定具体模型。词条与句子是项目原创预设，
+不是完整形态分析、任意活用或整句罗马音推断；日语 256 字符长稿限制仍未扩展。
+新增数量和确切执行结果见 [Japanese choices 开发记录](../../DEVELOPMENT.md)。
+本轮不更新个人安装，内置数据须重建/重装后生效。
 
 ## 格式版本 1
 
@@ -238,7 +277,9 @@ cargo test --locked --all-features --test daily_needs_english --test daily_needs
 cargo test --locked --all-features --test daily_coordination_english --test daily_coordination_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_social_english --test daily_social_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_objects_english --test daily_objects_chinese -- --test-threads=1
+cargo test --locked --all-features --test daily_choices_english --test daily_choices_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_japanese_vocabulary -- --test-threads=1
+cargo test --locked --all-features --test daily_choices_japanese -- --test-threads=1
 cargo test --locked --all-features --test offline_packs -- --test-threads=1
 cargo test --locked --all-features --test offline_pack_quality -- --test-threads=1
 ```

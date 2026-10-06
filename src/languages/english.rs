@@ -166,6 +166,17 @@ pub fn is_known_english_word(word: &str) -> bool {
         .is_ok()
 }
 
+/// Positive evidence of an unfinished dictionary prefix. Absence from the
+/// fallback vocabulary alone does not prove that a model's word is unfinished.
+pub(crate) fn has_word_completion(prefix: &str) -> bool {
+    let lower = canonical_word(prefix);
+    let words = dictionary();
+    let next = words.partition_point(|word| word.text.as_str() <= lower.as_str());
+    words
+        .get(next)
+        .is_some_and(|word| word.text.starts_with(&lower))
+}
+
 pub(crate) fn suggestion_mode(seed: &str) -> &'static str {
     let Some(prefix) = english_word_prefix(seed) else {
         return "next_word";
@@ -173,13 +184,7 @@ pub(crate) fn suggestion_mode(seed: &str) -> &'static str {
     if !is_known_english_word(prefix) {
         return "complete_word";
     }
-    let lower = canonical_word(prefix);
-    let words = dictionary();
-    let next = words.partition_point(|word| word.text.as_str() <= lower.as_str());
-    if words
-        .get(next)
-        .is_some_and(|word| word.text.starts_with(&lower))
-    {
+    if has_word_completion(prefix) {
         // "a", "can", "in", ... can be a complete word OR the beginning of a
         // longer one. Only a typed separator unambiguously asks for the next word.
         "complete_or_continue"
@@ -226,6 +231,14 @@ fn current_line(text: &str) -> &str {
             )
         })
         .map_or(text, |(index, ch)| &text[index + ch.len_utf8()..])
+}
+
+fn is_horizontal_spacing(ch: char) -> bool {
+    ch.is_whitespace()
+        && !matches!(
+            ch,
+            '\n' | '\r' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+        )
 }
 
 fn current_clause(text: &str) -> &str {
@@ -497,17 +510,16 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
         .char_indices()
         .filter_map(|(index, ch)| {
             let start = boundary && ch.is_ascii_alphabetic();
-            // An ASCII quote opens a word only at an existing boundary. Treating
-            // every apostrophe as a boundary would split contractions/identifiers.
+            // Wrappers only continue an existing word boundary. Opening one
+            // inside a path/identifier must not expose hidden phrase context.
             let separator = separators
                 .peek()
                 .is_some_and(|(offset, _)| *offset == index);
             if separator {
                 separators.next();
             }
-            boundary = separator
-                || matches!(ch, '(' | '[' | '{' | '"' | '“' | '‘')
-                || (boundary && ch == '\'');
+            boundary =
+                separator || (boundary && matches!(ch, '(' | '[' | '{' | '"' | '“' | '‘' | '\''));
             start.then_some(index)
         })
         .collect();
@@ -576,9 +588,9 @@ pub(crate) fn known_word_continuation<'a>(seed: &str, text: &'a str) -> Option<&
     if !is_known_english_word(prefix) {
         return None;
     }
-    text.strip_prefix(seed)?
-        .strip_prefix(' ')
-        .map(|tail| tail.trim_start_matches(' '))
+    let tail = text.strip_prefix(seed)?;
+    tail.starts_with(is_horizontal_spacing)
+        .then(|| tail.trim_start_matches(is_horizontal_spacing))
 }
 
 /// Extract only a complete next word actually present in a valid continuation.
@@ -594,8 +606,14 @@ pub(crate) fn word_from_continuation<'a>(seed: &str, text: &'a str) -> Option<&'
     // Before a separator, complete the current word; after one, finish the next.
     // A model may supply the separator after a known complete word. An unknown
     // spelling such as "hel there" still cannot become a word completion.
-    let suffix = if suffix.starts_with(' ') {
-        known_word_continuation(seed, text)?
+    let suffix = if suffix.starts_with(is_horizontal_spacing) {
+        if seed.ends_with(is_horizontal_spacing) {
+            // The user already started the next word. Extra model spacing is
+            // payload, not a request to complete the previous word again.
+            suffix.trim_start_matches(is_horizontal_spacing)
+        } else {
+            known_word_continuation(seed, text)?
+        }
     } else {
         suffix
     };
@@ -624,7 +642,7 @@ mod tests {
     use super::*;
 
     // Current total, independent of the immutable per-layer historical baselines.
-    const EXPECTED_DICTIONARY_WORDS: usize = 6124;
+    const EXPECTED_DICTIONARY_WORDS: usize = 6127;
 
     fn layer_words(id: &str) -> impl Iterator<Item = &'static str> {
         vocabulary()
@@ -1691,6 +1709,44 @@ mod tests {
     }
 
     #[test]
+    fn daily_choices_preserves_all_sixteen_existing_word_layers() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..16]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6124);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before appending daily_choices; older fingerprints stay intact.
+        assert_eq!(count, 6124);
+        assert_eq!(hash, 0xd7c0fc08f4e2f6ff);
+        let layer = &vocabulary().word_layers()[16];
+        assert_eq!(layer.id, "daily_choices");
+        assert_eq!(layer.words, ["depends", "hurry", "simpler"]);
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
+    }
+
+    #[test]
     fn authored_collocations_and_sentences_are_unique_and_reachable() {
         use crate::ime::candidate_mix::CandidateKind;
         let mut keys = std::collections::HashSet::new();
@@ -1729,8 +1785,8 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 497);
-        assert_eq!(sentences.len(), 958);
+        assert_eq!(keys.len(), 521);
+        assert_eq!(sentences.len(), 1006);
     }
 
     #[test]

@@ -610,6 +610,65 @@ impl LlmCompletionProvider for UnavailableProvider {
 #[test]
 fn daily_expressions_stay_available_when_models_are_missing_failed_or_empty() {
     let cases = [
+        ("zh-Hans", "ZHONG W ", "中文", "中文输入很方便。"),
+        ("zh-Hans", "shu ru f\t", "输入法", "输入法支持多种语言。"),
+        (
+            "zh-Hans",
+            "发音 ke y\u{3000}",
+            "发音 可以",
+            "发音 可以再示范一下吗？",
+        ),
+        (
+            "en",
+            "I’d rather st",
+            "I’d rather stay",
+            "I’d rather stay here.",
+        ),
+        (
+            "en",
+            "  i  prefer  the  se",
+            "  i  prefer  the  second",
+            "  i  prefer  the  second one.",
+        ),
+        (
+            "zh-Hans",
+            "WO GENG XI HUAN",
+            "我更喜欢",
+            "我更喜欢这个，简单又方便。",
+        ),
+        (
+            "zh-Hans",
+            "ru guo bu fang bia",
+            "如果不方便",
+            "如果不方便，我们就换个时间。",
+        ),
+        (
+            "zh-Hans",
+            "我更喜欢zhe ge",
+            // A complete multiword conversion is Sentence; this longer known
+            // word completion must coexist with the whole-draft continuation.
+            "我更喜欢这个词",
+            "我更喜欢这个，简单又方便。",
+        ),
+        ("ja", "KONOMI", "好み", "好みに合わせて選んでください。"),
+        ("ja", "jouke", "条件", "条件が合えば、こちらを選びます。"),
+        ("ja", "ひかく", "比較", "比較してから決めたいです。"),
+        ("ja", "yo  san", "予算", "予算に合わせて選びましょう。"),
+        ("ja", "nihong ", "日本語", "日本語を勉強しています。"),
+        ("ja", "JYUNB\t", "準備", "準備ができたら連絡します。"),
+        (
+            "ja",
+            "jouk\u{a0}",
+            "条件",
+            "条件が合えば、こちらを選びます。",
+        ),
+        ("ja", "同じkanji", "同じ感じ", "同じ漢字"),
+        (
+            "ja",
+            "準備gadeki",
+            "準備ができれば",
+            "準備ができたら連絡します。",
+        ),
         (
             "ja",
             "sumimasen",

@@ -1,8 +1,9 @@
 //! One worker, one replaceable pending request, and one replaceable result.
 //! Editing, committing or changing language invalidates every older response.
 
-use crate::languages::llm::{
-    LlmCancellation, LlmCompletion, LlmCompletionProvider, LlmCompletionRequest, LlmProviderError,
+use crate::prediction::{
+    PredictionCancellation, PredictionCandidate, PredictionError, PredictionInput,
+    PredictionProvider, PredictionRequest,
 };
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -21,7 +22,7 @@ pub enum PredictionStatus {
 struct Job {
     revision: u64,
     ready_at: Instant,
-    request: LlmCompletionRequest,
+    request: PredictionRequest,
 }
 
 #[derive(Default)]
@@ -29,8 +30,8 @@ struct Mailbox {
     revision: u64,
     stopped: bool,
     pending: Option<Job>,
-    inflight: Option<LlmCancellation>,
-    result: Option<(u64, Result<Vec<LlmCompletion>, LlmProviderError>)>,
+    inflight: Option<PredictionCancellation>,
+    result: Option<(u64, Result<Vec<PredictionCandidate>, PredictionError>)>,
 }
 
 pub(crate) struct PredictionWorker {
@@ -39,7 +40,7 @@ pub(crate) struct PredictionWorker {
 }
 
 impl PredictionWorker {
-    pub fn new(provider: Arc<dyn LlmCompletionProvider>, debounce: Duration) -> Self {
+    pub fn new(provider: Arc<dyn PredictionProvider>, debounce: Duration) -> Self {
         let mailbox = Arc::new((Mutex::new(Mailbox::default()), Condvar::new()));
         let worker_mailbox = mailbox.clone();
         let spawned = thread::Builder::new()
@@ -56,7 +57,7 @@ impl PredictionWorker {
                             if let Some(job) = state.pending.as_ref() {
                                 let delay = job.ready_at.saturating_duration_since(Instant::now());
                                 if delay.is_zero() {
-                                    let cancellation = LlmCancellation::default();
+                                    let cancellation = PredictionCancellation::default();
                                     state.inflight = Some(cancellation.clone());
                                     break (state.pending.take().unwrap(), cancellation);
                                 }
@@ -72,9 +73,26 @@ impl PredictionWorker {
                     // No engine/session lock is held while a model is running.
                     let completions =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            provider.generate_cancellable(&job.request, &cancellation)
+                            cancellation.check()?;
+                            job.request.validate()?;
+                            let result = provider.predict(&job.request, &cancellation);
+                            cancellation.check()?;
+                            let mut response = result?;
+                            response.validate_for(&job.request)?;
+                            // Apply common draft semantics before either host's
+                            // display cap. One invalid row must not hide valid siblings.
+                            response.candidates.retain(|candidate| {
+                                crate::prediction::policy::preserves_input(
+                                    &candidate.text,
+                                    &job.request.input,
+                                )
+                            });
+                            if response.candidates.is_empty() {
+                                return Err(PredictionError::NoCandidates);
+                            }
+                            Ok(response.candidates)
                         }))
-                        .unwrap_or(Err(LlmProviderError::Unavailable));
+                        .unwrap_or(Err(PredictionError::Unavailable));
                     let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
                     state.inflight = None;
                     if !state.stopped && state.revision == job.revision {
@@ -88,7 +106,7 @@ impl PredictionWorker {
         Self { mailbox, debounce }
     }
 
-    pub fn request(&self, request: LlmCompletionRequest) -> bool {
+    pub fn request(&self, input: PredictionInput) -> bool {
         let (lock, wake) = &*self.mailbox;
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         if state.stopped {
@@ -102,7 +120,7 @@ impl PredictionWorker {
         state.pending = Some(Job {
             revision: state.revision,
             ready_at: Instant::now() + self.debounce,
-            request,
+            request: PredictionRequest::new(state.revision, input),
         });
         wake.notify_one();
         true
@@ -120,7 +138,7 @@ impl PredictionWorker {
         wake.notify_one();
     }
 
-    pub fn take_result(&self) -> Option<Result<Vec<LlmCompletion>, LlmProviderError>> {
+    pub fn take_result(&self) -> Option<Result<Vec<PredictionCandidate>, PredictionError>> {
         let mut state = self
             .mailbox
             .0

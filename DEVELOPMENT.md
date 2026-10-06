@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.8.2 — Adaptive panels and continuous multilingual fallback**.
+Current source version: **0.8.3 — Model-independent prediction and multilingual input polish**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -41,6 +41,298 @@ checks and clean-container installation checks to pass before publication. Other
 are added only after their own acceptance, not implied by the shared version number.
 This is a release requirement, not a claim that automatic publication is implemented or
 that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.8.3 release preparation (2026-10-06)
+
+The six accumulated development sections immediately below are included in
+0.8.3; their "Unreleased" headings and validation statements retain their
+historical scope. See [0.8.3 release notes](docs/releases/0.8.3.md) for the
+consolidated changes and limits. Rust/lockfile, both macOS bundles and Android
+share version 0.8.3, with platform build number 33. Only the root package
+version changes in Cargo.lock; third-party dependency versions are unchanged.
+Publication requires the exact clean tagged commit's full CI and package /
+clean-container installation acceptance, followed by permanent Linux assets.
+The deferred local IBus daemon abort is not declared fixed by this release.
+Release review also aligns the legacy adapter's English language aliases with
+the shared protocol policy: `en`, `en-US` and `en_GB` retain the same raw
+indentation when an alternative completion differs from the local conversion.
+The existing focused unit regression now checks all three IDs. Local release
+logs are retained at `/tmp/suzaku-release-0.8.3.v3zXu7/`.
+After the version and alias changes, all 1,226 Rust tests pass again with zero
+failures and 27 opt-in skips. Strict all-target/all-feature Clippy, formatting,
+source digest, 21 tensor checks, six borrowed-signal-lifetime checks, 23 private
+diagnostic checks, shell/Python syntax and release metadata checks pass. The
+full-history and staged secret scans pass. Local ShellCheck is unavailable;
+the unchanged required CI step and full native/package gates remain pending.
+
+### Unreleased — Prediction preservation and English boundary follow-up (2026-10-06)
+
+- Apply provider-independent draft semantics in the worker, after structural
+  protocol validation and before either display limit. New and legacy custom
+  providers cannot drop an English raw prefix/indentation, echo the unchanged
+  draft or expose generated request metadata. Filter individual invalid rows;
+  an entirely rejected batch leaves the local pool intact with `NoCandidates`.
+- Keep raw English text independent of the best local completion. Only positive
+  dictionary-prefix evidence triggers the incomplete-word guard; mere absence
+  from the fallback dictionary is not a universal vocabulary ceiling. CJK
+  phonetic/homophone conversion remains allowed. Exact preserved Unicode and
+  typed JSON prefixes are excluded from generated-metadata checks, even when
+  an alternative conversion differs from the primary local conversion.
+- Restore separate English word projections when a model sentence inserts extra
+  horizontal spacing after an already typed separator. Preserve ASCII, NBSP and
+  Unicode horizontal spacing in the payload, including a model separator after
+  a known complete word. Do not cross vertical separators or split technical
+  tokens. A protocol-to-word-to-explicit-commit test checks exact whitespace.
+- Opening brackets/quotes now only continue an existing English word boundary;
+  a wrapper inside a protected URL/path/identifier cannot expose hidden authored
+  phrase context. Normal/nested wrappers and whitespace after protected tokens
+  still work across short drafts, long local windows and own-session commits.
+- Preserve original red logs in `/tmp/suzaku-prediction-followup.ol75Et/`:
+  two spacing failures and five protocol/protected-context failures. The first
+  shared guard over-restricted unlisted words, caught by three existing fixture
+  failures in `focused.log`; refining the code (not weakening assertions) passes
+  all 52 focused integration tests in `focused-refined.log`. Extra policy units
+  cover CJK typed metadata and English alternative completions.
+- Full all-feature Rust validation passes 1,226 tests with zero failures and
+  27 existing opt-in/fixture tests ignored (`rust-all.log`). Strict all-target,
+  all-feature Clippy passes (`clippy.log`), as do the 21 tensor-validator tests,
+  source-digest, formatting and diff checks. Maturity scores remain unchanged.
+- No vocabulary data, model/service installation, model sampling/network format,
+  personal input source, native event routing, release version, commit or push
+  changes. No real-model quality or full native/GTK/physical-keyboard acceptance
+  is claimed; the previously deferred daemon investigation remains deferred.
+
+### Unreleased — Model-independent prediction protocol v1 (2026-10-04)
+
+- Introduce `prediction::PredictionProvider` with serializable versioned requests
+  and responses, caller-owned request IDs, complete-draft replacement semantics,
+  language/session input, typed word/sentence candidates and bounded output limits.
+  No model name, endpoint, credential or UI annotation is part of the contract.
+  Existing context/input/output budgets remain unchanged; callers may reduce the
+  candidate count and generated-character budget, not expand global limits.
+- Connect the engine worker, Linux host and standalone panel to the new contract.
+  Validate request/response envelopes independently of providers while keeping
+  local revision rejection, one worker, cancellation and immediate local fallback.
+  Preserve the legacy completion provider and struct-literal APIs through an
+  explicit adapter. Candidate ranking accepts neutral types with a legacy wrapper.
+- Move chat prediction instructions, language/prefix rules, candidate content
+  parsing and schema into `prediction/prompt.rs`. HTTP adapters retain discovery,
+  authorization, transport, service envelopes and finish-state checks. Keep the
+  small-model prompt and network format unchanged; translation remains separate.
+- Add 15 protocol/engine integration tests, four controlled HTTP contract tests
+  and one legacy English-spacing regression. The compatibility adapter preserves
+  raw English indentation even when the local conversion is a different word;
+  malformed legacy rows cannot erase other valid candidates. Dual HTTP envelopes
+  and arbitrary model names produce equivalent task data and typed responses.
+- Full all-feature Rust validation passes 1,209 tests, with zero failures and
+  27 existing opt-in/fixture tests ignored. The 21 tensor-validator tests,
+  strict all-target/all-feature Clippy, source-digest, formatting and diff checks
+  pass; maturity scores are unchanged.
+  Logs are retained at `/tmp/suzaku-prediction-protocol.TbEH8f/`. All model I/O
+  validation uses owned synthetic providers/loopback fixtures, not real model
+  services. No complete native gate, GTK or physical keyboard test is claimed.
+- This creates a backend-independent extension point, not improved model accuracy,
+  streaming generation, a new server, broader text collection or real-device
+  acceptance. No vocabulary, model installation, personal input source, version,
+  commit or push is changed by this work. See [the protocol contract](docs/model-providers.md).
+
+### Unreleased — Chinese partial-reading spacing (2026-10-04)
+
+- Fix disappearing Chinese word/sentence candidates when an unfinished Pinyin
+  draft gains trailing horizontal whitespace: `zhongw `, `shu ru f  ` and
+  adopted Han text such as `发音 ke y ` now retain their existing completions.
+  Match through a trailing-spacing-trimmed view, without changing decoder byte
+  offsets, literal drafts, internal syllable boundaries, quotes or line breaks.
+  Keep adopted Han spacing and long frozen prefixes exact. Required separators
+  still distinguish the primary `xian → 先` and `xi an → 西安` readings.
+- Seven independent integration tests first produced five failures and two
+  passing negative-boundary checks; the original log remains at
+  `/tmp/suzaku-pinyin-spacing.A2r656/red.log`. After the fix all 44 focused
+  tests passed, including provider failures, all eleven recommended packs and
+  the previous Japanese reading-boundary regressions. Add one direct unit test
+  for mandatory separators and exact consumed-byte offsets.
+- The private bilingual fixture adds three seeds/six word-or-sentence routes
+  for actual Space events, numeric adoption, immediate BackSpace undo, continued
+  input and a single explicit Return commit. `SUZAKU_NATIVE_BILINGUAL_ONLY=1`
+  selects this existing bilingual gate without executing unrelated lifecycle
+  diagnostics; the default full gate still runs all cases as before.
+- Both focused native modes pass all 102 bilingual workflows: default and
+  `SUZAKU_IBUS_INLINE_PREEDIT=1`. The private desktop-portal helper's startup
+  `Not connected to the ibus bus` warning remains visible in both logs; the
+  owned input daemon/host complete the assertions and both commands exit zero.
+  This is private IBus validation, not GTK/physical-keyboard or personal-install
+  acceptance, and not a rerun of the previously failed full native gate.
+- Full Rust validation passes 1,189 tests (27 ignored). Strict all-target,
+  all-features Clippy, formatting, diff checks and the 21 tensor-validator
+  tests also pass. Logs remain under `/tmp/suzaku-pinyin-spacing.A2r656/`;
+  maturity scores are unchanged.
+- Lexicon contents, candidate budgets, model protocols and native key routing
+  are unchanged. The intermittent upstream IBus abort investigation is deferred
+  at the user's request, not fixed or reclassified as a passing complete gate.
+  No version, commit, push, personal installation or desktop input source changes.
+
+### Unreleased — Japanese reading boundaries (2026-10-04)
+
+- Fix disappearing partial-word/sentence choices after trailing horizontal
+  separators (`nihong `, `JYUNB\t`, `jouk` plus NBSP). Probe incomplete Romaji
+  vowels before those separators, using the same seven vertical boundaries as
+  composition conversion. Literal drafts remain exact; do not join a syllable
+  across internal whitespace or a line boundary.
+- Fix conversion splitting an already recognized mixed-script word: adopting
+  `同じ` then typing `kanji` incorrectly produced `同時間じ`. The primary
+  conversion and tail completion now share a longest-prefix decision that
+  preserves known written words/Katakana when longer than a phonetic match.
+  Longer readings and equal-length original dictionary/homophone priorities
+  still win. `同じ漢字` / `同じ感じ`, `後で` and `別の` have fixed regressions;
+  no phrase-specific decoder branch or new model dependency is introduced.
+- Five new independent tests first produced four failures and one passing
+  negative-boundary test. After the fixes all 23 Japanese focused tests pass,
+  preserving seven horizontal variants, seven vertical boundaries, unknown
+  text, adoption, exact commits and undo. The provider-error and all-eleven-pack
+  fixtures add fixed partial-space and mixed-script examples. Lexicon files,
+  candidate budgets, native key routing and model deadlines are unchanged.
+- Private IBus coverage adds six partial-Romaji Space word/sentence workflows,
+  adopted Katakana plus partial-tail Space, and `同じ` adoption/continued
+  Romaji/homophone adoption/undo/one explicit commit. Validation logs, including
+  the original failures, are under `/tmp/suzaku-japanese-boundaries.mvgN0w/`.
+  The focused Japanese fixture passes in both default and inline-preedit modes.
+- Full Rust validation passes 1,181 tests (27 ignored), including typed provider
+  failures and all eleven recommended packs. The 21 tensor-validator tests,
+  strict all-target/all-features Clippy, formatting and diff checks pass;
+  maturity scores are unchanged.
+- The complete default IBus gate **failed**, not passed: after presentation
+  checks, tray activation encountered a daemon SIGABRT at 8.738 seconds
+  (`ibus-daemon` PID 3441209, return code -6, bus disconnected). The log shows
+  the invalid-sender assertion followed by `call_in_idle_cb`'s missing-vtable
+  assertion, matching the previously recorded abort signature below. This
+  happened before the complete gate reached the Japanese fixture; no recent
+  kernel OOM was logged. The specific sender-lifetime cause remains unproven,
+  and the two focused Japanese passes do not turn this into a full native pass.
+  Preserve `native-default.log`; do not retry until green, raise deadlines or
+  alter installed dependencies. No version, commit, push, personal installation,
+  input source or GTK fixture is changed.
+  Installed IBus `1.5.34~rc2-1` / GLib `2.88.0-1ubuntu0.1` match the earlier
+  investigation. Preserve the newly timestamped Apport report privately as
+  `ibus-daemon.crash` alongside the logs (mode 0600); it is not uploaded or
+  added to Git, and has not yet been unpacked or analyzed as a new core.
+  Report SHA-256: `aa9a38cde12f54c5d0334d9f687e4945d94638fe337b28d671a5f83d19652f67`.
+
+### Unreleased — Japanese choices fallback (2026-10-04)
+
+- Extend daily Japanese comparisons, preferences, conditions and alternatives
+  through independent authored data: 48 readings, 24 contexts and 48 sentences,
+  for totals of 122 / 62 / 123. Preserve all 74 released readings and
+  38 continuation contexts with new full historical fingerprints, in addition
+  to the original 26-reading / 14-context snapshots. The preceding uncommitted
+  English/Chinese choices work stays intact; no model-specific dispatch is added.
+- Six new independent tests distinguish a verbatim Kana literal from a converted Word,
+  specific Romaji prefixes from broad prefixes, and authored continuation from
+  arbitrary sentence-level reading conversion. Exercise uppercase/Hiragana and
+  horizontal separators, word/sentence choices, adopted words plus particles,
+  exact commit/undo and negative unknown/line-boundary cases.
+- Tests-first reproduced the missing choices: five new tests failed and the
+  negative-boundary test already passed; the provider-fallback red run also
+  failed on missing `KONOMI → 好み`. Both logs are preserved before appending
+  data. Expectations are not generated by reading the production JSON.
+- Provider-failure and all-eleven-pack tests add Japanese choices independently
+  of the resource contents: four mixed-spelling word/sentence examples plus two
+  adopted-particle progress examples in the pack gate. The focused run passed
+  41 tests across new/old Japanese vocabulary, sentence progress, resources,
+  provider failures and all packs. Missing/error/timeout/503/empty responses
+  are synthetic typed errors, not live-model evidence.
+  Private IBus exercises numeric word/sentence adoption,
+  exact undo, literal Space, adopted-word particles and conflicting tails. No
+  personal installation, input source, GTK fixture, model or timeout is changed.
+- The first private IBus run exposed a genuine entry gap: `ひかく` works in
+  the engine, but the native empty-draft path rejected its initial `ひ`.
+  Accept only alphabetic Hiragana in Japanese mode; leave other languages,
+  non-reading idle keys, application chords, hard-bypass purposes and unfocused
+  events unchanged. Dedicated synchronous native checks assert these boundaries
+  and no implicit commits. This is not a JIS Kana-layout implementation.
+- After that fix, the native run found an old workflow displaced by new word
+  competition: `準備gadeki` still offered its authored continuation, but only
+  on page two. An independent engine red test reproduced the lost first-page
+  choice. Rank non-primary Japanese base Sentence conversions below authored
+  continuations, using the existing Chinese weighting rule; preserve the
+  primary conversion, Word/Unspecified weights, literal, quotas and list limit.
+  This also applies to non-primary sentence conversions from Japanese packs,
+  not only mixed Katakana variants. No candidate text, kind or source changes.
+  The first engine rerun then caught an incorrect new-test label: a pure
+  phonetic Katakana variant is Unspecified, not Sentence. Correct the fixed
+  expectations per variant, without changing classification; retain that log
+  as `focused-final.log`. All seven progress tests then pass in
+  `progress-fixed.log`, including the original first-page failure.
+  Add the same fixed word/sentence expectation to provider-failure coverage
+  and both adopted/Romaji variants to the all-eleven-pack progress gate.
+- Both focused Japanese native modes and both complete private IBus modes
+  (default and `SUZAKU_IBUS_INLINE_PREEDIT=1`) pass after these fixes. The
+  Japanese fixture covers first-key/bypass boundaries, 16 daily word/sentence
+  workflows, five positive/five conflicting-tail continuations, homophones,
+  `nn`, adopted Katakana and later-page literal submission. These are private
+  IBus events, not a physical-keyboard or personal-desktop acceptance.
+- Validation logs and red/green results are kept under
+  `/tmp/suzaku-japanese-choices.bo3VDg/`. The final all-features Rust run passes
+  1,176 tests (27 ignored), including the provider/pack ranking additions;
+  strict all-target/all-features Clippy, formatting and diff checks pass.
+  The 21 tensor-validator tests pass without raising maturity scores.
+  This remains bounded fallback, not full Japanese
+  morphology, arbitrary Katakana-to-Kanji conversion or a longer Japanese draft
+  window. No version, commit or push is changed.
+
+### Unreleased — Daily choices bilingual fallback (2026-10-04)
+
+- Append-only `daily_choices` covers comparisons, preferences, conditions and
+  alternatives without model-specific or language-algorithm changes. English
+  adds 24 contexts / 48 authored sentences and only three indexed forms
+  (`depends/hurry/simpler`); Chinese adds 65 readings / 24 contexts / 48 sentences.
+  Totals: EN 6,127 indexed forms / 521 contexts / 1,006 sentences; ZH 2,432
+  readings / 515 contexts / 1,028 continuations. Japanese and all recommended
+  pack contents are unchanged; the 6,144 English index budget stays fixed.
+- Eleven new independent engine tests cover both branches, spelling variants,
+  partial words/readings, first-page word/sentence choices, preserved literal
+  text/long prefixes, editable adopted drafts, continuation and exact commit/undo.
+  New snapshots freeze all v0.8.2 English ranks, contexts and sentences and all
+  Chinese readings/contexts, in addition to every existing historical snapshot.
+- Both tests-first runs failed all five new tests before their language's data
+  was appended; logs remain in `/tmp/suzaku-vocab-choices.XZixA7/`. Provider-error
+  and all-eleven-pack gates add five fixed bilingual variants. These synthetic
+  missing/error/timeout/503/empty results are not live-model quality evidence.
+  The first full run then found one stale Chinese unit-test total (2,367 versus
+  the new 2,431); only that current-total assertion was updated. Every historical
+  fingerprint and per-entry reachability/uniqueness assertion remains intact,
+  and the failing full-run log is retained as `rust.log`.
+  The next full run (`rust-final.log`, retained despite its original filename)
+  exposed a real data gap: `这个词/这个意思` existed, but standalone `这个` did not.
+  After adopting `我更喜欢`, `zhe ge` expanded to longer words and could not
+  continue the authored sentence. Append the basic `zhe'ge → 这个` reading;
+  keep the original sentence expectations and separately test it alone and
+  after different adopted prefixes. No phrase-specific decoder logic is added.
+  The focused rerun passed all eleven new engine tests, then caught a new
+  fixture mislabeling the complete multiword `我更喜欢这个` as Word rather than
+  Sentence. The bilingual word/sentence helper now explicitly checks the old
+  longer Word `我更喜欢这个词` alongside the intended authored sentence; the
+  dedicated demonstrative test retains exact full-conversion Sentence checks.
+- The private IBus vocabulary fixture adds four seeds / eight word-or-sentence
+  adoption, undo, continuation and single-commit routes (96 bilingual routes
+  total). Its reset now requires a newer context plus an empty draft before
+  subsequent language controls or typing, closing an asynchronous fixture race.
+  Native typing tests internal double spaces; engine tests additionally accept
+  leading spaces supplied as a draft, since Space on an empty native draft
+  correctly passes through. No GTK scenarios or timeouts are changed.
+- Final serial validation passed 1,168 non-ignored all-features Rust tests,
+  strict all-target Clippy, formatting, diff checks and 21 tensor tests. The
+  27 opt-in Rust tests remain separate. The successful complete Rust run is
+  `rust-verified.log`; earlier failures are not reclassified as passes.
+  All eleven recommended packs passed together, including the new bilingual
+  variants and the adopted `这个` sentence route. Default and inline-preedit
+  full private IBus gates passed (`native-default.log` / `native-inline.log`),
+  each including all 96 bilingual vocabulary workflows. These two runs do not
+  establish a fix for the previously investigated upstream IBus crash.
+- Tensor source evidence and the current dirty-snapshot base (v0.8.2 commit
+  `a019b7c`) are refreshed without changing maturity scores or historical runs.
+  No GTK gate, physical-keyboard/personal-desktop test or live-model quality
+  evaluation was run this round. No personal installation, input source,
+  version, commit or push is changed.
 
 ### 0.8.2 release preparation (2026-10-04)
 

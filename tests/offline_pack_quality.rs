@@ -344,6 +344,50 @@ fn recommended_collections_keep_word_sentence_and_fallback_workflows() {
     for (language, seed, word, sentence) in [
         (
             "en",
+            "I’d rather st",
+            "I’d rather stay",
+            "I’d rather stay here.",
+        ),
+        (
+            "en",
+            "  i  prefer  the  se",
+            "  i  prefer  the  second",
+            "  i  prefer  the  second one.",
+        ),
+        (
+            "zh-Hans",
+            "WO GENG XI HUAN",
+            "我更喜欢",
+            "我更喜欢这个，简单又方便。",
+        ),
+        (
+            "zh-Hans",
+            "ru guo bu fang bia",
+            "如果不方便",
+            "如果不方便，我们就换个时间。",
+        ),
+        (
+            "zh-Hans",
+            "我更喜欢zhe ge",
+            // Preserve the old longer Word alongside the new Sentence route.
+            "我更喜欢这个词",
+            "我更喜欢这个，简单又方便。",
+        ),
+        ("ja", "KONOMI", "好み", "好みに合わせて選んでください。"),
+        ("ja", "jouke", "条件", "条件が合えば、こちらを選びます。"),
+        ("ja", "ひかく", "比較", "比較してから決めたいです。"),
+        ("ja", "yo  san", "予算", "予算に合わせて選びましょう。"),
+        ("ja", "nihong ", "日本語", "日本語を勉強しています。"),
+        ("ja", "JYUNB\t", "準備", "準備ができたら連絡します。"),
+        (
+            "ja",
+            "jouk\u{a0}",
+            "条件",
+            "条件が合えば、こちらを選びます。",
+        ),
+        ("ja", "同じkanji", "同じ感じ", "同じ漢字"),
+        (
+            "en",
             "could you bring the cu",
             "could you bring the cups",
             "could you bring the cups?",
@@ -393,9 +437,13 @@ fn recommended_collections_keep_word_sentence_and_fallback_workflows() {
     }
 
     // Sentence progress uses the active data catalog, not a built-in-only
-    // trigger table. These rail expectations stay fixed while all 11 packs are
-    // enabled; a word followed by a particle is not mislabeled as a word here.
+    // trigger table. These rail/daily expectations stay fixed while all 11 packs
+    // are enabled; a word followed by a particle is not mislabeled as a word here.
     for (seed, sentence) in [
+        ("好みni", "好みに合わせて選んでください。"),
+        ("条件ga", "条件が合えば、こちらを選びます。"),
+        ("準備gadeki", "準備ができたら連絡します。"),
+        ("JYUNBI GADEKI", "準備ができたら連絡します。"),
         ("kaisatsuha", "改札はどこですか。"),
         ("改札は", "改札はどこですか。"),
         ("かいさつは", "改札はどこですか。"),
@@ -572,6 +620,19 @@ fn recommended_collections_keep_word_sentence_and_fallback_workflows() {
             "xing li ji c",
             "行李寄存",
             "行李寄存可以到下午吗？",
+        ),
+        (
+            "zh-Hans",
+            "XING LI JI C \t",
+            "行李寄存",
+            "行李寄存可以到下午吗？",
+        ),
+        ("zh-Hans", "zhong w\u{a0}", "中文", "中文输入很方便。"),
+        (
+            "zh-Hans",
+            "发音 ke y\u{3000}",
+            "发音 可以",
+            "发音 可以再示范一下吗？",
         ),
         (
             "zh-Hans",

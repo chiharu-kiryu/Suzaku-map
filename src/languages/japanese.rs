@@ -72,13 +72,9 @@ fn convert_segments(kana: &str) -> String {
     let mut rest = kana;
     let mut output = String::new();
     while !rest.is_empty() {
-        if let Some((reading, word)) = kanji()
-            .rev() // Keep the dictionary's first variant when readings have equal lengths.
-            .filter(|(reading, _)| rest.starts_with(reading))
-            .max_by_key(|(reading, _)| reading.len())
-        {
+        if let Some((length, word)) = conversion_prefix(rest) {
             output.push_str(word);
-            rest = &rest[reading.len()..];
+            rest = &rest[length..];
         } else {
             let ch = rest.chars().next().unwrap();
             output.push(ch);
@@ -86,6 +82,13 @@ fn convert_segments(kana: &str) -> String {
         }
     }
     output
+}
+
+fn is_line_boundary(ch: char) -> bool {
+    matches!(
+        ch,
+        '\n' | '\r' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
+    )
 }
 
 fn composition_kana(seed: &str) -> String {
@@ -96,10 +99,7 @@ fn composition_kana(seed: &str) -> String {
     let mut start = 0;
     for (offset, ch) in seed.char_indices().filter(|(_, ch)| ch.is_whitespace()) {
         output.push_str(&romaji_to_hiragana(&seed[start..offset]));
-        if matches!(
-            ch,
-            '\n' | '\r' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}'
-        ) {
+        if is_line_boundary(ch) {
             output.push(ch);
         }
         start = offset + ch.len_utf8();
@@ -117,13 +117,16 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
     }
     let kana = composition_kana(seed);
     let mut queries = vec![kana.clone()];
-    if seed.ends_with(|ch: char| {
+    // Trailing reading separators do not end a draft or its unfinished
+    // syllable's completions. Probe before them, never across a line boundary.
+    let reading = seed.trim_end_matches(|ch: char| ch.is_whitespace() && !is_line_boundary(ch));
+    if reading.ends_with(|ch: char| {
         ch.is_ascii_alphabetic() && !"aiueo".contains(ch.to_ascii_lowercase())
     }) {
         queries.extend(
             ['a', 'i', 'u', 'e', 'o']
                 .into_iter()
-                .map(|vowel| composition_kana(&format!("{seed}{vowel}"))),
+                .map(|vowel| composition_kana(&format!("{reading}{vowel}"))),
         );
     }
     let mut offset = 0;
@@ -155,17 +158,8 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
                 }
             }
         }
-        if let Some((reading, word)) = kanji()
-            .rev()
-            .filter(|(reading, _)| rest.starts_with(reading))
-            .max_by_key(|(reading, _)| reading.len())
-        {
+        if let Some((length, word)) = conversion_prefix(rest) {
             prefix.push_str(word);
-            offset += reading.len();
-        } else if let Some(length) = known_written_prefix_len(rest) {
-            // Continue after a known adopted spelling (including Katakana),
-            // without converting it back or scanning through arbitrary text.
-            prefix.push_str(&rest[..length]);
             offset += length;
         } else {
             let ch = rest.chars().next().unwrap();
@@ -181,6 +175,22 @@ fn word_completions(seed: &str) -> Vec<(String, crate::ime::candidate_mix::Candi
         }
     }
     output
+}
+
+/// Keep a recognized written word whole before converting the next reading.
+/// A longer phonetic match still wins, and ties preserve the dictionary's
+/// existing first variant (including pack homophones and pure Kana words).
+fn conversion_prefix(rest: &str) -> Option<(usize, &str)> {
+    let phonetic = kanji()
+        .rev()
+        .filter(|(reading, _)| rest.starts_with(reading))
+        .max_by_key(|(reading, _)| reading.len());
+    if let Some(length) = known_written_prefix_len(rest)
+        && phonetic.is_none_or(|(reading, _)| length > reading.len())
+    {
+        return Some((length, &rest[..length]));
+    }
+    phonetic.map(|(reading, word)| (reading.len(), word))
 }
 
 fn known_written_prefix_len(text: &str) -> Option<usize> {

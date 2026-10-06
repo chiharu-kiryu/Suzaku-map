@@ -56,6 +56,12 @@ impl PinyinEntry {
     }
 
     fn match_input(&self, input: &str) -> Option<ReadingMatch> {
+        // Horizontal padding after an unfinished reading must not hide its
+        // completions. Trim only for matching: exact offsets still refer to
+        // the original input, whose spacing/literal handling belongs to the
+        // decoder. Internal syllable gaps, quotes and line boundaries stay
+        // significant; never remove them to manufacture a matching reading.
+        let input = input.trim_end_matches(is_pinyin_spacing);
         let mut consumed = 0;
         for expected in self.reading.bytes() {
             if consumed == input.len() {
@@ -449,6 +455,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn trailing_spacing_does_not_supply_a_required_internal_separator() {
+        let entry = PinyinEntry {
+            require_separators: true,
+            ..PinyinEntry::new("xi'an", "西安")
+        };
+        for input in ["xia ", "xian\t", "xia\u{3000}"] {
+            assert!(entry.match_input(input).is_none(), "{input:?}");
+        }
+        for input in ["xi a ", "xi'a\t", "xi\u{3000}a\u{a0}"] {
+            assert!(
+                entry.match_input(input) == Some(ReadingMatch::Prefix),
+                "{input:?}"
+            );
+        }
+        assert!(entry.match_input("xi an ") == Some(ReadingMatch::Exact(5)));
+        assert_eq!(pinyin_candidates("xian ")[0], "先");
+        assert_eq!(pinyin_candidates("xi an ")[0], "西安");
+    }
+
+    #[test]
     fn reading_separators_use_utf8_boundaries_without_consuming_newlines() {
         let entry = PinyinEntry::new("shu'ru'fa", "输入法");
         for input in [
@@ -557,7 +583,7 @@ mod tests {
 
     #[test]
     fn authored_continuations_are_unique_complete_and_preserve_padding() {
-        assert_eq!(pinyin().len(), 2367);
+        assert_eq!(pinyin().len(), 2432);
         let mut phrases = std::collections::HashSet::new();
         let mut sentences = std::collections::HashSet::new();
         for (phrase, values) in vocabulary().continuations() {
