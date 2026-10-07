@@ -18,6 +18,10 @@ use winit::event_loop::EventLoopProxy;
 mod typing;
 use typing::NativeTyping;
 
+#[path = "native_keyboard.rs"]
+mod keyboard;
+use keyboard::{KeyboardEdit, NativeKeyboardQueue};
+
 #[cfg(all(test, target_os = "linux"))]
 #[path = "native_action_audit_test.rs"]
 mod action_audit_test;
@@ -31,6 +35,8 @@ mod tool_chain_audit_test;
 pub(super) use tests::assert_insertion_keyboard_followup;
 #[cfg(all(test, target_os = "linux"))]
 pub(super) use tests::assert_workers_cancel_on_shutdown;
+#[cfg(all(test, target_os = "linux"))]
+pub(super) use tests::present_test_frame;
 
 #[derive(Default)]
 pub(super) struct NativeView {
@@ -48,6 +54,7 @@ pub(super) struct NativeView {
     // An action ACK does not carry its new revision. Keep the resulting draft
     // as the next keyboard edit's base until an authoritative frame arrives.
     confirmed_action: Option<NativeTyping>,
+    keyboard: Option<NativeKeyboardQueue>,
 }
 
 struct PendingAction {
@@ -110,7 +117,7 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
     {
         use std::time::Duration;
         use suzaku_map::platform::linux_ime_sync::{
-            Subscription, send_action_cancellable, socket_path,
+            Subscription, send_action_cancellable, send_keyboard_action_cancellable, socket_path,
         };
         let path = socket_path()?;
         let mailbox = Arc::new(Mutex::new(Mailbox::default()));
@@ -170,13 +177,28 @@ pub(super) fn start(proxy: EventLoopProxy<PanelUserEvent>) -> Option<NativeSync>
                             if action_stop.load(Ordering::Acquire) {
                                 break;
                             }
-                            let result =
-                                send_action_cancellable(&path, &action.command, &action_stop);
-                            let _ = proxy.send_event(PanelUserEvent::NativeActionFinished {
-                                host: action.host,
-                                revision: action.revision,
-                                result,
-                            });
+                            let event = if action.command.starts_with('E') {
+                                PanelUserEvent::NativeKeyboardFinished {
+                                    host: action.host,
+                                    revision: action.revision,
+                                    result: send_keyboard_action_cancellable(
+                                        &path,
+                                        &action.command,
+                                        &action_stop,
+                                    ),
+                                }
+                            } else {
+                                PanelUserEvent::NativeActionFinished {
+                                    host: action.host,
+                                    revision: action.revision,
+                                    result: send_action_cancellable(
+                                        &path,
+                                        &action.command,
+                                        &action_stop,
+                                    ),
+                                }
+                            };
+                            let _ = proxy.send_event(event);
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => {}
                         Err(_) => break,
@@ -250,12 +272,29 @@ impl PanelState {
             .cloned()
     }
 
-    /// A screen-keyboard event edits a retained local draft until the native host
-    /// acknowledges it. Only the unsent suffix/edit is coalesced into the next write.
+    /// Literal edits coalesce, but semantic keys wait for the host's undo/Compose
+    /// result. Later keys cannot use a guessed draft while that result is pending.
     pub(super) fn native_keyboard_edit(&mut self, text: Option<&str>) -> bool {
         if !self.native.showing {
             return false;
         }
+        if self.native.keyboard.is_some()
+            || text == Some(" ")
+            || (text.is_none() && self.native.typing.is_none())
+        {
+            let edit = match text {
+                Some(" ") => KeyboardEdit::Continue,
+                Some(text) => KeyboardEdit::Text(text.to_owned()),
+                None => KeyboardEdit::Backspace,
+            };
+            self.queue_native_keyboard(edit);
+            return true;
+        }
+        self.native_literal_edit(text);
+        true
+    }
+
+    fn native_literal_edit(&mut self, text: Option<&str>) {
         if self.native.typing.is_none() {
             let Some(frame) = self
                 .native
@@ -264,7 +303,7 @@ impl PanelState {
                 .filter(|f| f.focused && !f.private)
             else {
                 self.native_typing_feedback();
-                return true;
+                return;
             };
             let mut typing = self
                 .native
@@ -284,7 +323,167 @@ impl PanelState {
         self.cancel_translation();
         self.flush_native_typing();
         self.refresh_native_view();
-        true
+    }
+
+    fn queue_native_keyboard(&mut self, edit: KeyboardEdit) {
+        if self.native.keyboard.is_none() {
+            let Some(frame) = self
+                .native
+                .frame
+                .as_ref()
+                .filter(|f| f.focused && !f.private)
+            else {
+                self.native_typing_feedback();
+                return;
+            };
+            self.native.keyboard = Some(NativeKeyboardQueue::new(frame));
+            // Reuse the existing ACK/frame barrier for known actions ahead of
+            // this semantic key. A newer, physically edited frame must not make
+            // an unconfirmed Adopt look settled and redirect Backspace to it.
+            if self.native.typing.is_none() {
+                self.native.typing = self.native.confirmed_action.take().or_else(|| {
+                    self.native
+                        .pending
+                        .as_mut()
+                        .and_then(|pending| pending.replacement.take())
+                });
+            }
+        }
+        let queue = self.native.keyboard.as_mut().unwrap();
+        queue.blocked |= self.is_focused || self.chrome.settings_open;
+        if !queue.push(edit) {
+            queue.blocked = true;
+            self.last_commit_feedback = Some("Keyboard queue is full; the last key was not accepted. Recover the retained text in the input field.".into());
+            self.commit_feedback_ticks = 180;
+        }
+        self.cancel_translation();
+        self.flush_native_keyboard();
+        self.refresh_native_view();
+    }
+
+    pub(super) fn suspend_native_keyboard(&mut self) {
+        if let Some(queue) = self.native.keyboard.as_mut() {
+            queue.blocked = true;
+            if let Some(typing) = self.native.typing.as_mut() {
+                typing.blocked = true;
+            }
+            self.native_typing_feedback();
+        }
+    }
+
+    fn flush_native_keyboard(&mut self) {
+        if self.native.pending.is_some()
+            || self.native.typing.is_some()
+            || self.native.confirmed_action.is_some()
+        {
+            return;
+        }
+        let Some(queue) = self.native.keyboard.as_ref() else {
+            return;
+        };
+        if queue.blocked || queue.flight.is_some() {
+            return;
+        }
+        let Some(frame) = self
+            .native
+            .frame
+            .as_ref()
+            .filter(|frame| queue.matches(frame))
+            .cloned()
+        else {
+            return;
+        };
+        if !self.native.showing || self.has_local_panel_interaction() {
+            return;
+        }
+        match queue.front().cloned() {
+            None => self.native.keyboard = None,
+            Some(KeyboardEdit::Text(text)) => {
+                if frame.seed.len().saturating_add(text.len())
+                    > suzaku_map::ime::companion::MAX_TEXT_BYTES
+                {
+                    self.native.keyboard.as_mut().unwrap().blocked = true;
+                    self.native_typing_feedback();
+                    return;
+                }
+                self.native.keyboard.as_mut().unwrap().pop();
+                if self.native.keyboard.as_ref().unwrap().front().is_none() {
+                    self.native.keyboard = None;
+                }
+                self.native_literal_edit(Some(&text));
+            }
+            Some(edit) => {
+                let operation = match edit {
+                    KeyboardEdit::Backspace => NativeOperation::Backspace,
+                    KeyboardEdit::Continue => NativeOperation::Continue,
+                    KeyboardEdit::Text(_) => unreachable!(),
+                };
+                #[cfg(target_os = "linux")]
+                if let (Ok(command), Some(sender)) = (
+                    suzaku_map::platform::linux_ime_sync::action_command(&frame, &operation),
+                    self.native.sender.as_ref(),
+                ) && sender
+                    .try_send(ActionRequest {
+                        command,
+                        host: frame.host.clone(),
+                        revision: frame.revision,
+                    })
+                    .is_ok()
+                {
+                    self.native.keyboard.as_mut().unwrap().flight = Some(frame);
+                    return;
+                }
+                let _ = operation;
+                self.native.keyboard.as_mut().unwrap().blocked = true;
+                self.native_typing_feedback();
+            }
+        }
+    }
+
+    pub(super) fn native_keyboard_finished(
+        &mut self,
+        host: String,
+        revision: u64,
+        result: Result<NativeComposition, String>,
+    ) {
+        let Some(queue) = self.native.keyboard.as_ref() else {
+            return;
+        };
+        let Some(flight) = queue
+            .flight
+            .as_ref()
+            .filter(|flight| flight.host == host && flight.revision == revision)
+        else {
+            return;
+        };
+        let result = result.ok().filter(|reply| {
+            queue.matches(reply)
+                && reply.revision > revision
+                && self.native.showing
+                && !self.has_local_panel_interaction()
+                && self.native.frame.as_ref().is_some_and(|current| {
+                    queue.matches(current)
+                        && current.revision <= reply.revision
+                        && (current.revision != reply.revision
+                            || (current.seed == reply.seed
+                                && current.selected == reply.selected
+                                && current.candidates == reply.candidates))
+                })
+                && flight.context == reply.context
+        });
+        let queue = self.native.keyboard.as_mut().unwrap();
+        queue.flight = None;
+        if let Some(reply) = result.filter(|_| !queue.blocked) {
+            queue.pop();
+            // Retire the flight before receive_native_frame can flush a follow-up.
+            self.receive_native_frame(Some(reply));
+            self.flush_native_keyboard();
+        } else {
+            queue.blocked = true;
+            self.native_typing_feedback();
+        }
+        self.refresh_native_view();
+        self.window.request_redraw();
     }
 
     fn native_typing_feedback(&mut self) {
@@ -294,11 +493,28 @@ impl PanelState {
     }
 
     pub(super) fn take_native_typing_draft(&mut self) -> Option<String> {
-        self.native
+        let draft = self
+            .native
             .typing
             .take()
             .or_else(|| self.native.confirmed_action.take())
-            .map(|typing| typing.draft)
+            .map(|typing| typing.draft);
+        if let Some(queue) = self.native.keyboard.take() {
+            let mut text = draft.unwrap_or_else(|| {
+                self.native
+                    .frame
+                    .as_ref()
+                    .filter(|frame| queue.matches(frame))
+                    .map(|frame| frame.seed.clone())
+                    .unwrap_or_else(|| queue.recovery_seed().to_owned())
+            });
+            queue.append_recovery_text(&mut text);
+            self.last_commit_feedback = Some("Recovered literal text locally; unconfirmed keyboard operations were not replayed.".into());
+            self.commit_feedback_ticks = 180;
+            Some(text)
+        } else {
+            draft
+        }
     }
 
     fn flush_native_typing(&mut self) {
@@ -309,6 +525,7 @@ impl PanelState {
             .is_some_and(NativeTyping::settled)
         {
             self.native.typing = None;
+            self.flush_native_keyboard();
             return;
         }
         if self
@@ -369,7 +586,12 @@ impl PanelState {
                             ))
                         || self.native.typing.as_ref().is_some_and(|typing| {
                             typing.matches(frame) && !typing.draft.is_empty()
-                        }))
+                        })
+                        || self
+                            .native
+                            .keyboard
+                            .as_ref()
+                            .is_some_and(|queue| queue.matches(frame) && queue.has_text()))
             })
     }
 
@@ -429,6 +651,18 @@ impl PanelState {
             })
         {
             self.native.retained_keyboard_context = None;
+        }
+        if let Some(queue) = self.native.keyboard.as_mut() {
+            if frame.as_ref().is_some_and(|frame| !queue.matches(frame)) {
+                self.native.keyboard = None;
+                self.native_typing_feedback();
+            } else if frame.is_none() {
+                queue.blocked = true;
+            } else if let Some(frame) = frame.as_ref() {
+                // Preserve the last authoritative text for recovery even if
+                // the reader disconnects and the semantic reply never arrives.
+                queue.observe(frame);
+            }
         }
         // With no follow-up edit, the latest snapshot wins, even if the mailbox
         // skipped the action's intermediate frame after a physical edit.
@@ -534,6 +768,7 @@ impl PanelState {
             self.native.retained_keyboard_context = Some((frame.host.clone(), frame.context));
         }
         self.flush_native_typing();
+        self.flush_native_keyboard();
         self.refresh_native_view();
         self.window.request_redraw();
     }
@@ -542,6 +777,7 @@ impl PanelState {
         self.native.pending.is_some()
             || self.native.typing.is_some()
             || self.native.confirmed_action.is_some()
+            || self.native.keyboard.is_some()
     }
 
     pub(super) fn refresh_native_view(&mut self) {
@@ -552,6 +788,11 @@ impl PanelState {
             .as_ref()
             .map(|f| f.engine_candidates())
             .unwrap_or_default();
+        // A semantic key has no speculative draft: keep the current host page
+        // as a read-only placeholder until its authoritative result arrives.
+        // Collapsing it on every B/S request moves the dock and its hit targets
+        // even when the resulting composition keeps exactly the same layout.
+        // Literal typing still hides candidates for its unconfirmed draft.
         if self.native.typing.is_some() {
             candidates.clear();
         }
@@ -594,6 +835,7 @@ impl PanelState {
         self.pause_voice_capture_if_target_changed();
         self.native.typing = None;
         self.native.confirmed_action = None;
+        self.native.keyboard = None;
         if let Some((seed, caret, expanded)) = self.native.draft.take() {
             self.chrome.set_seed_text(seed);
             self.chrome.caret_index = caret;
@@ -610,6 +852,11 @@ impl PanelState {
 
     /// true means this is a native view, including a rejected/inactive action.
     pub(super) fn native_action(&mut self, operation: NativeOperation) -> bool {
+        match operation {
+            NativeOperation::Backspace => return self.native_keyboard_edit(None),
+            NativeOperation::Continue => return self.native_keyboard_edit(Some(" ")),
+            _ => {}
+        }
         self.native_action_with_source(operation, None)
     }
 
@@ -632,7 +879,10 @@ impl PanelState {
         if !self.native.showing {
             return false;
         }
-        if self.native.typing.is_some() || self.native.confirmed_action.is_some() {
+        if self.native.typing.is_some()
+            || self.native.confirmed_action.is_some()
+            || self.native.keyboard.is_some()
+        {
             // Even Clear must wait for confirmation and its authoritative
             // revision. Explicit local recovery remains available in the field.
             self.native_typing_feedback();
@@ -647,6 +897,12 @@ impl PanelState {
         operation: NativeOperation,
         insertion: Option<NativeInsertion>,
     ) -> bool {
+        if matches!(
+            operation,
+            NativeOperation::Backspace | NativeOperation::Continue
+        ) {
+            return false; // Semantic keys require their authoritative-frame reply.
+        }
         #[cfg(target_os = "linux")]
         if !self.is_focused
             && !self.chrome.settings_open
@@ -681,8 +937,13 @@ impl PanelState {
                         NativeOperation::Commit(_) | NativeOperation::Clear => String::new(),
                         // Selection changes the highlighted candidate, not the seed.
                         NativeOperation::Select(_) => frame.seed.clone(),
+                        NativeOperation::Backspace | NativeOperation::Continue => unreachable!(),
                     };
-                    typing.sent(frame.revision);
+                    if let NativeOperation::Select(selected) = &operation {
+                        typing.sent_selection(frame.revision, *selected);
+                    } else {
+                        typing.sent(frame.revision);
+                    }
                     typing
                 });
                 self.native.pending = Some(PendingAction {
@@ -726,6 +987,11 @@ impl PanelState {
             .as_mut()
             .is_some_and(|typing| typing.acknowledge(revision, matches!(result, Ok(true))))
         {
+            if matches!(result, Ok(true))
+                && let Some(insertion) = pending.insertion
+            {
+                self.finish_native_insertion(insertion);
+            }
             if let (Some(typing), Some(frame)) = (&mut self.native.typing, &self.native.frame)
                 && typing.matches(frame)
             {
@@ -758,6 +1024,9 @@ impl PanelState {
                 self.native.confirmed_action = Some(replacement);
             }
         } else {
+            if let Some(queue) = self.native.keyboard.as_mut() {
+                queue.blocked = true;
+            }
             self.last_commit_feedback = Some(if pending.insertion.is_some() {
                 "Insertion was not confirmed; source retained. Nothing was retried; check the target before retrying."
             } else {
@@ -767,6 +1036,7 @@ impl PanelState {
             self.window.request_redraw();
         }
         if self.native.showing {
+            self.flush_native_keyboard();
             self.refresh_native_view();
             self.window.request_redraw();
         }
@@ -1125,6 +1395,8 @@ fn assert_native_paging(state: &mut PanelState) {
     }
     // A frame arriving between down/up invalidates page controls just like cards.
     for touch in [false, true] {
+        #[cfg(target_os = "linux")]
+        present_test_frame(state);
         let rect = state
             .interaction_rect(InteractionKind::NativeCandidatePage(true))
             .unwrap();

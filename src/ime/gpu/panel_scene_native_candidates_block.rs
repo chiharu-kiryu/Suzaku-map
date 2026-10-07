@@ -64,13 +64,15 @@
             ];
             let selected = *source_index == snapshot.selected_index;
             let kind = InteractionKind::Candidate(*source_index);
-            let (hovered, pressed) = interaction_state(kind);
+            let enabled = !page.busy;
+            let (hovered, pressed) = if enabled { interaction_state(kind) } else { (false, false) };
             quads.push(CandidateQuad::rounded(rect,
-                if selected || pressed { accent_soft }
+                if enabled && (selected || pressed) { accent_soft }
                 else if hovered { surface_alt } else { surface },
                 7.0 * responsive_scale));
             quads.push(CandidateQuad::outline(rect,
-                if selected { accent } else { shell_border },
+                if !enabled { compact_divider }
+                else if selected { accent } else { shell_border },
                 7.0 * responsive_scale, 0.8 * responsive_scale));
             let display_label = if let Some((scroll_index, started_at)) = sentence_candidate_scroll
                 && *scroll_index == *source_index && !label.is_empty()
@@ -85,13 +87,18 @@
                 DisplayTextScale::Medium => 2.1,
                 DisplayTextScale::Large => 2.55,
             } * responsive_scale;
-            if add_text(text, rect, px, if selected { accent_text } else { text_primary },
+            if add_text(text, rect, px,
+                if !enabled { text_muted } else if selected { accent_text } else { text_primary },
                 TextAlign::Left, TextRole::CandidatePrimary, 2)
             {
                 sentence_candidate_truncated.push(*source_index);
             }
             // Do not enlarge adjacent cards' hit boxes into each other.
-            hit_targets.push(HitTarget { index: *source_index, rect });
-            interactive_targets.push(InteractiveTarget { kind, rect });
+            // Busy cards retain their layout, but are read-only until the host
+            // confirms the pending edit. Neither pointer hit path may select them.
+            if enabled {
+                hit_targets.push(HitTarget { index: *source_index, rect });
+                interactive_targets.push(InteractiveTarget { kind, rect });
+            }
         }
     }

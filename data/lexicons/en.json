@@ -10948,6 +10948,543 @@
         "we can choose a different place.",
         "we can choose a simpler plan."
       ]
+    },
+    {
+      "id": "daily_followup",
+      "words": [
+        "having",
+        "stuck"
+      ],
+      "next_words": [
+        [
+          "i haven't finished",
+          [
+            "yet",
+            "reading"
+          ]
+        ],
+        [
+          "i'm still trying to",
+          [
+            "understand",
+            "finish"
+          ]
+        ],
+        [
+          "i've just",
+          [
+            "started",
+            "finished"
+          ]
+        ],
+        [
+          "it's taking longer than",
+          [
+            "expected",
+            "usual"
+          ]
+        ],
+        [
+          "i'm having trouble",
+          [
+            "finding",
+            "starting"
+          ]
+        ],
+        [
+          "i got stuck on",
+          [
+            "this",
+            "the"
+          ]
+        ],
+        [
+          "let's try it",
+          [
+            "again",
+            "together"
+          ]
+        ],
+        [
+          "let's start with the",
+          [
+            "first",
+            "easy"
+          ]
+        ],
+        [
+          "we can take a",
+          [
+            "break",
+            "look"
+          ]
+        ],
+        [
+          "i'll come back to",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "can we pick this up",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ],
+        [
+          "i'll let you know when",
+          [
+            "it's",
+            "we're"
+          ]
+        ],
+        [
+          "i forgot to",
+          [
+            "bring",
+            "mention"
+          ]
+        ],
+        [
+          "sorry i didn't",
+          [
+            "understand",
+            "notice"
+          ]
+        ],
+        [
+          "what i meant was",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "sorry i got the",
+          [
+            "time",
+            "address"
+          ]
+        ],
+        [
+          "i read that",
+          [
+            "wrong",
+            "too"
+          ]
+        ],
+        [
+          "let me correct",
+          [
+            "that",
+            "this"
+          ]
+        ],
+        [
+          "there's one more",
+          [
+            "thing",
+            "question"
+          ]
+        ],
+        [
+          "i think i missed",
+          [
+            "something",
+            "the"
+          ]
+        ],
+        [
+          "let's go over it",
+          [
+            "again",
+            "together"
+          ]
+        ],
+        [
+          "please give me a little more",
+          [
+            "time",
+            "information"
+          ]
+        ],
+        [
+          "we're almost",
+          [
+            "done",
+            "there"
+          ]
+        ],
+        [
+          "i'll finish the rest",
+          [
+            "later",
+            "tomorrow"
+          ]
+        ]
+      ],
+      "sentences": [
+        "i haven't finished yet, but i'm getting there.",
+        "i haven't finished reading the message.",
+        "i'm still trying to understand this part.",
+        "i'm still trying to finish before dinner.",
+        "i've just started, so i need some time.",
+        "i've just finished the first part.",
+        "it's taking longer than expected.",
+        "it's taking longer than usual today.",
+        "i'm having trouble finding the right place.",
+        "i'm having trouble starting this.",
+        "i got stuck on this part.",
+        "i got stuck on the last step.",
+        "let's try it again after a short break.",
+        "let's try it together this time.",
+        "let's start with the first question.",
+        "let's start with the easy part.",
+        "we can take a break if you need one.",
+        "we can take a look together.",
+        "i'll come back to this later.",
+        "i'll come back to that after dinner.",
+        "can we pick this up later?",
+        "can we pick this up tomorrow?",
+        "i'll let you know when it's ready.",
+        "i'll let you know when we're done.",
+        "i forgot to bring the keys.",
+        "i forgot to mention one thing.",
+        "sorry i didn't understand the question.",
+        "sorry i didn't notice your message.",
+        "what i meant was this one.",
+        "what i meant was that we could wait.",
+        "sorry i got the time wrong.",
+        "sorry i got the address wrong.",
+        "i read that wrong, sorry.",
+        "i read that too quickly.",
+        "let me correct that before we continue.",
+        "let me correct this one detail.",
+        "there's one more thing i wanted to ask.",
+        "there's one more question before we finish.",
+        "i think i missed something important.",
+        "i think i missed the last part.",
+        "let's go over it again slowly.",
+        "let's go over it together before we start.",
+        "please give me a little more time.",
+        "please give me a little more information.",
+        "we're almost done, just one more step.",
+        "we're almost there, let's keep going.",
+        "i'll finish the rest later.",
+        "i'll finish the rest tomorrow morning."
+      ]
+    },
+    {
+      "id": "daily_leisure",
+      "words": [
+        "listening",
+        "movie",
+        "podcasts",
+        "walks",
+        "watched"
+      ],
+      "next_words": [
+        [
+          "what do you like to",
+          [
+            "read",
+            "watch"
+          ]
+        ],
+        [
+          "what kind of music do you",
+          [
+            "like",
+            "enjoy"
+          ]
+        ],
+        [
+          "i like listening to",
+          [
+            "music",
+            "podcasts"
+          ]
+        ],
+        [
+          "i've been reading",
+          [
+            "this",
+            "books"
+          ]
+        ],
+        [
+          "have you watched",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "let's watch a",
+          [
+            "movie",
+            "show"
+          ]
+        ],
+        [
+          "we could spend the afternoon",
+          [
+            "reading",
+            "walking"
+          ]
+        ],
+        [
+          "this weekend i'm planning to",
+          [
+            "relax",
+            "visit"
+          ]
+        ],
+        [
+          "i'd like to spend some time",
+          [
+            "outside",
+            "reading"
+          ]
+        ],
+        [
+          "we could take a",
+          [
+            "walk",
+            "break"
+          ]
+        ],
+        [
+          "i enjoy taking",
+          [
+            "photos",
+            "walks"
+          ]
+        ],
+        [
+          "i'm learning to",
+          [
+            "draw",
+            "cook"
+          ]
+        ],
+        [
+          "that sounds like a fun",
+          [
+            "day",
+            "idea"
+          ]
+        ],
+        [
+          "it feels good to",
+          [
+            "relax",
+            "slow"
+          ]
+        ],
+        [
+          "i'm looking forward to a",
+          [
+            "quiet",
+            "relaxing"
+          ]
+        ],
+        [
+          "let's keep the weekend",
+          [
+            "free",
+            "simple"
+          ]
+        ]
+      ],
+      "sentences": [
+        "what do you like to read in your free time?",
+        "what do you like to watch on weekends?",
+        "what kind of music do you like?",
+        "what kind of music do you enjoy most?",
+        "i like listening to music while i cook.",
+        "i like listening to podcasts on my way home.",
+        "i've been reading this book lately.",
+        "i've been reading books about drawing.",
+        "have you watched this movie yet?",
+        "have you watched that new show?",
+        "let's watch a movie tonight.",
+        "let's watch a show after dinner.",
+        "we could spend the afternoon reading at home.",
+        "we could spend the afternoon walking around the park.",
+        "this weekend i'm planning to relax at home.",
+        "this weekend i'm planning to visit a friend.",
+        "i'd like to spend some time outside today.",
+        "i'd like to spend some time reading this evening.",
+        "we could take a walk after lunch.",
+        "we could take a break and enjoy the view.",
+        "i enjoy taking photos of small things.",
+        "i enjoy taking walks in the evening.",
+        "i'm learning to draw in my free time.",
+        "i'm learning to cook something new.",
+        "that sounds like a fun day out.",
+        "that sounds like a fun idea for the weekend.",
+        "it feels good to relax after a busy week.",
+        "it feels good to slow down for a while.",
+        "i'm looking forward to a quiet evening.",
+        "i'm looking forward to a relaxing weekend.",
+        "let's keep the weekend free for now.",
+        "let's keep the weekend simple and relaxed."
+      ]
+    },
+    {
+      "id": "daily_clarification",
+      "words": [],
+      "next_words": [
+        [
+          "just to make sure i",
+          [
+            "understand",
+            "heard"
+          ]
+        ],
+        [
+          "are you saying that",
+          [
+            "it's",
+            "we"
+          ]
+        ],
+        [
+          "when you say that, do you mean",
+          [
+            "today",
+            "tomorrow"
+          ]
+        ],
+        [
+          "does that mean we should",
+          [
+            "wait",
+            "start"
+          ]
+        ],
+        [
+          "could you put that in",
+          [
+            "simpler",
+            "different"
+          ]
+        ],
+        [
+          "let me say it",
+          [
+            "another",
+            "more"
+          ]
+        ],
+        [
+          "here's what i was",
+          [
+            "trying",
+            "thinking"
+          ]
+        ],
+        [
+          "what i wanted to ask was",
+          [
+            "whether",
+            "when"
+          ]
+        ],
+        [
+          "i'm talking about the",
+          [
+            "first",
+            "last"
+          ]
+        ],
+        [
+          "i'm asking about the",
+          [
+            "time",
+            "place"
+          ]
+        ],
+        [
+          "could you be a bit more",
+          [
+            "specific",
+            "clear"
+          ]
+        ],
+        [
+          "which part should i",
+          [
+            "change",
+            "explain"
+          ]
+        ],
+        [
+          "do you want me to explain",
+          [
+            "this",
+            "that"
+          ]
+        ],
+        [
+          "just to be clear,",
+          [
+            "we're",
+            "i'm"
+          ]
+        ],
+        [
+          "let's check that we",
+          [
+            "agree",
+            "understand"
+          ]
+        ],
+        [
+          "is there anything i should",
+          [
+            "add",
+            "clarify"
+          ]
+        ]
+      ],
+      "sentences": [
+        "just to make sure i understand, you want the first one?",
+        "just to make sure i heard you correctly, we're meeting tomorrow?",
+        "are you saying that it's ready?",
+        "are you saying that we should wait?",
+        "when you say that, do you mean today?",
+        "when you say that, do you mean tomorrow?",
+        "does that mean we should wait here?",
+        "does that mean we should start now?",
+        "could you put that in simpler words?",
+        "could you put that in different words?",
+        "let me say it another way.",
+        "let me say it more clearly.",
+        "here's what i was trying to say.",
+        "here's what i was thinking about.",
+        "what i wanted to ask was whether we could try again.",
+        "what i wanted to ask was when we should start.",
+        "i'm talking about the first step.",
+        "i'm talking about the last message.",
+        "i'm asking about the time, not the place.",
+        "i'm asking about the place, not the time.",
+        "could you be a bit more specific about that?",
+        "could you be a bit more clear about what you need?",
+        "which part should i change first?",
+        "which part should i explain again?",
+        "do you want me to explain this part?",
+        "do you want me to explain that again?",
+        "just to be clear, we're meeting tomorrow.",
+        "just to be clear, i'm asking about this one.",
+        "let's check that we agree on the next step.",
+        "let's check that we understand each other.",
+        "is there anything i should add to this?",
+        "is there anything i should clarify before we start?"
+      ]
     }
   ],
   "phrase_endings": [

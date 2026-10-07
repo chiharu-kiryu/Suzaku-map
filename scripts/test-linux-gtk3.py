@@ -25,6 +25,12 @@ bus, x, window, xid = None, None, None, None
 views, insertions = [], []
 committed = ["", ""]
 events = deque(maxlen=16)
+key_event_serial = 0
+raw_key_events = deque(maxlen=32)
+raw_key_event_serial = 0
+gdk_observer_error = None
+default_event_handler = None
+event_handler_installed = False
 focus_events = deque(maxlen=32)
 started = time.monotonic()
 last_key = None
@@ -44,6 +50,8 @@ def pump():
     for _ in range(128):
         if not context.iteration(False) or time.monotonic() >= deadline:
             break
+    if gdk_observer_error is not None:
+        raise gdk_observer_error
     if qa.watch is not None:
         qa.watch.drain()
 
@@ -224,12 +232,135 @@ def passed_case(label):
     print("PASS:", label, flush=True)
 
 
+def delivered_key(symbol, *modifiers, expect):
+    """A same-draft expectation alone cannot acknowledge a no-op physical key."""
+    previous = raw_key_event_serial
+    hardwarecode = x.x.XKeysymToKeycode(x.display, symbol)
+    key(symbol, *modifiers, expect=expect)
+    wait(lambda: any(event["serial"] > previous and event["pressed"] and
+                     event["hardwarecode"] == hardwarecode and event["view"] == active
+                     for event in raw_key_events), "owned GTK input received the physical navigation key before IM filtering")
+
+
+def boundary_key(symbol, *modifiers):
+    snapshot = qa.watch.latest
+    delivered_key(symbol, *modifiers, expect=snapshot["seed"])
+    # As in commit(), observe beyond a transient correct state: async GTK input
+    # must neither forward Tab into the document nor publish a late selection.
+    deadline = time.monotonic() + .15
+    while True:
+        pump()
+        assert qa.watch.latest == snapshot, "boundary navigation changed draft, candidates or revision"
+        assert target_is_owned(), "boundary navigation moved the GTK focus"
+        expect_buffers()
+        if time.monotonic() >= deadline:
+            return
+        time.sleep(.003)
+
+
+def navigate_row(symbol, selected):
+    before = qa.watch.latest
+    delivered_key(symbol, expect=before["seed"])
+    wait(lambda: qa.watch.latest["revision"] > before["revision"] and
+         qa.watch.latest["selected"] == selected, "real relative navigation selects the adjacent row")
+    for field in ("host", "context", "focused", "private", "language", "seed", "candidates"):
+        assert qa.watch.latest[field] == before[field], ("relative navigation changed", field)
+    expect_buffers()
+
+
+def check_candidate_row_boundaries():
+    # Pending/cancellation is exercised by the private native HTTP suite. This
+    # real GTK gate isolates physical-key delivery, local selection and undo.
+    assert json.loads(qa.command("S"))["settings"]["llm_enabled"] is False
+    for code, reading, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+        language(code)
+        clear_buffers()
+        type_text(reading)
+        assert qa.watch.latest["selected"] == 0
+        boundary_key(IBus.KEY_Up)
+        boundary_key(IBus.KEY_Tab, IBus.KEY_Shift_L)
+        key(IBus.KEY_space, expect=reading + " ")
+        expect_buffers()
+        key(IBus.KEY_Escape, expect="")
+        expect_buffers()
+        passed_case(code + " physical first-row Up/Shift+Tab preserve exact state and literal Space")
+
+        type_text(reading)
+        choose(word)
+        assert qa.watch.latest["selected"] == 0
+        boundary_key(IBus.KEY_Up)
+        boundary_key(IBus.KEY_Tab, IBus.KEY_Shift_L)
+        key(IBus.KEY_BackSpace, expect=reading)
+        expect_buffers()
+        key(IBus.KEY_Escape, expect="")
+        expect_buffers()
+        passed_case(code + " physical first-row boundaries retain original-spelling adoption undo")
+
+        type_text(reading)
+        assert qa.watch.latest["selected"] == 0 and len(qa.watch.latest["candidates"]) > 1
+        selected_text = qa.watch.latest["candidates"][0]["text"]
+        navigate_row(IBus.KEY_Down, 1)
+        navigate_row(IBus.KEY_Up, 0)
+        key(IBus.KEY_space, expect=selected_text + " ")
+        expect_buffers()
+        key(IBus.KEY_Escape, expect="")
+        expect_buffers()
+        passed_case(code + " real physical adjacent-row roundtrip still explicitly selects for Space")
+
+    language("en")
+    clear_buffers()
+    type_text("qzxv")
+    assert qa.watch.latest["selected"] == 0 and len(qa.watch.latest["candidates"]) == 1
+    boundary_key(IBus.KEY_Down)
+    boundary_key(IBus.KEY_Tab)
+    key(IBus.KEY_Escape, expect="")
+    expect_buffers()
+    passed_case("single-candidate Down/Tab preserve exact state and GTK focus without inserting a tab")
+
+
 def observe_key(view, event, index):
-    events.append({"time": round(time.monotonic() - started, 4),
+    global key_event_serial
+    key_event_serial += 1
+    events.append({"serial": key_event_serial, "pressed": event.type == Gdk.EventType.KEY_PRESS,
+                   "time": round(time.monotonic() - started, 4),
                    "event": str(event.type), "view": index, "keysym": int(event.keyval),
                    "hardwarecode": int(event.hardware_keycode), "modifiers": int(event.state),
                    "has_focus": view.has_focus(), "is_focus": view.is_focus()})
     return False  # Observe only; GTK/IBus must process the original event.
+
+
+def dispatch_gtk_event(event, *_args):
+    default_event_handler(event)
+
+
+def observe_gdk_event(event, *_args):
+    """Observe delivery before GTK's IBus key snooper, then dispatch exactly once."""
+    global raw_key_event_serial, gdk_observer_error
+    try:
+        if (event.type in (Gdk.EventType.KEY_PRESS, Gdk.EventType.KEY_RELEASE) and
+                window is not None and xid is not None):
+            event_window = event.get_window()
+            if (event_window is not None and event_window.get_toplevel() == window.get_window() and
+                    views[active].has_focus() and views[active].is_focus()):
+                raw_key_event_serial += 1
+                raw_key_events.append({"serial": raw_key_event_serial,
+                    "pressed": event.type == Gdk.EventType.KEY_PRESS,
+                    "time": round(time.monotonic() - started, 4), "event": str(event.type),
+                    "view": active, "keysym": int(event.keyval),
+                    "hardwarecode": int(event.hardware_keycode), "modifiers": int(event.state)})
+    except Exception as error:
+        # GI prints callback exceptions instead of propagating them through
+        # MainContext.iteration. Preserve the first failure for pump() to raise.
+        if gdk_observer_error is None:
+            gdk_observer_error = error
+    finally:
+        try:
+            # No copy, event_put, signal emission or second dispatch: this is
+            # the same downstream handler installed by Gtk.init in our process.
+            dispatch_gtk_event(event)
+        except Exception as error:
+            if gdk_observer_error is None:
+                gdk_observer_error = error
 
 
 def module_state():
@@ -424,6 +555,7 @@ def diagnose():
     frame = None if qa.watch is None else qa.watch.latest
     print("GTK3 failure:", json.dumps({
         "last_key": last_key, "events": list(events), "buffers": buffers(),
+        "raw_key_events": list(raw_key_events), "event_observer_error": repr(gdk_observer_error),
         "expected_buffers": committed,
         "native": None if frame is None else {name: frame.get(name) for name in
                   ("seed", "focused", "private", "context", "revision", "language")},
@@ -450,9 +582,15 @@ try:
     x.x.XQueryKeymap.restype = C.c_int
     qa.gi.require_version("Gtk", "3.0")
     qa.gi.require_version("GdkX11", "3.0")
-    from gi.repository import Gtk, GdkX11
+    from gi.repository import Gtk, Gdk, GdkX11
 
     Gtk.init([])
+    # Local API contract: Gdk-3.0.gir:36643 permits this wrapper; Gtk-3.0.gir:218169
+    # documents key snoopers inside main_do_event, before widget key signals.
+    # This private process has no earlier application-installed GDK handler.
+    default_event_handler = Gtk.main_do_event
+    Gdk.event_handler_set(observe_gdk_event, None)
+    event_handler_installed = True
     window = Gtk.Window(title="Suzaku isolated GTK3 input QA")
     window.set_default_size(720, 360)
     for event in ("focus-in-event", "focus-out-event", "notify::is-active",
@@ -501,6 +639,8 @@ try:
             choose(final)
         commit(final)
         passed_case(code + " numeric adoption, exact Backspace undo, Space continuation and one Enter commit")
+
+    check_candidate_row_boundaries()
 
     language("en")
     clear_buffers()
@@ -629,7 +769,7 @@ try:
     commit("hel")
     passed_case("crashed private companion expires to stock presentation with exact draft and one commit")
 
-    assert passed == 17
+    assert passed == 24
     print(f"RESULT: {passed} strict in-process GTK3 input/presentation workflows passed", flush=True)
 except Exception:
     try:
@@ -638,6 +778,9 @@ except Exception:
         print("GTK3 diagnostic failed:", repr(error), flush=True)
     raise
 finally:
+    if event_handler_installed:
+        Gdk.event_handler_set(dispatch_gtk_event, None)
+        event_handler_installed = False
     if presentation_observer is not None:
         presentation_observer.close()
     if window is not None:

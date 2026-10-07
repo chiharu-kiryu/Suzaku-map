@@ -335,7 +335,7 @@ fn recommended_collections_keep_word_sentence_and_fallback_workflows() {
         store.install(collection.clone(), false).unwrap();
     }
     let report = packs::initialize(&store).unwrap();
-    assert_eq!(report.loaded.len(), 11);
+    assert_eq!(report.loaded.len(), 14);
     assert!(report.errors.is_empty(), "{report:?}");
 
     // New built-in daily expressions must coexist with the old cooking pack,
@@ -437,7 +437,7 @@ fn recommended_collections_keep_word_sentence_and_fallback_workflows() {
     }
 
     // Sentence progress uses the active data catalog, not a built-in-only
-    // trigger table. These rail/daily expectations stay fixed while all 11 packs
+    // trigger table. These rail/daily expectations stay fixed while all 14 packs
     // are enabled; a word followed by a particle is not mislabeled as a word here.
     for (seed, sentence) in [
         ("好みni", "好みに合わせて選んでください。"),

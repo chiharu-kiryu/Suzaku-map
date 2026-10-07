@@ -2433,7 +2433,167 @@
     {"reading": "xian'an'zhe'ge'lai", "text": "先按这个来", "kind": "word"},
     {"reading": "liu'ge'bei'xuan", "text": "留个备选", "kind": "word"},
     {"reading": "zai'xiang'xiang'ban'fa", "text": "再想想办法", "kind": "word"},
-    {"reading": "zhe'ge", "text": "这个", "kind": "word"}
+    {"reading": "zhe'ge", "text": "这个", "kind": "word"},
+    {"reading": "wo'zhe'bian'hao'le", "text": "我这边好了", "kind": "word"},
+    {"reading": "zhe'bian'nong'hao'le", "text": "这边弄好了", "kind": "word"},
+    {"reading": "yi'jing'nong'hao'le", "text": "已经弄好了", "kind": "word"},
+    {"reading": "hai'zai'chu'li'zhong", "text": "还在处理中", "kind": "word"},
+    {"reading": "hai'cha'yi'dian'dian", "text": "还差一点点", "kind": "word"},
+    {"reading": "kuai'yao'zuo'hao'le", "text": "快要做好了", "kind": "word"},
+    {"reading": "ma'shang'chu'li'hao", "text": "马上处理好", "kind": "word"},
+    {"reading": "zuo'hao'le", "text": "做好了", "kind": "word"},
+    {"reading": "nong'hao'le", "text": "弄好了", "kind": "word"},
+    {"reading": "wan'cheng'yi'ban", "text": "完成一半", "kind": "word"},
+    {"reading": "zuo'dao'yi'ban", "text": "做到一半", "kind": "word"},
+    {"reading": "xian'zuo'zhe'bu'fen", "text": "先做这部分", "kind": "word"},
+    {"reading": "zhe'bu'zuo'hao'le", "text": "这步做好了", "kind": "word"},
+    {"reading": "hou'mian'ji'xu'zuo", "text": "后面继续做", "kind": "word"},
+    {"reading": "xian'ba'zhe'bu'zuo'wan", "text": "先把这步做完", "kind": "word"},
+    {"reading": "gang'gang'zuo'wan", "text": "刚刚做完", "kind": "word"},
+    {"reading": "ji'xu'wang'xia", "text": "继续往下", "kind": "word"},
+    {"reading": "jie'zhe'wang'xia", "text": "接着往下", "kind": "word"},
+    {"reading": "ji'xu'wang'qian", "text": "继续往前", "kind": "word"},
+    {"reading": "xian'ji'xu'ba", "text": "先继续吧", "kind": "word"},
+    {"reading": "ji'xu'jiu'hao", "text": "继续就好", "kind": "word"},
+    {"reading": "ke'yi'jie'zhe'shuo", "text": "可以接着说", "kind": "word"},
+    {"reading": "jie'zhe'shuo'ba", "text": "接着说吧", "kind": "word"},
+    {"reading": "jie'zhe'lai'ba", "text": "接着来吧", "kind": "word"},
+    {"reading": "wang'xia'kan'ba", "text": "往下看吧", "kind": "word"},
+    {"reading": "xian'ting'yi'xia", "text": "先停一下", "kind": "word"},
+    {"reading": "zan'ting'yi'xia", "text": "暂停一下", "kind": "word"},
+    {"reading": "xian'dao'zhe'li", "text": "先到这里", "kind": "word"},
+    {"reading": "dao'zhe'li'jiu'hao", "text": "到这里就好", "kind": "word"},
+    {"reading": "deng'wo'yi'hui'er", "text": "等我一会儿", "kind": "word"},
+    {"reading": "shao'deng'pian'ke", "text": "稍等片刻", "kind": "word"},
+    {"reading": "yi'hui'er'jiu'hao", "text": "一会儿就好", "kind": "word"},
+    {"reading": "bu'shi'zhe'ge'yi'si", "text": "不是这个意思", "kind": "word"},
+    {"reading": "wo'bu'shi'zhe'ge'yi'si", "text": "我不是这个意思", "kind": "word"},
+    {"reading": "wo'li'jie'cuo'le", "text": "我理解错了", "kind": "word"},
+    {"reading": "gang'cai'li'jie'cuo'le", "text": "刚才理解错了", "kind": "word"},
+    {"reading": "wo'shuo'de'shi'zhe'ge", "text": "我说的是这个", "kind": "word"},
+    {"reading": "ni'shuo'de'mei'cuo", "text": "你说得没错", "kind": "word"},
+    {"reading": "zhe'yang'jiu'dui'le", "text": "这样就对了", "kind": "word"},
+    {"reading": "yuan'lai'shi'zhe'yang", "text": "原来是这样", "kind": "word"},
+    {"reading": "zhe'ci'ming'bai'le", "text": "这次明白了", "kind": "word"},
+    {"reading": "wo'zai'shuo'ming'yi'xia", "text": "我再说明一下", "kind": "word"},
+    {"reading": "wo'chong'xin'shuo'yi'bian", "text": "我重新说一遍", "kind": "word"},
+    {"reading": "shuo'ming'bai'yi'dian", "text": "说明白一点", "kind": "word"},
+    {"reading": "jiang'ju'ti'yi'dian", "text": "讲具体一点", "kind": "word"},
+    {"reading": "wo'mei'gen'shang", "text": "我没跟上", "kind": "word"},
+    {"reading": "gang'cai'mei'gen'shang", "text": "刚才没跟上", "kind": "word"},
+    {"reading": "mei'gen'shang", "text": "没跟上", "kind": "word"},
+    {"reading": "chong'xin'lai'guo", "text": "重新来过", "kind": "word"},
+    {"reading": "cong'tou'zai'lai", "text": "从头再来", "kind": "word"},
+    {"reading": "chong'xin'shi'yi'ci", "text": "重新试一次", "kind": "word"},
+    {"reading": "zai'lai'yi'bian", "text": "再来一遍", "kind": "word"},
+    {"reading": "zai'zuo'yi'bian", "text": "再做一遍", "kind": "word"},
+    {"reading": "wo'zai'shi'yi'ci", "text": "我再试一次", "kind": "word"},
+    {"reading": "cong'zhe'yi'bu'kai'shi", "text": "从这一步开始", "kind": "word"},
+    {"reading": "hui'dao'shang'yi'bu", "text": "回到上一步", "kind": "word"},
+    {"reading": "cha'yi'bu'jiu'hao'le", "text": "差一步就好了", "kind": "word"},
+    {"reading": "cha'zui'hou'yi'dian", "text": "差最后一点", "kind": "word"},
+    {"reading": "hai'you'yi'dian'dian", "text": "还有一点点", "kind": "word"},
+    {"reading": "zai'deng'yi'xiao'hui", "text": "再等一小会", "kind": "word"},
+    {"reading": "hai'xu'yao'yi'dian'shi'jian", "text": "还需要一点时间", "kind": "word"},
+    {"reading": "hai'zai'he'dui", "text": "还在核对", "kind": "word"},
+    {"reading": "wo'zai'he'dui'yi'xia", "text": "我再核对一下", "kind": "word"},
+    {"reading": "que'ren'hao'le'gao'su'ni", "text": "确认好了告诉你", "kind": "word"},
+    {"reading": "zhou'mo'you'kong'ma", "text": "周末有空吗", "kind": "word"},
+    {"reading": "zhou'mo'xiang'qu'na", "text": "周末想去哪", "kind": "word"},
+    {"reading": "zhou'mo'zen'me'guo", "text": "周末怎么过", "kind": "word"},
+    {"reading": "zhou'mo'jian'yi'mian", "text": "周末见一面", "kind": "word"},
+    {"reading": "zhou'mo'zai'jia'xiu'xi", "text": "周末在家休息", "kind": "word"},
+    {"reading": "zhou'mo'bu'gan'shi'jian", "text": "周末不赶时间", "kind": "word"},
+    {"reading": "chu'qu'zou'yi'zou", "text": "出去走一走", "kind": "word"},
+    {"reading": "yi'qi'chu'qu'guang'guang", "text": "一起出去逛逛", "kind": "word"},
+    {"reading": "sui'bian'guang'yi'guang", "text": "随便逛一逛", "kind": "word"},
+    {"reading": "zhao'ge'an'jing'de'di'fang", "text": "找个安静的地方", "kind": "word"},
+    {"reading": "qu'gong'yuan'zou'zou", "text": "去公园走走", "kind": "word"},
+    {"reading": "qu'he'bian'san'bu", "text": "去河边散步", "kind": "word"},
+    {"reading": "qu'kan'ge'zhan'lan", "text": "去看个展览", "kind": "word"},
+    {"reading": "kan'chang'dian'ying", "text": "看场电影", "kind": "word"},
+    {"reading": "kan'kan'xin'dian'ying", "text": "看看新电影", "kind": "word"},
+    {"reading": "xiang'ting'dian'yin'yue", "text": "想听点音乐", "kind": "word"},
+    {"reading": "ting'ting'xi'huan'de'ge", "text": "听听喜欢的歌", "kind": "word"},
+    {"reading": "xiang'du'hui'er'shu", "text": "想读会儿书", "kind": "word"},
+    {"reading": "zhao'ben'shu'kan'kan", "text": "找本书看看", "kind": "word"},
+    {"reading": "shi'shi'xin'ai'hao", "text": "试试新爱好", "kind": "word"},
+    {"reading": "xue'dian'xin'dong'xi", "text": "学点新东西", "kind": "word"},
+    {"reading": "zui'jin'zai'xue'shen'me", "text": "最近在学什么", "kind": "word"},
+    {"reading": "zui'jin'xi'huan'shen'me", "text": "最近喜欢什么", "kind": "word"},
+    {"reading": "ping'shi'zen'me'fang'song", "text": "平时怎么放松", "kind": "word"},
+    {"reading": "hua'dian'xiao'hua", "text": "画点小画", "kind": "word"},
+    {"reading": "pai'dian'feng'jing", "text": "拍点风景", "kind": "word"},
+    {"reading": "sui'shou'pai'ji'zhang", "text": "随手拍几张", "kind": "word"},
+    {"reading": "lian'yi'hui'er'yue'qi", "text": "练一会儿乐器", "kind": "word"},
+    {"reading": "zuo'dian'shou'gong", "text": "做点手工", "kind": "word"},
+    {"reading": "man'man'xiang'shou", "text": "慢慢享受", "kind": "word"},
+    {"reading": "fang'kong'yi'hui'er", "text": "放空一会儿", "kind": "word"},
+    {"reading": "gei'zi'ji'fang'ge'jia", "text": "给自己放个假", "kind": "word"},
+    {"reading": "bu'yong'an'pai'tai'man", "text": "不用安排太满", "kind": "word"},
+    {"reading": "qing'song'yi'dian'jiu'hao", "text": "轻松一点就好", "kind": "word"},
+    {"reading": "chu'lai'tou'tou'qi", "text": "出来透透气", "kind": "word"},
+    {"reading": "huan'ge'xin'qing", "text": "换个心情", "kind": "word"},
+    {"reading": "jin'tian'guo'de'ting'qing'song", "text": "今天过得挺轻松", "kind": "word"},
+    {"reading": "jin'tian'wan'de'kai'xin", "text": "今天玩得开心", "kind": "word"},
+    {"reading": "zhe'yang'hen'fang'song", "text": "这样很放松", "kind": "word"},
+    {"reading": "gan'jue'you'dian'lei", "text": "感觉有点累", "kind": "word"},
+    {"reading": "xiang'xiu'xi'yi'hui'er", "text": "想休息一会儿", "kind": "word"},
+    {"reading": "bu'ji'zhe'hui'qu", "text": "不急着回去", "kind": "word"},
+    {"reading": "san'san'bu'jiu'hao", "text": "散散步就好", "kind": "word"},
+    {"reading": "zhao'dian'you'qu'de'shi", "text": "找点有趣的事", "kind": "word"},
+    {"reading": "zhe'di'fang'ting'shu'fu", "text": "这地方挺舒服", "kind": "word"},
+    {"reading": "zhou'wei'hen'an'jing", "text": "周围很安静", "kind": "word"},
+    {"reading": "wai'mian'feng'jing'bu'cuo", "text": "外面风景不错", "kind": "word"},
+    {"reading": "xia'ci'hai'xiang'zai'lai", "text": "下次还想再来", "kind": "word"},
+    {"reading": "shuo'ju'ti'yi'dian", "text": "说具体一点", "kind": "word"},
+    {"reading": "wo'li'jie'de'shi", "text": "我理解的是", "kind": "word"},
+    {"reading": "shi'bu'shi'zhe'ge'yi'si", "text": "是不是这个意思", "kind": "word"},
+    {"reading": "wo'que'ren'yi'xia", "text": "我确认一下", "kind": "word"},
+    {"reading": "jie'shi'qing'chu'yi'dian", "text": "解释清楚一点", "kind": "word"},
+    {"reading": "zai'ju'ge'li'zi", "text": "再举个例子", "kind": "word"},
+    {"reading": "ju'ge'jian'dan'li'zi", "text": "举个简单例子", "kind": "word"},
+    {"reading": "huan'ge'jiao'du'shuo", "text": "换个角度说", "kind": "word"},
+    {"reading": "huan'ju'hua'zai'shuo", "text": "换句话再说", "kind": "word"},
+    {"reading": "wo'huan'ge'shuo'fa", "text": "我换个说法", "kind": "word"},
+    {"reading": "yong'jian'dan'de'hua'shuo", "text": "用简单的话说", "kind": "word"},
+    {"reading": "shuo'de'zhi'bai'yi'dian", "text": "说得直白一点", "kind": "word"},
+    {"reading": "ni'zhi'de'shi", "text": "你指的是", "kind": "word"},
+    {"reading": "wo'zhi'de'shi", "text": "我指的是", "kind": "word"},
+    {"reading": "zhe'li'zhi'de'shi", "text": "这里指的是", "kind": "word"},
+    {"reading": "ni'shi'shuo'zhe'ge'ma", "text": "你是说这个吗", "kind": "word"},
+    {"reading": "ni'de'yi'si'shi'shuo", "text": "你的意思是说", "kind": "word"},
+    {"reading": "wo'xiang'biao'da'de'shi", "text": "我想表达的是", "kind": "word"},
+    {"reading": "shi'bu'shi'zhe'yang'li'jie", "text": "是不是这样理解", "kind": "word"},
+    {"reading": "zhe'yang'li'jie'dui'ma", "text": "这样理解对吗", "kind": "word"},
+    {"reading": "wo'li'jie'de'dui'ma", "text": "我理解得对吗", "kind": "word"},
+    {"reading": "zhe'yang'shuo'qing'chu'ma", "text": "这样说清楚吗", "kind": "word"},
+    {"reading": "neng'shuo'ju'ti'dian'ma", "text": "能说具体点吗", "kind": "word"},
+    {"reading": "neng'zai'jie'shi'yi'xia'ma", "text": "能再解释一下吗", "kind": "word"},
+    {"reading": "ru'he'li'jie'zhe'ju'hua", "text": "如何理解这句话", "kind": "word"},
+    {"reading": "zhe'ju'hua'shi'shen'me'yi'si", "text": "这句话是什么意思", "kind": "word"},
+    {"reading": "wo'hai'bu'tai'ming'bai", "text": "我还不太明白", "kind": "word"},
+    {"reading": "wo'you'dian'mei'ming'bai", "text": "我有点没明白", "kind": "word"},
+    {"reading": "you'dian'mei'ting'dong", "text": "有点没听懂", "kind": "word"},
+    {"reading": "wo'zai'que'ren'yi'bian", "text": "我再确认一遍", "kind": "word"},
+    {"reading": "wo'xian'que'ren'yi'xia", "text": "我先确认一下", "kind": "word"},
+    {"reading": "que'ren'qing'chu'zai'shuo", "text": "确认清楚再说", "kind": "word"},
+    {"reading": "xian'he'dui'yi'xia", "text": "先核对一下", "kind": "word"},
+    {"reading": "wo'zai'he'shi'yi'xia", "text": "我再核实一下", "kind": "word"},
+    {"reading": "gei'wo'dian'ti'shi", "text": "给我点提示", "kind": "word"},
+    {"reading": "neng'ju'ge'li'zi'ma", "text": "能举个例子吗", "kind": "word"},
+    {"reading": "na'zhe'ge'ju'li", "text": "拿这个举例", "kind": "word"},
+    {"reading": "bi'ru'shuo'zhe'ge", "text": "比如说这个", "kind": "word"},
+    {"reading": "wo'da'gai'ming'bai'le", "text": "我大概明白了", "kind": "word"},
+    {"reading": "zhe'xia'ming'bai'le", "text": "这下明白了", "kind": "word"},
+    {"reading": "zhe'yang'jiu'qing'chu'le", "text": "这样就清楚了", "kind": "word"},
+    {"reading": "ming'bai'ni'de'yi'si'le", "text": "明白你的意思了", "kind": "word"},
+    {"reading": "wo'zhi'dao'ni'de'yi'si'le", "text": "我知道你的意思了", "kind": "word"},
+    {"reading": "wo'shuo'qing'chu'le'ma", "text": "我说清楚了吗", "kind": "word"},
+    {"reading": "zai'shuo'de'xiang'xi'yi'dian", "text": "再说得详细一点", "kind": "word"},
+    {"reading": "shuo'de'jian'dan'yi'dian", "text": "说得简单一点", "kind": "word"},
+    {"reading": "jie'shi'yi'xia'yuan'yin", "text": "解释一下原因", "kind": "word"},
+    {"reading": "neng'bu'neng'xiang'xi'shuo'shuo", "text": "能不能详细说说", "kind": "word"}
   ],
   "continuations": [
     [
@@ -6037,6 +6197,398 @@
       [
         "留个备选，免得临时来不及。",
         "留个备选方案，会更安心一些。"
+      ]
+    ],
+    [
+      "我这边好了",
+      [
+        "我这边好了，你那边怎么样？",
+        "我这边好了，可以继续往下。"
+      ]
+    ],
+    [
+      "已经弄好了",
+      [
+        "已经弄好了，你再看一下。",
+        "已经弄好了，剩下的等你确认。"
+      ]
+    ],
+    [
+      "还在处理中",
+      [
+        "还在处理中，稍后给你结果。",
+        "还在处理中，还需要一点时间。"
+      ]
+    ],
+    [
+      "还差一点点",
+      [
+        "还差一点点，马上就能完成。",
+        "还差一点点，我再核对一下。"
+      ]
+    ],
+    [
+      "快要做好了",
+      [
+        "快要做好了，你先稍等一会儿。",
+        "快要做好了，完成后告诉你。"
+      ]
+    ],
+    [
+      "做好了",
+      [
+        "做好了就告诉我一声。",
+        "做好了，我们接着往下看。"
+      ]
+    ],
+    [
+      "先做这部分",
+      [
+        "先做这部分，剩下的明天再处理。",
+        "先做这部分，有问题再一起调整。"
+      ]
+    ],
+    [
+      "刚刚做完",
+      [
+        "刚刚做完，还没来得及检查。",
+        "刚刚做完，正准备发给你。"
+      ]
+    ],
+    [
+      "继续往下",
+      [
+        "继续往下看，有问题随时说。",
+        "继续往下做，我们快完成了。"
+      ]
+    ],
+    [
+      "接着说吧",
+      [
+        "接着说吧，我在认真听。",
+        "接着说吧，刚才说到哪里了？"
+      ]
+    ],
+    [
+      "先停一下",
+      [
+        "先停一下，我确认一个细节。",
+        "先停一下，这一步还没弄清楚。"
+      ]
+    ],
+    [
+      "先到这里",
+      [
+        "先到这里，剩下的下次接着做。",
+        "先到这里，我整理一下再继续。"
+      ]
+    ],
+    [
+      "等我一会儿",
+      [
+        "等我一会儿，我马上回来。",
+        "等我一会儿，还差最后一点。"
+      ]
+    ],
+    [
+      "稍等片刻",
+      [
+        "稍等片刻，我找一下刚才的记录。",
+        "稍等片刻，确认好了就回复你。"
+      ]
+    ],
+    [
+      "不是这个意思",
+      [
+        "不是这个意思，我再说明一下。",
+        "不是这个意思，我说的是另一件事。"
+      ]
+    ],
+    [
+      "我理解错了",
+      [
+        "我理解错了，不好意思。",
+        "我理解错了，你能再讲具体一点吗？"
+      ]
+    ],
+    [
+      "原来是这样",
+      [
+        "原来是这样，这次我明白了。",
+        "原来是这样，谢谢你说得这么清楚。"
+      ]
+    ],
+    [
+      "这次明白了",
+      [
+        "这次明白了，我再试一次。",
+        "这次明白了，可以继续说下去。"
+      ]
+    ],
+    [
+      "我再说明一下",
+      [
+        "我再说明一下，免得大家理解错了。",
+        "我再说明一下刚才那句话的意思。"
+      ]
+    ],
+    [
+      "我没跟上",
+      [
+        "我没跟上，可以从这一步重新说吗？",
+        "我没跟上，请稍微说慢一点。"
+      ]
+    ],
+    [
+      "重新来过",
+      [
+        "重新来过也没关系，我们一起试试。",
+        "重新来过，这次把步骤记下来。"
+      ]
+    ],
+    [
+      "从头再来",
+      [
+        "从头再来吧，这次慢一点。",
+        "从头再来，先确认第一步。"
+      ]
+    ],
+    [
+      "回到上一步",
+      [
+        "回到上一步看看，可能漏了什么。",
+        "回到上一步，再核对一下顺序。"
+      ]
+    ],
+    [
+      "还需要一点时间",
+      [
+        "还需要一点时间，我正在核对。",
+        "还需要一点时间，做好了再告诉你。"
+      ]
+    ],
+    [
+      "周末有空吗",
+      [
+        "周末有空吗，一起出去走走吧。",
+        "周末有空吗，我想约你看场电影。"
+      ]
+    ],
+    [
+      "周末怎么过",
+      [
+        "周末怎么过，想在家休息还是出门逛逛？",
+        "周末怎么过，我们先看天气再决定。"
+      ]
+    ],
+    [
+      "周末在家休息",
+      [
+        "周末在家休息，听听音乐看看书。",
+        "周末在家休息，给自己放个小假。"
+      ]
+    ],
+    [
+      "出去走一走",
+      [
+        "出去走一走，换个心情也挺好。",
+        "出去走一走，回来再接着忙。"
+      ]
+    ],
+    [
+      "去公园走走",
+      [
+        "去公园走走吧，顺便看看花。",
+        "去公园走走，不用安排太多事情。"
+      ]
+    ],
+    [
+      "看场电影",
+      [
+        "看场电影放松一下吧。",
+        "看场电影，结束后再找个地方吃饭。"
+      ]
+    ],
+    [
+      "想听点音乐",
+      [
+        "想听点音乐，你有什么推荐吗？",
+        "想听点音乐，安静一点的就好。"
+      ]
+    ],
+    [
+      "想读会儿书",
+      [
+        "想读会儿书，晚一点再联系你。",
+        "想读会儿书，给自己留点安静时间。"
+      ]
+    ],
+    [
+      "试试新爱好",
+      [
+        "试试新爱好，慢慢学就好。",
+        "试试新爱好，说不定会发现新的乐趣。"
+      ]
+    ],
+    [
+      "最近喜欢什么",
+      [
+        "最近喜欢什么，可以跟我聊聊吗？",
+        "最近喜欢什么电影或者音乐？"
+      ]
+    ],
+    [
+      "平时怎么放松",
+      [
+        "平时怎么放松，我也想试试。",
+        "平时怎么放松，有什么简单的办法吗？"
+      ]
+    ],
+    [
+      "拍点风景",
+      [
+        "拍点风景，留作今天的小纪念。",
+        "拍点风景，不用急着赶路。"
+      ]
+    ],
+    [
+      "放空一会儿",
+      [
+        "放空一会儿，等会儿再想别的。",
+        "放空一会儿，什么都不安排。"
+      ]
+    ],
+    [
+      "不用安排太满",
+      [
+        "不用安排太满，留点时间慢慢走。",
+        "不用安排太满，轻松一点就好。"
+      ]
+    ],
+    [
+      "出来透透气",
+      [
+        "出来透透气，心情会轻松一些。",
+        "出来透透气，顺便活动一下。"
+      ]
+    ],
+    [
+      "下次还想再来",
+      [
+        "下次还想再来，这里待着很舒服。",
+        "下次还想再来，到时候一起吧。"
+      ]
+    ],
+    [
+      "说具体一点",
+      [
+        "说具体一点，我想知道是哪一步。",
+        "说具体一点，我们再一起确认。"
+      ]
+    ],
+    [
+      "我理解的是",
+      [
+        "我理解的是这个意思，你看看对不对。",
+        "我理解的是先确认，再往下继续。"
+      ]
+    ],
+    [
+      "是不是这个意思",
+      [
+        "是不是这个意思，你帮我确认一下。",
+        "是不是这个意思，我怕理解错了。"
+      ]
+    ],
+    [
+      "我确认一下",
+      [
+        "我确认一下时间，再回复你。",
+        "我确认一下，免得漏掉什么。"
+      ]
+    ],
+    [
+      "再举个例子",
+      [
+        "再举个例子，我就更容易理解了。",
+        "再举个例子，最好是日常会遇到的。"
+      ]
+    ],
+    [
+      "换个角度说",
+      [
+        "换个角度说，也许会更容易明白。",
+        "换个角度说，我们关注的是同一个问题。"
+      ]
+    ],
+    [
+      "我换个说法",
+      [
+        "我换个说法，看看这样清不清楚。",
+        "我换个说法，不是要改变原来的意思。"
+      ]
+    ],
+    [
+      "用简单的话说",
+      [
+        "用简单的话说，就是先做好这一步。",
+        "用简单的话说，让大家都容易理解。"
+      ]
+    ],
+    [
+      "你指的是",
+      [
+        "你指的是这个部分吗？",
+        "你指的是哪一个例子？"
+      ]
+    ],
+    [
+      "我想表达的是",
+      [
+        "我想表达的是这个意思，不是另一个。",
+        "我想表达的是先商量，再决定。"
+      ]
+    ],
+    [
+      "这样理解对吗",
+      [
+        "这样理解对吗，你帮我核对一下。",
+        "这样理解对吗，我再试着说一遍。"
+      ]
+    ],
+    [
+      "能再解释一下吗",
+      [
+        "能再解释一下吗，我还没完全明白。",
+        "能再解释一下吗，尤其是后面那一步。"
+      ]
+    ],
+    [
+      "我还不太明白",
+      [
+        "我还不太明白，可以说具体一点吗？",
+        "我还不太明白，我们慢慢看。"
+      ]
+    ],
+    [
+      "先核对一下",
+      [
+        "先核对一下这部分，再继续吧。",
+        "先核对一下，确定没问题再说。"
+      ]
+    ],
+    [
+      "我大概明白了",
+      [
+        "我大概明白了，再试一遍看看。",
+        "我大概明白了，还有一个地方想确认。"
+      ]
+    ],
+    [
+      "我说清楚了吗",
+      [
+        "我说清楚了吗，要不要再举个例子？",
+        "我说清楚了吗，你可以用自己的话说说。"
       ]
     ]
   ]

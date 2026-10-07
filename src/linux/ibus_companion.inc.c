@@ -108,3 +108,39 @@ static gboolean suzaku_companion_action(const char *request) {
     g_strfreev(parts);
     return applied;
 }
+
+/* Screen keys are semantic edits, not guessed full-string replacements. Keep
+ * Compose cancellation, adoption undo and explicit Space selection in exactly
+ * the same owning-engine path as physical keys, without injecting key events. */
+static gboolean suzaku_companion_keyboard_action(const char *request) {
+    gchar **parts = g_strsplit(request, " ", 3);
+    guint64 revision = 0;
+    gboolean valid = g_strv_length(parts) == 3 &&
+        g_strcmp0(parts[0], suzaku_companion_host_id) == 0 &&
+        g_ascii_string_to_unsigned(parts[1], 10, 0, G_MAXUINT64, &revision, NULL) &&
+        revision == suzaku_companion_revision &&
+        (strcmp(parts[2], "B") == 0 || strcmp(parts[2], "S") == 0);
+    GObject *focused = g_weak_ref_get(&suzaku_last_focused_engine);
+    SuzakuIBusEngine *engine = (SuzakuIBusEngine *)focused;
+    gboolean applied = FALSE;
+    if (valid && engine != NULL && !engine->private_input && !engine->bypass_input) {
+        if (engine->input->len == 0 && !suzaku_ibus_engine_is_composing(engine)) {
+            /* Empty physical keys pass through to the application. A screen
+             * keyboard instead owns its draft: Space starts an exact space,
+             * Backspace acknowledges a no-op without editing committed text.
+             * Even the no-op publishes a fresh revision for its ACK barrier. */
+            if (strcmp(parts[2], "S") == 0) {
+                suzaku_ibus_engine_append_character(engine, ' ');
+            } else {
+                suzaku_ibus_engine_render(engine);
+            }
+            applied = TRUE;
+        } else {
+            applied = suzaku_ibus_engine_process_key_event(IBUS_ENGINE(engine),
+                strcmp(parts[2], "B") == 0 ? IBUS_KEY_BackSpace : IBUS_KEY_space, 0, 0);
+        }
+    }
+    g_clear_object(&focused);
+    g_strfreev(parts);
+    return applied;
+}

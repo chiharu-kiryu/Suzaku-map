@@ -47,7 +47,8 @@ fn assert_ui_language_preferences(app: &mut PanelApp, event_loop: &ActiveEventLo
         settings.chrome.settings_scroll_offset = 0.0;
         settings.last_interaction_action = None;
         let kind = InteractionKind::SetUiLanguage(language);
-        let scene = settings.current_scene();
+        crate::native_sync::present_test_frame(settings);
+        let scene = settings.last_scene.as_ref().unwrap().clone();
         let rect = scene
             .interactive_targets
             .iter()
@@ -160,7 +161,12 @@ fn assert_settings_keyboard(settings: &mut PanelState) {
     let original_size = settings.size;
     let original_focus = settings.is_focused;
     settings.set_window_focus(true);
-    settings.resize(400, 270);
+    let _ = settings
+        .window
+        .request_inner_size(PhysicalSize::new(400, 270));
+    let actual = settings.window.inner_size();
+    assert_eq!(actual, PhysicalSize::new(400, 270));
+    settings.resize(actual.width, actual.height);
     for ui_language in UiLanguage::ALL {
         settings.chrome = original.clone();
         settings.chrome.ui_language = ui_language;
@@ -262,7 +268,10 @@ fn assert_settings_keyboard(settings: &mut PanelState) {
     }
     settings.chrome = original;
     settings.set_window_focus(original_focus);
-    settings.resize(original_size.width, original_size.height);
+    let _ = settings.window.request_inner_size(original_size);
+    let actual = settings.window.inner_size();
+    assert_eq!(actual, original_size);
+    settings.resize(actual.width, actual.height);
     settings.last_scene = None;
     println!(
         "PASS: keyboard focus wraps, scrolls across eight languages, never edits while navigating, owns search/IME text and rejects stale or repeated activation"
@@ -298,7 +307,8 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             settings.chrome.settings_scroll_offset = 0.0;
             settings.last_interaction_action = None;
             let target = InteractionKind::SetThemePreset(theme);
-            let scene = settings.current_scene();
+            crate::native_sync::present_test_frame(settings);
+            let scene = settings.last_scene.as_ref().unwrap().clone();
             assert!(!scene.settings_option_truncated.contains(&target));
             let rect = scene
                 .interactive_targets
@@ -341,7 +351,8 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             settings.chrome.settings_scroll_offset = 0.0;
             settings.last_interaction_action = None;
             let target = InteractionKind::SetLlmTemperature(selected);
-            let scene = settings.current_scene();
+            crate::native_sync::present_test_frame(settings);
+            let scene = settings.last_scene.as_ref().unwrap().clone();
             let rect = scene
                 .interactive_targets
                 .iter()
@@ -430,7 +441,8 @@ impl ApplicationHandler<PanelUserEvent> for SettingsProbe {
             let saved_settings = PersistedDisplaySettings::from(&settings.chrome);
             let draft = settings.chrome.seed_text.clone();
             settings.last_interaction_action = None;
-            let scene = settings.current_scene();
+            crate::native_sync::present_test_frame(settings);
+            let scene = settings.last_scene.as_ref().unwrap().clone();
             let kind = InteractionKind::SetSettingsCategory(category);
             let rect = scene
                 .interactive_targets
@@ -526,7 +538,8 @@ fn assert_native_titlebar_preference(app: &mut PanelApp, event_loop: &ActiveEven
         settings.chrome.settings_scroll_offset = 0.0;
         settings.last_interaction_action = None;
         let kind = InteractionKind::SetHideSystemTitlebar(hide);
-        let scene = settings.current_scene();
+        crate::native_sync::present_test_frame(settings);
+        let scene = settings.last_scene.as_ref().unwrap().clone();
         assert!(!scene.settings_option_truncated.contains(&kind));
         let rect = scene
             .interactive_targets

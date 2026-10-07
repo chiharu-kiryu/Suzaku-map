@@ -61,17 +61,132 @@ struct KeyboardProbe {
 }
 
 fn click_input(state: &mut PanelState) {
-    state.last_scene = None;
-    let scene = state.current_scene();
+    crate::native_sync::present_test_frame(state);
+    let scene = state
+        .last_scene
+        .as_ref()
+        .expect("presented seed input fixture");
     let rect = scene
         .interactive_targets
         .iter()
         .find(|target| target.kind == InteractionKind::SeedInput)
         .unwrap()
         .rect;
-    state.last_scene = Some(scene);
     state.cursor_position = Some((rect[0] + 8.0, rect[1] + rect[3] / 2.0));
     state.select_at_cursor();
+}
+
+fn assert_local_backspace_boundary_preserves_work(state: &mut PanelState) {
+    use std::sync::{Mutex, mpsc};
+    use suzaku_map::ime::PredictionStatus;
+    use suzaku_map::ime::gpu::TranslationPhase;
+    use suzaku_map::prediction::{
+        PredictionCancellation, PredictionError, PredictionProvider, PredictionRequest,
+        PredictionResponse,
+    };
+    use winit::keyboard::{Key, ModifiersState, NamedKey};
+
+    struct HeldPrediction {
+        started: mpsc::Sender<PredictionCancellation>,
+        release: Mutex<mpsc::Receiver<()>>,
+    }
+    impl PredictionProvider for HeldPrediction {
+        fn predict(
+            &self,
+            _: &PredictionRequest,
+            cancellation: &PredictionCancellation,
+        ) -> Result<PredictionResponse, PredictionError> {
+            let _ = self.started.send(cancellation.clone());
+            let _ = self
+                .release
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(2));
+            cancellation.check()?;
+            Err(PredictionError::NoCandidates)
+        }
+    }
+
+    let original_chrome = state.chrome.clone();
+    state.chrome.set_seed_text("hel".into());
+    state.chrome.focus_input();
+    state.refresh_seed();
+    let completion = state
+        .next_token_completions
+        .iter()
+        .position(|edit| edit.seed_after == "hello")
+        .expect("local hello completion");
+    state.select_next_token(completion);
+    assert_eq!(state.chrome.seed_text, "hello");
+    let history = state.completion_history.labels();
+    assert!(!history.is_empty(), "adoption must establish undo history");
+
+    let (started, received) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    state
+        .engine
+        .configure_prediction_provider(Some(Arc::new(HeldPrediction {
+            started,
+            release: Mutex::new(blocked),
+        })));
+    let cancellation = received
+        .recv_timeout(Duration::from_secs(2))
+        .expect("owned in-memory prediction started");
+    assert_eq!(state.engine.prediction_status(), PredictionStatus::Pending);
+    state.chrome.translation.phase = TranslationPhase::Ready;
+    state.chrome.translation.text = "こんにちは".into();
+    state.chrome.translation.message = "synthetic ready translation".into();
+    let translation = state.chrome.translation.clone();
+    let candidates = state.engine.candidates().to_vec();
+    let snapshot = state.engine.snapshot();
+    state.modifiers = ModifiersState::empty();
+    state.handle_editing_key(&Key::Named(NamedKey::Home), None, false);
+    assert_eq!(state.chrome.caret_index, 0);
+    for repeat in [false, true] {
+        state.handle_editing_key(&Key::Named(NamedKey::Backspace), None, repeat);
+        assert_eq!(state.chrome.seed_text, "hello");
+        assert_eq!(state.chrome.caret_index, 0);
+        assert_eq!(
+            state.completion_history.labels(),
+            history,
+            "a no-op Backspace must retain completion undo"
+        );
+        assert_eq!(state.engine.snapshot(), snapshot);
+        assert_eq!(state.engine.candidates(), candidates);
+        assert_eq!(state.engine.prediction_status(), PredictionStatus::Pending);
+        assert!(
+            !cancellation.is_cancelled(),
+            "a no-op must not restart prediction"
+        );
+        assert_eq!(state.chrome.translation, translation);
+    }
+
+    // A real deletion still invalidates derived work and refreshes the engine.
+    state.handle_editing_key(&Key::Named(NamedKey::End), None, false);
+    state.handle_editing_key(&Key::Named(NamedKey::Backspace), None, false);
+    assert_eq!(state.chrome.seed_text, "hell");
+    assert_eq!(state.engine.snapshot().seed_text, "hell");
+    assert!(state.completion_history.labels().is_empty());
+    assert!(cancellation.is_cancelled());
+    assert_eq!(state.chrome.translation.phase, TranslationPhase::Idle);
+    state.engine.configure_prediction(None);
+    let _ = release.send(());
+
+    state.chrome.set_seed_text(String::new());
+    state.refresh_seed();
+    state.chrome.translation = translation.clone();
+    state.backspace_seed();
+    assert!(state.chrome.seed_text.is_empty());
+    assert_eq!(state.chrome.translation, translation);
+    assert!(state.engine.candidates().is_empty());
+    assert_eq!(state.engine.prediction_status(), PredictionStatus::Disabled);
+
+    state.cancel_translation();
+    state.chrome = original_chrome;
+    state.refresh_seed();
+    println!(
+        "PASS: local Home/empty-draft Backspace keeps completion undo, candidates, in-flight prediction and translation; real deletion still refreshes"
+    );
 }
 
 impl KeyboardProbe {
@@ -166,6 +281,7 @@ impl ApplicationHandler for KeyboardProbe {
         state.runs_without_window_focus = true;
         state.chrome.llm_enabled = false;
         state.engine.configure_prediction(None);
+        assert_local_backspace_boundary_preserves_work(&mut state);
         self.state = Some(state);
         self.target = Some(target);
         self.other = Some(other);

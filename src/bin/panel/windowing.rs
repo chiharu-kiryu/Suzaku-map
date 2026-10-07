@@ -397,6 +397,24 @@ impl PanelState {
         self.window.request_redraw();
     }
 
+    pub(super) fn fitted_settings_size(
+        &self,
+        metadata: suzaku_map::ime::gpu::SettingsScrollMetadata,
+    ) -> PhysicalSize<u32> {
+        let dpi = self.window.scale_factor();
+        let max_height = (680.0 * dpi).round() as u32;
+        let max_height = self
+            .window
+            .current_monitor()
+            .map_or(max_height, |monitor| {
+                max_height.min(monitor.size().height.saturating_sub((60.0 * dpi) as u32))
+            })
+            .max(1);
+        let min_height = ((220.0 * dpi).ceil() as u32).min(max_height);
+        let height = (metadata.preferred_window_height.ceil() as u32).clamp(min_height, max_height);
+        PhysicalSize::new(self.window.inner_size().width, height)
+    }
+
     pub(super) fn fit_window_to_content(&mut self) {
         if self.bottom_layout_enabled() {
             self.update_bottom_layout();
@@ -410,19 +428,7 @@ impl PanelState {
             else {
                 return;
             };
-            let dpi = self.window.scale_factor();
-            let max_height = (680.0 * dpi).round() as u32;
-            let max_height = self
-                .window
-                .current_monitor()
-                .map_or(max_height, |monitor| {
-                    max_height.min(monitor.size().height.saturating_sub((60.0 * dpi) as u32))
-                })
-                .max(1);
-            let min_height = ((220.0 * dpi).ceil() as u32).min(max_height);
-            let height =
-                (metadata.preferred_window_height.ceil() as u32).clamp(min_height, max_height);
-            self.request_panel_size(PhysicalSize::new(self.window.inner_size().width, height));
+            self.request_panel_size(self.fitted_settings_size(metadata));
             return;
         }
         if self.chrome.compact_mode {

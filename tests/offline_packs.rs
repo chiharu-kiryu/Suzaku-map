@@ -132,6 +132,79 @@ fn catalog_filter_export_validate_and_no_clobber_are_read_only() {
 }
 
 #[test]
+fn family_collections_preserve_the_eleven_previously_shipped_sources_and_order() {
+    // Captured before appending family packs. Source bytes include manifests,
+    // entry kinds/boundaries, wording and ordered priorities; do not rewrite a
+    // shipped collection to hide conflicts introduced by another collection.
+    let previous = [
+        (
+            "org.suzaku.en.outdoors",
+            include_str!("../data/offline-packs/en-outdoors.json"),
+            0x3933b9ba469eb665_u64,
+        ),
+        (
+            "org.suzaku.zh-hans.outdoors",
+            include_str!("../data/offline-packs/zh-Hans-outdoors.json"),
+            0xb5b4e3ec97b44d5b,
+        ),
+        (
+            "org.suzaku.ja.rail",
+            include_str!("../data/offline-packs/ja-rail.json"),
+            0x22967a0a95e61a54,
+        ),
+        (
+            "org.suzaku.en.study",
+            include_str!("../data/offline-packs/en-study.json"),
+            0x0f42dd3818d3dd6a,
+        ),
+        (
+            "org.suzaku.zh-hans.study",
+            include_str!("../data/offline-packs/zh-Hans-study.json"),
+            0x5bed56944da550f9,
+        ),
+        (
+            "org.suzaku.en.cooking",
+            include_str!("../data/offline-packs/en-cooking.json"),
+            0x06809726daa7594b,
+        ),
+        (
+            "org.suzaku.zh-hans.cooking",
+            include_str!("../data/offline-packs/zh-Hans-cooking.json"),
+            0x6143b1befd2921bb,
+        ),
+        (
+            "org.suzaku.en.travel",
+            include_str!("../data/offline-packs/en-travel.json"),
+            0xb220dff7507b7800,
+        ),
+        (
+            "org.suzaku.zh-hans.travel",
+            include_str!("../data/offline-packs/zh-Hans-travel.json"),
+            0xb68a069d993dd472,
+        ),
+        (
+            "org.suzaku.en.work",
+            include_str!("../data/offline-packs/en-work.json"),
+            0xc17a707eb8f4043b,
+        ),
+        (
+            "org.suzaku.zh-hans.work",
+            include_str!("../data/offline-packs/zh-Hans-work.json"),
+            0x8f63881ce2a07734,
+        ),
+    ];
+    let catalog = packs::recommended();
+    assert!(catalog.len() >= previous.len());
+    for ((id, source, expected), pack) in previous.into_iter().zip(&catalog) {
+        let hash = source.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+        });
+        assert_eq!(hash, expected, "changed previously shipped {id}");
+        assert_eq!(pack.manifest.id, id, "changed catalog priority/order");
+    }
+}
+
+#[test]
 fn bundled_collections_match_sources_and_topic_filters_without_installing() {
     let f = Fixture::new();
     let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/offline-packs");
@@ -141,7 +214,7 @@ fn bundled_collections_match_sources_and_topic_filters_without_installing() {
         .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
         .collect();
     let catalog = packs::recommended();
-    assert_eq!(catalog.len(), 11);
+    assert_eq!(catalog.len(), 14);
     assert_eq!(files.len(), catalog.len());
     let mut ids = std::collections::HashSet::new();
     for path in files {
@@ -194,7 +267,7 @@ fn all_collections_merge_without_changing_builtin_prefixes() {
         "{:?}",
         catalog.report.errors
     );
-    assert_eq!(catalog.report.loaded.len(), 11);
+    assert_eq!(catalog.report.loaded.len(), 14);
     for language in ["en", "zh-Hans", "ja"] {
         let base = lexicon::builtin(language).unwrap();
         let active = catalog.get(language).unwrap();
@@ -341,7 +414,68 @@ fn travel_and_work_collections_are_opt_in_and_can_be_disabled_independently() {
         f.cli(&["enable", id]);
         assert!(contains(&f.preview(language, seed), sentence, "Sentence"));
     }
-    assert_eq!(f.store().list().unwrap().len(), 11);
+    assert_eq!(f.store().list().unwrap().len(), 14);
+    assert!(f.store().load().report.errors.is_empty());
+}
+
+#[test]
+fn family_collections_are_language_filtered_and_opt_in_independently() {
+    let f = Fixture::new();
+    let cases = [
+        (
+            "org.suzaku.en.family",
+            "en",
+            "our grandparents are coming ov",
+            "our grandparents are coming over this afternoon.",
+        ),
+        (
+            "org.suzaku.zh-hans.family",
+            "zh-Hans",
+            "jia ren tuan ju",
+            "家人团聚的时间先问问大家。",
+        ),
+        (
+            "org.suzaku.ja.family",
+            "ja",
+            "souji",
+            "掃除が終わったら休みましょう。",
+        ),
+    ];
+    let filtered: serde_json::Value =
+        serde_json::from_str(&f.cli(&["catalog", "--topic", "family"])).unwrap();
+    assert_eq!(filtered.as_array().unwrap().len(), 3);
+    for (id, language, seed, sentence) in cases {
+        let filtered: serde_json::Value =
+            serde_json::from_str(&f.cli(&["catalog", "--topic", "family", "--language", language]))
+                .unwrap();
+        assert_eq!(filtered.as_array().unwrap().len(), 1);
+        assert_eq!(filtered[0]["id"], id);
+        assert!(!contains(&f.preview(language, seed), sentence, "Sentence"));
+    }
+    assert!(
+        !f.store().path().exists(),
+        "catalog/preview must not install packs"
+    );
+    for pack in packs::recommended() {
+        f.store().install(pack, false).unwrap();
+    }
+    for (id, language, seed, sentence) in cases {
+        assert!(contains(&f.preview(language, seed), sentence, "Sentence"));
+        f.cli(&["disable", id]);
+        assert!(!contains(&f.preview(language, seed), sentence, "Sentence"));
+        for (other_id, other_language, other_seed, other_sentence) in cases {
+            if other_id != id {
+                assert!(contains(
+                    &f.preview(other_language, other_seed),
+                    other_sentence,
+                    "Sentence"
+                ));
+            }
+        }
+        f.cli(&["enable", id]);
+        assert!(contains(&f.preview(language, seed), sentence, "Sentence"));
+    }
+    assert_eq!(f.store().list().unwrap().len(), 14);
     assert!(f.store().load().report.errors.is_empty());
 }
 

@@ -101,12 +101,18 @@ jobs:
         run: python3 scripts/test-editor-observer.py
       - name: Test owned X11 focus ancestry without a display
         run: python3 scripts/test-x11-focus.py
+      - name: Test GTK3 event observation before input-method filtering
+        run: python3 scripts/test-gtk3-event-observer.py
       - name: Validate functional maturity inventory and its source snapshot
         run: |
           python3 scripts/functional-tensor.py --check
           python3 scripts/test-functional-tensor.py
       - name: Test private IBus diagnostic isolation and failure propagation
         run: python3 scripts/test-native-ibus-trace.py
+      - name: Test controlled native model replies and unchanged timing guards
+        run: python3 scripts/test-native-model-fixture.py
+      - name: Test final native probe unsubscribe and close ordering
+        run: python3 scripts/test-native-probe-teardown.py
       - name: Test borrowed IBus signal payload lifetimes
         run: /usr/bin/python3 scripts/test-ibus-signal-lifetime.py
       - name: Lint Rust code and test targets without warnings

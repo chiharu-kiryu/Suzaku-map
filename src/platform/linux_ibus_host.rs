@@ -129,6 +129,7 @@ fn probe_roundtrip_mode(
             20 => "Tab did not select the first word completion",
             21 => "word completion did not commit the selected word with exactly one space",
             22 => "Space did not keep the selected completion editable without committing",
+            23 => "the IBus connection did not acknowledge probe cleanup",
             _ => "unknown native probe failure",
         };
         return Err(format!(

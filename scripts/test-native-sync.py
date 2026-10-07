@@ -6,6 +6,7 @@ The fixture requires SUZAKU_NATIVE_SYNC_QA=1 and XDG_RUNTIME_DIR=/tmp/suzaku-syn
 No desktop capture, global input events or desktop engine changes.
 """
 import json
+import functools
 import os
 from pathlib import Path
 import select
@@ -111,7 +112,11 @@ class ModelFixture(BaseHTTPRequestHandler):
                 if gate is not None:
                     gate["finished"].set()
             return
-        time.sleep(0.08)
+        # Explicit gates already hold Pending until release (or cancellation).
+        # Keep a synthetic async delay only for ungated workflows; Ready-phase
+        # tests wait for published candidates and retain their observation windows.
+        if gate is None:
+            time.sleep(0.08)
         candidates = [
             {"text": text, "kind": kind} for text, kind in [
                 ("helium", "word"), ("helmet", "word"), ("helix", "word"),
@@ -244,6 +249,45 @@ def type_seed(context, seed):
         mask = IBus.ModifierType.MOD1_MASK if char in "0123456789" else 0
         assert context.process_key_event(IBus.unicode_to_keyval(char), 0, mask)
     pump()
+
+
+def select_keyboard_candidate(context, watch, index, label, engine_events=False):
+    """Make a real relative selection, never mistake a clamped key for intent."""
+    baseline = watch.latest
+    count, selected = len(baseline["candidates"]), baseline["selected"]
+    assert 0 <= index < count and 0 <= selected < count, (label, index, baseline)
+
+    def acknowledged(target, revision):
+        wait(lambda: watch.latest["revision"] > revision and watch.latest["selected"] == target,
+             label)
+        for field in ["host", "context", "focused", "private", "language", "seed", "candidates"]:
+            assert watch.latest[field] == baseline[field], (label, field, baseline, watch.latest)
+
+    if count == 1:
+        # There is no adjacent row to visit. Only a literal same-payload number
+        # choice can establish intent without adopting or changing this draft.
+        assert baseline["candidates"][0]["text"] == baseline["seed"], (label, baseline)
+        assert context.process_key_event(IBus.KEY_1, 0, 0)
+        assert not context.process_key_event(IBus.KEY_1, 0, IBus.ModifierType.RELEASE_MASK)
+        acknowledged(0, baseline["revision"])
+        return
+
+    if index == selected:
+        # The fixture needs explicit selection even when its desired row was
+        # initially highlighted: leave it and return using two genuine moves.
+        targets = [selected + 1 if selected + 1 < count else selected - 1, selected]
+    else:
+        direction = 1 if index > selected else -1
+        targets = range(selected + direction, index + direction, direction)
+    for target in targets:
+        previous = watch.latest
+        forward = target > previous["selected"]
+        assert abs(target - previous["selected"]) == 1, (label, target, previous)
+        if engine_events:
+            context.event("CursorDown" if forward else "CursorUp")
+        else:
+            assert context.process_key_event(IBus.KEY_Tab if forward else IBus.KEY_Up, 0, 0)
+        acknowledged(target, previous["revision"])
 
 
 def create_context(bus, name):
@@ -1240,6 +1284,7 @@ def check_native_draft_limits(bus):
     passed = 0
     try:
         for language in ["en", "zh-Hans", "ja"]:
+            language_started = time.monotonic()
             assert json.loads(command("L" + language))["ok"]
             for label, keys, suffix in operations:
                 for overflow in [False, True]:
@@ -1297,6 +1342,8 @@ def check_native_draft_limits(bus):
                         assert not peer.process_key_event(IBus.KEY_x, 0, IBus.ModifierType.RELEASE_MASK)
                         assert peer.commits[before:] == [expected]
                         passed += 1
+            print(f"TIMING: native draft byte-limit {language}: "
+                  f"{time.monotonic() - language_started:.3f}s for 24 cases", flush=True)
         assert passed == 72
         print("PASS: 72 native draft byte-limit cases preserve Unicode/Compose/space, reject invalid replacements, and recover/commit without truncation")
     finally:
@@ -2118,10 +2165,8 @@ def check_engine_destruction(bus):
         wait(lambda: watch.latest["seed"] == draft, "prepare destruction draft")
         if phase in ["selected", "adopted"]:
             index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == word)
-            peer.event("CursorUp")
-            for _ in range(index):
-                peer.event("CursorDown")
-            wait(lambda: watch.latest["selected"] == index, "select before destruction")
+            select_keyboard_candidate(peer, watch, index, "select before destruction",
+                                      engine_events=True)
             if phase == "adopted":
                 assert peer.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
                 wait(lambda: watch.latest["seed"] == word, "adopt before destruction")
@@ -2310,6 +2355,8 @@ def check_committed_model_context(bus):
         assert json.loads(command("R"))["ok"]
         for language, label, chunks in cases:
             for method in ["enter", "panel-click"]:
+                gate = {key: threading.Event() for key in ["received", "release", "finished"]}
+                model_reply_gates["synthetic-exact-context"] = gate
                 peer = EnginePeer(bus)
                 try:
                     assert json.loads(command("P0"))["ok"]
@@ -2333,7 +2380,10 @@ def check_committed_model_context(bus):
                     pump()
                     requested = len(model_requests)
                     assert action(watch.latest, "Thel")
-                    wait(lambda: len(model_requests) > requested, "request following consecutive native commits")
+                    wait(gate["received"].is_set, "request following consecutive native commits")
+                    assert len(model_requests) == requested + 1
+                    assert json.loads(command("S"))["prediction"] == "Pending"
+                    assert not gate["finished"].is_set() and "cancelled_at" not in gate
                     payload = json.loads(model_requests[requested]["messages"][1]["content"])
                     assert payload["raw_composition"] == "hel" and payload["language"] == language
                     actual = payload["committed_context"]
@@ -2341,10 +2391,17 @@ def check_committed_model_context(bus):
                         failure = f"{language}/{label}/{method}: expected={expected!r}, model={actual!r}"
                         print("AUDIT: N32 " + failure)
                         failures.append(failure)
+                    # Payload capture, not an arbitrary response delay, is the
+                    # barrier: keep Pending until its exact context is checked.
+                    gate["release"].set()
+                    wait(gate["finished"].is_set, "finish native context model reply")
                     wait(lambda: json.loads(command("S"))["prediction"] != "Pending", "settle context probe")
+                    assert "cancelled_at" not in gate and len(model_requests) == requested + 1
                     assert peer.commits == [output for _, output in chunks], "prediction submitted text"
                 finally:
+                    gate["release"].set()
                     peer.close()
+                    model_reply_gates.pop("synthetic-exact-context", None)
         assert not failures, "native committed context:\n" + "\n".join(failures)
         print("PASS: N32 20 exact native/model-context cases preserve joins, whitespace, Unicode and the 160-character tail")
     finally:
@@ -2934,11 +2991,7 @@ def check_mixed_keyboard(context, watch, commits, lookup):
 def check_editable_completions(context, watch, commits, lookup):
     def choose(text):
         index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == text)
-        # Up on row zero is an explicit selection too; it must not insert anything.
-        assert context.process_key_event(IBus.KEY_Up, 0, 0)
-        for _ in range(index):
-            assert context.process_key_event(IBus.KEY_Tab, 0, 0)
-        wait(lambda: watch.latest["selected"] == index, "select editable completion")
+        select_keyboard_candidate(context, watch, index, "select editable completion")
 
     for language, seed, word in [("zh-Hans", "woxihuanbei", "我喜欢北京"),
                                   ("ja", "watashihanihong", "私は日本語"),
@@ -3178,6 +3231,522 @@ def check_candidate_page_boundaries(bus):
         watch.sock.close()
 
 
+def check_candidate_row_boundaries(bus):
+    """Relative row boundaries are inert; explicit selections still own the draft."""
+    saved = json.loads(command("S"))["settings"]
+    config = Path(os.environ["SUZAKU_IME_CONFIG"])
+    original = config.read_text() if config.exists() else json.dumps(saved)
+    watch = Watch()
+    peer = EnginePeer(bus)
+    upper = [
+        ("Up", IBus.KEY_Up, 0), ("Left", IBus.KEY_Left, 0),
+        ("Shift+Tab", IBus.KEY_Tab, IBus.ModifierType.SHIFT_MASK),
+        ("ISO_Left_Tab", IBus.KEY_ISO_Left_Tab, 0),
+        ("Alt+k", IBus.KEY_k, IBus.ModifierType.MOD1_MASK),
+        ("CursorUp", None, 0),
+    ]
+    lower = [
+        ("Down", IBus.KEY_Down, 0), ("Right", IBus.KEY_Right, 0),
+        ("Tab", IBus.KEY_Tab, 0),
+        ("Alt+j", IBus.KEY_j, IBus.ModifierType.MOD1_MASK),
+        ("CursorDown", None, 0),
+    ]
+
+    def start(seed):
+        previous_context = watch.latest["context"]
+        peer.event("Reset")
+        wait(lambda: watch.latest["context"] > previous_context and not watch.latest["seed"],
+             "row-boundary Reset acknowledged before the next draft")
+        type_seed(peer, seed)
+        wait(lambda: watch.latest["seed"] == seed, "row-boundary spelling")
+
+    def row(gesture):
+        label, key, mask = gesture
+        if key is None:
+            peer.event(label)
+        else:
+            assert peer.process_key_event(key, 0, mask), f"{label} leaked out of a native draft"
+        pump()
+
+    def unchanged(gestures):
+        baseline = watch.latest
+        for gesture in gestures:
+            row(gesture)
+            # A fresh snapshot observes the synchronous engine call's effects;
+            # an unchanged latest frame alone could conceal a missing publication.
+            current = Watch()
+            try:
+                wait(lambda: current.latest is not None, "row-boundary fresh snapshot")
+                assert current.latest == baseline, (gesture[0], baseline, current.latest)
+            finally:
+                watchers.remove(current)
+                current.sock.close()
+        assert not peer.commits, "row navigation committed application text"
+
+    def select(index):
+        baseline = watch.latest
+        assert action(baseline, f"N{index}")
+        wait(lambda: watch.latest["revision"] > baseline["revision"]
+             and watch.latest["selected"] == index, "explicit row selection acknowledged")
+
+    try:
+        assert json.loads(command('U{"shortcut_profile":"home-row"}'))["ok"]
+        assert json.loads(command("P0"))["ok"]
+        peer.event("FocusIn")
+        wait(lambda: watch.latest is not None and watch.latest["focused"], "row fixture focus")
+        for language, seed, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+            assert json.loads(command("L" + language))["ok"]
+            start(seed)
+            assert watch.latest["selected"] == 0
+            unchanged(upper)
+            assert peer.process_key_event(IBus.KEY_space)
+            wait(lambda: watch.latest["seed"] == seed + " ",
+                 "upper row boundary must not implicitly adopt the default candidate")
+
+            start(seed)
+            last = len(watch.latest["candidates"]) - 1
+            assert last > 0, "row fixture needs more than one candidate"
+            select(last)
+            unchanged(lower)
+            # A genuine adjacent move still changes the selection and permits
+            # Space adoption; only a clamped relative gesture is inert.
+            row(upper[0])
+            wait(lambda: watch.latest["selected"] == last - 1, "real upward row navigation")
+            expected = watch.latest["candidates"][last - 1]["text"] + " "
+            assert peer.process_key_event(IBus.KEY_space)
+            wait(lambda: watch.latest["seed"] == expected, "real row selection remains adoptable")
+
+            start(seed)
+            selected = watch.latest["candidates"][0]["text"]
+            select(0)  # Same-index absolute selection is deliberate, unlike Up.
+            assert peer.process_key_event(IBus.KEY_space)
+            wait(lambda: watch.latest["seed"] == selected + " ",
+                 "explicit same-index selection still adopts the chosen row")
+
+            start(seed)
+            select(next(index for index, item in enumerate(watch.latest["candidates"])
+                        if item["text"] == word))
+            assert peer.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
+            wait(lambda: watch.latest["seed"] == word and watch.latest["selected"] == 0,
+                 "adopted word before upper row boundary")
+            unchanged(upper)
+            assert peer.process_key_event(IBus.KEY_BackSpace)
+            wait(lambda: watch.latest["seed"] == seed,
+                 "upper row boundary preserves exact adopted spelling undo")
+
+        # A one-row local fallback is simultaneously its first and last row.
+        # Use it to exercise both directions while a real HTTP request is held;
+        # the fixture's unrelated response must still fail validation normally.
+        for seed, behavior in [("hel", "preserve"), ("qzxv", "preserve"),
+                               ("hel", "move"), ("hel", "select-same")]:
+            name = f"synthetic-row-boundary-{seed}-{behavior}"
+            gate = {key: threading.Event() for key in ["received", "release", "finished"]}
+            model_reply_gates[name] = gate
+            try:
+                assert json.loads(command("P0"))["ok"]
+                assert json.loads(command("Len"))["ok"]
+                start(seed)
+                settings = dict(saved, language="en", shortcut_profile="home-row",
+                                llm_enabled=True, llm_model=name, llm_timeout_ms=2000,
+                                llm_endpoint=f"http://127.0.0.1:{model.server_port}/v1/chat/completions")
+                requested = len(model_requests)
+                config.write_text(json.dumps(settings))
+                assert json.loads(command("R"))["ok"]
+                wait(gate["received"].is_set, "row-boundary model request reached reply gate")
+                assert json.loads(command("S"))["prediction"] == "Pending"
+                if behavior == "preserve":
+                    if seed == "qzxv":
+                        assert len(watch.latest["candidates"]) == 1, "one-row fixture expanded"
+                    unchanged(upper + lower if seed == "qzxv" else upper)
+                    assert json.loads(command("S"))["prediction"] == "Pending"
+                    gate["release"].set()
+                    if seed == "hel":
+                        wait(lambda: json.loads(command("S"))["prediction"] == "Ready"
+                             and any(item["source"] == "model" for item in watch.latest["candidates"]),
+                             "boundary row navigation retains the model response")
+                    else:
+                        wait(lambda: json.loads(command("S"))["prediction"] == "Unavailable",
+                             "unrelated model reply still fails ordinary candidate validation")
+                        assert watch.latest["seed"] == seed
+                        assert [item["text"] for item in watch.latest["candidates"]] == [seed]
+                    wait(gate["finished"].is_set, "preserved row-boundary reply completed")
+                    assert "cancelled_at" not in gate
+                else:
+                    if behavior == "move":
+                        row(lower[0])
+                        wait(lambda: watch.latest["selected"] == 1, "real downward selection")
+                    else:
+                        select(0)
+                    # Genuine navigation/selection still freezes the displayed
+                    # candidates and promptly cancels the old socket, even when
+                    # an absolute selection names the already selected first row.
+                    assert json.loads(command("S"))["prediction"] == "Idle"
+                    wait(lambda: "cancelled_at" in gate, "explicit selection cancels old HTTP reply",
+                         timeout=0.7)
+                    assert gate["finished"].is_set()
+                assert len(model_requests) == requested + 1 and not peer.commits
+            finally:
+                gate["release"].set()
+                assert json.loads(command("P0"))["ok"]
+                model_reply_gates.pop(name, None)
+        print("PASS: EN/ZH row-boundary keys, home-row and IBus gestures preserve exact drafts/candidates, Space spelling, adoption undo and pending models; real moves and explicit same-index selections remain deliberate")
+    finally:
+        peer.close()
+        config.write_text(original)
+        assert json.loads(command("R"))["ok"]
+        watchers.remove(watch)
+        watch.sock.close()
+
+
+def check_screen_keys(bus):
+    """Revision-bound screen keys have the physical draft key's semantics, not T replacement."""
+    saved = json.loads(command("S"))["settings"]
+    watch = Watch()
+    peer = EnginePeer(bus)
+    auxiliary = {"text": "", "visible": False}
+
+    def auxiliary_changed(_connection, _sender, _path, _interface, name, params, *_data):
+        if name == "UpdateAuxiliaryText":
+            text = IBus.Serializable.deserialize_object(params.get_child_value(0).get_variant())
+            auxiliary.update(text=text.get_text(), visible=params.get_child_value(1).get_boolean())
+        elif name == "HideAuxiliaryText":
+            auxiliary["visible"] = False
+
+    subscription = peer.connection.signal_subscribe(
+        peer.destination, peer.interface, None, peer.path, None,
+        Gio.DBusSignalFlags.NONE, auxiliary_changed)
+
+    def no_commit(label):
+        pump()
+        assert not peer.commits, (label, "screen-key workflow emitted CommitText", peer.commits)
+
+    def state(frame):
+        # Independent replays necessarily receive different Reset context IDs
+        # and publication revisions; every other snapshot field must agree.
+        return {key: value for key, value in frame.items() if key not in ("context", "revision")}
+
+    def setting(request):
+        previous = watch.latest["revision"]
+        assert json.loads(command(request))["ok"]
+        wait(lambda: watch.latest["revision"] > previous, "screen-key setting acknowledged")
+
+    def reset(seed="", literal=False):
+        previous = watch.latest["context"]
+        peer.event("Reset")
+        wait(lambda: watch.latest["context"] > previous and not watch.latest["seed"],
+             "screen-key Reset context and empty draft acknowledged")
+        if seed:
+            previous = watch.latest["revision"]
+            if literal:
+                assert action(watch.latest, "T" + seed)
+            else:
+                type_seed(peer, seed)
+            wait(lambda: watch.latest["revision"] > previous and watch.latest["seed"] == seed,
+                 "screen-key fixture spelling")
+        no_commit("reset")
+
+    def select_candidate(word, adopt=False):
+        before = watch.latest
+        index = next(index for index, candidate in enumerate(before["candidates"])
+                     if candidate["text"] == word)
+        assert action(before, f"N{index}")
+        wait(lambda: watch.latest["revision"] > before["revision"]
+             and watch.latest["selected"] == index, "screen-key explicit selection")
+        if adopt:
+            before = watch.latest
+            assert peer.process_key_event(IBus.KEY_Return, 0, IBus.ModifierType.SHIFT_MASK)
+            wait(lambda: watch.latest["revision"] > before["revision"] and watch.latest["seed"] == word,
+                 "screen-key editable adoption")
+        no_commit("selection/adoption")
+
+    def pending():
+        before = watch.latest
+        assert peer.process_key_event(IBus.KEY_dead_acute)
+        wait(lambda: watch.latest["revision"] > before["revision"] and auxiliary["visible"]
+             and "Compose…" in auxiliary["text"], "screen-key owned Compose pending")
+        assert state(watch.latest) == state(before), "pending Compose changed the draft frame"
+        no_commit("pending Compose")
+
+    def move_cursor(rect):
+        before = watch.latest
+        peer.event("SetCursorLocation", GLib.Variant("(iiii)", tuple(rect.values())))
+        wait(lambda: watch.latest["cursor"] == rect, "screen-key cursor move acknowledged")
+        assert {key: value for key, value in watch.latest.items() if key != "cursor"} == {
+            key: value for key, value in before.items() if key != "cursor"}, \
+            "geometry-only movement changed draft state or invalidated its action revision"
+        no_commit("geometry-only movement")
+
+    def screen_key(before, operation, expected, observe=True):
+        reply = command(f'E{before["host"]} {before["revision"]} {operation}')
+        assert reply.startswith(b"1") and reply.endswith(b"\n") and reply.count(b"\n") == 1, \
+            (operation, "expected 1 + one complete newline JSON frame", reply)
+        frame = json.loads(reply[1:])
+        assert set(frame) == set(before), (operation, "incomplete acknowledgement", frame)
+        assert frame["version"] == 1 and frame["revision"] > before["revision"], (operation, frame)
+        for field in ("host", "context", "focused", "private", "language", "cursor"):
+            assert frame[field] == before[field], (operation, field, before, frame)
+        assert frame["focused"] and not frame["private"] and frame["seed"] == expected, (operation, frame)
+        if observe:
+            wait(lambda: watch.latest["revision"] >= frame["revision"], "screen-key published ACK frame")
+            assert watch.latest == frame, (operation, "ACK differs from full published state", frame, watch.latest)
+            no_commit(operation)
+        return frame
+
+    def unchanged_snapshot(baseline, label):
+        current = Watch()
+        try:
+            wait(lambda: current.latest is not None, "screen-key fresh unchanged snapshot")
+            assert current.latest == baseline, (label, baseline, current.latest)
+            no_commit(label)
+        finally:
+            watchers.remove(current)
+            current.sock.close()
+
+    def rejected(request, label):
+        baseline = watch.latest
+        assert command(request) == b"0", (label, "invalid screen key accepted")
+        unchanged_snapshot(baseline, label)
+
+    def paired(label, prepare, steps):
+        physical = []
+        for semantic in (False, True):
+            prepare()
+            initial = state(watch.latest)
+            if semantic:
+                assert initial == physical_initial, (label, "replay fixture differs")
+            else:
+                physical_initial = initial
+            for index, (operation, expected) in enumerate(steps):
+                before = watch.latest
+                if semantic:
+                    frame = screen_key(before, operation, expected)
+                else:
+                    assert peer.process_key_event(IBus.KEY_BackSpace if operation == "B" else IBus.KEY_space)
+                    wait(lambda: watch.latest["revision"] > before["revision"]
+                         and watch.latest["seed"] == expected, label + " physical key")
+                    frame = watch.latest
+                    assert frame["context"] == before["context"] and frame["host"] == before["host"]
+                wait(lambda: "Compose…" not in auxiliary["text"] or not auxiliary["visible"],
+                     label + " Compose ended")
+                no_commit(label)
+                if semantic:
+                    assert state(frame) == physical[index], (label, index, physical[index], frame)
+                else:
+                    physical.append(state(frame))
+
+    try:
+        peer.event("FocusIn")
+        wait(lambda: watch.latest is not None and watch.latest["focused"], "screen-key owned engine focus")
+        setting("P0")
+        for language, reading, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+            setting("L" + language)
+
+            def prepare(selected=False, adopted=False, compose=False, geometry=False):
+                reset(reading)
+                if selected or adopted:
+                    select_candidate(word, adopt=adopted)
+                if compose:
+                    pending()
+                if geometry:
+                    # Two fixed, distinct rectangles ensure a real movement in
+                    # both replays, including when Reset preserves the anchor.
+                    move_cursor({"x": 10, "y": 20, "width": 0, "height": 24})
+                    move_cursor({"x": -400, "y": 200, "width": 0, "height": 24})
+                    if compose:
+                        assert auxiliary["visible"] and "Compose…" in auxiliary["text"], \
+                            "cursor movement canceled pending Compose"
+
+            paired(language + " adopted undo", lambda: prepare(adopted=True), [("B", reading)])
+            paired(language + " default Space", prepare, [("S", reading + " "), ("B", reading)])
+            paired(language + " explicit Space", lambda: prepare(selected=True),
+                   [("S", word + " "), ("B", reading)])
+            paired(language + " Compose cancellation", lambda: prepare(compose=True),
+                   [("B", reading), ("B", reading[:-1])])
+            paired(language + " adopted Compose cancellation/undo", lambda: prepare(adopted=True, compose=True),
+                   [("B", word), ("B", reading)])
+            # compose.XCompose includes the en_US.UTF-8 table, whose
+            # <dead_acute> <space> is ASCII apostrophe (U+0027), not the
+            # spacing acute accent produced by <dead_acute> <dead_acute>.
+            paired(language + " Compose Space", lambda: prepare(compose=True),
+                   [("S", reading + "'"), ("B", reading)])
+            paired(language + " adopted Compose Space retires undo", lambda: prepare(adopted=True, compose=True),
+                   [("S", word + "'"), ("B", word), ("B", word[:-1])])
+            paired(language + " adopted geometry preserves undo", lambda: prepare(adopted=True, geometry=True),
+                   [("B", reading)])
+            paired(language + " adopted Compose geometry cancellation/undo",
+                   lambda: prepare(adopted=True, compose=True, geometry=True), [("B", word), ("B", reading)])
+
+        setting("Len")
+        literal = "A你🙂e\u0301"
+        paired("literal Unicode scalar deletion", lambda: reset(literal, literal=True),
+               [("B", literal[:-1]), ("B", literal[:-2]), ("S", literal[:-2] + " ")])
+
+        # The second operation consumes the returned ACK directly, without
+        # pumping W or waiting for another frame between these two requests.
+        reset(literal, literal=True)
+        first = screen_key(watch.latest, "B", literal[:-1], observe=False)
+        second = screen_key(first, "B", literal[:-2], observe=False)
+        wait(lambda: watch.latest["revision"] >= second["revision"], "consecutive screen-key ACKs published")
+        assert first in watch.frames and watch.latest == second
+        no_commit("consecutive scalar Backspace")
+
+        # Empty draft handling intentionally differs from pass-through physical
+        # keys: B is an acknowledged no-op; S creates an exact committable space.
+        reset()
+        empty = watch.latest
+        unchanged = screen_key(empty, "B", "")
+        assert state(unchanged) == state(empty)
+        space = screen_key(unchanged, "S", " ")
+        assert any(candidate["text"] == " " for candidate in space["candidates"]), space
+        empty = screen_key(space, "B", "")
+        screen_key(empty, "B", "")
+
+        reset("hel")
+        stale = watch.latest
+        screen_key(stale, "S", "hel ")
+        for operation in ("B", "S"):
+            rejected(f'E{stale["host"]} {stale["revision"]} {operation}', "stale " + operation)
+        current = watch.latest
+        for payload in ("", "BB", "SS", "B extra", "S\n", "b", "N0", "Ttext", "🙂"):
+            rejected(f'E{current["host"]} {current["revision"]} {payload}', "malformed payload " + repr(payload))
+        rejected(f'E{current["host"]}-wrong {current["revision"]} B', "wrong host")
+        rejected(f'E{current["host"]} -1 B', "invalid revision")
+
+        previous = watch.latest["context"]
+        peer.event("FocusOut")
+        wait(lambda: watch.latest["context"] > previous and not watch.latest["focused"]
+             and not watch.latest["seed"], "screen-key focus-out acknowledged")
+        for operation in ("B", "S"):
+            frame = watch.latest
+            rejected(f'E{frame["host"]} {frame["revision"]} {operation}', "unfocused " + operation)
+        peer.event("FocusIn")
+        wait(lambda: watch.latest["focused"] and watch.latest["context"] > previous
+             and not watch.latest["seed"], "screen-key refocus acknowledged")
+        for operation in ("B", "S"):
+            rejected(f'E{current["host"]} {current["revision"]} {operation}', "old focus target " + operation)
+
+        for purpose, hints in [(IBus.InputPurpose.FREE_FORM, 1 << 11), (IBus.InputPurpose.PASSWORD, 0)]:
+            reset("hel")
+            previous = watch.latest["context"]
+            peer.set_content_type(purpose, hints)
+            wait(lambda: watch.latest["context"] > previous and watch.latest["private"]
+                 and not watch.latest["seed"] and not watch.latest["candidates"], "screen-key privacy acknowledged")
+            for operation in ("B", "S"):
+                frame = watch.latest
+                rejected(f'E{frame["host"]} {frame["revision"]} {operation}', "private target " + operation)
+            previous = watch.latest["context"]
+            peer.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+            wait(lambda: watch.latest["context"] > previous and not watch.latest["private"]
+                 and not watch.latest["seed"], "screen-key public empty context acknowledged")
+
+        boundary_cases = 0
+        for boundary in ("focus", "private"):
+            for operation in ("B", "S"):
+                reset("hel")
+                old = watch.latest
+                with socket.socket(socket.AF_UNIX) as pending_request:
+                    pending_request.settimeout(2)
+                    pending_request.connect(str(host_socket))
+                    pending_request.sendall(f'E{old["host"]} {old["revision"]}'.encode())
+                    # EOF is the operation boundary. An independent request
+                    # establishes progress without completing or retrying E.
+                    assert command("Q") == b"1"
+                    assert not select.select([pending_request], [], [], 0)[0], \
+                        "incomplete screen-key request received an early response"
+                    unchanged_snapshot(old, "incomplete screen-key prefix")
+                    if boundary == "focus":
+                        peer.event("FocusOut")
+                        wait(lambda: watch.latest["context"] > old["context"]
+                             and not watch.latest["focused"] and not watch.latest["seed"],
+                             "pending screen-key focus-out acknowledged")
+                        previous = watch.latest["context"]
+                        peer.event("FocusIn")
+                        wait(lambda: watch.latest["context"] > previous and watch.latest["focused"]
+                             and not watch.latest["seed"], "pending screen-key new focus acknowledged")
+                        type_seed(peer, "new")
+                        wait(lambda: watch.latest["seed"] == "new", "pending screen-key new target draft")
+                    else:
+                        peer.set_content_type(IBus.InputPurpose.FREE_FORM, 1 << 11)
+                        wait(lambda: watch.latest["context"] > old["context"] and watch.latest["private"]
+                             and not watch.latest["seed"] and not watch.latest["candidates"],
+                             "pending screen-key private target acknowledged")
+                    current = watch.latest
+                    pending_request.sendall((" " + operation).encode())
+                    pending_request.shutdown(socket.SHUT_WR)
+                    reply = b""
+                    while chunk := pending_request.recv(8192):
+                        reply += chunk
+                        assert len(reply) <= 65536, "unbounded delayed screen-key response"
+                    assert reply == b"0", (boundary, operation, "old in-flight screen key accepted", reply)
+                unchanged_snapshot(current, boundary + " delayed " + operation)
+                if boundary == "private":
+                    previous = watch.latest["context"]
+                    peer.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+                    wait(lambda: watch.latest["context"] > previous and not watch.latest["private"]
+                         and not watch.latest["seed"], "delayed screen-key privacy recovery acknowledged")
+                boundary_cases += 1
+
+        # A semantic key follows the existing physical editing budget: Space
+        # applies at 8192 bytes even though the resulting 8193-byte draft cannot
+        # be exposed in a public companion frame. Such an ACK is well-formed
+        # but not a public confirmation; that never licenses an automatic retry.
+        draft = "z" * 8192
+        reset(draft, literal=True)
+        before = watch.latest
+        assert not before["private"] and len(before["candidates"]) == 1
+        assert before["candidates"][0]["text"] == draft
+        assert before["candidates"][0]["kind"] == "literal"
+        original_request = f'E{before["host"]} {before["revision"]} S'
+        start = len(watch.frames)
+        reply = command(original_request)  # Deliberately exactly one submission.
+        assert reply.startswith(b"1") and reply.endswith(b"\n") and reply.count(b"\n") == 1
+        assert len(reply) <= 65536
+        overflow = json.loads(reply[1:])
+        assert type(overflow["revision"]) is int and overflow["revision"] > before["revision"]
+        expected = dict(before, revision=overflow["revision"], private=True, cursor=None,
+                        seed="", selected=0, candidates=[])
+        assert overflow == expected, ("overflow ACK must be a complete schema-valid redacted frame", overflow)
+        wait(lambda: watch.latest["revision"] >= overflow["revision"], "overflow screen-key W frame")
+        assert watch.latest == overflow
+        unchanged_snapshot(overflow, "overflow is not automatically retried")
+        assert {frame["revision"] for frame in watch.frames[start:]} == {overflow["revision"]}, \
+            "overflow response caused an automatic second edit"
+        # One physical deletion must restore all original bytes. This proves
+        # Space was applied once, despite the unconfirmable public ACK.
+        assert peer.process_key_event(IBus.KEY_BackSpace)
+        wait(lambda: watch.latest["revision"] > overflow["revision"]
+             and not watch.latest["private"] and watch.latest["seed"] == draft,
+             "one physical Backspace restores exact 8192-byte draft")
+        assert state(watch.latest) == state(before)
+        assert watch.latest["context"] == before["context"]
+        no_commit("oversized screen Space and one physical recovery")
+        rejected(original_request, "old overflow Space replay")
+        boundary_cases += 1
+        assert boundary_cases == 5
+        reset()
+        print("PASS: revision-bound screen Backspace/Space match complete physical EN/ZH adoption, Compose cancellation/Space, geometry-preserved undo and Unicode states; consecutive ACKs, empty drafts and stale/focus/privacy/malformed rejection never commit text; 5 protocol boundaries cover 4 delayed EOF focus/privacy rejections and 1 applied-but-redacted overflow with single-key recovery")
+    finally:
+        with preserve_primary_failure("restore screen-key public focused engine and settings"):
+            # Restore while this engine can still publish setting ACKs. A
+            # failure may leave it unfocused or private; establish an explicit
+            # empty public context before expecting any setting revision.
+            previous = watch.latest["context"] if watch.latest is not None else -1
+            peer.set_content_type(IBus.InputPurpose.FREE_FORM, 0)
+            peer.event("FocusIn")
+            wait(lambda: watch.latest is not None and watch.latest["context"] > previous
+                 and watch.latest["focused"] and not watch.latest["private"] and not watch.latest["seed"],
+                 "screen-key cleanup public FocusIn acknowledged")
+            setting("L" + saved["language"])
+            setting("P1" if saved["llm_enabled"] else "P0")
+        with preserve_primary_failure("close screen-key owned engine"):
+            peer.close()
+        with preserve_primary_failure("unsubscribe screen-key auxiliary observer"):
+            peer.connection.signal_unsubscribe(subscription)
+        with preserve_primary_failure("close screen-key observer"):
+            watchers.remove(watch)
+            watch.sock.close()
+
+
 def check_english_prose_workflows(bus):
     """Continue English after already-composed multilingual prose without losing its prefix."""
     saved = json.loads(command("S"))["settings"]
@@ -3288,15 +3857,7 @@ def check_japanese_daily_workflows(bus):
 
         def select(text):
             index = next(i for i, item in enumerate(watch.latest["candidates"]) if item["text"] == text)
-            # Real navigation keys, including an explicit row-zero gesture,
-            # select the literal/converted payload without companion writes.
-            revision = watch.latest["revision"]
-            for _ in range(watch.latest["selected"] + 1):
-                assert peer.process_key_event(IBus.KEY_Up)
-            for _ in range(index):
-                assert peer.process_key_event(IBus.KEY_Tab)
-            wait(lambda: watch.latest["revision"] > revision and watch.latest["selected"] == index,
-                 "Japanese keyboard candidate selection")
+            select_keyboard_candidate(peer, watch, index, "Japanese keyboard candidate selection")
 
         def adopt(text, kind="word"):
             matches = [i for i, item in enumerate(watch.latest["candidates"][:6])
@@ -3571,8 +4132,8 @@ def check_home_row_shortcuts(context, watch, commits, lookup):
         pump()
         assert watch.latest == baseline, "standard profile stole application Alt keys"
         profile("home-row")
-        # Row navigation clamps; page navigation goes to adjacent page starts
-        # and is inert at page boundaries. Locks do not disable aliases.
+        # Row navigation clamps; page navigation goes to adjacent page starts.
+        # Both are inert at their boundaries. Locks do not disable aliases.
         for key, delta, mask in [(IBus.KEY_j, 1, alt), (IBus.KEY_k, -1, alt),
                                  (IBus.KEY_l, 6, alt), (IBus.KEY_h, -6, alt),
                                  (IBus.KEY_J, 1, alt | IBus.ModifierType.LOCK_MASK),
@@ -3583,11 +4144,19 @@ def check_home_row_shortcuts(context, watch, commits, lookup):
             page_boundary = abs(delta) == 6 and not 0 <= target < total
             expected = (selected if page_boundary else target) if abs(delta) == 6 else max(
                 0, min(total - 1, selected + delta))
-            revision = watch.latest["revision"]
+            navigation_baseline = watch.latest
+            revision = navigation_baseline["revision"]
             assert context.process_key_event(key, 0, mask)
-            if page_boundary:
-                pump()
-                assert watch.latest["revision"] == revision and watch.latest["selected"] == expected
+            if expected == selected:
+                current = Watch()
+                try:
+                    wait(lambda: current.latest is not None, "home-row boundary fresh snapshot")
+                    assert current.latest == navigation_baseline
+                    assert watch.latest["revision"] == revision and watch.latest["selected"] == expected
+                    assert lookup["selected"] == expected
+                finally:
+                    watchers.remove(current)
+                    current.sock.close()
             else:
                 wait(lambda: watch.latest["revision"] > revision and watch.latest["selected"] == expected
                      and lookup["selected"] == expected, "home-row navigation")
@@ -4031,6 +4600,7 @@ def check_preference_learning(context, watch, commits):
         (".com", False), (":world", False),
         (".", True), (". world", True), (":", True), (": world", True),
         ('!" ', True),
+        ("”", True), ("” world", True), ("’s", False), ("’re", False),
     ]
     for suffix, learned in english_boundaries:
         assert json.loads(command("F"))["ok"]
@@ -4711,9 +5281,7 @@ def check_unchanged_input_controls(context, watch, commits, lookup):
                 wait(lambda: not watch.latest["seed"], "reset unchanged-control draft")
                 type_seed(context, seed)
                 index = next(i for i, c in enumerate(watch.latest["candidates"]) if c["text"] == word)
-                assert context.process_key_event(IBus.KEY_Up, 0, 0)
-                for _ in range(index):
-                    assert context.process_key_event(IBus.KEY_Tab, 0, 0)
+                select_keyboard_candidate(context, watch, index, "select before repeating a setting")
                 wait(lambda: watch.latest["selected"] == index and lookup["selected"] == index,
                      "select before repeating a setting")
                 if phase == "adopted":
@@ -5419,6 +5987,87 @@ def check_english_compose_boundaries(context, watch, commits, lookup):
     print("PASS: dead-key/Compose cancellation, modifiers, invalid sequences, panel edits, draft-only commit and reset/privacy boundaries")
 
 
+def check_adopted_compose_undo(context, watch, commits, lookup):
+    """Only a completed draft edit retires the preceding adoption's spelling undo."""
+    saved = json.loads(command("S"))["settings"]
+    before = len(commits)
+    checked = 0
+
+    def setting(request):
+        revision = watch.latest["revision"]
+        assert json.loads(command(request))["ok"]
+        wait(lambda: watch.latest["revision"] > revision, "adopted Compose settings acknowledged")
+
+    def reset():
+        previous_context = watch.latest["context"]
+        context.reset()
+        wait(lambda: watch.latest["context"] > previous_context and not watch.latest["seed"],
+             "adopted Compose reset acknowledged")
+
+    try:
+        setting("P0")
+        for language, reading, word in [("en", "hel", "hello"), ("zh-Hans", "nihao", "你好")]:
+            setting("L" + language)
+            for operation in ["escape", "backspace", "empty-result", "composed", "unmatched"]:
+                reset()
+                type_seed(context, reading)
+                wait(lambda: watch.latest["seed"] == reading and watch.latest["language"] == language,
+                     "adopted Compose original spelling")
+                slot = next(index for index, candidate in enumerate(watch.latest["candidates"][:6])
+                            if candidate["text"] == word)
+                key = IBus.KEY_1 + slot
+                assert context.process_key_event(key, 0, 0)
+                assert not context.process_key_event(key, 0, IBus.ModifierType.RELEASE_MASK)
+                wait(lambda: watch.latest["seed"] == word, "word adoption before Compose")
+                adopted = watch.latest
+                assert len(commits) == before
+                start_keys = [IBus.KEY_Multi_key, IBus.KEY_F11] if operation == "empty-result" else [IBus.KEY_dead_acute]
+                for start_key in start_keys:
+                    assert context.process_key_event(start_key, 0, 0)
+                wait(lambda: lookup["aux_visible"] and "Compose…" in lookup["aux"]
+                     and not lookup["visible"], "adopted Compose pending hint")
+                assert watch.latest["seed"] == word
+
+                if operation in ["escape", "backspace", "empty-result"]:
+                    revision = watch.latest["revision"]
+                    # The private Compose fixture's <Multi_key><F11><2>
+                    # produces a Return keysym (U+000D), rejected as non-printable.
+                    # Its final digit must neither choose nor submit a candidate;
+                    # "empty-result" here means no accepted draft text, not zero raw bytes.
+                    finish = {"escape": IBus.KEY_Escape, "backspace": IBus.KEY_BackSpace,
+                              "empty-result": IBus.KEY_2}[operation]
+                    assert context.process_key_event(finish, 0, 0)
+                    wait(lambda: watch.latest["revision"] > revision and lookup["visible"]
+                         and "Compose…" not in lookup["aux"], "Compose ended without a draft edit")
+                    for field in ["context", "language", "seed", "selected", "candidates"]:
+                        assert watch.latest[field] == adopted[field], (language, operation, field)
+                    assert len(commits) == before, (language, operation, "no-text Compose committed")
+                    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                    wait(lambda: watch.latest["seed"] == reading,
+                         f"{language}/{operation}: no-edit Compose must preserve exact adoption undo")
+                else:
+                    # A completed accent and an unmatched printable key both
+                    # change the draft. Deleting them must not re-arm old undo.
+                    final_key, suffix = (IBus.KEY_e, "é") if operation == "composed" else (IBus.KEY_b, "b")
+                    assert context.process_key_event(final_key, 0, 0)
+                    wait(lambda: watch.latest["seed"] == word + suffix,
+                         f"{language}/{operation}: Compose edit preserves exact UTF-8 text")
+                    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                    wait(lambda: watch.latest["seed"] == word,
+                         f"{language}/{operation}: delete only the new scalar")
+                    assert context.process_key_event(IBus.KEY_BackSpace, 0, 0)
+                    wait(lambda: watch.latest["seed"] == word[:-1],
+                         f"{language}/{operation}: real editing must retire old adoption undo")
+                assert len(commits) == before, (language, operation, "Compose workflow committed")
+                checked += 1
+        reset()
+        print(f"PASS: {checked} EN/ZH adopted Compose workflows preserve exact spelling undo on cancellation/empty results; completed and unmatched printable edits retain UTF-8 scalar deletion without reviving undo")
+    finally:
+        with preserve_primary_failure("restore adopted Compose settings"):
+            setting("L" + saved["language"])
+            setting("P1" if saved["llm_enabled"] else "P0")
+
+
 def check_english_context_boundaries(context, watch, commits, lookup):
     revision = watch.latest["revision"]
     assert json.loads(command("Len"))["ok"]
@@ -5589,6 +6238,7 @@ def prepare_offline_pack_fixture(environment):
         "org.suzaku.en.cooking", "org.suzaku.zh-hans.cooking",
         "org.suzaku.en.travel", "org.suzaku.zh-hans.travel",
         "org.suzaku.en.work", "org.suzaku.zh-hans.work",
+        "org.suzaku.en.family", "org.suzaku.zh-hans.family", "org.suzaku.ja.family",
     ]:
         destination = runtime / (identifier + ".json")
         for args in [["export", identifier, str(destination)], ["install", str(destination)]]:
@@ -5627,6 +6277,10 @@ def check_offline_packs(bus, environment):
         ("en", "please update the project road", "please update the project roadmap",
          "please update the project roadmap before our next meeting."),
         ("zh-Hans", "xiang mu lu xian tu", "项目路线图", "项目路线图请在下次会议前更新。"),
+        ("en", "our grandparents are coming ov", "our grandparents are coming over",
+         "our grandparents are coming over this afternoon."),
+        ("zh-Hans", "jia ren tuan ju", "家人团聚", "家人团聚的时间先问问大家。"),
+        ("ja", "souji", "掃除", "掃除が終わったら休みましょう。"),
     ]
     try:
         for language, seed, word, sentence in cases:
@@ -5690,6 +6344,34 @@ def check_offline_packs(bus, environment):
         watch.sock.close()
 
 
+def native_check_phase(check):
+    """Attribute failures and optional timings to the outer native workflow."""
+    @functools.wraps(check)
+    def measured(*args, **kwargs):
+        global diagnostic_phase
+        previous = diagnostic_phase
+        outer = not previous.startswith("check_")
+        started = time.monotonic() if outer else None
+        if outer:
+            diagnostic_phase = check.__name__
+        try:
+            return check(*args, **kwargs)
+        finally:
+            if outer:
+                if os.environ.get("SUZAKU_NATIVE_TIMING") == "1":
+                    with preserve_primary_failure("native workflow timing"):
+                        print(f"TIMING: {check.__name__}: {time.monotonic() - started:.3f}s", flush=True)
+                # Retain the failing phase for the teardown diagnostic.
+                if sys.exc_info()[0] is None:
+                    diagnostic_phase = previous
+    return measured
+
+
+for check_name, check_function in list(globals().items()):
+    if check_name.startswith("check_") and callable(check_function):
+        globals()[check_name] = native_check_phase(check_function)
+
+
 try:
     # Keep daemon stderr in the caller's captured gate log. Dropping it makes
     # daemon exits indistinguishable from a single client connection loss.
@@ -5736,6 +6418,26 @@ try:
     if os.environ.get("SUZAKU_NATIVE_JAPANESE_ONLY") == "1":
         check_japanese_daily_workflows(bus)
         raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_DRAFT_LIMITS_ONLY") == "1":
+        check_native_draft_limits(bus)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_ROW_BOUNDARIES_ONLY") == "1":
+        check_candidate_row_boundaries(bus)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_SCREEN_KEYS_ONLY") == "1":
+        check_screen_keys(bus)
+        raise SystemExit(0)
+    if os.environ.get("SUZAKU_NATIVE_COMPOSE_UNDO_ONLY") == "1":
+        context = create_context(bus, "suzaku-compose-undo-qa")
+        commits = []
+        lookup = observe_lookup(context)
+        context.connect("commit-text", lambda _, text: commits.append(text.get_text()))
+        context.focus_in()
+        assert bus.set_global_engine("dev.suzaku.linux.ime")
+        watch = Watch()
+        wait(lambda: watch.latest is not None and watch.latest["focused"], "Compose-undo-only context")
+        check_adopted_compose_undo(context, watch, commits, lookup)
+        raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_BILINGUAL_ONLY") == "1":
         context = create_context(bus, "suzaku-bilingual-qa")
         commits = []
@@ -5749,6 +6451,7 @@ try:
         raise SystemExit(0)
     if os.environ.get("SUZAKU_NATIVE_SHORTCUTS_ONLY") == "1":
         check_candidate_page_boundaries(bus)
+        check_candidate_row_boundaries(bus)
         check_english_prose_workflows(bus)
         context = create_context(bus, "suzaku-shortcuts-qa")
         commits = []
@@ -5785,6 +6488,8 @@ try:
     check_language_shortcut(bus)
     check_post_process_preedit(bus)
     check_candidate_page_boundaries(bus)
+    check_candidate_row_boundaries(bus)
+    check_screen_keys(bus)
     check_english_prose_workflows(bus)
     check_japanese_daily_workflows(bus)
     check_engine_event_boundaries(bus)
@@ -5866,6 +6571,7 @@ try:
     assert json.loads(command("Len"))["ok"]
     check_english_key_regressions(other, watch, other_commits)
     check_english_compose_boundaries(other, watch, other_commits, other_lookup)
+    check_adopted_compose_undo(other, watch, other_commits, other_lookup)
     check_lossless_commit_chunks(other, watch, other_commits)
     check_mixed_keyboard(other, watch, other_commits, other_lookup)
     check_editable_completions(other, watch, other_commits, other_lookup)

@@ -537,6 +537,9 @@ pub fn recommended() -> Vec<OfflinePack> {
         include_str!("../../data/offline-packs/zh-Hans-travel.json"),
         include_str!("../../data/offline-packs/en-work.json"),
         include_str!("../../data/offline-packs/zh-Hans-work.json"),
+        include_str!("../../data/offline-packs/en-family.json"),
+        include_str!("../../data/offline-packs/zh-Hans-family.json"),
+        include_str!("../../data/offline-packs/ja-family.json"),
     ]
     .into_iter()
     .map(|raw| OfflinePack::from_json(raw).expect("bundled offline pack must pass validation"))

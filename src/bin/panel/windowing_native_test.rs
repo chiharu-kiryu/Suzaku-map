@@ -53,8 +53,8 @@ struct FitProbe {
 
 fn assert_gesture_routing(state: &mut PanelState) {
     let before = state.chrome.clone();
-    let scene = state.current_scene();
-    state.last_scene = Some(scene.clone());
+    native_sync::present_test_frame(state);
+    let scene = state.last_scene.as_ref().unwrap().clone();
     let background = (0.1, 0.1);
     assert_eq!(
         scene.hit_interaction(background.0, background.1),
@@ -150,7 +150,14 @@ fn assert_scale_button_roundtrip(state: &mut PanelState) {
             (InteractionKind::IncreaseWindowScale, 1.1),
             (InteractionKind::ResetWindowScale, 1.0),
         ] {
-            let scene = state.current_scene();
+            // Read back the actual private X11 window between scale actions;
+            // later controls must belong to the viewport that is really drawn.
+            let actual = state.window.inner_size();
+            state.resize(actual.width, actual.height);
+            state
+                .render()
+                .expect("present the acknowledged scale viewport");
+            let scene = state.last_scene.as_ref().unwrap();
             let rect = scene
                 .interactive_targets
                 .iter()
@@ -159,7 +166,6 @@ fn assert_scale_button_roundtrip(state: &mut PanelState) {
                 .rect;
             let cursor = (rect[0] + rect[2] * 0.5, rect[1] + rect[3] * 0.5);
             assert_eq!(scene.hit_interaction(cursor.0, cursor.1), Some(kind));
-            state.last_scene = Some(scene);
             state.cursor_position = Some(cursor);
             state.begin_primary_press(touch);
             state.complete_primary_release(touch);
@@ -171,6 +177,139 @@ fn assert_scale_button_roundtrip(state: &mut PanelState) {
     }
     println!(
         "PASS: actual scale targets shrink/grow and reset to 100% through mouse/touch dispatch, even with stale appearance state"
+    );
+}
+
+fn assert_presented_pointer_scene(state: &mut PanelState) {
+    let original_chrome = state.chrome.clone();
+    state.chrome.panel_layout_mode = suzaku_map::ime::gpu::PanelLayoutMode::FollowCaret;
+    state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+    state.chrome.input_modes_expanded = true;
+    state.chrome.keyboard_numeric = false;
+    state.chrome.keyboard_shifted = false;
+    let shift_center = |scene: &suzaku_map::ime::gpu::RenderScene| {
+        let rect = scene
+            .interactive_targets
+            .iter()
+            .find(|target| {
+                target.kind
+                    == InteractionKind::VirtualKeyboardKey(
+                        suzaku_map::ime::gpu::VirtualKeyboardKey::Shift,
+                    )
+            })
+            .expect("expanded alphabetic keyboard exposes Shift")
+            .rect;
+        (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0)
+    };
+
+    for touch in [false, true] {
+        state.interaction.last_input_was_touch = touch;
+        state.chrome.keyboard_shifted = false;
+        // Measuring a future layout must not make its controls clickable.
+        let scene = state.current_scene();
+        let cursor = shift_center(&scene);
+        state.last_scene = None;
+        state.presented_pointer_scene = None;
+        state.cursor_position = Some(cursor);
+        state.begin_primary_press(touch);
+        assert!(
+            state.interaction.pressed_interaction.is_none(),
+            "unpresented layout cannot acquire a mouse/touch press"
+        );
+        state.complete_primary_release(touch);
+        assert!(!state.chrome.keyboard_shifted);
+
+        state.render().expect("present the real pointer test scene");
+        state.cursor_position = Some(shift_center(state.last_scene.as_ref().unwrap()));
+        state.begin_primary_press(touch);
+        assert!(state.interaction.pressed_interaction.is_some());
+        let actual = state.window.inner_size();
+        state.resize(actual.width + 1, actual.height);
+        assert!(
+            state.interaction.pressed_interaction.is_none(),
+            "a resized viewport cancels a normal press before any release"
+        );
+        state.resize(actual.width, actual.height);
+        state.render().expect("present the restored viewport");
+        state.complete_primary_release(touch);
+        assert!(
+            !state.chrome.keyboard_shifted,
+            "resize must not revive a press"
+        );
+
+        let cursor = shift_center(state.last_scene.as_ref().unwrap());
+        state.cursor_position = Some(cursor);
+        for expected in [true, false] {
+            state.begin_primary_press(touch);
+            state.complete_primary_release(touch);
+            assert_eq!(state.chrome.keyboard_shifted, expected);
+            state.render().expect("present after the same-point tap");
+            assert_eq!(shift_center(state.last_scene.as_ref().unwrap()), cursor);
+        }
+        // An ordinary redraw is not a geometry boundary, even during a press.
+        state.begin_primary_press(touch);
+        state.update_hovered_interaction();
+        state
+            .render()
+            .expect("present hover without canceling the press");
+        state.complete_primary_release(touch);
+        assert!(
+            state.chrome.keyboard_shifted,
+            "hover redraw must preserve a valid tap"
+        );
+
+        state.chrome.keyboard_shifted = false;
+        state.chrome.move_caret_to_end();
+        state
+            .render()
+            .expect("present the literal keyboard before rapid taps");
+        let key_center = |ch| {
+            let target = state
+                .last_scene
+                .as_ref()
+                .unwrap()
+                .interactive_targets
+                .iter()
+                .find(|target| {
+                    target.kind
+                        == InteractionKind::VirtualKeyboardKey(
+                            suzaku_map::ime::gpu::VirtualKeyboardKey::Character(ch),
+                        )
+                })
+                .unwrap();
+            (
+                target.rect[0] + target.rect[2] / 2.0,
+                target.rect[1] + target.rect[3] / 2.0,
+            )
+        };
+        let a = key_center('a');
+        let b = key_center('b');
+        let original_seed = state.chrome.seed_text.clone();
+        for (point, suffix) in [(a, "a"), (a, "aa"), (b, "aab")] {
+            state.cursor_position = Some(point);
+            state.begin_primary_press(touch);
+            state.complete_primary_release(touch);
+            assert_eq!(
+                state.chrome.seed_text,
+                format!("{original_seed}{suffix}"),
+                "cache invalidation must preserve already-presented unchanged keys"
+            );
+            assert!(
+                state.last_scene.is_none(),
+                "draft invalidates the layout cache"
+            );
+        }
+        state.chrome.set_seed_text(original_seed.clone());
+        state.chrome.move_caret_to_end();
+        state.engine.seed(&original_seed);
+        state.refresh_composition_candidates();
+    }
+    state.chrome = original_chrome;
+    state.chrome.move_caret_to_end();
+    state.clear_pointer_hover();
+    state.last_scene = None;
+    println!(
+        "PASS: unpresented/changed geometry cannot click; rendered same-point taps and hover redraw remain usable"
     );
 }
 
@@ -193,6 +332,8 @@ impl ApplicationHandler for FitProbe {
         state.chrome.seed_text = "hel".into();
         state.engine.seed("hel");
         state.refresh_composition_candidates();
+        assert_presented_pointer_scene(&mut state);
+        state.expanded_window_base_size = Some(LogicalSize::new(900.0, 480.0));
         assert_scale_button_roundtrip(&mut state);
         self.state = Some(state);
     }
@@ -224,7 +365,10 @@ impl ApplicationHandler for FitProbe {
                 state.runs_without_window_focus = false;
                 state.apply_compact_mode(true);
                 state.last_compact_toggle = None;
-                let scene = state.current_scene();
+                let actual = state.window.inner_size();
+                state.resize(actual.width, actual.height);
+                native_sync::present_test_frame(state);
+                let scene = state.last_scene.as_ref().unwrap();
                 let rect = scene
                     .interactive_targets
                     .iter()
@@ -232,7 +376,6 @@ impl ApplicationHandler for FitProbe {
                     .unwrap()
                     .rect;
                 state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
-                state.last_scene = Some(scene);
                 state.begin_primary_press(false);
                 assert!(state.chrome.compact_mode);
                 state.complete_primary_release(false);
@@ -241,11 +384,13 @@ impl ApplicationHandler for FitProbe {
                     "a stationary orb click expands on the focusing path"
                 );
                 state.runs_without_window_focus = true;
+                let actual = state.window.inner_size();
+                state.resize(actual.width, actual.height);
                 // Standalone settings use the same routing, but keep their own controls.
                 state.kind = PanelWindowKind::Settings;
                 assert_gesture_routing(state);
                 state.kind = PanelWindowKind::Main;
-                state.last_scene = Some(state.current_scene());
+                native_sync::present_test_frame(state);
                 let start = state.window.outer_position().unwrap();
                 state.cursor_position = Some((state.size.width as f32 - 1.0, 1.0));
                 state.interaction.last_input_was_touch = false;

@@ -383,6 +383,13 @@ static void suzaku_ibus_engine_move_selection(
         self->bypass_input || self->input->len == 0) {
         return;
     }
+    size_t count = suzaku_host_ime_candidate_count();
+    size_t selected = suzaku_host_ime_selected_index();
+    /* A clamped row move is as inert as a missing page: it must not discard
+     * adoption undo, cancel prediction or publish a new companion revision. */
+    if (count == 0 || selected >= count || delta == 0 ||
+        (delta < 0 && selected == 0) ||
+        (delta > 0 && selected == count - 1)) { return; }
     suzaku_ibus_engine_reset_compose(self);
     g_clear_pointer(&self->completion_undo, g_free);
     suzaku_host_ime_move_selection(delta);
@@ -929,6 +936,22 @@ static void suzaku_ibus_ipc_dispatch(SuzakuIpcClient *client) {
     gboolean delivered = FALSE;
     if (bytes_read > 0 && request[0] == 'V') {
         delivered = suzaku_presentation_request(request, bytes_read);
+    } else if (bytes_read > 1 && bytes_read < 128 && request[0] == 'E' &&
+        client->context == suzaku_companion_context &&
+        g_utf8_validate(request, (gssize)bytes_read, NULL)) {
+        delivered = suzaku_companion_keyboard_action(request + 1);
+        char *frame = delivered ? suzaku_companion_snapshot() : NULL;
+        if (frame != NULL) {
+            gchar *response = g_strconcat("1", frame, NULL);
+            suzaku_ipc_reply(client, response);
+            g_free(response);
+            suzaku_host_ime_free_utf8(frame);
+        } else {
+            /* No optimistic success: a missing/invalid result is uncertain and
+             * the client must not automatically repeat this editing action. */
+            suzaku_ipc_reply(client, "0");
+        }
+        return;
     } else if (bytes_read > 1 && request[0] == 'A' &&
         g_utf8_validate(request, (gssize)bytes_read, NULL)) {
         delivered = suzaku_companion_action(request + 1);
@@ -1306,6 +1329,27 @@ static gboolean suzaku_ibus_probe_set_global_engine(
     return succeeded;
 }
 
+static gboolean suzaku_ibus_probe_finish_pending_calls(IBusBus *bus) {
+    GDBusConnection *connection = ibus_bus_get_connection(bus);
+    if (connection == NULL || g_dbus_connection_is_closed(connection)) {
+        return FALSE;
+    }
+    /* GDBusProxy removes its signal matches at final unref, after Destroy and
+     * engine restoration. Wait for a reply on that same connection before
+     * IBusBus closes it. Earlier restoration checks cannot acknowledge messages
+     * that are only queued by the context's final unref. */
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_sync(
+        connection, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "GetNameOwner",
+        g_variant_new("(s)", "org.freedesktop.DBus"), G_VARIANT_TYPE("(s)"),
+        G_DBUS_CALL_FLAGS_NONE, 250, NULL, &error);
+    gboolean succeeded = reply != NULL;
+    g_clear_pointer(&reply, g_variant_unref);
+    g_clear_error(&error);
+    return succeeded;
+}
+
 static gboolean suzaku_ibus_probe_restore_engine(IBusBus *bus, const gchar *name) {
     /* A desktop can switch engines asynchronously after leaving PASSWORD mode.
      * An ACK alone is insufficient: require a quiet, verified restoration. */
@@ -1635,6 +1679,9 @@ cleanup:
     }
     g_free(previous_engine);
     g_object_unref(context);
+    if (!suzaku_ibus_probe_finish_pending_calls(bus) && result == 0) {
+        result = 23;
+    }
     g_object_unref(bus);
     return result;
 }

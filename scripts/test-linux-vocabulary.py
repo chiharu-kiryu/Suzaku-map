@@ -144,6 +144,37 @@ JAPANESE_CASES = [
     ("ja", "JYUNBI", "準備", "準備ができたら連絡します。"),
 ]
 
+FOLLOWUP_CASES = [
+    ("en", "i'm having trouble fi", "i'm having trouble finding",
+     "i'm having trouble finding the right place."),
+    ("en", "we're almost do", "we're almost done", "we're almost done, just one more step."),
+    ("zh-Hans", "wo zhe bian hao le", "我这边好了", "我这边好了，你那边怎么样？"),
+    ("zh-Hans", "chong xin lai guo", "重新来过", "重新来过也没关系，我们一起试试。"),
+    ("ja", "henshin", "返信", "返信ありがとうございます。"),
+    ("ja", "junbichuu", "準備中", "準備中です、少しお待ちください。"),
+]
+
+LEISURE_CASES = [
+    ("en", "what do you like to re", "what do you like to read",
+     "what do you like to read in your free time?"),
+    ("en", "this weekend i'm planning to re", "this weekend i'm planning to relax",
+     "this weekend i'm planning to relax at home."),
+    ("zh-Hans", "zhou mo you kong ma", "周末有空吗", "周末有空吗，一起出去走走吧。"),
+    ("zh-Hans", "chu qu zou yi zou", "出去走一走", "出去走一走，换个心情也挺好。"),
+    ("ja", "sanpo", "散歩", "散歩に行きませんか。"),
+    ("ja", "ryouri", "料理", "料理ができたら呼んでください。"),
+]
+
+CLARIFICATION_CASES = [
+    ("en", "could you put that in si", "could you put that in simpler",
+     "could you put that in simpler words?"),
+    ("en", "let me say it an", "let me say it another", "let me say it another way."),
+    ("zh-Hans", "wo li jie de shi", "我理解的是", "我理解的是这个意思，你看看对不对。"),
+    ("zh-Hans", "wo que ren yi xi", "我确认一下", "我确认一下时间，再回复你。"),
+    ("ja", "shitsumon", "質問", "質問があれば教えてください。"),
+    ("ja", "hosoku", "補足", "補足があれば教えてください。"),
+]
+
 PACK_CASES = [
     ("en", "please annotate this para", "please annotate this paragraph",
      "please annotate this paragraph before our discussion."),
@@ -157,14 +188,19 @@ PACK_CASES = [
     ("en", "please update the project road", "please update the project roadmap",
      "please update the project roadmap before our next meeting."),
     ("zh-Hans", "xiang mu lu xian tu", "项目路线图", "项目路线图请在下次会议前更新。"),
+    ("en", "our grandparents are coming ov", "our grandparents are coming over",
+     "our grandparents are coming over this afternoon."),
+    ("zh-Hans", "jia ren tuan ju", "家人团聚", "家人团聚的时间先问问大家。"),
+    ("ja", "souji", "掃除", "掃除が終わったら休みましょう。"),
 ]
 # A focused diagnostic never replaces the default complete CI gate. Reject
 # misspellings rather than silently running no cases or claiming a full pass.
 scope = apps.os.environ.get("SUZAKU_VOCABULARY_QA_SCOPE", "all")
-if scope not in {"all", "home", "daily", "japanese", "packs", "part-1", "part-2"}:
-    raise ValueError("SUZAKU_VOCABULARY_QA_SCOPE must be all, home, daily, japanese, packs, part-1 or part-2")
+if scope not in {"all", "home", "daily", "japanese", "followup", "leisure", "clarification", "packs", "part-1", "part-2"}:
+    raise ValueError("SUZAKU_VOCABULARY_QA_SCOPE must be all, home, daily, japanese, followup, leisure, clarification, packs, part-1 or part-2")
 ALL_CASES = (CASES + HOME_CASES + ERRANDS_CASES + DAILY_CASES + DAILY_NEEDS_CASES
-             + DAILY_COORDINATION_CASES + DAILY_SOCIAL_CASES + DAILY_OBJECTS_CASES + JAPANESE_CASES)
+             + DAILY_COORDINATION_CASES + DAILY_SOCIAL_CASES + DAILY_OBJECTS_CASES + JAPANESE_CASES
+             + FOLLOWUP_CASES + LEISURE_CASES + CLARIFICATION_CASES)
 PART_CASES = {"part-1": ALL_CASES[::2], "part-2": ALL_CASES[1::2]}
 # Compare whole case tuples, including repeated entries if ever intentional:
 # both partitions together must preserve the exact full gate, without omissions.
@@ -174,16 +210,21 @@ assert all(cases and {case[0] for case in cases} == {"en", "zh-Hans", "ja"}
 CASES = {"home": HOME_CASES,
          "daily": (DAILY_CASES + DAILY_NEEDS_CASES + DAILY_COORDINATION_CASES
                    + DAILY_SOCIAL_CASES + DAILY_OBJECTS_CASES),
-         "japanese": JAPANESE_CASES, "packs": PACK_CASES, **PART_CASES}.get(scope, ALL_CASES)
+         "japanese": JAPANESE_CASES, "followup": FOLLOWUP_CASES,
+         "leisure": LEISURE_CASES,
+         "clarification": CLARIFICATION_CASES,
+         "packs": PACK_CASES, **PART_CASES}.get(scope, ALL_CASES)
 
 
 def prepare_packs():
-    """Exercise the selected installed CLI, only in the harness's private data directory."""
+    """Exercise all recommended packs, only in the harness's private data directory."""
     assert apps.os.environ["XDG_DATA_HOME"] == str(apps.root / "data")
     assert not apps.os.environ.get("SUZAKU_LEXICON_DIR")
     tool = apps.bins / "suzaku_tool"
-    expected = [f"org.suzaku.{language}.{topic}" for topic in ("study", "cooking", "travel", "work")
-                for language in ("en", "zh-hans")]
+    expected = ["org.suzaku.en.outdoors", "org.suzaku.zh-hans.outdoors", "org.suzaku.ja.rail"]
+    expected += [f"org.suzaku.{language}.{topic}" for topic in ("study", "cooking", "travel", "work")
+                 for language in ("en", "zh-hans")]
+    expected += [f"org.suzaku.{language}.family" for language in ("en", "zh-hans", "ja")]
     for identifier in expected:
         destination = apps.root / (identifier + ".json")
         for arguments in [("export", identifier, str(destination)), ("install", str(destination))]:
@@ -195,7 +236,8 @@ def prepare_packs():
     assert not report["next_startup"]["errors"]
     assert [p["manifest"]["id"] for p in report["packages"] if p["enabled"]] == expected
     assert len(report["next_startup"]["loaded"]) == len(expected)
-    print("PASS: installed CLI exported and installed all 8 bilingual packs into private QA data", flush=True)
+    assert len(expected) == 14
+    print("PASS: installed CLI exported and installed all 14 recommended EN/ZH/JA packs into private QA data", flush=True)
 
 
 def check_vocabulary(bus, x):
@@ -221,9 +263,10 @@ def check_vocabulary(bus, x):
         x.type(reading)
         apps.wait(lambda: apps.seed_is(reading), "physical vocabulary spelling")
         if panel is not None:
-            # The companion previews the selected Chinese conversion, while
-            # the host's editable seed above must still be the exact pinyin.
-            preview = word if language == "zh-Hans" else reading
+            # The companion previews the selected Chinese/Japanese conversion,
+            # while the host retains the exact physical Pinyin/Romaji seed.
+            # English's first choice is the literal editable reading.
+            preview = word if language in {"zh-Hans", "ja"} else reading
             apps.wait(lambda: apps.companion_frame().get("runtime_font")
                       and apps.companion_frame().get("draft") == preview,
                       "installed companion renders the physical pack draft", timeout=30)
@@ -337,7 +380,45 @@ def check_vocabulary(bus, x):
         apps.save_document(x, document, sentence + "\n")
         print(f"PASS: sentence progress {reading!r}: consecutive words, Space, homophones, undo and exact saved sentence",
               flush=True)
-    print(f"PASS: all {len(CASES) + len(progress_cases)} vocabulary and sentence-progress workflows (scope={scope})", flush=True)
+    paging_cases = 0
+    if scope in {"all", "part-1", "clarification"}:
+        # The broad unfinished tail keeps old 这个词 suggestions on page one.
+        # Select the authored full-context sentence from page two using only
+        # physical PageDown/number keys, then restore its exact raw spelling.
+        apps.clear_document(x, document)
+        revision = apps.watch.latest["revision"]
+        assert json.loads(apps.command("Lzh-Hans"))["ok"]
+        apps.wait(lambda: apps.watch.latest["revision"] > revision, "clarification paging language")
+        x.type("wo li jie de shi")
+        apps.wait(lambda: apps.seed_is("wo li jie de shi"), "clarification physical phrase")
+        apps.choose_number(x, "我理解的是")
+        x.type("zheg")
+        raw = "我理解的是zheg"
+        sentence = "我理解的是这个意思，你看看对不对。"
+        apps.wait(lambda: apps.seed_is(raw), "clarification physical unfinished tail")
+        for attempt in range(2):
+            choices = apps.watch.latest["candidates"]
+            assert len(choices) == 10 and choices[0]["text"] == "我理解的是这个词"
+            assert choices[6]["text"] == sentence and choices[6]["kind"] == "sentence"
+            assert choices[6]["source"] == "local" and "ˢ" in choices[6]["ibus_label"]
+            assert apps.watch.latest["selected"] == 0
+            x.key(IBus.KEY_Page_Down)
+            apps.wait(lambda: apps.watch.latest["selected"] == 6, "physical page two selection")
+            assert apps.seed_is(raw) and apps.watch.latest["candidates"] == choices
+            apps.save_document(x, document, "")
+            x.key(IBus.KEY_1)
+            apps.wait(lambda: apps.seed_is(sentence), "page two number adopts exact sentence")
+            apps.save_document(x, document, "")
+            if attempt == 0:
+                x.key(IBus.KEY_BackSpace)
+                apps.wait(lambda: apps.seed_is(raw), "page two sentence undo restores unfinished tail")
+                x.key(IBus.KEY_Page_Up)
+                apps.wait(lambda: apps.watch.latest["selected"] == 0, "restore first candidate page")
+        apps.commit(x)
+        apps.save_document(x, document, sentence + "\n")
+        paging_cases = 1
+        print("PASS: clarification unfinished-tail page two: old priority, physical paging/number, exact undo and saved sentence", flush=True)
+    print(f"PASS: all {len(CASES) + len(progress_cases) + paging_cases} vocabulary and sentence-progress workflows (scope={scope})", flush=True)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,705 @@ use winit::{
 
 #[test]
 #[ignore = "requires private Xvfb/D-Bus/XDG; run by scripts/test-linux-ci.sh ui"]
+fn native_screen_keyboard_preserves_host_editing_semantics() {
+    assert_eq!(std::env::var("SUZAKU_PANEL_NATIVE_QA").as_deref(), Ok("1"));
+    for key in ["XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME"] {
+        assert!(
+            std::path::Path::new(&std::env::var_os(key).unwrap()).starts_with(std::env::temp_dir())
+        );
+    }
+    let mut builder = EventLoop::<PanelUserEvent>::with_user_event();
+    builder.with_x11().with_any_thread(true);
+    let events = builder.build().unwrap();
+    struct Probe {
+        proxy: EventLoopProxy<PanelUserEvent>,
+        completed: bool,
+    }
+    impl ApplicationHandler<PanelUserEvent> for Probe {
+        fn resumed(&mut self, events: &ActiveEventLoop) {
+            let window = Arc::new(events.create_window(panel_window_attributes()).unwrap());
+            let panel = pollster::block_on(PanelState::new(window)).unwrap();
+            let mut app = PanelApp::new(self.proxy.clone(), None);
+            app.panel = Some(panel);
+            for operation in ["backspace", "space"] {
+                let receiver = prepare(&mut app, events);
+                let state = app.panel.as_mut().unwrap();
+                let index = state
+                    .native
+                    .frame
+                    .as_ref()
+                    .unwrap()
+                    .candidates
+                    .iter()
+                    .position(|candidate| candidate.text == "hello")
+                    .unwrap();
+                if operation == "backspace" {
+                    state.continue_sentence_candidate(index);
+                } else {
+                    state.native_action(NativeOperation::Select(index));
+                }
+                let request = receiver.try_recv().unwrap();
+                acknowledge(&mut app, events, request);
+                let mut applied = keyboard_frame(
+                    if operation == "backspace" {
+                        "hello"
+                    } else {
+                        "hel"
+                    },
+                    11,
+                );
+                if operation == "space" {
+                    applied.selected = index;
+                }
+                publish_wake_frames(&mut app, events, [Some(applied)]);
+                let state = app.panel.as_mut().unwrap();
+                state.chrome.focus_input();
+                if operation == "backspace" {
+                    state.backspace_seed();
+                } else {
+                    state.handle_text_input(" ");
+                }
+                let request = receiver.try_recv().unwrap();
+                let suffix = if operation == "backspace" {
+                    " 11 B"
+                } else {
+                    " 11 S"
+                };
+                assert!(
+                    request.command.starts_with('E') && request.command.ends_with(suffix),
+                    "{operation} must ask the host to resolve undo/explicit selection, not guess a replacement: {}",
+                    request.command
+                );
+                let expected = if operation == "backspace" {
+                    "hel"
+                } else {
+                    "hello "
+                };
+                finish_keyboard(&mut app, events, request, Ok(keyboard_frame(expected, 12)));
+                assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, expected);
+                assert!(!app.panel.as_ref().unwrap().native_candidates_busy());
+                assert!(receiver.try_recv().is_err());
+            }
+            for language in ["en", "zh-Hans"] {
+                for frame_first in [false, true] {
+                    check_semantic_adoption_barrier(&mut app, events, language, frame_first);
+                }
+            }
+            check_semantic_order(&mut app, events);
+            check_semantic_empty_and_compose(&mut app, events);
+            check_semantic_tool_barrier(&mut app, events);
+            check_semantic_disconnected_recovery(&mut app, events);
+            check_semantic_selection_barrier(&mut app, events);
+            check_semantic_pending_dock_geometry(&mut app, events);
+            check_semantic_boundaries(&mut app, events);
+            println!(
+                "PASS: host-owned screen Backspace/Space, ordered follow-up edits and bounded no-replay boundaries"
+            );
+            self.completed = true;
+            events.exit();
+        }
+        fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
+    }
+    let mut probe = Probe {
+        proxy: events.create_proxy(),
+        completed: false,
+    };
+    events.run_app(&mut probe).unwrap();
+    assert!(probe.completed);
+}
+
+fn finish_keyboard(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    request: ActionRequest,
+    result: Result<NativeComposition, String>,
+) {
+    app.user_event(
+        events,
+        PanelUserEvent::NativeKeyboardFinished {
+            host: request.host,
+            revision: request.revision,
+            result,
+        },
+    );
+}
+
+fn dock_keyboard_geometry(state: &PanelState) -> (u32, Vec<(InteractionKind, [f32; 4])>) {
+    use suzaku_map::ime::gpu::WgpuCandidateRenderer;
+    let width = 1000.0;
+    let height = WgpuCandidateRenderer::new(width, 1.0)
+        .preferred_input_panel_height(&state.chrome)
+        .ceil() as u32;
+    let scene = WgpuCandidateRenderer::new(width, height as f32).build_panel_scene(
+        &state.view_snapshot(),
+        &state.chrome,
+        None,
+        None,
+        None,
+        None,
+    );
+    let origin = [12.0, 768.0 - 12.0 - height as f32];
+    let keys = scene
+        .interactive_targets
+        .iter()
+        .filter(|target| matches!(target.kind, InteractionKind::VirtualKeyboardKey(_)))
+        .map(|target| {
+            let mut rect = target.rect;
+            rect[0] += origin[0];
+            rect[1] += origin[1];
+            (target.kind, rect)
+        })
+        .collect();
+    (height, keys)
+}
+
+fn check_semantic_pending_dock_geometry(app: &mut PanelApp, events: &ActiveEventLoop) {
+    for backspace in [false, true] {
+        let receiver = prepare(app, events);
+        let state = app.panel.as_mut().unwrap();
+        state.chrome.panel_layout_mode = suzaku_map::ime::gpu::PanelLayoutMode::BottomDock;
+        state.chrome.active_input_mode = InputMode::VirtualKeyboard;
+        state.chrome.input_modes_expanded = true;
+        let labels = state.chrome.sentence_candidates.clone();
+        assert!(!labels.is_empty());
+        let before = dock_keyboard_geometry(state);
+        assert!(!before.1.is_empty());
+        if backspace {
+            state.backspace_seed();
+        } else {
+            state.continue_composition_with_space();
+        }
+        let request = receiver.try_recv().unwrap();
+        assert!(request.command.starts_with('E'));
+        assert!(state.native.typing.is_none());
+        assert!(state.chrome.native_candidate_page.unwrap().busy);
+        assert_eq!(
+            state.chrome.sentence_candidates, labels,
+            "read-only host candidates reserve their existing space while B/S waits"
+        );
+        assert_eq!(
+            dock_keyboard_geometry(state),
+            before,
+            "pending semantic keys must not shrink/move the bottom keyboard"
+        );
+        state.native_action(NativeOperation::Select(0));
+        state.change_native_candidate_page(true);
+        assert!(
+            receiver.try_recv().is_err(),
+            "placeholder candidates and paging remain unavailable"
+        );
+        let expected = if backspace { "he" } else { "hel " };
+        finish_keyboard(app, events, request, Ok(keyboard_frame(expected, 11)));
+        let state = app.panel.as_mut().unwrap();
+        assert_eq!(state.chrome.seed_text, expected);
+        assert!(!state.native_candidates_busy());
+        assert!(!state.chrome.native_candidate_page.unwrap().busy);
+        // Ordinary literal text remains a different contract: its optimistic
+        // spelling cannot display the old host's candidate list as selectable.
+        state.native_keyboard_edit(Some("x"));
+        assert!(state.native.typing.is_some());
+        assert!(state.chrome.sentence_candidates.is_empty());
+        assert!(
+            receiver
+                .try_recv()
+                .unwrap()
+                .command
+                .ends_with(&format!(" 11 T{expected}x"))
+        );
+    }
+}
+
+fn check_semantic_adoption_barrier(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    language: &str,
+    frame_first: bool,
+) {
+    let receiver = prepare(app, events);
+    let (reading, adopted) = if language == "en" {
+        ("hel", "hello")
+    } else {
+        ("nihao", "你好")
+    };
+    let mut initial = keyboard_frame(reading, 11);
+    initial.language = language.into();
+    initial.candidates = vec![suzaku_map::ime::companion::NativeCandidate {
+        text: adopted.into(),
+        label: adopted.into(),
+        ..Default::default()
+    }];
+    publish_wake_frames(app, events, [Some(initial.clone())]);
+    let state = app.panel.as_mut().unwrap();
+    state.continue_sentence_candidate(0);
+    let mut adoption = Some(receiver.try_recv().unwrap());
+    state.backspace_seed();
+    state.chrome.focus_input();
+    state.handle_text_input("x");
+    assert!(
+        receiver.try_recv().is_err(),
+        "semantic key waits for adoption"
+    );
+    let mut applied = initial.clone();
+    applied.revision = 12;
+    applied.seed = adopted.into();
+    if frame_first {
+        publish_wake_frames(app, events, [Some(applied.clone())]);
+    } else {
+        acknowledge(app, events, adoption.take().unwrap());
+    }
+    assert!(
+        receiver.try_recv().is_err(),
+        "one half of the barrier is insufficient"
+    );
+    if frame_first {
+        acknowledge(app, events, adoption.take().unwrap());
+    } else {
+        publish_wake_frames(app, events, [Some(applied)]);
+    }
+    let backspace = receiver.try_recv().unwrap();
+    assert!(backspace.command.starts_with('E') && backspace.command.ends_with(" 12 B"));
+    assert!(receiver.try_recv().is_err());
+    assert_eq!(
+        app.panel.as_ref().unwrap().chrome.seed_text,
+        adopted,
+        "do not guess undo or append x before the host response"
+    );
+    let mut restored = initial;
+    restored.revision = 13;
+    // Exercise the independently arriving subscription frame as well as the reply.
+    if frame_first {
+        publish_wake_frames(app, events, [Some(restored.clone())]);
+    }
+    assert!(receiver.try_recv().is_err());
+    finish_keyboard(app, events, backspace, Ok(restored));
+    let text = receiver.try_recv().unwrap();
+    assert!(text.command.ends_with(&format!(" 13 T{reading}x")));
+    acknowledge(app, events, text);
+    let mut final_frame = keyboard_frame(&format!("{reading}x"), 14);
+    final_frame.language = language.into();
+    publish_wake_frames(app, events, [Some(final_frame)]);
+    assert!(!app.panel.as_ref().unwrap().native_candidates_busy());
+    assert!(receiver.try_recv().is_err());
+}
+
+fn check_semantic_order(app: &mut PanelApp, events: &ActiveEventLoop) {
+    let receiver = prepare(app, events);
+    let state = app.panel.as_mut().unwrap();
+    state.continue_composition_with_space();
+    let space = receiver.try_recv().unwrap();
+    assert!(space.command.ends_with(" 10 S"));
+    state.backspace_seed();
+    state.chrome.focus_input();
+    state.handle_text_input("x");
+    state.continue_composition_with_space();
+    assert_eq!(state.chrome.seed_text, "hel");
+    assert!(receiver.try_recv().is_err());
+    let duplicate = ActionRequest {
+        command: space.command.clone(),
+        host: space.host.clone(),
+        revision: space.revision,
+    };
+    finish_keyboard(app, events, space, Ok(keyboard_frame("hel ", 11)));
+    let backspace = receiver.try_recv().unwrap();
+    assert!(backspace.command.ends_with(" 11 B"));
+    finish_keyboard(app, events, duplicate, Ok(keyboard_frame("hel ", 11)));
+    assert!(
+        receiver.try_recv().is_err(),
+        "duplicate reply must not consume the next operation"
+    );
+    finish_keyboard(app, events, backspace, Ok(keyboard_frame("hel", 12)));
+    let text = receiver.try_recv().unwrap();
+    assert!(text.command.ends_with(" 12 Thelx"));
+    acknowledge(app, events, text);
+    assert!(receiver.try_recv().is_err());
+    publish_wake_frames(app, events, [Some(keyboard_frame("helx", 13))]);
+    let final_space = receiver.try_recv().unwrap();
+    assert!(final_space.command.ends_with(" 13 S"));
+    finish_keyboard(app, events, final_space, Ok(keyboard_frame("helx ", 14)));
+    assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, "helx ");
+    assert!(!app.panel.as_ref().unwrap().native_candidates_busy());
+    assert!(receiver.try_recv().is_err());
+}
+
+fn check_semantic_tool_barrier(app: &mut PanelApp, events: &ActiveEventLoop) {
+    for handwriting in [false, true] {
+        for frame_first in [false, true] {
+            let receiver = prepare(app, events);
+            let state = app.panel.as_mut().unwrap();
+            let insertion = if handwriting {
+                state.chrome.handwriting_strokes = vec![vec![[1.0, 2.0], [3.0, 4.0]]];
+                state.chrome.handwriting_candidates = vec!["hello".into()];
+                NativeInsertion::Handwriting {
+                    strokes: state.chrome.handwriting_strokes.clone(),
+                    candidates: state.chrome.handwriting_candidates.clone(),
+                    generation: state.handwriting_generation,
+                }
+            } else {
+                state.chrome.voice_transcript = "hello".into();
+                NativeInsertion::Voice {
+                    transcript: "hello".into(),
+                    generation: state.voice_progress.generation(),
+                }
+            };
+            assert!(state.native_action_with_source(
+                NativeOperation::Replace("hello".into()),
+                Some(insertion)
+            ));
+            let mut replacement = Some(receiver.try_recv().unwrap());
+            state.backspace_seed();
+            assert!(receiver.try_recv().is_err());
+            if frame_first {
+                publish_wake_frames(app, events, [Some(keyboard_frame("hello", 11))]);
+                let state = app.panel.as_ref().unwrap();
+                assert!(
+                    if handwriting {
+                        !state.chrome.handwriting_candidates.is_empty()
+                    } else {
+                        !state.chrome.voice_transcript.is_empty()
+                    },
+                    "source persists until ACK, not merely an observed frame"
+                );
+            } else {
+                acknowledge(app, events, replacement.take().unwrap());
+            }
+            assert!(receiver.try_recv().is_err());
+            if frame_first {
+                acknowledge(app, events, replacement.take().unwrap());
+            } else {
+                publish_wake_frames(app, events, [Some(keyboard_frame("hello", 11))]);
+            }
+            let state = app.panel.as_ref().unwrap();
+            assert!(
+                if handwriting {
+                    state.chrome.handwriting_candidates.is_empty()
+                        && state.chrome.handwriting_strokes.is_empty()
+                } else {
+                    state.chrome.voice_transcript.is_empty()
+                },
+                "successful source consumed exactly after confirmation"
+            );
+            let backspace = receiver.try_recv().unwrap();
+            assert!(backspace.command.ends_with(" 11 B"));
+            finish_keyboard(app, events, backspace, Ok(keyboard_frame("hell", 12)));
+            assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, "hell");
+            assert!(receiver.try_recv().is_err());
+        }
+    }
+}
+
+fn check_semantic_empty_and_compose(app: &mut PanelApp, events: &ActiveEventLoop) {
+    let receiver = prepare(app, events);
+    app.panel.as_mut().unwrap().backspace_seed();
+    let cancel_compose = receiver.try_recv().unwrap();
+    finish_keyboard(app, events, cancel_compose, Ok(keyboard_frame("hel", 11)));
+    assert_eq!(
+        app.panel.as_ref().unwrap().chrome.seed_text,
+        "hel",
+        "host may cancel Compose without deleting a character"
+    );
+    assert!(!app.panel.as_ref().unwrap().native_candidates_busy());
+    publish_wake_frames(app, events, [Some(keyboard_frame("", 12))]);
+    let state = app.panel.as_mut().unwrap();
+    state.backspace_seed();
+    let empty_backspace = receiver.try_recv().unwrap();
+    state.continue_composition_with_space();
+    assert!(receiver.try_recv().is_err());
+    finish_keyboard(app, events, empty_backspace, Ok(keyboard_frame("", 13)));
+    let space = receiver.try_recv().unwrap();
+    assert!(space.command.ends_with(" 13 S"));
+    finish_keyboard(app, events, space, Ok(keyboard_frame(" ", 14)));
+    assert_eq!(app.panel.as_ref().unwrap().chrome.seed_text, " ");
+    assert_panel_visibility(app, true);
+    assert!(!app.panel.as_ref().unwrap().native_candidates_busy());
+    assert!(receiver.try_recv().is_err());
+}
+
+fn check_semantic_selection_barrier(app: &mut PanelApp, events: &ActiveEventLoop) {
+    for selected in [0, 1] {
+        for frame_first in [false, true] {
+            for changed in [false, true] {
+                let receiver = prepare(app, events);
+                let state = app.panel.as_mut().unwrap();
+                let candidate = state.native.frame.as_ref().unwrap().candidates[selected]
+                    .text
+                    .clone();
+                state.native_action(NativeOperation::Select(selected));
+                let mut selection = Some(receiver.try_recv().unwrap());
+                state.continue_composition_with_space();
+                state.chrome.focus_input();
+                state.handle_text_input("x");
+                let revision = if changed { 12 } else { 11 };
+                let mut frame = keyboard_frame("hel", revision);
+                frame.selected = if changed { 1 - selected } else { selected };
+                if frame_first {
+                    publish_wake_frames(app, events, [Some(frame.clone())]);
+                } else {
+                    acknowledge(app, events, selection.take().unwrap());
+                }
+                assert!(
+                    receiver.try_recv().is_err(),
+                    "both ACK and selection frame are required"
+                );
+                if frame_first {
+                    acknowledge(app, events, selection.take().unwrap());
+                } else {
+                    publish_wake_frames(app, events, [Some(frame)]);
+                }
+                if changed {
+                    assert!(
+                        receiver.try_recv().is_err(),
+                        "same text does not authorize Space over a changed selection"
+                    );
+                    assert_eq!(
+                        app.panel
+                            .as_mut()
+                            .unwrap()
+                            .take_native_typing_draft()
+                            .as_deref(),
+                        Some("helx"),
+                        "recover literal text without guessing Space"
+                    );
+                } else {
+                    let space = receiver.try_recv().unwrap();
+                    assert!(
+                        space.command.ends_with(" 11 S"),
+                        "explicit selection, including the current row, permits Space"
+                    );
+                    finish_keyboard(
+                        app,
+                        events,
+                        space,
+                        Ok(keyboard_frame(&format!("{candidate} "), 12)),
+                    );
+                    let text = receiver.try_recv().unwrap();
+                    assert!(text.command.ends_with(&format!(" 12 T{candidate} x")));
+                    acknowledge(app, events, text);
+                    publish_wake_frames(
+                        app,
+                        events,
+                        [Some(keyboard_frame(&format!("{candidate} x"), 13))],
+                    );
+                    assert!(!app.panel.as_ref().unwrap().native_candidates_busy());
+                }
+                assert!(receiver.try_recv().is_err());
+            }
+        }
+    }
+}
+
+fn check_semantic_disconnected_recovery(app: &mut PanelApp, events: &ActiveEventLoop) {
+    for case in ["initial", "adopted", "second flight", "restored byte limit"] {
+        let receiver = prepare(app, events);
+        if case == "adopted" {
+            let state = app.panel.as_mut().unwrap();
+            let index = state
+                .native
+                .frame
+                .as_ref()
+                .unwrap()
+                .candidates
+                .iter()
+                .position(|c| c.text == "hello")
+                .unwrap();
+            state.continue_sentence_candidate(index);
+            let adoption = receiver.try_recv().unwrap();
+            acknowledge(app, events, adoption);
+            publish_wake_frames(app, events, [Some(keyboard_frame("hello", 11))]);
+        }
+        let state = app.panel.as_mut().unwrap();
+        if case == "second flight" {
+            state.continue_composition_with_space();
+        } else {
+            state.backspace_seed();
+        }
+        let first = receiver.try_recv().unwrap();
+        if case == "second flight" {
+            state.backspace_seed();
+        }
+        state.chrome.focus_input();
+        state.handle_text_input("x");
+        assert!(receiver.try_recv().is_err());
+        let (pending, expected) = match case {
+            "second flight" => {
+                finish_keyboard(app, events, first, Ok(keyboard_frame("hel ", 11)));
+                let second = receiver.try_recv().unwrap();
+                assert!(second.command.ends_with(" 11 B"));
+                (Some(second), "hel x".to_owned())
+            }
+            "restored byte limit" => {
+                let mut reply = keyboard_frame("", 11);
+                reply.seed = "z".repeat(suzaku_map::ime::companion::MAX_TEXT_BYTES);
+                let expected = format!("{}x", reply.seed);
+                finish_keyboard(app, events, first, Ok(reply));
+                assert!(receiver.try_recv().is_err());
+                (None, expected)
+            }
+            "adopted" => (Some(first), "hellox".to_owned()),
+            _ => (Some(first), "helx".to_owned()),
+        };
+        publish_wake_frames(app, events, [None]);
+        if let Some(pending) = pending {
+            finish_keyboard(app, events, pending, Err("disconnected".into()));
+        }
+        let state = app.panel.as_mut().unwrap();
+        assert!(
+            state.native.frame.is_none(),
+            "recover before any reconnect frame"
+        );
+        assert_eq!(
+            state.take_native_typing_draft().as_deref(),
+            Some(expected.as_str()),
+            "{case}: retain confirmed prefix without guessing an unconfirmed key"
+        );
+        assert!(
+            receiver.try_recv().is_err(),
+            "local recovery must never resend"
+        );
+    }
+}
+
+fn check_semantic_boundaries(app: &mut PanelApp, events: &ActiveEventLoop) {
+    for boundary in [
+        "newer revision",
+        "private",
+        "focus",
+        "context",
+        "language",
+        "host",
+        "disconnect",
+        "failure",
+        "settings round trip",
+        "panel focus round trip",
+    ] {
+        let receiver = prepare(app, events);
+        let state = app.panel.as_mut().unwrap();
+        state.backspace_seed();
+        let request = receiver.try_recv().unwrap();
+        state.chrome.focus_input();
+        state.handle_text_input("x");
+        let reply = keyboard_frame("he", 11);
+        let mut changed = keyboard_frame("hel", 12);
+        match boundary {
+            "private" => changed.private = true,
+            "focus" => changed.focused = false,
+            "context" => changed.context += 1,
+            "language" => changed.language = "ja".into(),
+            "host" => changed.host = "22222222-2222-2222-2222-222222222222".into(),
+            _ => (),
+        }
+        if boundary == "settings round trip" {
+            let state = app.panel.as_mut().unwrap();
+            state.suspend_native_keyboard();
+            state.chrome.settings_open = true;
+            state.chrome.settings_open = false;
+        } else if boundary == "panel focus round trip" {
+            let state = app.panel.as_mut().unwrap();
+            state.set_window_focus(true);
+            state.set_window_focus(false);
+        }
+        if boundary == "disconnect" {
+            publish_wake_frames(app, events, [None]);
+        } else if !matches!(
+            boundary,
+            "failure" | "settings round trip" | "panel focus round trip"
+        ) {
+            publish_wake_frames(app, events, [Some(changed)]);
+        }
+        finish_keyboard(
+            app,
+            events,
+            request,
+            if boundary == "failure" {
+                Err("timeout".into())
+            } else {
+                Ok(reply)
+            },
+        );
+        publish_wake_frames(app, events, [Some(keyboard_frame("hel", 13))]);
+        assert!(
+            receiver.try_recv().is_err(),
+            "never replay after {boundary}"
+        );
+        if matches!(boundary, "newer revision" | "disconnect" | "failure") {
+            assert_eq!(
+                app.panel
+                    .as_mut()
+                    .unwrap()
+                    .take_native_typing_draft()
+                    .as_deref(),
+                Some("helx")
+            );
+            assert!(
+                receiver.try_recv().is_err(),
+                "recovery is explicit and local"
+            );
+        }
+    }
+    for frame_first in [false, true] {
+        let receiver = prepare(app, events);
+        let state = app.panel.as_mut().unwrap();
+        let index = state
+            .native
+            .frame
+            .as_ref()
+            .unwrap()
+            .candidates
+            .iter()
+            .position(|c| c.text == "hello")
+            .unwrap();
+        state.continue_sentence_candidate(index);
+        let mut adoption = Some(receiver.try_recv().unwrap());
+        state.backspace_seed();
+        state.chrome.focus_input();
+        state.handle_text_input("x");
+        if !frame_first {
+            acknowledge(app, events, adoption.take().unwrap());
+        }
+        // ABA: the applied "hello" frame was coalesced away after a physical edit.
+        publish_wake_frames(app, events, [Some(keyboard_frame("hel", 12))]);
+        if frame_first {
+            acknowledge(app, events, adoption.take().unwrap());
+        }
+        assert!(
+            receiver.try_recv().is_err(),
+            "do not rebase semantic keys over physical edits"
+        );
+        assert_eq!(
+            app.panel
+                .as_mut()
+                .unwrap()
+                .take_native_typing_draft()
+                .as_deref(),
+            Some("hellox")
+        );
+    }
+    let receiver = prepare(app, events);
+    let state = app.panel.as_mut().unwrap();
+    state.backspace_seed();
+    let request = receiver.try_recv().unwrap();
+    state.chrome.focus_input();
+    state.handle_text_input("x");
+    let mut reply = keyboard_frame("", 11);
+    reply.seed = "z".repeat(suzaku_map::ime::companion::MAX_TEXT_BYTES);
+    finish_keyboard(app, events, request, Ok(reply));
+    assert!(
+        receiver.try_recv().is_err(),
+        "restored reading can exceed the follow-up byte budget"
+    );
+    assert!(
+        app.panel
+            .as_ref()
+            .unwrap()
+            .native
+            .keyboard
+            .as_ref()
+            .unwrap()
+            .blocked
+    );
+}
+
+#[test]
+#[ignore = "requires private Xvfb/D-Bus/XDG; run by scripts/test-linux-ci.sh ui"]
 fn native_candidate_actions_preserve_followup_input() {
     assert_eq!(std::env::var("SUZAKU_PANEL_NATIVE_QA").as_deref(), Ok("1"));
     for key in ["XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME"] {
@@ -84,6 +783,7 @@ fn native_candidate_actions_preserve_followup_input() {
                 check_late_reply_boundaries(&mut app, events, case);
             }
             check_native_pointer_delta_dispatch(&mut app, events, &mut failures);
+            check_native_navigation_boundaries(&mut app, events);
             assert!(
                 failures.is_empty(),
                 "N26/N27: candidate action follow-ups: {failures:?}"
@@ -105,6 +805,9 @@ fn native_candidate_actions_preserve_followup_input() {
             );
             println!(
                 "PASS: production wheel/pinch dispatch ignores horizontal, zero and nonfinite deltas, including settings scroll; finite vertical events still page, zoom or scroll settings"
+            );
+            println!(
+                "PASS: native row boundaries send no redundant selection; actual moves and explicit same-row choices retain revision-bound requests"
             );
             self.completed = true;
             events.exit();
@@ -194,6 +897,67 @@ fn prepare_paged_pointer(
     receiver
 }
 
+fn check_native_navigation_boundaries(app: &mut PanelApp, events: &ActiveEventLoop) {
+    use suzaku_map::ime::companion::NativeCandidate;
+    for (count, selected, deltas, movement) in [
+        (5, 0, vec![-1, -2, isize::MIN, 0], Some(1)),
+        (5, 4, vec![1, 2, isize::MAX, 0], Some(-1)),
+        (5, 2, vec![0], Some(1)),
+        (1, 0, vec![-1, 1, 0, isize::MIN, isize::MAX], None),
+        (0, 0, vec![-1, 1, 0, isize::MIN, isize::MAX], None),
+    ] {
+        let receiver = prepare(app, events);
+        let mut frame = keyboard_frame("hel", 11);
+        frame.selected = selected;
+        frame.candidates = (0..count)
+            .map(|index| NativeCandidate {
+                text: format!("hello {index}"),
+                label: format!("hello {index}"),
+                ..Default::default()
+            })
+            .collect();
+        publish_wake_frames(app, events, [Some(frame.clone())]);
+        let state = app.panel.as_mut().unwrap();
+        state.last_commit_feedback = None;
+        let seed = state.chrome.seed_text.clone();
+        for delta in deltas {
+            state.move_candidate_selection(delta);
+            assert!(matches!(
+                receiver.try_recv(),
+                Err(mpsc::TryRecvError::Empty)
+            ));
+            assert!(state.native.pending.is_none());
+            assert!(state.native.typing.is_none());
+            assert_eq!(state.native.frame.as_ref(), Some(&frame));
+            assert_eq!(state.chrome.seed_text, seed);
+            assert!(state.last_commit_feedback.is_none());
+        }
+        if count == 0 {
+            continue;
+        }
+        let target = if let Some(delta) = movement {
+            state.move_candidate_selection(delta);
+            selected.saturating_add_signed(delta)
+        } else {
+            // Unlike relative no-ops, explicitly choosing the current row is
+            // intentional and still needs the host's normal acknowledgement.
+            state.native_action(NativeOperation::Select(selected));
+            selected
+        };
+        let request = receiver.try_recv().unwrap();
+        assert_eq!(
+            request.command,
+            suzaku_map::platform::linux_ime_sync::action_command(
+                &frame,
+                &NativeOperation::Select(target)
+            )
+            .unwrap()
+        );
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(state.chrome.seed_text, seed);
+    }
+}
+
 fn prepare_scrollable_settings(app: &mut PanelApp, events: &ActiveEventLoop) {
     // Main-window rendering deliberately excludes settings. Exercise the real
     // separate settings window with a viewport that requires vertical scroll.
@@ -210,7 +974,12 @@ fn prepare_scrollable_settings(app: &mut PanelApp, events: &ActiveEventLoop) {
     state.chrome.settings_search_query.clear();
     state.chrome.settings_keyboard_focus = None;
     state.chrome.settings_scroll_offset = 0.0;
-    state.resize(400, 270);
+    let _ = state
+        .window
+        .request_inner_size(winit::dpi::PhysicalSize::new(400, 270));
+    let actual = state.window.inner_size();
+    assert_eq!(actual, winit::dpi::PhysicalSize::new(400, 270));
+    state.resize(actual.width, actual.height);
     state.last_scene = None;
     state.current_scene();
     assert!(state.interaction.settings_scroll_max_offset > 24.0);
@@ -377,6 +1146,7 @@ fn check_native_pointer_delta_dispatch(
 }
 
 fn click(state: &mut PanelState, action: InteractionKind, touch: bool) {
+    super::tests::present_test_frame(state);
     let rect = state
         .interaction_rect(action)
         .expect("visible native action");
@@ -396,7 +1166,8 @@ fn long_candidate(language: &str) -> String {
 
 fn press_truncated_candidate(state: &mut PanelState, index: usize, touch: bool) {
     let action = InteractionKind::Candidate(index);
-    let scene = state.current_scene();
+    super::tests::present_test_frame(state);
+    let scene = state.last_scene.as_ref().unwrap();
     assert!(
         scene.sentence_candidate_truncated.contains(&index),
         "the real rendered card must truncate this fixture before testing its gesture"
@@ -409,7 +1180,6 @@ fn press_truncated_candidate(state: &mut PanelState, index: usize, touch: bool) 
         .rect;
     let point = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
     assert_eq!(scene.hit_interaction(point.0, point.1), Some(action));
-    state.last_scene = Some(scene);
     state.cursor_position = Some(point);
     state.begin_primary_press(touch);
     assert_eq!(state.interaction.pressed_interaction, Some(action));
@@ -623,12 +1393,11 @@ fn check_empty_transition(
         touch,
     );
     let deletion = receiver.try_recv().unwrap();
-    assert!(deletion.command.ends_with(" 11 T"));
+    assert!(deletion.command.starts_with('E') && deletion.command.ends_with(" 11 B"));
     if boundary != "empty only" {
         key(app.panel.as_mut().unwrap(), 'x', touch);
     }
     assert!(receiver.try_recv().is_err());
-    acknowledge(app, events, deletion);
     let mut frame = keyboard_frame("", 12);
     if boundary == "manual hide" {
         app.user_event(events, PanelUserEvent::HidePanel);
@@ -646,6 +1415,7 @@ fn check_empty_transition(
             Some(frame)
         }],
     );
+    finish_keyboard(app, events, deletion, Ok(keyboard_frame("", 12)));
     let expected_visible = matches!(boundary, "normal" | "late manual hide");
     assert_panel_visibility(app, app.panel_visible);
     if app.panel_visible != expected_visible {
@@ -665,7 +1435,7 @@ fn check_empty_transition(
         assert!(state.chrome.seed_text.is_empty());
         assert!(receiver.try_recv().is_err());
         if boundary == "disconnect" {
-            assert_eq!(state.take_native_typing_draft().as_deref(), Some("x"));
+            assert_eq!(state.take_native_typing_draft().as_deref(), Some("qx"));
         } else {
             assert!(state.native.typing.is_none());
         }
@@ -700,6 +1470,7 @@ fn check_keyboard_commit_boundary(
     let state = app.panel.as_mut().unwrap();
     assert_eq!(state.chrome.seed_text, "hellx");
     assert!(!state.native.typing.as_ref().unwrap().blocked);
+    super::tests::present_test_frame(state);
     let held_key = InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character('y'));
     let rect = state.interaction_rect(held_key).unwrap();
     state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
@@ -812,6 +1583,7 @@ fn check_coalesced_target_change(
     assert!(receiver.try_recv().is_err());
     let state = app.panel.as_mut().unwrap();
     assert!(state.native.typing.is_some());
+    super::tests::present_test_frame(state);
     let held_key = InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character('y'));
     let rect = state.interaction_rect(held_key).unwrap();
     state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
@@ -953,16 +1725,16 @@ fn check_unconfirmed_empty(app: &mut PanelApp, events: &ActiveEventLoop, touch: 
     );
     let deletion = receiver.try_recv().unwrap();
     // A candidate refresh can win the revision race before deletion is applied.
-    // The empty local buffer is not evidence that the public host draft ended.
+    // No speculative empty local buffer may hide the public host draft.
     publish_wake_frames(app, events, [Some(keyboard_frame("q", 12))]);
     assert_panel_visibility(app, true);
     assert!(app.native_hidden_context.is_none());
     app.user_event(
         events,
-        PanelUserEvent::NativeActionFinished {
+        PanelUserEvent::NativeKeyboardFinished {
             host: deletion.host,
             revision: deletion.revision,
-            result: Ok(false),
+            result: Err("stale native revision".into()),
         },
     );
     assert_panel_visibility(app, true);
@@ -972,7 +1744,7 @@ fn check_unconfirmed_empty(app: &mut PanelApp, events: &ActiveEventLoop, touch: 
             .as_ref()
             .unwrap()
             .native
-            .typing
+            .keyboard
             .as_ref()
             .unwrap()
             .blocked

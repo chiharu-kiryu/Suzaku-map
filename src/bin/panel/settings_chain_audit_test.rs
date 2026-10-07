@@ -72,7 +72,11 @@ fn click_setting(
     settings.chrome.settings_search_query = search.into();
     settings.chrome.settings_scroll_offset = 0.0;
     settings.last_interaction_action = None;
-    let scene = settings.current_scene();
+    crate::native_sync::present_test_frame(settings);
+    let scene = settings
+        .last_scene
+        .as_ref()
+        .expect("presented settings fixture");
     let rect = scene
         .interactive_targets
         .iter()
@@ -82,7 +86,6 @@ fn click_setting(
     let point = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
     assert_eq!(scene.hit_interaction(point.0, point.1), Some(target));
     settings.cursor_position = Some(point);
-    settings.last_scene = Some(scene);
     settings.begin_primary_press(false);
     settings.complete_primary_release(false);
     let id = settings.window.id();

@@ -61,6 +61,85 @@ fn settle(engine: &mut XRTabletImeEngine) {
 }
 
 #[test]
+fn relative_navigation_at_the_first_row_keeps_prediction_and_spelling_unselected() {
+    for mixed in [false, true] {
+        for (language, seed, reply) in [
+            ("en", "hel", "hello from a boundary test"),
+            ("zh-Hans", "nihao", "你好，今天过得怎么样？"),
+        ] {
+            let (mut engine, requests, replies) = controlled_with_config(EngineConfig {
+                default_language: language.into(),
+                ..Default::default()
+            });
+            if mixed {
+                engine.enable_ibus_candidate_mix();
+            }
+            let before = engine.seed(seed);
+            requests.recv_timeout(Duration::from_secs(2)).unwrap();
+            let candidates = engine.candidates().to_vec();
+            for delta in [-1, -2, isize::MIN, 0] {
+                assert_eq!(engine.move_selection(delta), before);
+                assert_eq!(engine.candidates(), candidates);
+                assert_eq!(engine.selected_completion_text(true), None);
+                assert_eq!(engine.prediction_status(), PredictionStatus::Pending);
+            }
+            replies.send(answer(reply)).unwrap();
+            settle(&mut engine);
+            assert_eq!(engine.prediction_status(), PredictionStatus::Ready);
+            assert!(
+                engine
+                    .candidates()
+                    .iter()
+                    .any(|candidate| candidate.text == reply)
+            );
+            assert!(requests.try_recv().is_err());
+            assert_eq!(engine.snapshot().seed_text, seed);
+            assert!(engine.snapshot().committed_text.is_empty());
+        }
+    }
+}
+
+#[test]
+fn relative_navigation_handles_empty_single_and_last_rows_without_creating_a_choice() {
+    let mut engine = XRTabletImeEngine::new(EngineConfig::default());
+    engine.enable_ibus_candidate_mix();
+    for seed in [String::new(), "字".repeat(257)] {
+        let before = engine.seed(&seed);
+        assert!(engine.candidates().len() <= 1);
+        for delta in [isize::MIN, -1, 0, 1, isize::MAX] {
+            assert_eq!(engine.move_selection(delta), before);
+            assert_eq!(engine.selected_completion_text(true), None);
+        }
+    }
+    engine.seed("hel");
+    let last = engine.candidates().len() - 1;
+    assert!(last > 1);
+    let before = engine.move_selection(isize::MAX);
+    assert_eq!(before.selected_index, last);
+    let text = engine.selected_completion_text(true).unwrap().to_owned();
+    for delta in [0, 1, 2, isize::MAX] {
+        assert_eq!(engine.move_selection(delta), before);
+        assert_eq!(engine.selected_completion_text(true), Some(text.as_str()));
+    }
+    assert_eq!(engine.move_selection(isize::MIN).selected_index, 0);
+}
+
+#[test]
+fn explicitly_selecting_the_current_row_still_locks_a_real_choice() {
+    let (mut engine, requests, replies) = controlled();
+    engine.enable_ibus_candidate_mix();
+    engine.seed("hel");
+    requests.recv_timeout(Duration::from_secs(2)).unwrap();
+    let candidates = engine.candidates().to_vec();
+    engine.select_candidate(0);
+    assert_eq!(engine.selected_completion_text(true), Some("hel"));
+    assert!(!engine.prediction_pending());
+    replies.send(answer("hello from a late model")).unwrap();
+    settle(&mut engine);
+    assert_eq!(engine.candidates(), candidates);
+}
+
+#[test]
 fn learned_model_choices_do_not_replay_text_or_accumulate_bonuses_on_refresh() {
     use suzaku_map::ime::candidate_mix::CandidateKind;
     let (mut engine, requests, replies) = controlled();

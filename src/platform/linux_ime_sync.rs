@@ -129,8 +129,99 @@ pub fn action_command(
             format!("T{text}")
         }
         NativeOperation::Clear => "X".into(),
+        NativeOperation::Backspace => "B".into(),
+        NativeOperation::Continue => "S".into(),
     };
-    Ok(format!("A{} {} {}", frame.host, frame.revision, action))
+    let prefix = if matches!(
+        operation,
+        NativeOperation::Backspace | NativeOperation::Continue
+    ) {
+        'E'
+    } else {
+        'A'
+    };
+    Ok(format!(
+        "{prefix}{} {} {}",
+        frame.host, frame.revision, action
+    ))
+}
+
+/// Semantic keyboard edits cannot predict their resulting text locally: an
+/// adoption undo or unfinished Compose sequence belongs to the host. Require
+/// its complete, bounded result on the same connection as the acknowledgement.
+/// Older hosts reject this distinct request instead of applying a guessed edit.
+pub fn send_keyboard_action_cancellable(
+    path: &Path,
+    command: &str,
+    stop: &AtomicBool,
+) -> Result<NativeComposition, String> {
+    let deadline = Deadline::cancellable(Duration::from_millis(350), stop);
+    send_keyboard_action_until(path, command, &deadline)
+}
+
+fn keyboard_target(command: &str) -> Result<(&str, u64), String> {
+    let mut parts = command
+        .strip_prefix('E')
+        .ok_or("Invalid native keyboard command")?
+        .split(' ');
+    let host = parts.next().ok_or("Missing native keyboard host")?;
+    let revision = parts
+        .next()
+        .and_then(|v| v.parse::<u64>().ok())
+        .ok_or("Invalid native keyboard revision")?;
+    if host.len() != 36
+        || !host.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+        || !matches!(parts.next(), Some("B" | "S"))
+        || parts.next().is_some()
+    {
+        return Err("Invalid native keyboard command".into());
+    }
+    Ok((host, revision))
+}
+
+fn read_keyboard_result(
+    stream: &mut UnixStream,
+    command: &str,
+    deadline: &Deadline<'_>,
+) -> Result<NativeComposition, String> {
+    let (host, revision) = keyboard_target(command)?;
+    let failure = || "Native keyboard edit was not confirmed; action was not retried".to_string();
+    let mut acknowledged = [0];
+    deadline
+        .read_exact(stream, &mut acknowledged)
+        .map_err(|_| failure())?;
+    if acknowledged != [b'1'] {
+        return Err(failure());
+    }
+    let raw = deadline
+        .read_to_end(stream, MAX_FRAME_BYTES)
+        .map_err(|_| failure())?;
+    // Exactly one newline-delimited snapshot, never a success byte on its own
+    // or a second frame whose later state could silently replace this result.
+    let body = raw
+        .strip_suffix(b"\n")
+        .filter(|body| !body.contains(&b'\n'))
+        .ok_or_else(failure)?;
+    let frame = NativeComposition::parse(body).map_err(|_| failure())?;
+    if frame.host != host || frame.revision <= revision || !frame.focused || frame.private {
+        return Err(failure());
+    }
+    Ok(frame)
+}
+
+fn send_keyboard_action_until(
+    path: &Path,
+    command: &str,
+    deadline: &Deadline<'_>,
+) -> Result<NativeComposition, String> {
+    keyboard_target(command)?;
+    let mut stream = deadline
+        .connect(path)
+        .map_err(|_| "Native keyboard host unavailable; action was not retried")?;
+    deadline
+        .send(&mut stream, command.as_bytes())
+        .map_err(|_| "Native keyboard write unconfirmed; action was not retried")?;
+    read_keyboard_result(&mut stream, command, deadline)
 }
 
 /// Never retry an uncertain commit or fall back to arbitrary target text output.
@@ -312,7 +403,162 @@ mod tests {
         );
         assert!(action_command(&frame, &NativeOperation::Commit(0)).is_err());
         assert!(action_command(&frame, &NativeOperation::Adopt(0)).is_err());
+        assert_eq!(
+            action_command(&frame, &NativeOperation::Backspace).unwrap(),
+            format!("E{} 4 B", frame.host)
+        );
+        assert_eq!(
+            action_command(&frame, &NativeOperation::Continue).unwrap(),
+            format!("E{} 4 S", frame.host)
+        );
         frame.private = true;
         assert!(action_command(&frame, &NativeOperation::Replace("hello".into())).is_err());
+        assert!(action_command(&frame, &NativeOperation::Backspace).is_err());
+        assert!(action_command(&frame, &NativeOperation::Continue).is_err());
+        frame.private = false;
+        frame.focused = false;
+        assert!(action_command(&frame, &NativeOperation::Continue).is_err());
+    }
+
+    #[test]
+    fn keyboard_actions_require_a_complete_exact_authoritative_result() {
+        let mut next = frame();
+        let command = action_command(&next, &NativeOperation::Backspace).unwrap();
+        next.revision += 1;
+        next.seed = "原拼写😀é".into();
+        let (mut reader, mut writer) = UnixStream::pair().unwrap();
+        writer
+            .write_all(format!("1{}\n", next.to_json()).as_bytes())
+            .unwrap();
+        drop(writer);
+        assert_eq!(
+            read_keyboard_result(
+                &mut reader,
+                &command,
+                &Deadline::new(Duration::from_millis(100))
+            )
+            .unwrap(),
+            next
+        );
+
+        let mut responses = vec![
+            b"0".to_vec(),
+            b"1".to_vec(),
+            b"1{}\n".to_vec(),
+            format!("1{}", next.to_json()).into_bytes(),
+            format!("1{}\n{}\n", next.to_json(), next.to_json()).into_bytes(),
+            [b"1".as_slice(), &vec![b'x'; MAX_FRAME_BYTES + 1]].concat(),
+        ];
+        for case in ["host", "revision", "private", "focus"] {
+            let mut invalid = next.clone();
+            match case {
+                "host" => invalid.host = "00000000-0000-0000-0000-000000000002".into(),
+                "revision" => invalid.revision = 4,
+                "private" => {
+                    invalid.private = true;
+                    invalid.seed.clear();
+                    invalid.candidates.clear();
+                }
+                _ => {
+                    invalid.focused = false;
+                    invalid.seed.clear();
+                    invalid.candidates.clear();
+                }
+            }
+            responses.push(format!("1{}\n", invalid.to_json()).into_bytes());
+        }
+        for response in responses {
+            let (mut reader, mut writer) = UnixStream::pair().unwrap();
+            writer.write_all(&response).unwrap();
+            drop(writer);
+            let error = read_keyboard_result(
+                &mut reader,
+                &command,
+                &Deadline::new(Duration::from_millis(100)),
+            )
+            .unwrap_err();
+            assert!(error.contains("not retried"));
+        }
+    }
+
+    #[test]
+    fn keyboard_actions_send_once_and_accept_fragmented_unicode_results() {
+        use std::io::Read;
+        let endpoint = Endpoint::new();
+        let mut next = frame();
+        let command = action_command(&next, &NativeOperation::Continue).unwrap();
+        next.revision += 1;
+        next.seed = "你好 café😀 ".into();
+        let response = format!("1{}\n", next.to_json());
+        std::thread::scope(|scope| {
+            let server = scope.spawn(|| {
+                let mut peer = endpoint.accept();
+                let mut request = String::new();
+                peer.read_to_string(&mut request).unwrap();
+                assert_eq!(request, command);
+                for chunk in response.as_bytes().chunks(7) {
+                    peer.write_all(chunk).unwrap();
+                }
+            });
+            let stop = AtomicBool::new(false);
+            assert_eq!(
+                send_keyboard_action_cancellable(&endpoint.path, &command, &stop).unwrap(),
+                next
+            );
+            server.join().unwrap();
+        });
+        assert_eq!(
+            endpoint.listener.accept().unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+    }
+
+    #[test]
+    fn keyboard_success_byte_alone_obeys_the_original_deadline_and_cancellation() {
+        let command = action_command(&frame(), &NativeOperation::Backspace).unwrap();
+        let (mut reader, mut writer) = UnixStream::pair().unwrap();
+        writer.write_all(b"1").unwrap();
+        let started = std::time::Instant::now();
+        assert!(
+            read_keyboard_result(
+                &mut reader,
+                &command,
+                &Deadline::new(Duration::from_millis(20))
+            )
+            .unwrap_err()
+            .contains("not retried")
+        );
+        assert!(started.elapsed() < Duration::from_millis(200));
+        let stop = AtomicBool::new(true);
+        assert!(
+            read_keyboard_result(
+                &mut reader,
+                &command,
+                &Deadline::cancellable(Duration::from_secs(1), &stop)
+            )
+            .unwrap_err()
+            .contains("not retried")
+        );
+        assert!(started.elapsed() < Duration::from_millis(200));
+    }
+
+    #[test]
+    fn keyboard_commands_fail_before_connecting_on_invalid_targets_or_cancellation() {
+        let endpoint = Endpoint::new();
+        let valid = action_command(&frame(), &NativeOperation::Backspace).unwrap();
+        let stop = AtomicBool::new(false);
+        for command in [
+            valid.replace(" B", " X"),
+            valid.clone() + " junk",
+            valid.replacen('E', "A", 1),
+        ] {
+            assert!(send_keyboard_action_cancellable(&endpoint.path, &command, &stop).is_err());
+        }
+        let stop = AtomicBool::new(true);
+        assert!(send_keyboard_action_cancellable(&endpoint.path, &valid, &stop).is_err());
+        assert_eq!(
+            endpoint.listener.accept().unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
     }
 }

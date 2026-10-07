@@ -302,6 +302,7 @@ fn assert_incremental_punctuation_learning(suffix: &str, learned: bool) {
 fn adopted_english_words_extended_into_tokens_do_not_learn() {
     for suffix in [
         ".com", ":world", "..world", "::world", "://world", ".0", ".\u{301}", "-world", "–world",
+        "'s", "’s", "'re", "’re",
     ] {
         assert_incremental_punctuation_learning(suffix, false);
     }
@@ -325,6 +326,22 @@ fn adopted_english_words_with_real_punctuation_boundaries_still_learn() {
         "——继续",
         "，world",
         "：world",
+    ] {
+        assert_incremental_punctuation_learning(suffix, true);
+    }
+}
+
+#[test]
+fn adopted_english_words_before_smart_closing_double_quotes_still_learn() {
+    for suffix in [
+        "\"",
+        "\" world",
+        "”",
+        "” world",
+        ".”",
+        ".” world",
+        "!”",
+        "!” world",
     ] {
         assert_incremental_punctuation_learning(suffix, true);
     }

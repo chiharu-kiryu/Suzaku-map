@@ -8,7 +8,9 @@ shopt -s nullglob
 suzaku_package_test_pack_names=(
   en-outdoors zh-Hans-outdoors ja-rail en-study zh-Hans-study en-cooking zh-Hans-cooking
   en-travel zh-Hans-travel en-work zh-Hans-work
+  en-family zh-Hans-family ja-family
 )
+PYTHONDONTWRITEBYTECODE=1 python3 "$suzaku_package_test_scripts/test-offline-pack-shipping.py"
 suzaku_package_test_checksums=("$suzaku_package_test_output/"*.sha256)
 suzaku_package_test_artifacts=("$suzaku_package_test_output/"*.tar.gz "$suzaku_package_test_output/"*.deb)
 ((${#suzaku_package_test_artifacts[@]} > 0)) || { printf 'No packages found.\n' >&2; exit 1; }
@@ -37,6 +39,9 @@ for suzaku_package_test_tar in "$suzaku_package_test_output/"*.tar.gz; do
   for suzaku_package_test_crate in wgpu winit ksni reqwest rustls; do
     jq -e --arg crate "$suzaku_package_test_crate" 'any(.[]; .name == $crate)' "$suzaku_package_test_tree/share/doc/suzaku/dependencies.json" >/dev/null
   done
+  suzaku_package_test_winit=$(jq -r '.[] | select(.name == "winit") | .version' "$suzaku_package_test_tree/share/doc/suzaku/dependencies.json")
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/licenses/winit-$suzaku_package_test_winit/LICENSE"
+  test -s "$suzaku_package_test_tree/share/doc/suzaku/licenses/winit-$suzaku_package_test_winit/NOTICE-SUZAKU.md"
   for suzaku_package_test_bin in panel linux_ime_host linux_ime_probe suzaku_tool; do
     test -x "$suzaku_package_test_tree/bin/$suzaku_package_test_bin"
     readelf -h "$suzaku_package_test_tree/bin/$suzaku_package_test_bin" >/dev/null
@@ -94,6 +99,9 @@ for suzaku_package_test_deb in "$suzaku_package_test_output/"*.deb; do
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/SECURITY.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/known-limitations.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/privacy.md"
+  suzaku_package_test_winit=$(jq -r '.[] | select(.name == "winit") | .version' "$suzaku_package_test_extract/root/usr/share/doc/suzaku/dependencies.json")
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/licenses/winit-$suzaku_package_test_winit/LICENSE"
+  test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/licenses/winit-$suzaku_package_test_winit/NOTICE-SUZAKU.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.md"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-network.mmd"
   test -s "$suzaku_package_test_extract/root/usr/share/doc/suzaku/docs/functional-tensor.json"

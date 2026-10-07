@@ -15,6 +15,7 @@ struct Flight {
     revision: u64,
     text: String,
     acknowledged: bool,
+    expected_selected: Option<usize>,
 }
 
 impl NativeTyping {
@@ -57,6 +58,16 @@ impl NativeTyping {
             return;
         }
         if let Some(flight) = &self.flight {
+            if frame.revision > flight.revision
+                && flight
+                    .expected_selected
+                    .is_some_and(|selected| frame.selected != selected)
+            {
+                // A same-seed physical selection change is still a conflict.
+                // In particular, queued Space must not adopt the wrong row.
+                self.blocked = true;
+                return;
+            }
             if frame.revision > flight.revision && frame.seed == flight.text {
                 if flight.acknowledged {
                     self.base = flight.text.clone();
@@ -101,7 +112,13 @@ impl NativeTyping {
             revision,
             text: self.draft.clone(),
             acknowledged: false,
+            expected_selected: None,
         });
+    }
+
+    pub fn sent_selection(&mut self, revision: u64, selected: usize) {
+        self.sent(revision);
+        self.flight.as_mut().unwrap().expected_selected = Some(selected);
     }
 
     pub fn settled(&self) -> bool {
@@ -124,6 +141,31 @@ mod tests {
             seed: text.into(),
             selected: 0,
             candidates: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn selection_barrier_checks_new_frames_in_both_ack_orders_but_not_the_old_row() {
+        for frame_first in [false, true] {
+            for changed in [false, true] {
+                let initial = frame("hel", 10);
+                let mut typing = NativeTyping::new(&initial);
+                typing.sent_selection(10, 1);
+                typing.observe(&initial);
+                assert!(
+                    !typing.blocked,
+                    "old row before selection is not a conflict"
+                );
+                let mut next = frame("hel", if changed { 12 } else { 11 });
+                next.selected = if changed { 2 } else { 1 };
+                if frame_first {
+                    typing.observe(&next);
+                }
+                assert!(typing.acknowledge(10, true));
+                typing.observe(&next);
+                assert_eq!(typing.blocked, changed);
+                assert_eq!(typing.settled(), !changed);
+            }
         }
     }
 

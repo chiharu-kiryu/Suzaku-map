@@ -274,16 +274,16 @@ impl PanelState {
     }
 
     pub(super) fn continue_composition_with_space(&mut self) {
+        if self.native_keyboard_edit(Some(" ")) {
+            return;
+        }
         if self.chrome.seed_text.is_empty() {
             return;
         }
-        let text = if self.native.showing {
-            self.chrome.seed_text.as_str()
-        } else {
-            self.engine
-                .selected_completion_text(true)
-                .unwrap_or(&self.chrome.seed_text)
-        };
+        let text = self
+            .engine
+            .selected_completion_text(true)
+            .unwrap_or(&self.chrome.seed_text);
         self.replace_continuing_draft(format!("{text} "));
     }
 
@@ -360,6 +360,13 @@ impl PanelState {
 
     pub(super) fn backspace_seed(&mut self) {
         if self.native_keyboard_edit(None) {
+            return;
+        }
+        // At the local draft's start there is no edit to publish. Keep adopted
+        // completion undo, candidate selection and in-flight derived work intact.
+        // Native typing above owns its separate queue/acknowledgement semantics.
+        if self.chrome.caret_index == 0 || self.chrome.seed_text.is_empty() {
+            self.chrome.caret_index = 0;
             return;
         }
         self.chrome.backspace();

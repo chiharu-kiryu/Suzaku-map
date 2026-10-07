@@ -49,7 +49,8 @@ static gboolean suzaku_ibus_engine_process_compose(SuzakuIBusEngine *self, guint
         case XKB_COMPOSE_NOTHING:
             return FALSE;
         case XKB_COMPOSE_COMPOSING:
-            g_clear_pointer(&self->completion_undo, g_free);
+            /* Pending Compose can be canceled without changing the draft.
+             * Only a real edit through sync_input retires adoption undo. */
             suzaku_ibus_engine_render(self);
             return TRUE;
         case XKB_COMPOSE_COMPOSED: {

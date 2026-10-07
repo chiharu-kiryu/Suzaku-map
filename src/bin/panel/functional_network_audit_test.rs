@@ -342,7 +342,18 @@ fn translation_requests_reject_stale_press_targets() {
                     panel.chrome.active_input_mode = InputMode::Translation;
                     panel.chrome.input_modes_expanded = true;
                     let height = panel.renderer.preferred_input_panel_height(&panel.chrome) as u32;
-                    panel.resize(panel.size.width, height);
+                    let _ = panel
+                        .window
+                        .request_inner_size(winit::dpi::PhysicalSize::new(
+                            panel.size.width,
+                            height,
+                        ));
+                    let actual = panel.window.inner_size();
+                    assert_eq!(
+                        actual,
+                        winit::dpi::PhysicalSize::new(panel.size.width, height)
+                    );
+                    panel.resize(actual.width, actual.height);
                     point_translate(&mut panel);
                     panel.interaction.last_input_was_touch = touch;
                     panel.begin_primary_press(touch);
@@ -426,6 +437,7 @@ fn translation_requests_reject_stale_press_targets() {
                             "N24 touch={touch}, {case}: old Translate press survived"
                         ));
                     }
+                    crate::native_sync::present_test_frame(&mut panel);
                     panel.complete_primary_release(touch);
                     if panel.chrome.translation.phase == TranslationPhase::Pending {
                         let (_, request) = self.server.request();
@@ -495,7 +507,8 @@ fn translation_requests_reject_stale_press_targets() {
 }
 
 fn point_translate(panel: &mut PanelState) {
-    let scene = panel.current_scene();
+    crate::native_sync::present_test_frame(panel);
+    let scene = panel.last_scene.as_ref().unwrap();
     let rect = scene
         .interactive_targets
         .iter()
@@ -508,7 +521,6 @@ fn point_translate(panel: &mut PanelState) {
         Some(InteractionKind::TranslateText)
     );
     panel.cursor_position = Some(point);
-    panel.last_scene = Some(scene);
 }
 
 fn settle_translation(panel: &mut PanelState) {

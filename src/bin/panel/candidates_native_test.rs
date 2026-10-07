@@ -57,11 +57,18 @@ impl ApplicationHandler for CandidateProbe {
             );
             assert_eq!(state.engine.snapshot().seed_text, "hello");
             assert_eq!(state.chrome.composed_tokens, ["hello"]);
+            let completed = state.engine.snapshot();
+            let history = state.completion_history.labels();
+            state.complete_primary_release(touch);
+            assert_eq!(state.engine.snapshot(), completed);
+            assert_eq!(state.chrome.seed_text, "hello");
+            assert_eq!(state.completion_history.labels(), history);
             press(&mut state, InteractionKind::RewindNextToken, touch);
             state.complete_primary_release(touch);
             assert_eq!(state.chrome.seed_text, "hel");
             assert!(state.chrome.composed_tokens.is_empty());
         }
+        check_held_completion_boundaries(&mut state);
         for touch in [false, true] {
             for target in [
                 InteractionKind::Candidate(2),
@@ -90,6 +97,95 @@ fn reset_composition(state: &mut PanelState) {
     state.engine.seed("hel");
     state.refresh_composition_candidates();
     state.last_scene = None;
+}
+
+fn check_held_completion_boundaries(state: &mut PanelState) {
+    let language = state.engine.snapshot().active_language;
+    for touch in [false, true] {
+        for boundary in [
+            "canceled",
+            "new press",
+            "seed",
+            "language",
+            "edit",
+            "resize",
+        ] {
+            state.engine.set_language(&language);
+            reset_composition(state);
+            press(state, InteractionKind::SelectNextToken(0), touch);
+            let viewport = state.window.inner_size();
+            state.refresh_composition_candidates();
+            assert!(state.last_scene.is_none());
+            assert_eq!(
+                state.interaction.pressed_interaction,
+                Some(InteractionKind::SelectNextToken(0))
+            );
+            assert!(state.interaction.held_completion.is_some());
+            match boundary {
+                "canceled" | "new press" => {
+                    if boundary == "canceled" {
+                        state.cancel_primary_interaction();
+                        assert!(state.interaction.held_completion.is_none());
+                    }
+                    // Neither a canceled gesture nor another press may acquire
+                    // the old completion without a newly presented scene.
+                    state.begin_primary_press(touch);
+                    assert!(state.interaction.pressed_interaction.is_none());
+                    assert!(state.interaction.held_completion.is_none());
+                }
+                // Change one identity component while the previous candidate
+                // list is still cached. It must not authorize the old release.
+                "seed" => {
+                    state.chrome.set_seed_text("a different draft".into());
+                    state.engine.seed("a different draft");
+                }
+                "language" => {
+                    assert_ne!(language, "zh");
+                    state.engine.set_language("zh");
+                }
+                "edit" => {
+                    let edit = &mut state.next_token_completions[0];
+                    assert_eq!(edit.seed_after, "hello");
+                    edit.seed_after = "help".into();
+                    assert_eq!(state.chrome.next_token_candidates[0], edit.label);
+                }
+                "resize" => {
+                    let requested =
+                        winit::dpi::PhysicalSize::new(viewport.width + 1, viewport.height);
+                    let _ = state.window.request_inner_size(requested);
+                    let actual = state.window.inner_size();
+                    assert_eq!(actual, requested);
+                    state.resize(actual.width, actual.height);
+                    assert!(state.interaction.pressed_interaction.is_none());
+                    assert!(state.interaction.held_completion.is_none());
+                }
+                _ => unreachable!(),
+            }
+            let before = state.engine.snapshot();
+            let seed = state.chrome.seed_text.clone();
+            let history = state.completion_history.labels();
+            state.complete_primary_release(touch);
+            assert_eq!(
+                state.engine.snapshot(),
+                before,
+                "stale completion changed engine state: {boundary}, touch={touch}"
+            );
+            assert_eq!(state.chrome.seed_text, seed);
+            assert_eq!(state.completion_history.labels(), history);
+            assert!(state.interaction.held_completion.is_none());
+            if boundary == "resize" {
+                let _ = state.window.request_inner_size(viewport);
+                let actual = state.window.inner_size();
+                assert_eq!(actual, viewport);
+                state.resize(actual.width, actual.height);
+            }
+        }
+    }
+    state.engine.set_language(language);
+    reset_composition(state);
+    println!(
+        "PASS: held mouse/touch completions cannot authorize a new press or survive seed, language, edit or viewport changes"
+    );
 }
 
 fn check_rapid_completion_gestures(state: &mut PanelState) {
@@ -193,7 +289,11 @@ fn check_editable_keyboard_choices(state: &mut PanelState) {
 }
 
 fn press(state: &mut PanelState, target: InteractionKind, touch: bool) {
-    let scene = state.current_scene();
+    crate::native_sync::present_test_frame(state);
+    let scene = state
+        .last_scene
+        .as_ref()
+        .expect("presented candidate fixture");
     let rect = scene
         .interactive_targets
         .iter()
@@ -209,7 +309,6 @@ fn press(state: &mut PanelState, target: InteractionKind, touch: bool) {
         .rect;
     let (x, y) = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
     assert_eq!(scene.hit_interaction(x, y), Some(target));
-    state.last_scene = Some(scene);
     state.cursor_position = Some((x, y));
     state.interaction.last_input_was_touch = touch;
     state.begin_primary_press(touch);

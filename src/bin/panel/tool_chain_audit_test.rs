@@ -244,6 +244,9 @@ fn tool_adoption_gestures_must_not_cross_native_targets() {
                             "N23 {mode:?}, touch={touch}, {case}: old press survived"
                         ));
                     }
+                    // A frame refresh can invalidate layout measurements, but
+                    // cannot recreate a gesture canceled by a target boundary.
+                    super::tests::present_test_frame(state);
                     state.complete_primary_release(touch);
                     if same_target {
                         let request = receiver
@@ -297,7 +300,8 @@ fn tool_adoption_gestures_must_not_cross_native_targets() {
 }
 
 fn point_tool(state: &mut PanelState, kind: suzaku_map::ime::gpu::InteractionKind) {
-    let scene = state.current_scene();
+    super::tests::present_test_frame(state);
+    let scene = state.last_scene.as_ref().unwrap();
     let rect = scene
         .interactive_targets
         .iter()
@@ -307,7 +311,6 @@ fn point_tool(state: &mut PanelState, kind: suzaku_map::ime::gpu::InteractionKin
     let point = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
     assert_eq!(scene.hit_interaction(point.0, point.1), Some(kind));
     state.cursor_position = Some(point);
-    state.last_scene = Some(scene);
 }
 
 #[test]

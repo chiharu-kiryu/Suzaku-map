@@ -156,6 +156,11 @@ enum PanelUserEvent {
         revision: u64,
         result: Result<bool, String>,
     },
+    NativeKeyboardFinished {
+        host: String,
+        revision: u64,
+        result: Result<suzaku_map::ime::companion::NativeComposition, String>,
+    },
     Quit,
 }
 
@@ -542,6 +547,7 @@ impl PanelApp {
         if panel.chrome.compact_mode {
             panel.apply_compact_mode(false);
         }
+        panel.suspend_native_keyboard();
         panel.chrome.settings_open = true;
         panel.window.request_redraw();
         let chrome = panel.chrome.clone();
@@ -574,6 +580,7 @@ struct PanelInteractionState {
     pointer_cursor: winit::window::CursorIcon,
     tooltip: controller_hints::HoverTooltipState,
     pressed_interaction: Option<suzaku_map::ime::gpu::InteractionKind>,
+    held_completion: Option<controller::HeldCompletion>,
     press_target_rect: Option<[f32; 4]>,
     press_start_cursor: Option<(f32, f32)>,
     press_start_instant: Option<Instant>,
@@ -832,6 +839,30 @@ impl ApplicationHandler<PanelUserEvent> for PanelApp {
                     panel.native_action_finished(host, revision, result);
                 }
             }
+            PanelUserEvent::NativeKeyboardFinished {
+                host,
+                revision,
+                result,
+            } => {
+                if let Some(panel) = self.panel.as_mut() {
+                    panel.native_keyboard_finished(host, revision, result);
+                    panel.update_native_position();
+                    let visible = panel.native_composition_visible();
+                    let manually_hidden = panel.native.frame.as_ref().is_some_and(|frame| {
+                        self.native_hidden_context.as_ref()
+                            == Some(&(frame.host.clone(), frame.context))
+                    });
+                    let can_show = !manually_hidden
+                        && panel.runs_without_window_focus
+                        && !panel.has_local_panel_interaction();
+                    if visible && !self.panel_visible && can_show {
+                        self.apply_panel_visibility(true);
+                        self.native_auto_shown = true;
+                    } else if !visible && self.native_auto_shown {
+                        self.apply_panel_visibility(false);
+                    }
+                }
+            }
             PanelUserEvent::Quit => event_loop.exit(),
         }
     }
@@ -990,6 +1021,7 @@ struct PanelState {
     last_commit_attempt: Option<CommitAttempt>,
     last_interaction_action: Option<(suzaku_map::ime::gpu::InteractionKind, Instant)>,
     last_scene: Option<suzaku_map::ime::gpu::RenderScene>,
+    presented_pointer_scene: Option<controller::PresentedPointerScene>,
     last_window_title: String,
     last_frame_diagnostic: Option<String>,
     close_requested: bool,
@@ -1418,6 +1450,7 @@ impl PanelState {
             last_commit_attempt: None,
             last_interaction_action: None,
             last_scene: None,
+            presented_pointer_scene: None,
             last_window_title: String::new(),
             last_frame_diagnostic: None,
             close_requested: false,

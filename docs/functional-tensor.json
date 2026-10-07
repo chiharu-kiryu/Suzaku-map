@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "snapshot": {
-    "date": "2026-10-06",
-    "head": "a019b7cab9e065ea4c722c916af050b3cd4cdf6d",
+    "date": "2026-10-07",
+    "head": "1bf93e14db17ffee7d5eab07d05035e87a596db7",
     "dirty": true,
-    "source_sha256": "bb23a161449df8587e25d70aa07af082fdc065a75a4c5b5ce7ad232f9d834c1a",
-    "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging、E-chinese-partial-spacing；词库扩充见 E-daily-objects、E-daily-choices、E-japanese-choices；10-04崩溃调查见E-daemon-abort，按用户要求暂缓而非已修复；当前未提交快照未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
+    "source_sha256": "046e6f042447db011d5076ee1c955ee2369e6a1ad88addd01dba944d5d4f69b7",
+    "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging、E-chinese-partial-spacing；词库扩充见 E-daily-objects、E-daily-choices、E-japanese-choices；10-04崩溃及10-07有界sender诊断见E-daemon-abort，探测清理顺序修复见E-daemon-probe，非已确认修复上游根因；当前未提交快照未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
   },
   "architectures": [
     {
@@ -217,7 +217,10 @@
       ],
       "tests": [
         "tests/ime_engine_core.rs",
-        "tests/ime_engine.rs"
+        "tests/ime_engine.rs",
+        "tests/ime_prediction.rs",
+        "tests/commit_history.rs",
+        "tests/long_draft_budget.rs"
       ]
     },
     {
@@ -231,6 +234,7 @@
       ],
       "tests": [
         "tests/input_edge_audit_budget.rs",
+        "tests/long_draft_budget.rs",
         "tests/english_prediction_spacing.rs",
         "tests/ime_prediction.rs"
       ]
@@ -277,6 +281,7 @@
       "tests": [
         "tests/ime_engine_core.rs",
         "tests/long_draft_completion.rs",
+        "tests/long_draft_budget.rs",
         "tests/long_draft_window_english.rs",
         "tests/ime_prediction.rs",
         "scripts/test-native-sync.py"
@@ -298,7 +303,10 @@
         "tests/input_edge_audit_english.rs",
         "tests/daily_social_english.rs",
         "tests/daily_objects_english.rs",
-        "tests/daily_choices_english.rs"
+        "tests/daily_choices_english.rs",
+        "tests/daily_followup_english.rs",
+        "tests/daily_leisure_english.rs",
+        "tests/daily_clarification_english.rs"
       ]
     },
     {
@@ -316,7 +324,10 @@
         "tests/chinese_sentence_continuation.rs",
         "tests/chinese_reading_boundaries.rs",
         "tests/daily_objects_chinese.rs",
-        "tests/daily_choices_chinese.rs"
+        "tests/daily_choices_chinese.rs",
+        "tests/daily_followup_chinese.rs",
+        "tests/daily_leisure_chinese.rs",
+        "tests/daily_clarification_chinese.rs"
       ]
     },
     {
@@ -333,6 +344,9 @@
         "tests/lexicon_resources.rs",
         "tests/daily_japanese_vocabulary.rs",
         "tests/daily_choices_japanese.rs",
+        "tests/daily_coordination_japanese.rs",
+        "tests/daily_leisure_japanese.rs",
+        "tests/daily_clarification_japanese.rs",
         "tests/japanese_sentence_progress.rs",
         "tests/japanese_reading_boundaries.rs",
         "tests/fallback_vocabulary.rs",
@@ -370,6 +384,9 @@
       "tests": [
         "tests/offline_packs.rs",
         "tests/offline_pack_quality.rs",
+        "tests/family_pack_english.rs",
+        "tests/family_pack_chinese.rs",
+        "tests/family_pack_japanese.rs",
         "tests/input_edge_audit_packs.rs"
       ]
     },
@@ -391,10 +408,14 @@
         "data/offline-packs/zh-Hans-outdoors.json",
         "data/offline-packs/zh-Hans-study.json",
         "data/offline-packs/zh-Hans-travel.json",
-        "data/offline-packs/zh-Hans-work.json"
+        "data/offline-packs/zh-Hans-work.json",
+        "data/offline-packs/en-family.json",
+        "data/offline-packs/zh-Hans-family.json",
+        "data/offline-packs/ja-family.json"
       ],
       "tests": [
         "scripts/test-linux-package.sh",
+        "scripts/test-offline-pack-shipping.py",
         "tests/offline_packs.rs"
       ]
     },
@@ -477,12 +498,14 @@
         "src/platform/linux_ime_sync.rs",
         "src/linux/ibus_companion.inc.c",
         "src/bin/panel/native_sync.rs",
+        "src/bin/panel/native_keyboard.rs",
         "src/bin/panel/native_typing.rs"
       ],
       "tests": [
         "src/bin/panel/native_sync_test.rs",
         "src/bin/panel/native_action_audit_test.rs",
-        "scripts/test-native-sync.py"
+        "scripts/test-native-sync.py",
+        "scripts/test-linux-native-candidates.py"
       ]
     },
     {
@@ -565,12 +588,20 @@
       "title": "窗口、拖动与内容适配",
       "scope": "Linux X11/XWayland为主",
       "paths": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "vendor/winit/src/event.rs",
+        "vendor/winit/src/platform_impl/linux/x11/event_processor.rs",
+        "vendor/winit/src/platform_impl/linux/x11/suzaku_button_position.rs",
         "src/bin/panel/windowing.rs",
         "src/bin/panel/controller.rs",
         "src/bin/panel/input.rs",
         "src/ime/gpu/panel_scene.rs"
       ],
-      "tests": [
+    "tests": [
+        "tests/x11_button_coordinates.rs",
+        "scripts/test-linux-native-candidates.py",
+        "src/bin/panel/candidates_native_test.rs",
         "tests/ime_panel_content_fit.rs",
         "tests/ime_panel_drag_regions.rs",
         "src/bin/panel/windowing_native_test.rs",
@@ -650,7 +681,8 @@
       ],
       "tests": [
         "scripts/test-linux-native-candidates.py",
-        "src/bin/panel/native_action_audit_test.rs"
+        "src/bin/panel/native_action_audit_test.rs",
+        "src/ime/gpu/scene_basics.rs"
       ]
     },
     {
@@ -804,6 +836,9 @@
         "scripts/test-linux-apps.sh",
         "scripts/test-linux-apps.py",
         "scripts/test-native-ibus-trace.py",
+        "scripts/test-native-model-fixture.py",
+        "scripts/test-native-probe-teardown.py",
+        "scripts/test-gtk3-event-observer.py",
         "scripts/test-ibus-signal-lifetime.py",
         "scripts/fixtures/native_probe_cleanup.py"
       ]
@@ -1231,6 +1266,20 @@
   ],
   "evidence": [
     {
+      "id": "E-daily-clarification",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md"],
+      "scope": "2026-10-07中英澄清确认与日语解释接续；固定数据期望与历史全量前缀保护、GTK全十四包共存",
+      "note": "英文16搭配32句，净新增索引零；中文48读音16语境32句，日语24读音12语境24句。旧19层英文权重/561搭配/1086句、中文2544读音/555语境、日语178读音/90语境全量内容顺序保护；新词挤走zheg旧首屏回归仅通过更换新增表达修复，旧断言/排序/容量不变。不改语言算法、6144内置预算或模型协议。家庭包量词更正及日语同音大小写/假名补测；红绿日志与实际执行范围见开发记录。合成提供器非实模质量，隔离编辑器非个人桌面/实体键盘；不提升评分。"
+    },
+    {
+      "id": "E-family-packs",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md", "docs/linux-packaging-data.md"],
+      "scope": "2026-10-07中英日可选家庭生活包；十四包共存、固定数据测试和启停",
+      "note": "EN60显式词形32句、ZH36读音32句、JA24读音24句；三个数据型v1集合family/home，原十一包原文/顺序及内置数据不变，不改预算或模型协议。独立红绿测试和确切执行范围见开发记录；合成错误非实模验收，发包清单非产物/容器验收；不自动安装、不热更新、不提升评分。"
+    },
+    {
       "id": "E-chinese-partial-spacing",
       "kind": "historical_run",
       "paths": ["DEVELOPMENT.md", "docs/functional-network.md"],
@@ -1243,6 +1292,20 @@
       "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "docs/ibus-candidates.md"],
       "scope": "2026-10-04日语未完成读音的尾部空白及已采用表记边界",
       "note": "Japanese reading boundaries：独立红测复现尾水平空白丢词句及同じkanji错误跨词转换；主转换/末词补全共享最长已知表记与读音选择，保留更长读音及同长原顺序。七类竖直边界不跨越，未知文本和原文精确保留。错误提供器、全推荐包、私有IBus及完整回归执行范围见开发记录；不扩词库、候选预算、模型协议、形态分析或内部跨空白音节重组，不外推个人装机/GTK，评分不变。"
+    },
+    {
+      "id": "E-daily-leisure",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md"],
+      "scope": "2026-10-07中英休闲兴趣/周末安排与日语休闲词句；独立fallback和旧序指纹",
+      "note": "英文16搭配32句和五词形，中文48读音16语境32句，日语24读音12语境24句；追加前固定独立期望，锁定全部已有内容与权重。模型协议、语言算法、候选容量及6144索引预算不变；日语宽前缀保护旧词与后页选择。合成故障、全推荐包兼容和GTK的确切执行范围及失败记录见开发记录，不外推个人安装、实体键盘、完整日语形态分析或实模质量，评分不变。"
+    },
+    {
+      "id": "E-daily-followup",
+      "kind": "historical_run",
+      "paths": ["DEVELOPMENT.md", "docs/functional-network.md", "data/lexicons/README.md"],
+      "scope": "2026-10-07中英日常进度/接续与日语消息协作；独立词库、旧序指纹和有界候选分页",
+      "note": "中英各24语境48句、中文64读音，英文仅having/stuck两索引；日语32读音16语境32句。独立期望先复现缺口，保留全部旧数据/排名指纹、候选容量和6144索引预算，不绑定模型或改解码排序。新日语测试两个歧义前缀的过强首屏前提由实际候选诊断纠正，完整读音仍首屏、宽前缀严格验证后页选择与旧优先级。模型失败仍是合成提供器；确切执行及失败日志见开发记录，不外推个人安装、实体键盘、通用日语形态分析或真实模型质量，评分不变。"
     },
     {
       "id": "E-japanese-choices",
@@ -1301,8 +1364,20 @@
         "DEVELOPMENT.md",
         "docs/functional-network.md"
       ],
-      "scope": "2026-10-04恢复原私有IBus崩溃现场；Ubuntu26.04/IBus1.5.34rc2/GLib2.88，非生产修复",
+      "scope": "2026-10-04恢复原私有IBus崩溃现场及10-07有界GDB sender诊断；Ubuntu26.04/IBus1.5.34rc2/GLib2.88，非上游根因修复",
       "note": "原PID/时间/socket精确匹配：已确认daemon SIGABRT；无效sender导致NULL请求入队后GIO断言。具体sender失效原因仍待证，连接名称生命周期竞态仅假设。无Suzaku的600连接/38400合法请求及完整inline门禁通过但未复现；同bus重复N45两轮因面板事件缺失停止、daemon存活，非同故障。后续Japanese reading boundaries完整默认门禁在托盘激活阶段再次出现同样断言，daemon PID3441209/-6、bus断开；未到达日语用例，保留失败及新Apport报告，未以专项绿灯替代全门禁。未安装/升级依赖，原始core未入库，评分未提升。"
+    },
+    {
+      "id": "E-daemon-probe",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "src/linux/ibus_engine_bridge.c",
+        "src/platform/linux_ibus_host.rs",
+        "scripts/test-native-probe-teardown.py"
+      ],
+      "scope": "10-07原生探测context最终释放后、bus关闭前的同连接应答确认",
+      "note": "两次独立有界GDB诊断在invocation sender校验失败，第二次定位RemoveMatch与同连接closed处理；不是原setter警告复现。context finalize才异步移除订阅，旧restore应答在此前；现于finalize后250ms有界同连接确认，失败stage23不盖原错。具体红/绿顺序合同与原生执行见开发记录；不替换CLI、增sleep或改系统库，不代表全部上游sender生命周期风险已解决，评分不变。"
     },
     {
       "id": "E-recovery-fixture",
@@ -1384,6 +1459,92 @@
       ],
       "scope": "中英作者样例、源码常规回归和私有应用门禁",
       "note": "固定词条回归不是独立语料准确率；新增数据不提升开放生成能力的证据。"
+    },
+    {
+      "id": "E-input-boundaries",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/shortcuts.md",
+        "scripts/test-linux-gtk3.py",
+        "scripts/test-gtk3-event-observer.py"
+      ],
+      "scope": "10-07核心/IBus/原生面板及私有GTK3逐键导航边界、独立编辑器无效退格",
+      "note": "相对边界不隐式锁候选、取消预测、丢失采用撤回或发布多余动作；明确同项选择及真实移动保留原语义。本地起点/空稿退格保留补全撤回、预测和翻译。修复前红灯与实际执行见开发记录；没有新全局快捷键、个人安装、真人舒适度或实模质量验收，评分不变。"
+    },
+    {
+      "id": "E-compose-quote-boundaries",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "src/linux/ibus_compose.inc.c",
+        "src/ime/preferences.rs",
+        "tests/preference_learning.rs",
+        "scripts/test-native-sync.py"
+      ],
+      "scope": "10-07采用后Compose取消/被拒绝控制字符/真实编辑与英文结束双引号偏好边界",
+      "note": "Compose未写正文不清撤回，有效或保留打印字符的真实编辑仍清除旧撤回；英文右双引号与ASCII双引号保留待确认偏好，撇号/所有格/缩写保持非词界。私有IBus与增量偏好红测、修复后实际执行见开发记录；不改布局/候选预算/缓存持久性，不代表真人键盘或模型质量，评分不变。"
+    },
+    {
+      "id": "E-x11-event-clicks",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "vendor/winit/NOTICE-SUZAKU.md",
+        "vendor/winit/src/event.rs",
+        "vendor/winit/src/platform_impl/linux/x11/event_processor.rs",
+        "vendor/winit/src/platform_impl/linux/x11/suzaku_button_position.rs",
+        "tests/x11_button_coordinates.rs",
+        "src/bin/panel/controller.rs",
+        "src/bin/panel/input.rs",
+        "src/bin/panel/windowing_native_test.rs",
+        "src/bin/panel/candidates_native_test.rs",
+        "scripts/test-linux-native-candidates.py",
+        "scripts/package-linux.sh",
+        "scripts/test-linux-package.sh"
+      ],
+      "scope": "10-07 X11同按钮事件坐标、实际移窗/缩放静止连点、排队拖动、已呈现键盘与补全释放保护",
+      "note": "独立no-WM Xvfb移窗红测实际w却输入z，固定winit0.30.13传同XI2按钮位置，不轮询后来pointer快照、不新建input hook/IO；按钮位置不伪装motion，真实排队拖动不再松开移两次。共享purehelper及实际窗口default/sync执行、各次UI失败和最终范围见开发记录。尺寸/DPI边界取消普通press，已有相同kind/rect键盘可连续输入；相同刷新只保留原已按下补全的完整edit/seed/language/rect/truncation一致释放许可，候选不fallback新索引或新press。路径依赖license/notice纳入包内容要求，但非当前artifact、个人安装、物理触屏、Windows/Wayland完整验收或远端CI资格；评分不变。"
+    },
+    {
+      "id": "E-screen-keys-history",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "src/platform/linux_ime_sync.rs",
+        "src/linux/ibus_companion.inc.c",
+        "src/bin/panel/native_sync.rs",
+        "src/bin/panel/native_typing.rs",
+        "src/bin/panel/native_action_audit_test.rs",
+        "src/ime/gpu/panel_scene_native_candidates_block.rs",
+        "src/ime/gpu/scene_basics.rs",
+        "tests/commit_history.rs",
+        "scripts/test-native-sync.py",
+        "scripts/test-linux-native-candidates.py"
+      ],
+      "scope": "10-07宿主语义屏幕退格/空格、确认后续写与累计正文UTF-8撤销位置",
+      "note": "屏幕键不再猜测选词撤回或忽略主动选择，E动作同连接回完整结果、原有预算内拒绝不确认/过期/隐私并禁止重放；断线立即恢复保留同目标公开前缀，选中行冲突不放行排队空格。真实连点红测后语义等待保留只读占位、双hit禁用，不缩键盘；非通用X11移窗坐标修复。Compose与Unicode对照、异步队列和实际绘制屏幕键执行分别见开发记录。撤销历史只存字节位置，保留无限深度与exact join，正文仍线性保留；非全程序内存上限、真人输入、个人安装或发布资格，评分不变。"
+    },
+    {
+      "id": "E-lexicon-index",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "src/languages/english.rs",
+        "src/languages/chinese.rs"
+      ],
+      "scope": "10-07中英只读词库热路径索引及全预设线性等价回归",
+      "note": "英文句子按首ASCII字母稳定分桶，保留原顺序与重复项；中文Word集合只改变精确成员查询，不改变解码与同音排序。逐词起点、大小写/撇号/空白及全读音/续句对比旧线性谓词，具体执行与原生阶段计时见开发记录。索引仅保存冻结词库，不缓存输入；不扩词库或提高成熟度，非个人安装/实模质量/远端CI资格。"
+    },
+    {
+      "id": "E-native-budget",
+      "kind": "historical_run",
+      "paths": [
+        "DEVELOPMENT.md",
+        "docs/functional-network.md"
+      ],
+      "scope": "10-07 IBus超预算整稿解码、原生模型夹具重复等待、阶段耗时归因与0.8.3门禁超时",
+      "note": "保留CI37462265391的120秒失败；确定性插件调用红灯、分语言72条字节边界与完整门禁实际执行见开发记录。截止时间、原有场景/断言/负向观察不变；非已修复daemon崩溃、个人安装、实模质量或包交付证据，评分不变。"
     },
     {
       "id": "E-prediction-preservation",
@@ -1577,6 +1738,7 @@
       ],
       "evidence": [
         "E-daemon-abort",
+        "E-daemon-probe",
         "E-recovery-fixture",
         "E-lifecycle",
         "E-linux-delivery"
@@ -1658,6 +1820,7 @@
         2
       ],
       "evidence": [
+        "E-compose-quote-boundaries",
         "E-linux-delivery"
       ],
       "limit": "真实xkbcommon组合；不能覆盖所有布局；缺表/控制字符不伪造输出。"
@@ -1690,9 +1853,10 @@
       ],
       "evidence": [
         "E-input",
+        "E-input-boundaries",
         "E-linux-delivery"
       ],
-      "limit": "数字为当前页槽位；Alt数字/小键盘字面输入；长按采用只执行一次。"
+      "limit": "数字为当前页槽位；Alt数字/小键盘字面输入；长按采用只执行一次；相对导航到首末边界不隐式选择或取消预测。"
     },
     {
       "a": "A01",
@@ -1706,6 +1870,9 @@
       ],
       "evidence": [
         "E-input",
+        "E-input-boundaries",
+        "E-compose-quote-boundaries",
+        "E-screen-keys-history",
         "E-linux-delivery"
       ],
       "limit": "仅最近一次采用撤回；不修改已提交给外部应用的历史。"
@@ -1722,6 +1889,7 @@
       ],
       "evidence": [
         "E-current",
+        "E-screen-keys-history",
         "E-linux-delivery"
       ],
       "limit": "只有明确提交才结束草稿；新目标使旧动作失效；见面板实现切片。"
@@ -1768,11 +1936,14 @@
         2
       ],
       "evidence": [
+        "E-daily-clarification",
         "E-current",
         "E-language",
         "E-prose-paging",
         "E-daily-objects",
         "E-daily-choices",
+        "E-daily-followup",
+        "E-daily-leisure",
         "E-linux-delivery"
       ],
       "limit": "有限词表；大小写/撇号保真；不强制纠错URL、标识符。采用后词元变化的学习边界见F66/preference，不属于词库实现。"
@@ -1788,12 +1959,16 @@
         2
       ],
       "evidence": [
+        "E-daily-clarification",
+        "E-lexicon-index",
         "E-prediction-preservation",
         "E-current",
         "E-language",
         "E-prose-paging",
         "E-daily-objects",
         "E-daily-choices",
+        "E-daily-followup",
+        "E-daily-leisure",
         "E-linux-delivery"
       ],
       "limit": "有界作者搭配，不是通用语法/拼写纠错；句子语境不跨行。"
@@ -1809,11 +1984,15 @@
         2
       ],
       "evidence": [
+        "E-daily-clarification",
+        "E-lexicon-index",
         "E-chinese-partial-spacing",
         "E-current",
         "E-language",
         "E-daily-objects",
         "E-daily-choices",
+        "E-daily-followup",
+        "E-daily-leisure",
         "E-linux-delivery"
       ],
       "limit": "有限词表、声调/音节边界；未知输入保原文，非完整长句统计拼音引擎。"
@@ -1829,8 +2008,11 @@
         2
       ],
       "evidence": [
+        "E-daily-clarification",
         "E-japanese-boundaries",
         "E-japanese-choices",
+        "E-daily-followup",
+        "E-daily-leisure",
         "E-japanese-progress",
         "E-japanese-daily",
         "E-linux-delivery"
@@ -2015,9 +2197,10 @@
       ],
       "evidence": [
         "E-native",
+        "E-screen-keys-history",
         "E-linux-delivery"
       ],
-      "limit": "单在途替换；ACK+匹配快照齐备才续写；拒绝/超时不自动重放。"
+      "limit": "单在途编辑；文字替换等ACK+匹配快照，语义退格/空格等同连接完整权威结果才续写；拒绝/超时不自动重放。"
     },
     {
       "a": "A06",
@@ -2030,9 +2213,10 @@
         2
       ],
       "evidence": [
+        "E-input-boundaries",
         "E-linux-delivery"
       ],
-      "limit": "面板独立引擎；发送失败保稿；不能把本地成功当作外部交付。"
+      "limit": "面板独立引擎；发送失败保稿；起点/空稿退格不清撤回或取消派生结果；不能把本地成功当作外部交付。"
     },
     {
       "a": "A06",
@@ -2110,6 +2294,7 @@
         2
       ],
       "evidence": [
+        "E-x11-event-clicks",
         "E-pointer-preference",
         "E-linux-delivery"
       ],
@@ -2126,6 +2311,7 @@
         2
       ],
       "evidence": [
+        "E-x11-event-clicks",
         "E-linux-delivery"
       ],
       "limit": "按钮/画布不是拖动区；无焦点路径以X11/XWayland为主。"
@@ -2380,6 +2566,7 @@
       ],
       "evidence": [
         "E-daemon-abort",
+        "E-daemon-probe",
         "E-recovery-fixture",
         "E-current",
         "E-package",
@@ -2443,6 +2630,7 @@
         2
       ],
       "evidence": [
+        "E-family-packs",
         "E-linux-delivery"
       ],
       "limit": "按语言/主题纯数据打包；不执行插件代码/联网；许可声明不是验签。"
@@ -2458,6 +2646,7 @@
         2
       ],
       "evidence": [
+        "E-family-packs",
         "E-current",
         "E-linux-delivery"
       ],
@@ -2474,6 +2663,7 @@
         2
       ],
       "evidence": [
+        "E-family-packs",
         "E-linux-delivery"
       ],
       "limit": "宿主和面板各自加载，二者都须重启；无热更新/GUI管理/市场。"
@@ -2524,8 +2714,10 @@
         2
       ],
       "evidence": [
+        "E-x11-event-clicks",
         "E-current",
         "E-native",
+        "E-screen-keys-history",
         "E-linux-delivery"
       ],
       "limit": "候选/键盘底部布局，设置可选；未物理触屏与桌面软键盘避让验收。"
@@ -2560,6 +2752,7 @@
       "evidence": [
         "E-long",
         "E-window-boundary",
+        "E-native-budget",
         "E-prose-paging",
         "E-linux-delivery"
       ],
@@ -2577,9 +2770,10 @@
       ],
       "evidence": [
         "E-current",
+        "E-native-budget",
         "E-linux-delivery"
       ],
-      "limit": "8192字节单项/65536字节帧；真实候选列表裁剪，不能只截镜像。"
+      "limit": "8192字节单项/65536字节帧；真实候选列表裁剪，不能只截镜像；无局部窗口的超预算IBus草稿在整稿解码前采用原文回退，见E-native-budget。"
     },
     {
       "a": "A02",
@@ -2593,6 +2787,7 @@
       ],
       "evidence": [
         "E-preference",
+        "E-compose-quote-boundaries",
         "E-pointer-preference",
         "E-prose-paging",
         "E-linux-delivery"
@@ -2610,11 +2805,14 @@
         2
       ],
       "evidence": [
+        "E-daily-clarification",
         "E-chinese-partial-spacing",
         "E-japanese-boundaries",
         "E-daily-objects",
         "E-daily-choices",
         "E-japanese-choices",
+        "E-daily-followup",
+        "E-daily-leisure",
         "E-japanese-progress",
         "E-japanese-daily",
         "E-linux-delivery"
@@ -2760,6 +2958,7 @@
         2
       ],
       "evidence": [
+        "E-family-packs",
         "E-current",
         "E-linux-delivery"
       ],

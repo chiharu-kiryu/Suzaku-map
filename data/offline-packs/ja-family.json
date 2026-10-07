@@ -1,0 +1,57 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.ja.family",
+    "version": "1.0.0",
+    "name": "家族 · 暮らし",
+    "description": "家族との連絡、訪問、家の中の場所と家事に使う小さな会話集。",
+    "language": "ja",
+    "topics": ["family", "home"],
+    "license": "MIT",
+    "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1,
+    "language": "ja",
+    "readings": [
+      {"reading": "かぞく", "text": "家族", "kind": "word"},
+      {"reading": "ちち", "text": "父", "kind": "word"},
+      {"reading": "はは", "text": "母", "kind": "word"},
+      {"reading": "あに", "text": "兄", "kind": "word"},
+      {"reading": "あね", "text": "姉", "kind": "word"},
+      {"reading": "おとうと", "text": "弟", "kind": "word"},
+      {"reading": "いもうと", "text": "妹", "kind": "word"},
+      {"reading": "そふ", "text": "祖父", "kind": "word"},
+      {"reading": "そぼ", "text": "祖母", "kind": "word"},
+      {"reading": "しんせき", "text": "親戚", "kind": "word"},
+      {"reading": "ほうもん", "text": "訪問", "kind": "word"},
+      {"reading": "じっか", "text": "実家", "kind": "word"},
+      {"reading": "げんかん", "text": "玄関", "kind": "word"},
+      {"reading": "だいどころ", "text": "台所", "kind": "word"},
+      {"reading": "いま", "text": "居間", "kind": "word"},
+      {"reading": "しょくたく", "text": "食卓", "kind": "word"},
+      {"reading": "そうじ", "text": "掃除", "kind": "word"},
+      {"reading": "せんたく", "text": "洗濯", "kind": "word"},
+      {"reading": "せいり", "text": "整理", "kind": "word"},
+      {"reading": "ごみばこ", "text": "ごみ箱", "kind": "word"},
+      {"reading": "まど", "text": "窓", "kind": "word"},
+      {"reading": "とびら", "text": "扉", "kind": "word"},
+      {"reading": "ふとん", "text": "布団", "kind": "word"},
+      {"reading": "まくら", "text": "枕", "kind": "word"}
+    ],
+    "continuations": [
+      ["家族", ["家族で一緒に出かけませんか。", "家族の予定を確認しましょう。"]],
+      ["父", ["父に後で電話します。", "父と週末に会う予定です。"]],
+      ["母", ["母によろしく伝えてください。", "母と一緒に買い物に行きます。"]],
+      ["祖父", ["祖父に会いに行きたいです。", "祖父とゆっくり話したいです。"]],
+      ["祖母", ["祖母に後で連絡します。", "祖母と一緒に写真を見たいです。"]],
+      ["親戚", ["親戚に会う予定です。", "親戚が来るので、部屋を片付けます。"]],
+      ["訪問", ["訪問する時間を教えてください。", "訪問する前に連絡します。"]],
+      ["実家", ["実家に週末帰る予定です。", "実家で家族とゆっくり過ごします。"]],
+      ["玄関", ["玄関で待っています。", "玄関の靴をそろえてください。"]],
+      ["台所", ["台所で一緒に準備しましょう。", "台所を使ったら片付けましょう。"]],
+      ["居間", ["居間で一緒に話しましょう。", "居間の窓を開けてもいいですか。"]],
+      ["掃除", ["掃除を一緒にしませんか。", "掃除が終わったら休みましょう。"]]
+    ]
+  }
+}

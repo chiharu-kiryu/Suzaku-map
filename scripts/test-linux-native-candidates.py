@@ -30,6 +30,7 @@ IBus = qa.IBus
 bus = x = window = view = xid = companion = None
 insertions = []
 events = deque(maxlen=24)
+touch_events = deque(maxlen=24)
 committed = ""
 passed = 0
 last_action = None
@@ -135,7 +136,8 @@ def show_owned_main():
 
 def click_control(kind, window_kind="Main"):
     global last_action
-    wait(lambda: control_rect(window_frame(window_kind), kind),
+    wait(lambda: (frame := window_frame(window_kind)).get("viewport_settled") is True
+         and control_rect(frame, kind),
          f"actual {window_kind} control is presented: {kind}")
     assert panel_window_mapped(window_kind), \
         ("refusing a historical hit target from a hidden panel", window_kind, kind)
@@ -147,6 +149,10 @@ def click_control(kind, window_kind="Main"):
     frame = window_frame(window_kind)
     point = rect_center(frame, control_rect(frame, kind))
     last_action = {"control": kind, "window": window_kind, "pointer": point}
+    if kind in ("VirtualKeyboardKey(Backspace)", "VirtualKeyboardKey(Space)"):
+        # Preserve the exact log frame used to choose this point, which may
+        # differ from a later diagnostic frame during asynchronous relayout.
+        last_action.update(host_before=qa.watch.latest, frame_before=frame)
     assert x.xt.XTestFakeMotionEvent(x.display, -1, *point, 0)
     assert x.xt.XTestFakeButtonEvent(x.display, 1, 1, 0)
     assert x.xt.XTestFakeButtonEvent(x.display, 1, 0, 0)
@@ -188,7 +194,11 @@ def set_layout_from_settings(mode):
     wait(lambda: "Map State: IsViewable" not in qa.subprocess.run(
         ["xwininfo", "-id", str(settings_xid)], capture_output=True, text=True,
         timeout=2).stdout, "settings close control hides its window")
-    x.focus(xid)
+    # Restore the owned editor's keyboard focus without raising it over the
+    # companion. This no-WM fixture cannot maintain compositor stacking layers;
+    # the general app-launch focus helper also raises its target window.
+    assert x.x.XSetInputFocus(x.display, xid, 1, 0)
+    x.x.XSync(x.display, 0)
     view.grab_focus()
     wait(lambda: owned_focus() and seed_is("") and
          window_frame("Main").get("layout_mode") == effective and
@@ -305,8 +315,10 @@ def page_ready(start=None):
     frame = qa.companion_frame()
     page = frame.get("native_page")
     host = qa.watch.latest
-    if (not page or page["busy"] or frame.get("native_revision") != host["revision"] or
+    if (not page or page["busy"] or frame.get("viewport_settled") is not True or
+            frame.get("native_revision") != host["revision"] or
             frame.get("native_context") != host["context"] or
+            frame.get("native_cursor") != host.get("cursor") or
             page["selected"] != host["selected"] or frame.get("seed") != host["seed"]):
         return False
     # RenderScene.draft_text is the selected candidate preview, not the raw
@@ -468,6 +480,22 @@ def candidate_budget_checks():
 def composition_identity(frame):
     # Geometry is independent from composition revision/selection/candidates.
     return {key: value for key, value in frame.items() if key != "cursor"}
+
+
+def await_stationary_bottom_frame(identity, position, label):
+    # A same-revision cursor update can reach the host before the panel. Wait
+    # for its frame ACK, but never tolerate a moved dock or changed draft while
+    # waiting. The subsequent negative stability assertion remains unchanged.
+    def ready():
+        assert composition_identity(qa.watch.latest) == identity, label
+        observed = window_frame("Main")
+        assert observed.get("position") == position, (label, observed, position)
+        frame = page_ready()
+        if frame:
+            assert frame["position"] == position, (label, frame, position)
+        return frame
+
+    wait(ready, label + ": current cursor frame acknowledged without movement")
 
 
 def relocate_owned_input(position):
@@ -682,6 +710,91 @@ def bottom_geometry_checks():
     expanded = wait_bottom(expanded=True)
     passed_case("actual bottom touch key continues the IBus draft without submitting or losing focus")
 
+    def observe_touch(stage, control, expected):
+        # Read-only evidence from this owned synthetic window. Keep failures
+        # diagnostic-only so an observation error cannot mask the first test
+        # assertion; do not wait for, retry, or normalize geometry here.
+        observation = {"stage": stage, "control": control, "expected_seed": expected}
+        try:
+            observation["host"] = qa.watch.latest
+            observation["presented"] = window_frame("Main")
+            observation["key_rects"] = [item for item in observation["presented"].get("controls", [])
+                                        if item["kind"] in ("VirtualKeyboardKey(Backspace)",
+                                                            "VirtualKeyboardKey(Space)",
+                                                            "VirtualKeyboardKey(Character('p'))")]
+            owned_panel = panel_window_id("Main")
+            observation["panel_window"] = owned_panel
+            if owned_panel is not None:
+                result = qa.subprocess.run(["xwininfo", "-id", str(owned_panel)],
+                                           capture_output=True, text=True, timeout=2)
+                geometry = {"returncode": result.returncode}
+                fields = {"Absolute upper-left X": "x", "Absolute upper-left Y": "y",
+                          "Width": "width", "Height": "height", "Border width": "border"}
+                for line in result.stdout.splitlines():
+                    name, separator, value = line.strip().partition(":")
+                    if separator and name in fields:
+                        geometry[fields[name]] = int(value.strip())
+                    elif separator and name == "Map State":
+                        geometry["map_state"] = value.strip()
+                if result.returncode:
+                    geometry["stderr"] = result.stderr[:1024]
+                observation["server_geometry"] = geometry
+            if stage == "after":
+                observation["click"] = last_action
+        except Exception as error:
+            observation["diagnostic_error"] = f"{type(error).__name__}: {error}"
+        touch_events.append(observation)
+        try:
+            print("NATIVE TOUCH DIAGNOSTIC:", json.dumps(observation, ensure_ascii=False), flush=True)
+        except Exception:
+            pass  # Retain the observation for the ordinary failure diagnostic.
+
+    def touch_edit(control, expected):
+        before = qa.watch.latest
+        observe_touch("before", control, expected)
+        try:
+            click_control("VirtualKeyboardKey(" + control + ")")
+            wait(lambda: seed_is(expected) and qa.watch.latest["revision"] > before["revision"],
+                 "actual touch " + control + " produced one exact host draft edit")
+            presented = wait_bottom(expanded=True)
+            assert seed_is(expected), ("screen edit changed again before presentation", control, qa.watch.latest)
+            for field in ("host", "context", "language", "focused", "private"):
+                assert qa.watch.latest[field] == before[field], (control, field, before, qa.watch.latest)
+            expect_unchanged_buffer()
+            assert not insertions, ("screen edit inserted application text", control, insertions)
+            return presented
+        finally:
+            observe_touch("after", control, expected)
+
+    # Exercise the actual drawn semantic controls, including consecutive taps
+    # of the same key. Each tap waits for the host and rendered-page ACK, not a
+    # guessed local replacement or a compensating second operation.
+    for control, expected in [("Space", "hel "), ("Space", "hel  "),
+                              ("Backspace", "hel "), ("Backspace", "hel")]:
+        expanded = touch_edit(control, expected)
+    revision = qa.watch.latest["revision"]
+    stable(lambda: seed_is("hel") and qa.watch.latest["revision"] == revision and not insertions,
+           "screen Space/Backspace sequence duplicated an edit or submitted text")
+    passed_case("actual screen Space/Backspace continue and delete the exact host draft once per tap without GTK insertion")
+
+    # Adopt through the existing private XTest -> GTK/IBus number path. The
+    # first screen Backspace must use the host's spelling undo (hello -> hel),
+    # while the next tap performs ordinary deletion (hel -> he).
+    candidate = next(item for item in expanded["native_page"]["candidates"] if item["text"] == "hello")
+    key(IBus.KEY_1 + candidate["number"] - 1, expect="hello")
+    wait_bottom(expanded=True)
+    expect_unchanged_buffer()
+    assert not insertions, "editable number adoption inserted application text"
+    touch_edit("Backspace", "hel")
+    touch_edit("Backspace", "he")
+    revision = qa.watch.latest["revision"]
+    stable(lambda: seed_is("he") and qa.watch.latest["revision"] == revision and not insertions,
+           "screen adoption undo was repeated, guessed as scalar deletion, or committed")
+    passed_case("actual screen Backspace restores host-owned adoption spelling once, then deletes one scalar without committing")
+    cancel()
+    draft()
+    expanded = wait_bottom(expanded=True)
+
     candidate = expanded["native_page"]["candidates"][0]
     pointer(expanded, candidate["rect"])
     committed = candidate["text"]
@@ -752,6 +865,8 @@ def bottom_geometry_checks():
     position = folded["position"]
     for destination in [(200, 100), (screen_size[0] - 120, screen_size[1] - 90)]:
         relocate_owned_input(destination)
+        await_stationary_bottom_frame(identity, position,
+                                      "same-monitor caret motion moved the dock or changed its draft")
         stable(lambda: composition_identity(qa.watch.latest) == identity and
                page_ready() and page_ready()["position"] == position,
                "same-monitor caret motion moved the dock or changed its draft")
@@ -787,6 +902,328 @@ def restore_follow_layout():
     passed_case("actual settings switch restores floating width and reported-caret following")
 
 
+def stationary_pointer_checks(drag_only=False):
+    """Real X11 configure events must not leave mouse buttons using old client coordinates."""
+    global last_action
+    assert seed_is("") and owned_focus() and not insertions
+    # Bind only this fixture's already-open, validated private X display.
+    prototypes = {
+        "XResizeWindow": ([C.c_void_p, C.c_ulong, C.c_uint, C.c_uint], C.c_int),
+        "XGetGeometry": ([C.c_void_p, C.c_ulong, C.POINTER(C.c_ulong), C.POINTER(C.c_int),
+                          C.POINTER(C.c_int), C.POINTER(C.c_uint), C.POINTER(C.c_uint),
+                          C.POINTER(C.c_uint), C.POINTER(C.c_uint)], C.c_int),
+        "XTranslateCoordinates": ([C.c_void_p, C.c_ulong, C.c_ulong, C.c_int, C.c_int,
+                                   C.POINTER(C.c_int), C.POINTER(C.c_int), C.POINTER(C.c_ulong)], C.c_int),
+        "XQueryPointer": ([C.c_void_p, C.c_ulong, C.POINTER(C.c_ulong), C.POINTER(C.c_ulong),
+                           C.POINTER(C.c_int), C.POINTER(C.c_int), C.POINTER(C.c_int),
+                           C.POINTER(C.c_int), C.POINTER(C.c_uint)], C.c_int),
+    }
+    for name, (arguments, result) in prototypes.items():
+        getattr(x.x, name).argtypes = arguments
+        getattr(x.x, name).restype = result
+    owned_panel = panel_window_id("Main")
+    assert owned_panel is not None and owned_panel != xid
+
+    def server_state():
+        root, child = C.c_ulong(), C.c_ulong()
+        left, top = C.c_int(), C.c_int()
+        width, height, border, depth = C.c_uint(), C.c_uint(), C.c_uint(), C.c_uint()
+        assert x.x.XGetGeometry(x.display, owned_panel, C.byref(root), C.byref(left), C.byref(top),
+                               C.byref(width), C.byref(height), C.byref(border), C.byref(depth))
+        assert x.x.XTranslateCoordinates(x.display, owned_panel, x.root, 0, 0,
+                                        C.byref(left), C.byref(top), C.byref(child))
+        root_x, root_y, local_x, local_y, mask = C.c_int(), C.c_int(), C.c_int(), C.c_int(), C.c_uint()
+        assert x.x.XQueryPointer(x.display, owned_panel, C.byref(root), C.byref(child),
+                                C.byref(root_x), C.byref(root_y), C.byref(local_x), C.byref(local_y),
+                                C.byref(mask))
+        pointer_window = C.c_ulong()
+        observed_root_x, observed_root_y = C.c_int(), C.c_int()
+        root_local_x, root_local_y, root_mask = C.c_int(), C.c_int(), C.c_uint()
+        assert x.x.XQueryPointer(x.display, x.root, C.byref(root), C.byref(pointer_window),
+                                C.byref(observed_root_x), C.byref(observed_root_y),
+                                C.byref(root_local_x), C.byref(root_local_y), C.byref(root_mask))
+        # A root query observes the topmost actual recipient, not just a point
+        # translated into a potentially covered panel's coordinate system.
+        assert [observed_root_x.value, observed_root_y.value] == [root_x.value, root_y.value], \
+            "pointer moved between diagnostic observations"
+        return {"window": owned_panel, "position": [left.value, top.value],
+                "size": [width.value, height.value], "border": border.value,
+                "pointer_root": [root_x.value, root_y.value], "pointer_local": [local_x.value, local_y.value],
+                "pointer_child": child.value, "pointer_window": pointer_window.value, "pointer_mask": mask.value}
+
+    def ready_geometry(width=None):
+        frame = page_ready()
+        if not frame or frame.get("layout_mode") != "follow-caret" or not frame.get("input_expanded"):
+            return False
+        actual = server_state()
+        if (frame["position"] != actual["position"] or frame["size"] != actual["size"]
+                or actual["border"] != 0 or (width is not None and frame["size"][0] != width)):
+            return False
+        return frame
+
+    def presented(width=None):
+        wait(lambda: ready_geometry(width), "stationary-pointer layout agrees with actual X server geometry")
+        frame = page()
+        actual = server_state()
+        assert frame["position"] == actual["position"] and frame["size"] == actual["size"]
+        return frame
+
+    def resize(width):
+        before = composition_identity(qa.watch.latest)
+        assert x.x.XResizeWindow(x.display, owned_panel, width, server_state()["size"][1])
+        x.x.XSync(x.display, 0)
+        frame = presented(width)
+        assert composition_identity(qa.watch.latest) == before
+        return frame
+
+    def move_anchor(y, margin):
+        before = composition_identity(qa.watch.latest)
+        assert x.x.XMoveWindow(x.display, xid, 60, y)
+        x.x.XSync(x.display, 0)
+        # Fixed margins let both the planning and exercised move produce the
+        # same real GTK caret, without synthetic IBus cursor messages.
+        view.set_left_margin(margin)
+        wait(lambda: (cursor := qa.watch.latest.get("cursor")) is not None
+             and cursor["x"] == 60 + margin and cursor["y"] == y + view.get_top_margin(),
+             "stationary-pointer owned GTK movement reports its exact caret")
+        assert composition_identity(qa.watch.latest) == before
+        return presented()
+
+    def letters(frame):
+        return {character: control_rect(frame, f"VirtualKeyboardKey(Character('{character}'))")
+                for character in "abcdefghijklmnopqrstuvwxyz"}
+
+    def letter_at(frame, point):
+        matches = [character for character, rect in letters(frame).items() if rect is not None
+                   and rect[0] + 2 < point[0] < rect[0] + rect[2] - 2
+                   and rect[1] + 2 < point[1] < rect[1] + rect[3] - 2]
+        assert len(matches) <= 1, ("overlapping actual keyboard targets", point, matches)
+        return matches[0] if matches else None
+
+    def plan_point(original, changed):
+        # Select from already observed geometries, not by retrying input. The
+        # same root point must hit different letters under current vs cached
+        # client coordinates after the real configure event.
+        for character, rect in reversed(list(letters(original).items())):
+            if rect is None:
+                continue
+            for fraction_y in (.5, .25, .75):
+                for fraction_x in (.5, .25, .75):
+                    point = [round(original["position"][0] + rect[0] + rect[2] * fraction_x),
+                             round(original["position"][1] + rect[1] + rect[3] * fraction_y)]
+                    old_local = [point[index] - original["position"][index] for index in (0, 1)]
+                    new_local = [point[index] - changed["position"][index] for index in (0, 1)]
+                    current, stale = letter_at(changed, new_local), letter_at(changed, old_local)
+                    if letter_at(original, old_local) == character and current and stale and current != stale:
+                        return point, old_local, character, current, stale
+        raise AssertionError(("configure fixture has no distinct current/stale character hit", original, changed))
+
+    def record(stage, case, **details):
+        observation = {"stage": stage, "case": case, "host": qa.watch.latest, **details}
+        try:
+            observation.update(presented=window_frame("Main"), server=server_state())
+        except Exception as error:
+            observation["diagnostic_error"] = f"{type(error).__name__}: {error}"
+        touch_events.append(observation)
+        try:
+            print("STATIONARY POINTER DIAGNOSTIC:", json.dumps(observation, ensure_ascii=False), flush=True)
+        except Exception:
+            pass  # A finally diagnostic must not replace the actual input failure.
+
+    def click_without_motion(point, case):
+        global last_action
+        assert owned_focus() and companion.poll() is None
+        actual = server_state()
+        assert actual["pointer_root"] == point, ("pointer moved before button-only click", actual, point)
+        assert actual["pointer_window"] == owned_panel, ("button-only click would hit a covered panel", actual)
+        last_action = {"stationary_pointer": case, "pointer": point, "server": actual,
+                       "host_before": qa.watch.latest, "frame_before": window_frame("Main")}
+        assert x.xt.XTestFakeButtonEvent(x.display, 1, 1, 0)
+        assert x.xt.XTestFakeButtonEvent(x.display, 1, 0, 0)
+        x.x.XSync(x.display, 0)
+        pump()
+
+    def exact_edit(before, expected, label):
+        wait(lambda: seed_is(expected) and qa.watch.latest["revision"] > before["revision"], label)
+        frame = presented()
+        assert seed_is(expected) and qa.watch.latest["host"] == before["host"]
+        assert qa.watch.latest["context"] == before["context"] and not insertions
+        expect_unchanged_buffer()
+        return frame
+
+    def queued_drag_case():
+        global last_action
+        saved = draft("qzxv")
+        saved_margin = view.get_left_margin()
+        assert tuple(window.get_position()) == (60, 40), "drag fixture must start at its owned restored GTK position"
+        if not saved["input_expanded"]:
+            click_control("InputModesToggle")
+        resize(900)
+        original = move_anchor(40, 16)
+        before = qa.watch.latest
+        drag_rect = next(item["rect"] for item in original["controls"]
+                         if item["kind"] == "DragWindow" and item["rect"][2] < original["size"][0] / 2
+                         and item["rect"][3] < 40)
+        start_point = list(rect_center(original, drag_rect))
+        delta = [12, 18]
+        end_point = [start_point[index] + delta[index] for index in (0, 1)]
+        expected_position = [original["position"][index] + delta[index] for index in (0, 1)]
+        double_position = [original["position"][index] + 2 * delta[index] for index in (0, 1)]
+
+        def hit_at_root(point):
+            local = [point[index] - original["position"][index] for index in (0, 1)]
+            return next((item["kind"] for item in reversed(original["controls"])
+                         if item["rect"][0] <= local[0] < item["rect"][0] + item["rect"][2]
+                         and item["rect"][1] <= local[1] < item["rect"][1] + item["rect"][3]), None)
+
+        # Both the press and even an unadjusted release coordinate are plain
+        # drag background, never a button/candidate or the editable seed.
+        assert hit_at_root(start_point) == hit_at_root(end_point) == "DragWindow"
+        assert all(18 <= double_position[index]
+                   and double_position[index] + original["size"][index] <= screen_size[index] - 18
+                   for index in (0, 1)), "drag and doubled-drag endpoints must not be edge-clamped"
+        last_action = {"queued_nonfocus_drag": True, "pointer_start": start_point, "pointer_end": end_point,
+                       "delta": delta, "expected_position": expected_position, "double_position": double_position,
+                       "host_before": before, "frame_before": original}
+        record("before-drag", "queued nonfocus drag", **last_action)
+        held = False
+        try:
+            assert x.xt.XTestFakeMotionEvent(x.display, -1, *start_point, 0)
+            assert x.xt.XTestFakeButtonEvent(x.display, 1, 1, 0)
+            held = True
+            x.x.XSync(x.display, 0)
+            armed = server_state()
+            assert armed["pointer_root"] == start_point and armed["pointer_mask"] & (1 << 8)
+            assert owned_focus() and qa.watch.latest == before and not insertions
+            record("drag-armed", "queued nonfocus drag", pointer=start_point)
+            # Queue exactly one actual motion and its release together. A
+            # button-coordinate refresh must not act as a second drag motion
+            # using the same old client delta against the already moved origin.
+            assert x.xt.XTestFakeMotionEvent(x.display, -1, *end_point, 0)
+            assert x.xt.XTestFakeButtonEvent(x.display, 1, 0, 0)
+            held = False
+            x.x.XSync(x.display, 0)
+            wait(lambda: (actual := server_state())["position"] == expected_position
+                 and not actual["pointer_mask"] & (1 << 8),
+                 "one queued drag motion plus release must move the real panel by exactly d, not 2d")
+            moved = presented()
+            assert moved["position"] == expected_position and moved["size"] == original["size"]
+            assert qa.watch.latest == before and not insertions
+            stable(lambda: server_state()["position"] == expected_position
+                   and server_state()["pointer_root"] == end_point and qa.watch.latest == before and not insertions,
+                   "queued release duplicated drag motion or changed native input")
+            expect_unchanged_buffer()
+        finally:
+            if held:
+                x.xt.XTestFakeButtonEvent(x.display, 1, 0, 0)
+                x.x.XSync(x.display, 0)
+            record("after-drag", "queued nonfocus drag", pointer_start=start_point, pointer_end=end_point,
+                   delta=delta, expected_position=expected_position, double_position=double_position)
+        passed_case("queued real nonfocus drag motion/release moves exactly once and preserves the full native draft frame")
+        # A fresh owned composition retires manual caret pinning. Restore the
+        # pre-case native anchor/viewport/layout through the normal paths.
+        cancel()
+        draft("qzxv")
+        resize(saved["size"][0])
+        restored = move_anchor(40, saved_margin)
+        if not saved["input_expanded"]:
+            click_control("InputModesToggle")
+            restored = page()
+        wait(lambda: page_ready() and page_ready()["position"] == saved["position"]
+             and page_ready()["size"] == saved["size"], "queued drag restores original native window geometry")
+        restored = page()
+        for field in ("layout_mode", "layout_preference", "input_expanded"):
+            assert restored[field] == saved[field], ("drag layout restoration", field, saved, restored)
+        cancel()
+
+    if drag_only:
+        queued_drag_case()
+        return
+
+    original_margin = view.get_left_margin()
+    original_width = None
+    for case in ("move", "resize"):
+        frame = draft("qzxv")
+        assert panel_window_mapped("Main")
+        assert frame["layout_mode"] == "follow-caret"
+        if not frame["input_expanded"]:
+            click_control("InputModesToggle")
+        if original_width is None:
+            original_width = frame["size"][0]
+        resize(900)
+        original = move_anchor(40, 16)
+        assert len(qa.watch.latest["candidates"]) == 1, "stationary fixture requires a stable literal-only draft"
+        changed = move_anchor(100, 20) if case == "move" else resize(1000)
+        assert changed["position"] != original["position"], "real configure did not move the client origin"
+        if case == "resize":
+            assert changed["size"] != original["size"], "real resize did not change the viewport"
+        restored = move_anchor(40, 16) if case == "move" else resize(900)
+        assert restored["position"] == original["position"] and letters(restored) == letters(original)
+        point, old_local, initial_letter, current_letter, stale_letter = plan_point(original, changed)
+        record("planned", case, pointer=point, old_local=old_local, initial_letter=initial_letter,
+               current_letter=current_letter, stale_letter=stale_letter, changed=changed)
+        assert x.xt.XTestFakeMotionEvent(x.display, -1, *point, 0)
+        x.x.XSync(x.display, 0)
+        before = qa.watch.latest
+        click_without_motion(point, case + " initial")
+        seed = "qzxv" + initial_letter
+        primed = exact_edit(before, seed, "first actual letter click establishes pointer coordinates")
+        assert primed["position"] == original["position"] and letters(primed) == letters(original)
+        before_geometry = composition_identity(qa.watch.latest)
+        moved = move_anchor(100, 20) if case == "move" else resize(1000)
+        assert composition_identity(qa.watch.latest) == before_geometry
+        actual = server_state()
+        assert actual["pointer_root"] == point, "configure unexpectedly moved the physical pointer"
+        assert letter_at(moved, actual["pointer_local"]) == current_letter
+        assert letter_at(moved, old_local) == stale_letter and current_letter != stale_letter
+        record("configured", case, pointer=point, old_local=old_local,
+               current_letter=current_letter, stale_letter=stale_letter)
+        for tap in (1, 2):
+            before = qa.watch.latest
+            seed += current_letter
+            click_without_motion(point, f"{case} stationary tap {tap}")
+            try:
+                exact_edit(before, seed, "stationary click uses the actual post-configure client point")
+            finally:
+                record("after-click", case, tap=tap, expected_seed=seed, pointer=point,
+                       current_letter=current_letter, stale_letter=stale_letter)
+        revision = qa.watch.latest["revision"]
+        stable(lambda: seed_is(seed) and qa.watch.latest["revision"] == revision and not insertions,
+               "stationary repeated clicks duplicated input or committed the draft")
+        passed_case("real X11 " + case + " preserves stationary root pointer and uses current client coordinates for both taps")
+        cancel()
+
+    # Queue different root positions before the client processes either button.
+    # The first click must use its own event coordinates, not a later X server
+    # pointer snapshot belonging to the second click.
+    draft("qzxv")
+    frame = presented()
+    before = qa.watch.latest
+    start = len(qa.watch.frames)
+    points = [rect_center(frame, letters(frame)[character]) for character in ("q", "p")]
+    last_action = {"queued_pointer_clicks": points, "host_before": before, "frame_before": frame}
+    record("before-queued-clicks", "distinct positions", points=points)
+    for point in points:
+        assert x.xt.XTestFakeMotionEvent(x.display, -1, *point, 0)
+        assert x.xt.XTestFakeButtonEvent(x.display, 1, 1, 0)
+        assert x.xt.XTestFakeButtonEvent(x.display, 1, 0, 0)
+    x.x.XSync(x.display, 0)
+    try:
+        exact_edit(before, "qzxvqp", "queued clicks retain each button event's own coordinates")
+        edited = [item["seed"] for item in qa.watch.frames[start:] if item["revision"] > before["revision"]]
+        assert "qzxvq" in edited and "qzxvqp" in edited and edited.index("qzxvq") < edited.index("qzxvqp"), edited
+        stable(lambda: seed_is("qzxvqp") and not insertions, "queued different-position taps duplicated or reordered input")
+    finally:
+        record("after-queued-clicks", "distinct positions", points=points)
+    passed_case("queued X11 clicks at two real controls retain each event's position and exact input order")
+    cancel()
+    draft("qzxv")
+    resize(original_width)
+    move_anchor(40, original_margin)
+    cancel()
+    queued_drag_case()
+
+
 def stale_press_check():
     frame = draft()
     pointer(frame, frame["native_page"]["candidates"][0]["rect"], up=False)
@@ -803,6 +1240,8 @@ def stale_press_check():
         relocate_owned_input((200, 100))
         current_identity = composition_identity(qa.watch.latest)
         if bottom_layout:
+            await_stationary_bottom_frame(current_identity, changed["position"],
+                                          "geometry-only update moved dock while invalidating a stale press")
             stable(lambda: page_ready() and page_ready()["position"] == changed["position"],
                    "geometry-only update moved dock while invalidating a stale press")
         else:
@@ -873,6 +1312,15 @@ try:
     wait(lambda: qa.companion_frame().get("runtime_font"), "real native companion startup", timeout=30)
     assert companion.poll() is None and owned_focus()
     print("READY: real default native panel and GTK TextView on private 1024x768 display", flush=True)
+
+    drag_only = qa.os.environ.get("SUZAKU_APP_QA_QUEUED_DRAG_ONLY") == "1"
+    if qa.os.environ.get("SUZAKU_APP_QA_STATIONARY_POINTER_ONLY") == "1" or drag_only:
+        if window_frame("Main").get("layout_mode") != "follow-caret":
+            set_layout_from_settings("follow-caret")
+        stationary_pointer_checks(drag_only=drag_only)
+        assert passed == (1 if drag_only else 4), passed
+        print(f"RESULT: {passed} isolated actual X11 stationary/queued-pointer/drag workflows passed", flush=True)
+        raise SystemExit(0)
 
     if auto_layout:
         prepare_auto_layout()
@@ -954,7 +1402,8 @@ try:
     stale_press_check()
     if bottom_layout:
         restore_follow_layout()
-    expected_offset = 26 if auto_layout else (23 if bottom_layout else 16)
+    stationary_pointer_checks()
+    expected_offset = 32 if auto_layout else (29 if bottom_layout else 20)
     assert passed == total + expected_offset, (passed, total)
     print(f"RESULT: {passed} native candidate {suite if bottom_layout else 'paging/caret'} workflows passed; "
           f"every {total} English card clicked, real GTK/IBus/XTest only", flush=True)
@@ -967,6 +1416,7 @@ except Exception:
         "expected_buffer": committed,
         "insertions": insertions,
         "keys": list(events),
+        "touch_events": list(touch_events),
         "focus_ancestry": None if x is None else x.focus_ancestry(),
         "owned_window": xid,
     }, ensure_ascii=False), flush=True)

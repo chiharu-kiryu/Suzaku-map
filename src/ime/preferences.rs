@@ -25,6 +25,7 @@ fn english_word_boundary(tail: &str) -> bool {
                         | ']'
                         | '}'
                         | '"'
+                        | '”'
                         | '—'
                         | '、'
                         | '，'

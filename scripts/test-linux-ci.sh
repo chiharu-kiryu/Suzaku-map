@@ -90,6 +90,7 @@ else
     translation::tests::native_translation_preserves_drafts_and_rejects_stale_contexts \
     native_sync::tests::native_source_insertions_preserve_drafts_until_acknowledged \
     native_sync::action_audit_test::native_candidate_actions_preserve_followup_input \
+    native_sync::action_audit_test::native_screen_keyboard_preserves_host_editing_semantics \
     native_sync::tool_chain_audit_test::audit_voice_auto_insert_must_not_follow_an_unrelated_native_context \
     native_sync::tool_chain_audit_test::tool_adoption_gestures_must_not_cross_native_targets \
     native_sync::tool_chain_audit_test::audit_local_tool_insertion_must_use_the_caret_word_boundary \

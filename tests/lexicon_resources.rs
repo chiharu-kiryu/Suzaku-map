@@ -202,6 +202,56 @@ fn choices_expansion_keeps_all_released_contexts_and_sentences_unchanged() {
 }
 
 #[test]
+fn followup_expansion_preserves_every_pre_expansion_layer_and_context() {
+    // Captured before the daily-followup/JP coordination data was appended.
+    // Preserve complete content/order, not just unchanged resource totals.
+    let en = builtin("en").unwrap();
+    let zh = builtin("zh-Hans").unwrap();
+    let ja = builtin("ja").unwrap();
+    assert_eq!(
+        hash_pairs(
+            en.word_layers()
+                .iter()
+                .take(17)
+                .map(|layer| (layer.id.as_str(), layer.words.as_slice()))
+        ),
+        0xd57607c4975244b6
+    );
+    assert_eq!(hash_pairs(en.next_words().take(521)), 0x110e8ca12a531a71);
+    assert_eq!(
+        hash_pairs(en.sentences().take(1006).map(|text| (text, &[][..]))),
+        0x8dbf28d1bb7688b5
+    );
+    assert_eq!(hash_pairs(zh.continuations().take(515)), 0xd7dae0bce00b7a22);
+    assert_eq!(hash_pairs(ja.continuations().take(62)), 0x2be8a0ecc8792ce5);
+}
+
+#[test]
+fn leisure_expansion_preserves_every_followup_layer_and_context() {
+    // Captured before the leisure vocabulary was appended. Older snapshots
+    // remain independent guards for the historical prefixes.
+    let en = builtin("en").unwrap();
+    let zh = builtin("zh-Hans").unwrap();
+    let ja = builtin("ja").unwrap();
+    assert_eq!(
+        hash_pairs(
+            en.word_layers()
+                .iter()
+                .take(18)
+                .map(|layer| (layer.id.as_str(), layer.words.as_slice()))
+        ),
+        0x9b66f8d032af2d48
+    );
+    assert_eq!(hash_pairs(en.next_words().take(545)), 0xaeafad06cf6cfec8);
+    assert_eq!(
+        hash_pairs(en.sentences().take(1054).map(|text| (text, &[][..]))),
+        0xccebc462db57551b
+    );
+    assert_eq!(hash_pairs(zh.continuations().take(539)), 0xf84a19a37684cf7f);
+    assert_eq!(hash_pairs(ja.continuations().take(78)), 0x08fef34c52d23710);
+}
+
+#[test]
 fn japanese_daily_expansion_keeps_the_original_continuations_unchanged() {
     let ja = builtin("ja").unwrap();
     assert_eq!(hash_pairs(ja.continuations().take(14)), 0xdc98b98ae666f412);
@@ -209,7 +259,7 @@ fn japanese_daily_expansion_keeps_the_original_continuations_unchanged() {
         ja.continuations()
             .map(|(_, values)| values.len())
             .sum::<usize>(),
-        123
+        203
     );
 }
 
@@ -256,9 +306,17 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
         ("zh-Hans", 2303, 0x16edb6e92561eb5c_u64),
         // Freeze v0.8.2 before daily preferences, comparisons and alternatives.
         ("zh-Hans", 2367, 0x2593a87f84f4b2e4_u64),
+        // Freeze the complete comparison layer before daily followup expressions.
+        ("zh-Hans", 2432, 0xd84f6b0a49578ed6_u64),
+        // Freeze progress/clarification before leisure and weekend expressions.
+        ("zh-Hans", 2496, 0x2b8f323e232e082e_u64),
         ("ja", 26, 0xf2e1aa0ec03a7e38_u64),
         // Freeze all v0.8.2 Japanese readings and their original homophone order.
         ("ja", 74, 0x7cf9fb332d108ce3_u64),
+        // Freeze Japanese comparisons before everyday messages/coordination.
+        ("ja", 122, 0x051f413326359c03_u64),
+        // Freeze coordination before leisure vocabulary and continuations.
+        ("ja", 154, 0x6c9c733586d790c5_u64),
     ] {
         let entries = builtin(language).unwrap().readings();
         assert!(entries.len() >= count);
@@ -285,18 +343,18 @@ fn migrated_readings_preserve_every_original_position_and_flag() {
             "{language} first {count} readings changed existing data/rank"
         );
     }
-    assert_eq!(builtin("en").unwrap().next_words().count(), 521);
-    assert_eq!(builtin("en").unwrap().sentences().count(), 1006);
-    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2432);
-    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 515);
+    assert_eq!(builtin("en").unwrap().next_words().count(), 577);
+    assert_eq!(builtin("en").unwrap().sentences().count(), 1118);
+    assert_eq!(builtin("zh-Hans").unwrap().readings().len(), 2592);
+    assert_eq!(builtin("zh-Hans").unwrap().continuations().count(), 571);
     assert_eq!(
         builtin("zh-Hans")
             .unwrap()
             .continuations()
             .map(|(_, values)| values.len())
             .sum::<usize>(),
-        1028
+        1140
     );
-    assert_eq!(builtin("ja").unwrap().readings().len(), 122);
-    assert_eq!(builtin("ja").unwrap().continuations().count(), 62);
+    assert_eq!(builtin("ja").unwrap().readings().len(), 202);
+    assert_eq!(builtin("ja").unwrap().continuations().count(), 102);
 }

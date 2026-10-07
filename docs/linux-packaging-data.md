@@ -257,6 +257,15 @@ suzaku-panel
 `data/offline-packs/zh-Hans-study.json` 取得文件后可直接
 `suzaku-tool pack install ./zh-Hans-study.json`，不必升级语言算法。
 
+当前未发布开发版目录为 **十四包**：再加中英日 `family` / `home` 家庭生活集合，
+ID 为 `org.suzaku.en.family`、`org.suzaku.zh-hans.family`、`org.suzaku.ja.family`，
+包版本均为 `1.0.0`。英文 60 个显式词形/16 组语境/32 句，中文 36 条读音/16 组语境/32 句，
+日文 24 条读音/12 组语境/24 句，共 88 条短句；包内数量不等于去重新增索引数量。
+可用 `pack catalog --language ja --topic family` 筛选；三个 JSON 沿用 v1 数据接口，
+不绑定模型、不改内置数据或原十一包，也不自动启用。原来的单包/语言/安装数量预算不变。
+打包清单与包内容检查清单均已加入这三个文件；静态一致性回归不是本快照已生成或
+发布十四包安装产物的声明，发布仍须下方实际产物和容器门禁。
+
 `.deb` 使用 `suzaku-tool`，源码/压缩包使用 `suzaku_tool` / `./bin/suzaku_tool`：
 
 ```bash
@@ -317,7 +326,7 @@ ID 为最长 64 字节的小写字母开头 slug，只含小写字母、数字�
 Python 3.10+ 标准库即可；权威校验复用当前 Suzaku 的 `pack validate`，不另造一份易漂移的
 Python 词典算法。源码位置 `sdk/offline-packs/`；打包脚本把 SDK 放在
 `share/suzaku/offline-pack-sdk/`，推荐集合 JSON 放在 `share/suzaku/offline-packs/`
-（0.8.0 为三个，0.8.1 为十一个）。
+（0.8.0 为三个，0.8.1 为十一个，当前未发布开发版为十四个）。
 `.deb` 安装后相应位置为 `/usr/share/suzaku/…`，无网络依赖或额外 pip 依赖。
 
 ```bash

@@ -53,19 +53,62 @@ command and its children, not the desktop or installed input service. A scope OO
 failed check, never a pass. Preserve original failures and rerun gates explicitly under
 stable conditions; do not add retry-until-green loops or relax IPC/suite deadlines.
 
+The focused host-owned screen-key gate uses only a private IBus session:
+
+```bash
+SUZAKU_NATIVE_SCREEN_KEYS_ONLY=1 bash scripts/test-linux-ci.sh ibus
+```
+
+Use the same serial/resource-safe environment above, and repeat with
+`SUZAKU_IBUS_INLINE_PREEDIT=1` for the alternate presentation mode. The full
+native gate also runs it. Exact physical/semantic comparisons cover EN/ZH
+Backspace adoption undo, explicit/default Space, Compose cancellation/results,
+caret geometry and Unicode, with empty/stale/focus/privacy/malformed controls.
+Partially written requests crossing focus/privacy boundaries must be rejected;
+an applied edit with a redacted over-budget result must never be retried.
+The separate opt-in panel test
+`native_sync::action_audit_test::native_screen_keyboard_preserves_host_editing_semantics`
+runs in the `ui` gate; a passing host test alone does not qualify the screen
+queue. Neither check touches the desktop input method, keyboard map or lock LEDs.
+The `bottom-layout` application gate also clicks the actual drawn Space and
+Backspace controls, including adopted-word undo and repeated taps, against the
+owned GTK input field in both default and synchronous modes.
+
+The current `winit` 0.30.13 source is fixed in `vendor/winit` for a narrow
+Linux/X11 same-button-event coordinate patch. Keep its Apache-2.0 license and
+`NOTICE-SUZAKU.md`, and review that delta when updating the dependency. The
+shared pure helper runs through `tests/x11_button_coordinates.rs` in the normal
+feature-enabled Rust suite; no display or dependency-specific workspace is needed.
+For the actual moved/resized-window and queued-click checks only, run:
+
+```bash
+SUZAKU_APP_QA_STATIONARY_POINTER_ONLY=1 bash scripts/test-linux-apps.sh candidates
+SUZAKU_APP_QA_STATIONARY_POINTER_ONLY=1 SUZAKU_GTK3_QA_SYNC_MODE=1 bash scripts/test-linux-apps.sh candidates
+```
+
+The complete candidates, bottom-layout and auto-layout gates also run these
+checks. They move only their own private Xvfb windows, require exact input order
+and include button-only repeated taps without a new pointer motion. A focused
+pass does not replace the full application gates or physical device acceptance.
+
 Run the paired offline input-quality gates without a model:
 
 ```bash
-cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion -- --test-threads=1
+cargo test --locked --all-features --test english_completion_quality --test chinese_completion_quality --test offline_vocabulary_quality --test long_draft_completion --test long_draft_budget -- --test-threads=1
 cargo test --locked --all-features --test lexicon_resources -- --test-threads=1
 cargo test --locked --all-features --test offline_packs -- --test-threads=1
 cargo test --locked --all-features --test offline_pack_quality -- --test-threads=1
+cargo test --locked --all-features --test family_pack_english --test family_pack_chinese --test family_pack_japanese -- --test-threads=1
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-offline-pack-shipping.py
 cargo test --locked --all-features --test fallback_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test daily_social_english --test daily_social_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_objects_english --test daily_objects_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_choices_english --test daily_choices_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_japanese_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test daily_choices_japanese -- --test-threads=1
+cargo test --locked --all-features --test daily_followup_english --test daily_followup_chinese --test daily_coordination_japanese -- --test-threads=1
+cargo test --locked --all-features --test daily_leisure_english --test daily_leisure_chinese --test daily_leisure_japanese -- --test-threads=1
+cargo test --locked --all-features --test daily_clarification_english --test daily_clarification_chinese --test daily_clarification_japanese -- --test-threads=1
 cargo test --locked --all-features --test japanese_sentence_progress -- --test-threads=1
 cargo test --locked --all-features --test japanese_reading_boundaries -- --test-threads=1
 cargo test --locked --all-features --test chinese_sentence_continuation -- --test-threads=1
@@ -78,6 +121,47 @@ To run only the private English/Pinyin word-and-sentence keyboard workflows, use
 `SUZAKU_NATIVE_BILINGUAL_ONLY=1 bash scripts/test-linux-ci.sh ibus` under the same
 serial/resource-safe environment above. Repeat with `SUZAKU_IBUS_INLINE_PREEDIT=1`
 for the alternate preedit mode. A focused pass does not replace the complete IBus gate.
+
+`SUZAKU_NATIVE_DRAFT_LIMITS_ONLY=1 bash scripts/test-linux-ci.sh ibus` selects the
+same 72 native UTF-8 byte-limit workflows and reports time per language. Use it
+under the serial/resource-safe scope above to diagnose discarded long-draft
+decoder work; timing is diagnostic, not a new or relaxed acceptance threshold.
+The ordinary full gate still runs these cases under its unchanged 120-second
+session deadline. `python3 scripts/test-native-model-fixture.py` checks the
+isolated HTTP fixture without GI, native processes or networking: explicit gates
+own Pending/Ready, ungated replies retain their 80ms delay, and cancellation,
+error responses and five-second gate limits stay intact. Stable-negative
+observation windows remain covered by the unchanged full native gate.
+
+Set `SUZAKU_NATIVE_TIMING=1` on that same complete or focused IBus command to
+report the outer workflow's elapsed time. Nested checks do not add duplicate
+timers; failures retain their workflow name in the teardown diagnostic. These
+measurements do not change deadlines or constitute remote CI qualification.
+The context-payload probes hold an explicit Pending reply gate until the exact
+request is checked, then release it without an extra artificial response delay.
+
+`SUZAKU_NATIVE_COMPOSE_UNDO_ONLY=1 bash scripts/test-linux-ci.sh ibus` isolates
+the same ten adopted EN/ZH Compose workflows that also run in the complete gate.
+Run under the serial/resource-safe scope above; repeat with
+`SUZAKU_IBUS_INLINE_PREEDIT=1` for the alternate mode. Pending cancellation and
+rejected non-text results preserve spelling undo, while completed/unmatched printable
+edits retire it. A focused pass is not the complete IBus qualification.
+
+`python3 scripts/test-native-probe-teardown.py` compiles the actual probe's final
+cleanup block and acknowledgement helper against deterministic Gio-linked stubs.
+Its 12 subcases require context finalization before a same-connection, 250ms
+acknowledgement and bus close; missing/closed connections and failed replies must
+not hide an earlier probe error. It starts no IBus, display or D-Bus daemon and
+does not replace the complete native gate. `--baseline` checks HEAD read-only;
+the pre-fix source is expected to fail these contracts.
+The trace helper tests also cover phase attribution and preservation of the
+original failure if diagnostic output is unavailable.
+
+`SUZAKU_NATIVE_ROW_BOUNDARIES_ONLY=1 bash scripts/test-linux-ci.sh ibus` focuses
+the EN/ZH relative row-navigation boundary checks, including adoption undo and
+controlled Pending/Ready/cancellation. This is also part of the full gate, not
+a substitute for it. The existing private `ui` keyboard/action checks cover
+local no-op Backspace and native panel navigation without redundant IPC.
 
 Offline-pack tests use owned data directories and fresh subprocesses, covering the CLI/SDK,
 schema/decoder profiles, append-only rank preservation, conflicts, limits, locks, malformed records,
@@ -261,6 +345,14 @@ The `gtk3` gate uses owned GTK3 TextViews and checks every physical key against 
 host seed and application buffer. It waits for a stable, non-placeholder IBus context and
 widget focus, without retyping a lost startup key. It covers repeated letters, Space,
 numeric adoption/undo, explicit commits, bilingual shortcuts, field changes and the companion.
+Seven additional flows check EN/ZH first-row Up/Shift+Tab, adoption undo after an inert
+navigation, adjacent-row movement as a positive control, and single-row Down/Tab. A
+same-draft expectation cannot acknowledge delivery: the fixture observes the owned
+GDK press before GTK's input-method filtering, then forwards that original event to
+`Gtk.main_do_event` exactly once. It retains widget diagnostics and observes the full
+frame, focus and document for 150ms after each boundary key. The no-display
+`python3 scripts/test-gtk3-event-observer.py` checks this observation/dispatch contract;
+model Pending preservation remains covered by the separate private IBus HTTP gate.
 Run both the installed client's default IBus transport (unset sync override) and explicit
 `SUZAKU_GTK3_QA_SYNC_MODE=1`. Failures report the requested/observed key, expected/actual draft,
 buffer, widget/X11 focus and input context; deadlines remain four seconds per key. Focus
@@ -270,7 +362,7 @@ press/release logs retain timing and ancestry; `test-x11-focus.py` checks the an
 boundaries without a display. These
 isolated checks do not establish the cause of an earlier under-instrumented desktop failure
 or replace GNOME/Wayland acceptance. The runner never changes the personal input module.
-The ten GTK3 workflows include a running panel, activation from the private US keyboard
+The 24 GTK3 workflows include a running panel, activation from the private US keyboard
 engine through the real tray menu, and a Chinese-to-English change before the original
 English phrase. An owned minimal StatusNotifierWatcher permits the actual panel to register
 its tray; it does not substitute a menu or engine. The driver opens that menu once and then
@@ -281,7 +373,7 @@ XTest through desktop input authorization. A successful injection call is not pr
 the widget received a key. Stop on focus loss or missing delivery; do not disable the
 portal, retry keys or count the private-display pass as desktop acceptance. Establish
 delivery independently of Suzaku before attributing a synthetic-input failure to the IME.
-The `vocabulary` gate exercises eighty-six offline English/Chinese/Japanese vocabulary workflows and three
+The `vocabulary` gate exercises 104 offline English/Chinese/Japanese vocabulary workflows and three
 multi-word Chinese sentence-progress workflows in the real
 GTK editor: physical spelling, word/sentence labels, numeric adoption, exact undo, Space
 continuation and saved word/sentence commits. Authored sentence continuations must remain on
@@ -291,9 +383,10 @@ runner. This explicitly reports four vocabulary cases plus three sentence-progre
 complete-gate pass. CI keeps the default `all` scope. As the corpus grows, the shell runner
 executes all cases in two sequential private sessions (`part-1` / `part-2`), with the original
 240-second deadline **per session**. Alternating case indices keep all three languages in each part;
-the first part includes the three sentence-progress controls (46 + 43 = 89 workflows total).
+the first part includes three sentence-progress controls and one clarification paging check
+(56 + 52 = 108 workflows total).
 Only both successful parts count as the complete gate. No case or assertion is skipped;
-explicit `home`, `daily` and `packs` scopes still report only their own coverage.
+explicit `home`, `daily`, `followup`, `leisure`, `clarification` and `packs` scopes still report only their own coverage.
 For daily reactions/meeting/rest, food/weather/arrangement, communication/coordination and
 social check-ins/invitations/polite declines and object location/borrowing/quantities, use
 `SUZAKU_VOCABULARY_QA_SCOPE=daily`; this reports thirty vocabulary cases plus the three
@@ -308,6 +401,18 @@ fixed-expectation coverage lives in `tests/daily_english_vocabulary.rs`,
 `tests/daily_social_chinese.rs`, `tests/daily_objects_english.rs` and
 `tests/daily_objects_chinese.rs`; model-failure coverage
 uses typed synthetic errors in `tests/fallback_vocabulary.rs`, not live provider claims.
+For progress replies, retries and Japanese messages/coordination, use
+`SUZAKU_VOCABULARY_QA_SCOPE=followup`; it exercises six new mixed-language
+word/sentence workflows and the three existing progress controls (nine total),
+not the complete gate. All six are included in the default complete gate too.
+Independent fixed expectations live in `tests/daily_followup_english.rs`,
+`tests/daily_followup_chinese.rs` and `tests/daily_coordination_japanese.rs`.
+For hobbies, relaxation and weekend plans, use
+`SUZAKU_VOCABULARY_QA_SCOPE=leisure`; it exercises six mixed-language
+word/sentence workflows and three existing progress controls (nine total).
+All six are also in the default complete gate. Its fixed expectations are in
+`tests/daily_leisure_english.rs`, `tests/daily_leisure_chinese.rs` and
+`tests/daily_leisure_japanese.rs`; a focused pass is not the complete gate.
 For basic Japanese only, `SUZAKU_VOCABULARY_QA_SCOPE=japanese` exercises four GTK workflows
 (including uppercase `JYUNBI`) without claiming the whole gate passed. The full gate includes them.
 `SUZAKU_NATIVE_JAPANESE_ONLY=1 bash scripts/test-linux-ci.sh ibus` exercises daily word/sentence
@@ -322,13 +427,28 @@ horizontal separators, adopted mixed-script word boundaries, exact literal commi
 non-crossing line boundaries. The private Japanese IBus fixture also exercises actual Space
 events after partial Romaji and `同じ` adoption followed by `kanji`; no physical keyboard
 or personal desktop acceptance is implied.
-For the optional bilingual study/cooking/travel/work packs, use
+For everyday clarification, confirmation and explanation, use
+`SUZAKU_VOCABULARY_QA_SCOPE=clarification`; it checks six EN/ZH/JA vocabulary
+workflows plus three sentence-progress controls and one physical page-two
+adoption/undo check (ten total), also included
+in the complete gate. Fixed independent data/old-rank regressions live in the
+three `tests/daily_clarification_*.rs` suites. Synthetic typed errors and empty
+providers are not live-model or physical-keyboard qualification.
+For all recommended packs (bilingual outdoors/study/cooking/travel/work, Japanese rail,
+and EN/ZH/JA family), use
 `SUZAKU_VOCABULARY_QA_SCOPE=packs bash scripts/test-linux-apps.sh vocabulary`.
 This separate gate uses the selected installation's adjacent `suzaku_tool` to export/install
-eight packs into the private QA data directory **before** starting its host and panel. It
-checks eight pack workflows plus three builtin sentence-progress workflows (11 total), including the
+all fourteen recommended packs into the private QA data directory **before** starting its host and panel. It
+checks eleven pack workflows plus three builtin sentence-progress workflows (14 total), including the
 live companion's system-font draft rendering and editor focus. It neither reads nor changes
 the personal pack registry, and does not replace the default builtin gate.
+The native pack-only scope installs all fourteen recommended packs and checks fourteen
+representative workflows in both default and inline-preedit modes. Family regression
+tests separately cover all 60 explicit English forms, 36 Chinese and 24 Japanese readings,
+the 88 authored sentences, independent toggles and synthetic provider failures. These
+are finite authored examples, not an open-ended model-quality benchmark. The shipping
+list check detects omitted/duplicated/unknown pack filenames without building or installing
+anything; it does not replace archive-content or clean-container installation gates.
 The private IBus gate also checks sentence progress in short, threshold-crossing and long drafts,
 including consecutive numeric adoptions, valid homophones, exact undo and one explicit commit.
 To validate a user-local installation instead of rebuilding debug binaries, set

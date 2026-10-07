@@ -1,0 +1,61 @@
+{
+  "format_version": 1,
+  "manifest": {
+    "id": "org.suzaku.en.family", "version": "1.0.0",
+    "name": "Family · Home and household cooperation", "description": "Authored vocabulary for family visits, shared chores, laundry and storage; no personal family records or automatic actions.",
+    "language": "en", "topics": ["family", "home"], "license": "MIT", "authors": ["Suzaku contributors"]
+  },
+  "lexicon": {
+    "format_version": 1, "language": "en",
+    "word_layers": [{
+      "id": "family-household",
+      "words": [
+        "grandparent", "grandparents", "grandmother", "grandmothers", "grandfather", "grandfathers",
+        "grandchild", "grandchildren", "grandson", "grandsons", "granddaughter", "granddaughters",
+        "sibling", "siblings", "cousin", "cousins", "niece", "nieces", "nephew", "nephews",
+        "relative", "relatives", "visitor", "visitors",
+        "babysit", "babysits", "babysat", "babysitting", "babysitter", "babysitters",
+        "household", "households", "chore", "chores", "laundry", "detergent", "detergents",
+        "fabric", "fabrics", "hanger", "hangers", "wardrobe", "wardrobes", "hamper", "hampers",
+        "washcloth", "washcloths", "bedsheet", "bedsheets", "pillowcase", "pillowcases", "duvet", "duvets",
+        "fold", "folded", "folding", "tidy", "tidies", "tidied", "tidying"
+      ],
+      "next_words": [
+        ["our grandparents are coming", ["over", "tomorrow"]],
+        ["i'll call my", ["grandmother", "grandfather"]],
+        ["my cousin is", ["visiting", "staying"]],
+        ["could you help your", ["sister", "brother"]],
+        ["let's share the household", ["chores", "tasks"]],
+        ["can you take care of the", ["laundry", "bins"]],
+        ["i'll tidy the", ["bedroom", "living"]],
+        ["could you fold the", ["towels", "bedsheets"]],
+        ["please put the clean clothes", ["away", "here"]],
+        ["let's sort the laundry", ["first", "together"]],
+        ["where should i put the spare", ["pillowcases", "hangers"]],
+        ["we need to change the", ["bedsheets", "pillowcases"]],
+        ["please hang these", ["shirts", "jackets"]],
+        ["could you move the laundry", ["hamper", "basket"]],
+        ["we're expecting family", ["today", "tomorrow"]],
+        ["let's make room for our", ["visitors", "relatives"]]
+      ],
+      "sentences": [
+        "our grandparents are coming over this afternoon.", "our grandparents are coming tomorrow for a family visit.",
+        "i'll call my grandmother after dinner.", "i'll call my grandfather this evening.",
+        "my cousin is visiting us this weekend.", "my cousin is staying with us tonight.",
+        "could you help your sister fold the laundry?", "could you help your brother tidy the room?",
+        "let's share the household chores this week.", "let's share the household tasks fairly.",
+        "can you take care of the laundry while i tidy up?", "can you take care of the bins this evening?",
+        "i'll tidy the bedroom before our visitors arrive.", "i'll tidy the living room after lunch.",
+        "could you fold the towels while i hang the shirts?", "could you fold the bedsheets before putting them away?",
+        "please put the clean clothes away in the wardrobe.", "please put the clean clothes here on the bed.",
+        "let's sort the laundry first by color.", "let's sort the laundry together before washing.",
+        "where should i put the spare pillowcases?", "where should i put the spare hangers?",
+        "we need to change the bedsheets today.", "we need to change the pillowcases before our visitors arrive.",
+        "please hang these shirts on the hangers.", "please hang these jackets in the wardrobe.",
+        "could you move the laundry hamper out of the doorway?", "could you move the laundry basket next to the washing machine?",
+        "we're expecting family today, so let's tidy up.", "we're expecting family tomorrow afternoon.",
+        "let's make room for our visitors before they arrive.", "let's make room for our relatives this weekend."
+      ]
+    }]
+  }
+}

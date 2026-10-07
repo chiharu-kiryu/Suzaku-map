@@ -561,13 +561,29 @@ fn assert_explicit_interaction_visibility(app: &mut crate::PanelApp, events: &Ac
     }
 }
 
+pub(crate) fn present_test_frame(state: &mut PanelState) {
+    // Bottom-dock layout may request its fitted viewport while preparing a
+    // frame. Issue that request before reading back this private X11 window.
+    if state.bottom_layout_enabled() {
+        state.fit_window_to_content();
+    }
+    let actual = state.window.inner_size();
+    state.resize(actual.width, actual.height);
+    state
+        .render()
+        .expect("present the actual pointer fixture viewport");
+    assert!(state.last_scene.is_some(), "interaction must be presented");
+}
+
 fn click_visible_panel_interaction(
     app: &mut crate::PanelApp,
     events: &ActiveEventLoop,
     action: InteractionKind,
 ) {
     let panel = app.panel.as_mut().unwrap();
-    panel.last_scene = None;
+    // A measured layout is not an input surface. Present the actual private
+    // window viewport before acquiring a pointer gesture through this helper.
+    present_test_frame(panel);
     let rect = panel.interaction_rect(action).expect("visible interaction");
     let mut point = None;
     for x in [0.5, 0.25, 0.75, 0.1, 0.9] {
@@ -1070,6 +1086,7 @@ fn prepare_keyboard(state: &mut PanelState) -> mpsc::Receiver<ActionRequest> {
 
 fn point_key(state: &mut PanelState, ch: char) {
     use suzaku_map::ime::gpu::{InteractionKind, VirtualKeyboardKey};
+    present_test_frame(state);
     let key = InteractionKind::VirtualKeyboardKey(VirtualKeyboardKey::Character(ch));
     let rect = state.interaction_rect(key).unwrap();
     state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
@@ -1401,7 +1418,8 @@ fn assert_screen_keyboard_handoffs(state: &mut PanelState) {
         );
     }
 
-    // Backspace/Unicode edits coalesce too, including an entirely empty draft.
+    // Backspace coalesces with a known text write. Once settled, host-owned
+    // deletion stays ordered and waits for each authoritative Unicode result.
     let receiver = prepare_keyboard(state);
     state.native_keyboard_edit(Some("日本😀"));
     let first = receiver.try_recv().unwrap();
@@ -1416,16 +1434,28 @@ fn assert_screen_keyboard_handoffs(state: &mut PanelState) {
     for _ in 0..5 {
         state.backspace_seed();
     }
-    assert_eq!(state.chrome.seed_text, "");
+    assert_eq!(
+        state.chrome.seed_text, "hel日本",
+        "no speculative host undo"
+    );
+    for (offset, remaining) in ["hel日", "hel", "he", "h", ""].into_iter().enumerate() {
+        let revision = 12 + offset as u64;
+        let deletion = receiver.try_recv().unwrap();
+        assert!(
+            deletion.command.starts_with('E')
+                && deletion.command.ends_with(&format!(" {revision} B"))
+        );
+        assert!(receiver.try_recv().is_err(), "one semantic edit in flight");
+        state.native_keyboard_finished(
+            deletion.host,
+            deletion.revision,
+            Ok(keyboard_frame(remaining, revision + 1)),
+        );
+        assert_eq!(state.chrome.seed_text, remaining);
+    }
     assert_eq!(state.view_snapshot().mode, Mode::Idle);
-    let deletion = receiver.try_recv().unwrap();
-    state.native_action_finished(deletion.host, deletion.revision, Ok(true));
-    state.receive_native_frame(Some(keyboard_frame("hel日", 13)));
-    let empty = receiver.try_recv().unwrap();
-    assert!(empty.command.ends_with(" 13 T"));
-    state.native_action_finished(empty.host, empty.revision, Ok(true));
-    state.receive_native_frame(Some(keyboard_frame("", 14)));
     assert!(state.native.typing.is_none());
+    assert!(!state.native_candidates_busy());
 
     for result in [Ok(false), Err("timeout".into()), Err("disconnected".into())] {
         let receiver = prepare_keyboard(state);

@@ -329,6 +329,7 @@ mod tests {
         snapshot.selected_index = 6;
         let chrome = PanelChromeState {
             native_candidate_page: Some(NativeCandidatePage::new(6, 13, true)),
+            input_modes_expanded: true,
             sentence_candidates: (6..12).map(|index| format!("word{index}")).collect(),
             sentence_candidate_source_indices: (6..12).collect(),
             ..PanelChromeState::default()
@@ -336,13 +337,35 @@ mod tests {
         let mut renderer = WgpuCandidateRenderer::new(900.0, 1.0);
         renderer.scene_height = renderer.preferred_input_panel_height(&chrome);
         let scene = renderer.build_panel_scene(&snapshot, &chrome, None, None, None, None);
-        assert_eq!(scene.hit_targets.len(), 6);
-        assert!(
-            !scene
+        assert!(scene.hit_targets.is_empty());
+        assert!(!scene.interactive_targets.iter().any(|target| matches!(
+            target.kind,
+            InteractionKind::NativeCandidatePage(_) | InteractionKind::Candidate(_)
+        )));
+        let mut ready = chrome.clone();
+        ready.native_candidate_page.as_mut().unwrap().busy = false;
+        assert_eq!(
+            renderer.preferred_input_panel_height(&ready),
+            renderer.preferred_input_panel_height(&chrome),
+            "waiting for confirmation must not collapse the candidate rows"
+        );
+        let ready_scene = renderer.build_panel_scene(&snapshot, &ready, None, None, None, None);
+        assert_eq!(ready_scene.hit_targets.len(), 6);
+        let keyboard_targets = |scene: &RenderScene| {
+            scene
                 .interactive_targets
                 .iter()
-                .any(|target| matches!(target.kind, InteractionKind::NativeCandidatePage(_)))
-        );
+                .filter(|target| {
+                    matches!(
+                        target.kind,
+                        InteractionKind::SeedInput | InteractionKind::VirtualKeyboardKey(_)
+                    )
+                })
+                .map(|target| (target.kind, target.rect))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(keyboard_targets(&scene), keyboard_targets(&ready_scene));
+        assert!(!keyboard_targets(&scene).is_empty());
     }
 
     #[test]

@@ -220,7 +220,9 @@ struct CompositionState {
     confidence: f32,
     degraded: bool,
     warnings: Vec<Warning>,
-    history: Vec<String>,
+    // Commits only append to committed_text. Keep UTF-8 byte checkpoints, not
+    // every accumulated prefix: full copies grow quadratically while typing.
+    history: Vec<usize>,
 }
 
 pub struct XRTabletImeEngine {
@@ -379,9 +381,17 @@ impl XRTabletImeEngine {
             return self.snapshot();
         }
 
-        let max_index = self.state.candidates.len().saturating_sub(1) as isize;
-        let next = (self.state.selected_index as isize + delta).clamp(0, max_index);
-        self.state.selected_index = next as usize;
+        let next = self
+            .state
+            .selected_index
+            .saturating_add_signed(delta)
+            .min(self.state.candidates.len() - 1);
+        // Hitting a row boundary is not an explicit choice. Keep predictions
+        // and default spelling available until a real move or absolute select.
+        if next == self.state.selected_index {
+            return self.snapshot();
+        }
+        self.state.selected_index = next;
         self.lock_prediction_selection();
         self.render_draft();
         self.snapshot()
@@ -499,7 +509,7 @@ impl XRTabletImeEngine {
             };
         }
 
-        self.state.history.push(self.state.committed_text.clone());
+        self.state.history.push(self.state.committed_text.len());
         if self.selection_locked {
             self.stage_selected_preference();
         }
@@ -537,7 +547,7 @@ impl XRTabletImeEngine {
 
     pub fn undo(&mut self) -> Option<Snapshot> {
         let previous = self.state.history.pop()?;
-        self.state.committed_text = previous;
+        self.state.committed_text.truncate(previous);
         self.preferences.undo();
         Some(self.snapshot())
     }
@@ -887,6 +897,23 @@ impl XRTabletImeEngine {
             return Vec::new();
         }
 
+        // The mixed pool keeps only the literal for an over-budget draft with
+        // no supported local tail. Decide before invoking a whole-draft decoder:
+        // Japanese conversion in particular must not scan a long draft merely
+        // to throw all of its results away in candidate_mix::offline below.
+        // Leave bounded EN/ZH tails and non-IBus plugin behavior unchanged.
+        if self.ibus_candidate_mix
+            && self.state.seed_text.chars().count() > crate::prediction::MAX_PREDICTION_SEED_CHARS
+        {
+            return super::candidate_mix::offline(
+                &self.state.active_language,
+                &self.state.seed_text,
+                &self.state.committed_text,
+                Vec::new(),
+                self.config.max_candidates,
+            );
+        }
+
         let mut candidates: Vec<Candidate> = plugin
             .direct_candidates_with_context(
                 &self.state.seed_text,
@@ -1002,5 +1029,56 @@ impl XRTabletImeEngine {
             .get(&self.state.active_language)
             .or_else(|| self.registry.get("en"))
             .expect("default English language plugin must be registered")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CommitOptions, EngineConfig, XRTabletImeEngine};
+
+    #[test]
+    fn native_and_editor_history_store_only_utf8_byte_checkpoints() {
+        for language in ["en", "zh-Hans"] {
+            for verbatim in [false, true] {
+                let initial = "前😀\u{3000}";
+                let mut engine = XRTabletImeEngine::new(EngineConfig {
+                    default_language: language.into(),
+                    initial_text: initial.into(),
+                    ..Default::default()
+                });
+                engine.enable_ibus_candidate_mix();
+                let mut expected = initial.to_owned();
+                let mut checkpoints = Vec::new();
+                for chunk in ["é", "  世界", "👩‍💻", "\u{3000}"] {
+                    checkpoints.push(expected.len());
+                    engine.seed(chunk);
+                    let index = engine
+                        .candidates()
+                        .iter()
+                        .position(|candidate| candidate.text == chunk)
+                        .unwrap();
+                    engine.select_candidate(index);
+                    if !verbatim && language == "en" {
+                        expected.push(' ');
+                    }
+                    expected.push_str(chunk);
+                    let result = engine.commit_with_join(CommitOptions { force: true }, verbatim);
+                    assert!(result.ok);
+                    assert_eq!(result.text.as_deref(), Some(expected.as_str()));
+                    // The stored representation is one byte offset per commit,
+                    // independent of the length of any prior committed prefix.
+                    let stored: &[usize] = &engine.state.history;
+                    assert_eq!(stored, checkpoints.as_slice());
+                    assert!(stored.iter().all(|&byte| expected.is_char_boundary(byte)));
+                }
+                for byte in checkpoints.into_iter().rev() {
+                    expected.truncate(byte);
+                    assert_eq!(engine.undo().unwrap().committed_text, expected);
+                }
+                assert_eq!(expected, initial);
+                assert!(engine.state.history.is_empty());
+                assert!(engine.undo().is_none());
+            }
+        }
     }
 }

@@ -5,7 +5,7 @@ use super::ranked_typed_candidates;
 use crate::ime::candidate_mix::CandidateKind;
 use crate::ime::{Candidate, LanguagePlugin};
 use crate::lexicon::{EntryKind, Lexicon};
-use std::sync::OnceLock;
+use std::{collections::HashSet, sync::OnceLock};
 
 #[derive(Default)]
 pub struct ChineseLanguagePlugin;
@@ -190,10 +190,22 @@ fn normalize_pinyin(seed: &str) -> String {
         .collect()
 }
 
+fn dictionary_words() -> &'static HashSet<&'static str> {
+    static WORDS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    WORDS.get_or_init(|| {
+        pinyin()
+            .iter()
+            .filter(|word| word.kind == EntryKind::Word)
+            .map(|word| word.text)
+            .collect()
+    })
+}
+
 pub(crate) fn is_dictionary_word(text: &str) -> bool {
-    pinyin()
-        .iter()
-        .any(|word| word.text == text && word.kind == EntryKind::Word)
+    // Beam paths repeatedly classify the same authored spellings. This is
+    // membership only: decoder/homophone priority still follows pinyin() order.
+    // The startup vocabulary is immutable; no typed text enters this index.
+    dictionary_words().contains(text)
 }
 
 /// Match already converted text without erasing its literal horizontal padding.
@@ -455,6 +467,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn word_membership_index_matches_linear_reference_for_the_entire_vocabulary() {
+        let linear = |text: &str| {
+            pinyin()
+                .iter()
+                .any(|entry| entry.text == text && entry.kind == EntryKind::Word)
+        };
+        let mut probes = HashSet::new();
+        for entry in pinyin() {
+            probes.insert(entry.text.to_owned());
+            probes.insert(entry.reading.to_owned());
+            // Membership is exact; callers, not the index, own whitespace policy.
+            probes.insert(format!(" {}", entry.text));
+            probes.insert(format!("{}\u{3000}", entry.text));
+        }
+        for (prefix, continuations) in vocabulary().continuations() {
+            probes.insert(prefix.to_owned());
+            probes.extend(continuations.iter().cloned());
+        }
+        probes.extend([
+            String::new(),
+            "unknown😀".into(),
+            "不在词库的合成测试词".into(),
+        ]);
+        for text in probes {
+            assert_eq!(is_dictionary_word(&text), linear(&text), "{text:?}");
+        }
+        let expected: HashSet<_> = pinyin()
+            .iter()
+            .filter(|entry| entry.kind == EntryKind::Word)
+            .map(|entry| entry.text)
+            .collect();
+        assert_eq!(dictionary_words(), &expected);
+        assert!(dictionary_words().len() <= pinyin().len());
+    }
+
+    #[test]
     fn trailing_spacing_does_not_supply_a_required_internal_separator() {
         let entry = PinyinEntry {
             require_separators: true,
@@ -583,7 +631,7 @@ mod tests {
 
     #[test]
     fn authored_continuations_are_unique_complete_and_preserve_padding() {
-        assert_eq!(pinyin().len(), 2432);
+        assert_eq!(pinyin().len(), 2592);
         let mut phrases = std::collections::HashSet::new();
         let mut sentences = std::collections::HashSet::new();
         for (phrase, values) in vocabulary().continuations() {

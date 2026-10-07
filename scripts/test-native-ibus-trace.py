@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Test native QA isolation and the diagnostic shim; never connect to an IBus bus."""
-from contextlib import redirect_stderr
+import ast
+from contextlib import redirect_stderr, redirect_stdout
+import functools
 import io
 import json
 import os
@@ -10,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 sys.dont_write_bytecode = True
@@ -366,6 +369,77 @@ class NativeDiagnosticTests(unittest.TestCase):
             finally:
                 self.report()
         self.assertIs(raised.exception, failure)
+
+
+class NativeWorkflowMetricsTests(unittest.TestCase):
+    def setUp(self):
+        source = Path(__file__).with_name("test-native-sync.py")
+        phase = next(node for node in ast.parse(source.read_text()).body
+                     if isinstance(node, ast.FunctionDef) and node.name == "native_check_phase")
+        self.environment = {}
+        self.clock = Mock(side_effect=[10.0, 10.25])
+        self.namespace = dict(functools=functools, sys=sys,
+                              preserve_primary_failure=preserve_primary_failure,
+                              os=SimpleNamespace(environ=self.environment),
+                              time=SimpleNamespace(monotonic=self.clock),
+                              diagnostic_phase="native-workflows")
+        exec(compile(ast.Module(body=[phase], type_ignores=[]), str(source), "exec"), self.namespace)
+        self.wrap = self.namespace["native_check_phase"]
+
+    def test_optional_timing_preserves_arguments_result_and_phase(self):
+        self.environment["SUZAKU_NATIVE_TIMING"] = "1"
+        def check_owned(value, *, suffix):
+            self.assertEqual(self.namespace["diagnostic_phase"], "check_owned")
+            return value + suffix
+        wrapped = self.wrap(check_owned)
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(wrapped("a", suffix="b"), "ab")
+        self.assertEqual(stdout.getvalue(), "TIMING: check_owned: 0.250s\n")
+        self.assertEqual(wrapped.__name__, "check_owned")
+        self.assertEqual(self.namespace["diagnostic_phase"], "native-workflows")
+
+    def test_disabled_metrics_are_quiet(self):
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(self.wrap(lambda: 7)(), 7)
+        self.assertEqual(stdout.getvalue(), "")
+        self.clock.assert_called_once_with()
+
+    def test_nested_checks_use_the_outer_phase_and_one_timer(self):
+        self.environment["SUZAKU_NATIVE_TIMING"] = "1"
+        def check_inner():
+            self.assertEqual(self.namespace["diagnostic_phase"], "check_outer")
+            return 7
+        inner = self.wrap(check_inner)
+        def check_outer():
+            return inner()
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(self.wrap(check_outer)(), 7)
+        self.assertEqual(stdout.getvalue(), "TIMING: check_outer: 0.250s\n")
+        self.assertEqual(self.clock.call_count, 2)
+
+    def test_failure_keeps_its_phase_and_original_exception(self):
+        failure = AssertionError("owned workflow failed")
+        def check_failure():
+            raise failure
+        with self.assertRaises(AssertionError) as raised:
+            self.wrap(check_failure)()
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(self.namespace["diagnostic_phase"], "check_failure")
+
+    def test_failed_timing_output_does_not_replace_workflow_failure(self):
+        self.environment["SUZAKU_NATIVE_TIMING"] = "1"
+        failure = AssertionError("owned workflow failed")
+        def check_failure():
+            raise failure
+        with patch("builtins.print", side_effect=OSError("closed output")), \
+                self.assertRaises(AssertionError) as raised:
+            self.wrap(check_failure)()
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(failure.__notes__, ["native workflow timing: OSError: closed output"])
+        self.assertEqual(self.namespace["diagnostic_phase"], "check_failure")
 
 
 if __name__ == "__main__":

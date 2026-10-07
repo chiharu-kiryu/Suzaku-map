@@ -50,7 +50,10 @@ pub(super) fn handle_panel_window_event(
                 state.window.request_redraw();
             }
             WindowEvent::Moved(_) => state.constrain_expanded_window_position(),
-            WindowEvent::ScaleFactorChanged { .. } => state.window.request_redraw(),
+            WindowEvent::ScaleFactorChanged { .. } => {
+                state.invalidate_pointer_scene();
+                state.window.request_redraw();
+            }
             WindowEvent::Occluded(occluded) => {
                 state.native.occluded = occluded;
                 state.native.presented = None;
@@ -71,6 +74,12 @@ pub(super) fn handle_panel_window_event(
                     }
                 }
                 state.window.request_redraw();
+            }
+            WindowEvent::X11MouseButtonPosition { position, .. } => {
+                // Button-time coordinates are not a motion sample. In
+                // particular, release must not advance a manual drag again.
+                state.interaction.last_input_was_touch = false;
+                state.cursor_position = Some((position.x as f32, position.y as f32));
             }
             WindowEvent::CursorMoved { position, .. } => {
                 state.interaction.last_input_was_touch = false;
@@ -154,6 +163,7 @@ pub(super) fn handle_panel_window_event(
                     state.modifiers,
                     event.repeat,
                 ) {
+                    state.suspend_native_keyboard();
                     state.chrome.settings_open = true;
                     state.chrome.settings_keyboard_focus = None;
                     state.chrome.settings_search_focused = false;
@@ -476,6 +486,7 @@ fn event_is_safe_while_unfocused(event: &WindowEvent, non_focusing_panel: bool) 
         && matches!(
             event,
             WindowEvent::CursorMoved { .. }
+                | WindowEvent::X11MouseButtonPosition { .. }
                 | WindowEvent::CursorEntered { .. }
                 | WindowEvent::CursorLeft { .. }
                 | WindowEvent::MouseInput { .. }
@@ -586,6 +597,12 @@ mod tests {
         };
         assert!(event_is_safe_while_unfocused(&press, true));
         assert!(!event_is_safe_while_unfocused(&press, false));
+        let button_position = WindowEvent::X11MouseButtonPosition {
+            device_id: DeviceId::dummy(),
+            position: PhysicalPosition::new(914.0, 402.0),
+        };
+        assert!(event_is_safe_while_unfocused(&button_position, true));
+        assert!(!event_is_safe_while_unfocused(&button_position, false));
     }
 
     #[test]

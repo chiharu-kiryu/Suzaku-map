@@ -61,6 +61,10 @@ pub enum NativeOperation {
     Adopt(usize),
     Replace(String),
     Clear,
+    /// Resolve Compose cancellation/adoption undo in the owning native host.
+    Backspace,
+    /// Continue the writing stream, honoring only an explicitly chosen row.
+    Continue,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

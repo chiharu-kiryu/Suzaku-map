@@ -1,6 +1,6 @@
 [package]
 name = "suzaku-map"
-version = "0.8.3"
+version = "0.8.4"
 edition = "2024"
 license = "MIT"
 description = "TDD-driven XR and tablet IME engine prototype in Rust"
@@ -36,6 +36,11 @@ winit = { version = "0.30.12", optional = true, default-features = false, featur
 libc = "0.2.189"
 ksni = { version = "0.3.6", optional = true, features = ["blocking"] }
 x11rb = { version = "0.13.2", optional = true }
+
+# Same-event X11 button coordinates; no pointer polling or extra input hook.
+# See the provenance, bounded patch and removal conditions in this notice.
+[patch.crates-io]
+winit = { path = "vendor/winit" }
 
 [lib]
 name = "suzaku_map"

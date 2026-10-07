@@ -47,7 +47,8 @@ mod tests {
         assert_eq!(state.chrome.translation.phase, TranslationPhase::Ready);
     }
     fn click(state: &mut PanelState, kind: InteractionKind) {
-        let scene = state.current_scene();
+        crate::native_sync::present_test_frame(state);
+        let scene = state.last_scene.as_ref().unwrap();
         let rect = scene
             .interactive_targets
             .iter()
@@ -59,7 +60,6 @@ mod tests {
             Some(kind)
         );
         state.cursor_position = Some((rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0));
-        state.last_scene = Some(scene);
         state.begin_primary_press(false);
         state.complete_primary_release(false);
     }
@@ -241,7 +241,15 @@ mod tests {
                 );
                 // Give the synthetic window a full fitted frame before hit testing its drawer.
                 let height = state.renderer.preferred_input_panel_height(&state.chrome) as u32;
-                state.resize(state.size.width, height);
+                let _ = state
+                    .window
+                    .request_inner_size(winit::dpi::PhysicalSize::new(state.size.width, height));
+                let actual = state.window.inner_size();
+                assert_eq!(
+                    actual,
+                    winit::dpi::PhysicalSize::new(state.size.width, height)
+                );
+                state.resize(actual.width, actual.height);
                 state.chrome.set_seed_text("How are you?".into());
                 state.refresh_seed();
                 state.start_translation_with(Arc::new(Fixed("我很好，谢谢。")));

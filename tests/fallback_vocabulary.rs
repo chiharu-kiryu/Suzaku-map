@@ -610,6 +610,89 @@ impl LlmCompletionProvider for UnavailableProvider {
 #[test]
 fn daily_expressions_stay_available_when_models_are_missing_failed_or_empty() {
     let cases = [
+        (
+            "en",
+            "could you put that in si",
+            "could you put that in simpler",
+            "could you put that in simpler words?",
+        ),
+        (
+            "en",
+            "let me say it an",
+            "let me say it another",
+            "let me say it another way.",
+        ),
+        (
+            "zh-Hans",
+            "wo li jie de shi",
+            "我理解的是",
+            "我理解的是这个意思，你看看对不对。",
+        ),
+        (
+            "zh-Hans",
+            "wo que ren yi xi",
+            "我确认一下",
+            "我确认一下时间，再回复你。",
+        ),
+        ("ja", "shitsumon", "質問", "質問があれば教えてください。"),
+        ("ja", "hosoku", "補足", "補足があれば教えてください。"),
+        (
+            "en",
+            "what do you like to re",
+            "what do you like to read",
+            "what do you like to read in your free time?",
+        ),
+        (
+            "en",
+            "this weekend i'm planning to re",
+            "this weekend i'm planning to relax",
+            "this weekend i'm planning to relax at home.",
+        ),
+        (
+            "zh-Hans",
+            "zhou mo you kong ma",
+            "周末有空吗",
+            "周末有空吗，一起出去走走吧。",
+        ),
+        (
+            "zh-Hans",
+            "chu qu zou yi zou",
+            "出去走一走",
+            "出去走一走，换个心情也挺好。",
+        ),
+        ("ja", "sanpo", "散歩", "散歩に行きませんか。"),
+        ("ja", "ryouri", "料理", "料理ができたら呼んでください。"),
+        (
+            "en",
+            "i'm having trouble fi",
+            "i'm having trouble finding",
+            "i'm having trouble finding the right place.",
+        ),
+        (
+            "en",
+            "we're almost do",
+            "we're almost done",
+            "we're almost done, just one more step.",
+        ),
+        (
+            "zh-Hans",
+            "wo zhe bian hao le",
+            "我这边好了",
+            "我这边好了，你那边怎么样？",
+        ),
+        (
+            "zh-Hans",
+            "chong xin lai guo",
+            "重新来过",
+            "重新来过也没关系，我们一起试试。",
+        ),
+        ("ja", "henshin", "返信", "返信ありがとうございます。"),
+        (
+            "ja",
+            "junbichuu",
+            "準備中",
+            "準備中です、少しお待ちください。",
+        ),
         ("zh-Hans", "ZHONG W ", "中文", "中文输入很方便。"),
         ("zh-Hans", "shu ru f\t", "输入法", "输入法支持多种语言。"),
         (

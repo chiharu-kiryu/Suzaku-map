@@ -498,6 +498,30 @@ fn phrase_remainder<'a>(typed: &str, phrase: &'a str) -> Option<&'a str> {
     (start < phrase.len()).then_some(&phrase[start..])
 }
 
+fn index_sentence_initials(
+    sentences: impl Iterator<Item = &'static str>,
+) -> [Vec<&'static str>; 26] {
+    let mut index: [Vec<&'static str>; 26] = std::array::from_fn(|_| Vec::new());
+    for sentence in sentences {
+        if let Some(initial) = sentence.bytes().next().filter(u8::is_ascii_alphabetic) {
+            index[usize::from(initial.to_ascii_lowercase() - b'a')].push(sentence);
+        }
+    }
+    index
+}
+
+fn sentences_starting_with(typed: &str) -> &'static [&'static str] {
+    let Some(initial) = typed.bytes().next().filter(u8::is_ascii_alphabetic) else {
+        return &[];
+    };
+    // Phrase probes below always begin with an ASCII letter. All other initial
+    // letters would fail the first comparison, so omit only that wasted work.
+    // Keep layer/authored order and duplicates intact; cache vocabulary, not input.
+    static SENTENCES: OnceLock<[Vec<&'static str>; 26]> = OnceLock::new();
+    let index = SENTENCES.get_or_init(|| index_sentence_initials(vocabulary().sentences()));
+    &index[usize::from(initial.to_ascii_lowercase() - b'a')]
+}
+
 fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> {
     if seed.len() > 4096 || english_word_prefix(seed.trim_end().trim_end_matches(',')).is_none() {
         return Vec::new();
@@ -527,8 +551,8 @@ fn sentence_remainders(seed: &str, context: &str) -> Vec<(usize, &'static str)> 
     // phrase match. A failed match never falls back to a fabricated suffix.
     for start in starts {
         let typed = &combined[start..];
-        let remainders: Vec<_> = vocabulary()
-            .sentences()
+        let remainders: Vec<_> = sentences_starting_with(typed)
+            .iter()
             .filter_map(|phrase| phrase_remainder(typed, phrase))
             .collect();
         if !remainders.is_empty() {
@@ -642,7 +666,7 @@ mod tests {
     use super::*;
 
     // Current total, independent of the immutable per-layer historical baselines.
-    const EXPECTED_DICTIONARY_WORDS: usize = 6127;
+    const EXPECTED_DICTIONARY_WORDS: usize = 6134;
 
     fn layer_words(id: &str) -> impl Iterator<Item = &'static str> {
         vocabulary()
@@ -653,6 +677,94 @@ mod tests {
             .words
             .iter()
             .map(String::as_str)
+    }
+
+    #[test]
+    fn sentence_initial_index_preserves_all_authored_order_and_duplicate_positions() {
+        let authored: Vec<_> = vocabulary().sentences().collect();
+        let mut indexed_count = 0;
+        for initial in b'a'..=b'z' {
+            let key = char::from(initial).to_string();
+            let bucket = sentences_starting_with(&key);
+            let expected: Vec<_> = authored
+                .iter()
+                .copied()
+                .filter(|sentence| sentence.as_bytes()[0].to_ascii_lowercase() == initial)
+                .collect();
+            assert_eq!(bucket, expected, "{key}: authored priority must not change");
+            assert_eq!(sentences_starting_with(&key.to_ascii_uppercase()), bucket);
+            indexed_count += bucket.len();
+        }
+        assert_eq!(
+            indexed_count,
+            authored
+                .iter()
+                .filter(|sentence| sentence.as_bytes()[0].is_ascii_alphabetic())
+                .count()
+        );
+        let synthetic = [
+            "Please keep the first choice.",
+            "other initial",
+            "please keep the second choice.",
+            "Please keep the first choice.",
+            "日本語",
+            "‘quoted initial’",
+        ];
+        let index = index_sentence_initials(synthetic.into_iter());
+        assert_eq!(
+            index[usize::from(b'p' - b'a')],
+            [synthetic[0], synthetic[2], synthetic[3]]
+        );
+        assert_eq!(index.iter().map(Vec::len).sum::<usize>(), 4);
+    }
+
+    #[test]
+    fn sentence_index_matches_linear_reference_at_every_authored_word_start() {
+        let authored: Vec<_> = vocabulary().sentences().collect();
+        let mut probes = HashSet::new();
+        for sentence in &authored {
+            let mut previous_is_letter = false;
+            for (start, ch) in sentence.char_indices() {
+                // Include every possible ASCII word start, even contractions
+                // that the full composition boundary policy correctly excludes.
+                if ch.is_ascii_alphabetic() && !previous_is_letter {
+                    let tail = &sentence[start..];
+                    let final_offset = tail.char_indices().next_back().unwrap().0;
+                    for typed in [&tail[..1], &tail[..final_offset], tail] {
+                        if typed.is_empty() {
+                            continue;
+                        }
+                        probes.insert(typed.to_owned());
+                        probes.insert(typed.to_ascii_uppercase());
+                        probes.insert(typed.replace('\'', "’").replace(' ', "\u{3000}\u{a0}"));
+                    }
+                }
+                previous_is_letter = ch.is_ascii_alphabetic();
+            }
+        }
+        let mut indexed_comparisons = 0;
+        let linear_comparisons = probes.len() * authored.len();
+        for typed in &probes {
+            let bucket = sentences_starting_with(typed);
+            indexed_comparisons += bucket.len();
+            let actual: Vec<_> = bucket
+                .iter()
+                .filter_map(|sentence| phrase_remainder(typed, sentence))
+                .collect();
+            let reference: Vec<_> = authored
+                .iter()
+                .filter_map(|sentence| phrase_remainder(typed, sentence))
+                .collect();
+            assert_eq!(actual, reference, "typed={typed:?}");
+        }
+        assert!(indexed_comparisons < linear_comparisons);
+        println!(
+            "PASS: {} authored-start probes preserve ordered remainders; {indexed_comparisons} indexed vs {linear_comparisons} linear phrase comparisons",
+            probes.len()
+        );
+        assert!(sentences_starting_with("").is_empty());
+        assert!(sentences_starting_with("日本語").is_empty());
+        assert!(sentences_starting_with("’quoted").is_empty());
     }
 
     #[test]
@@ -1747,6 +1859,85 @@ mod tests {
     }
 
     #[test]
+    fn daily_followup_preserves_all_seventeen_existing_word_layers() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..17]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6127);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured from the full pre-followup resource, not the new JSON.
+        assert_eq!(count, 6127);
+        assert_eq!(hash, 0x05fb5d17b3292be0);
+        let layer = &vocabulary().word_layers()[17];
+        assert_eq!(layer.id, "daily_followup");
+        assert_eq!(layer.words, ["having", "stuck"]);
+        assert_eq!(layer.next_words.len(), 24);
+        assert_eq!(layer.sentences.len(), 48);
+    }
+
+    #[test]
+    fn leisure_expansion_keeps_all_eighteen_existing_word_ranks() {
+        let mut old_ranks = std::collections::HashMap::new();
+        for (rank, word) in indexed_words(&vocabulary().word_layers()[..18]).enumerate() {
+            old_ranks.entry(canonical_word(word)).or_insert(rank);
+        }
+        assert_eq!(old_ranks.len(), 6129);
+        let mut hash = 0xcbf29ce484222325_u64;
+        let mut count = 0;
+        for word in dictionary()
+            .iter()
+            .filter(|word| old_ranks.contains_key(&word.text))
+        {
+            count += 1;
+            assert_eq!(
+                word.rank, old_ranks[&word.text],
+                "rank changed for {}",
+                word.text
+            );
+            for byte in word
+                .text
+                .bytes()
+                .chain([0])
+                .chain((word.rank as u64).to_le_bytes())
+            {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+            }
+        }
+        // Captured before appending leisure data; earlier hashes stay intact.
+        assert_eq!(count, 6129);
+        assert_eq!(hash, 0x832ea2a33f69d0ae);
+        let layer = &vocabulary().word_layers()[18];
+        assert_eq!(layer.id, "daily_leisure");
+        assert_eq!(
+            layer.words,
+            ["listening", "movie", "podcasts", "walks", "watched"]
+        );
+        assert_eq!(layer.next_words.len(), 16);
+        assert_eq!(layer.sentences.len(), 32);
+    }
+
+    #[test]
     fn authored_collocations_and_sentences_are_unique_and_reachable() {
         use crate::ime::candidate_mix::CandidateKind;
         let mut keys = std::collections::HashSet::new();
@@ -1785,8 +1976,8 @@ mod tests {
                 "unreachable sentence: {sentence}"
             );
         }
-        assert_eq!(keys.len(), 521);
-        assert_eq!(sentences.len(), 1006);
+        assert_eq!(keys.len(), 577);
+        assert_eq!(sentences.len(), 1118);
     }
 
     #[test]

@@ -171,6 +171,66 @@ Literal 原文，不制造重复 Word 候选。宽前缀仍受原候选数量和
 新增数量和确切执行结果见 [Japanese choices 开发记录](../../DEVELOPMENT.md)。
 本轮不更新个人安装，内置数据须重建/重装后生效。
 
+### 日常进度与接续沟通（未发布）
+
+`daily_followup` 补充进度回应、暂停接续、重新尝试和澄清误会：中英各新增
+**24 组语境、48 条原创短句**，中文另追加 **64 条读音**。英文只新增
+`having/stuck` 两个索引词形；当前为 **6,129 项英文索引、545 组搭配、1,054 句；
+2,496 条中文读音、539 组语境、1,076 条续句**。例如
+`i forgot to br` → `i forgot to bring` / `i forgot to bring the keys.`，
+`wo zhe bian hao le` → `我这边好了` / `我这边好了，你那边怎么样？`，
+`chong xin lai guo` → `重新来过` / `重新来过也没关系，我们一起试试。`。
+
+日语同期补充消息与日常协作：**32 条读音、16 组语境、32 句**，当前共
+**154 条读音、78 组语境、155 条续句记录**，例如 `henshin` → `返信` /
+`返信ありがとうございます。`、`junbi chuu` → `準備中` / `準備中です、少しお待ちください。`。
+仍是有限读音与预设续句，不代表任意日语活用或完整形态分析。
+
+追加前先固定独立期望复现缺口；前 17 层英文权重与全部搭配/句子、中文 2,432 条
+读音和 515 组语境、日语 122 条读音和 62 组语境新增全文/排序指纹，所有早期
+指纹仍保留。数据与模型、平台和解码实现分离；6,144 项英文索引预算、候选容量、
+原文保真和明确提交约束不变。宽读音可能有旧候选竞争，不承诺所有匹配都在首屏。
+项目自编的短句不读取消息、发送回复或修改日程。验证范围见
+[开发记录](../../DEVELOPMENT.md)；当前桌面仍需重建/重装后才会使用新内置数据。
+
+### 休闲、兴趣与周末安排（未发布）
+
+只追加原创日用表达：英文 `daily_leisure` 新增 **16 组搭配、32 句**，仅增加
+`listening/movie/podcasts/walks/watched` 五个索引词形；中文新增 **48 条读音、
+16 组语境、32 句**；日语新增 **24 条读音、12 组语境、24 句**。
+例如 `what do you like to re` → `what do you like to read` /
+`what do you like to read in your free time?`，`chu qu zou yi zou` → `出去走一走` /
+`出去走一走，换个心情也挺好。`，`sanpo` → `散歩` / `散歩に行きませんか。`。
+
+这轮完成后为 **6,134 项英文索引、561 组搭配、1,086 句；2,544 条中文读音、
+555 组语境、1,108 句；178 条日语读音、90 组语境、179 条续句记录**。
+新增前固定独立测试，锁定全部 18 层旧英文权重与搭配/句子、2,496 条中文读音与
+539 组语境、154 条日语读音与 78 组语境，保留更早的历史快照。
+模型接口、语言转换算法、6,144 项英文索引预算和候选容量不变；宽日语读音保留
+旧词优先，并验证后页可选，不承诺所有匹配都在首屏。这些是有限离线兜底，不是
+开放式整句预测或完整日语形态分析；未下载语料或读取个人输入。
+执行范围见 [开发记录](../../DEVELOPMENT.md)。内置新词仍须重建/重装后在桌面生效。
+
+### 澄清、确认与说明接续（未发布）
+
+英文 `daily_clarification` 追加 **16 组搭配、32 句**，复用已知词形，净新增索引为零；
+中文追加 **48 条读音、16 组语境、32 句**，日语追加 **24 条读音、12 组语境、24 句**。
+例如 `could you put that in si` → `could you put that in simpler` /
+`could you put that in simpler words?`，`wo que ren yi xi` → `我确认一下` /
+`我确认一下时间，再回复你。`，`hosoku` → `補足` / `補足があれば教えてください。`。
+
+当前资源为 **6,134 项英文索引、577 组搭配、1,118 句；2,592 条中文读音、
+571 组语境、1,140 句；202 条日语读音、102 组语境、203 条续句记录**。
+原 19 层英文权重与全部 561 组搭配/1,086 句、中文 2,544 条读音/555 组语境、
+日语 178 条读音/90 组语境先锁定完整顺序指纹，保留全部早期保护。
+数据追加前先固定预期并复现缺口；字面输入、采用后继续、精确提交和预算不变，
+不绑定具体模型、不增解码特例，也不把有限原创兜底句子当作开放式语言能力。
+日语宽读音仍允许旧词优先并保留新词可达；所有匹配不保证同时在首屏。
+完整回归发现新“这个怎么理解”会挤走半截 `zheg` 的旧“这个”首屏候选，
+因此仅将该未发布新表达替换为“如何理解这句话”，保留旧内容、旧首屏断言和候选上限。
+家庭中文包另修正衣服“留一份”为“留一套”，日语家庭包的 `sentaku` 同音顺序
+补测小写、大写和假名；原十一包不动，推荐目录仍为 14 包，仍需显式安装并重启两端。
+
 ## 格式版本 1
 
 UTF-8 JSON。必填 `format_version: 1` 和 `language`；其余顶层数组默认空。
@@ -255,7 +315,7 @@ Linux 宿主及面板在构建引擎前读取已启用包，之后冻结为进�
 [中文旅行住宿](../offline-packs/zh-Hans-travel.json)、[英文工作协作](../offline-packs/en-work.json)、
 [中文工作协作](../offline-packs/zh-Hans-work.json)：同样合计 120 个显式英文词形、72 条
 中文读音、中英各 32 组语境和 64 条短句。新增八包累计 240 个显式词形、144 条读音、
-256 条预设句子，推荐目录现为 **11 包**；这些仍是包内数量，不是去重后新增量。
+256 条预设句子，这轮推荐目录达到 **11 包**；这些仍是包内数量，不是去重后新增量。
 覆盖行李寄存、客房设施、接驳/行程变更、任务分工、纪要复核、交接与交付确认。
 例如 `could you store our lugg` → `could you store our luggage` /
 `could you store our luggage until this afternoon?`，`xiang mu lu xian tu` →
@@ -264,6 +324,23 @@ Linux 宿主及面板在构建引擎前读取已启用包，之后冻结为进�
 各主题包可独立启停，不自动收集行程、会议或项目资料，不执行预订/工作操作。
 扩展预算独立于内置质量门禁：单包 256 KiB / 2,048 索引单元，最多安装 16 包，每种语言
 启用扩展总计不超过 4,096 单元；这不是去重词数。候选页数、解码窗口和模型预算不变。
+
+当前开发版再追加三个可选的 `family` / `home` 家庭生活集合：
+[英文](../offline-packs/en-family.json)、[中文](../offline-packs/zh-Hans-family.json)、
+[日文](../offline-packs/ja-family.json)，推荐目录现在是 **14 包**。
+覆盖家庭成员、亲友探访、家务分工、洗衣和收纳；由项目编写，不使用个人家庭资料。
+英文包为 **60 个显式词形、16 组搭配、32 句**，中文包为 **36 条读音、16 组语境、32 句**，
+日文包为 **24 条读音、12 组语境、24 句**，合计 88 条短句。
+英文与内置数据合并后只有 26 个净新增索引词形（包括句子投影），不要把 60 个包内词形
+当成净增量。三个包分别占 393 / 84 / 60 个扩展单元，总共 12,692 字节；全部预算不变。
+内置中英日资源、原十一包文件和目录顺序不变，不自动安装或启用。
+
+例如 `our grandparents are coming ov` → `our grandparents are coming over` /
+`our grandparents are coming over this afternoon.`，`jia ren tuan ju` → `家人团聚` /
+`家人团聚的时间先问问大家。`，`souji` → `掃除` / `掃除が終わったら休みましょう。`。
+日文 `sentaku` 仍优先原来的 `選択`，追加的 `洗濯` 不覆盖旧同音排序。
+可用 `pack catalog --language ja --topic family` 查找，再显式导出、安装；
+运行中的宿主和面板仍需重启才加载，不能只重开设置窗口。
 
 ## 验证
 
@@ -280,8 +357,13 @@ cargo test --locked --all-features --test daily_objects_english --test daily_obj
 cargo test --locked --all-features --test daily_choices_english --test daily_choices_chinese -- --test-threads=1
 cargo test --locked --all-features --test daily_japanese_vocabulary -- --test-threads=1
 cargo test --locked --all-features --test daily_choices_japanese -- --test-threads=1
+cargo test --locked --all-features --test daily_followup_english --test daily_followup_chinese --test daily_coordination_japanese -- --test-threads=1
+cargo test --locked --all-features --test daily_leisure_english --test daily_leisure_chinese --test daily_leisure_japanese -- --test-threads=1
+cargo test --locked --all-features --test daily_clarification_english --test daily_clarification_chinese --test daily_clarification_japanese -- --test-threads=1
 cargo test --locked --all-features --test offline_packs -- --test-threads=1
 cargo test --locked --all-features --test offline_pack_quality -- --test-threads=1
+cargo test --locked --all-features --test family_pack_english --test family_pack_chinese --test family_pack_japanese -- --test-threads=1
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-offline-pack-shipping.py
 ```
 
 [数据契约回归](../../tests/lexicon_resources.rs)覆盖格式、边界、同音和层顺序；
@@ -302,8 +384,12 @@ cargo test --locked --all-features --test offline_pack_quality -- --test-threads
 [原生 IBus 回归](../../scripts/test-native-sync.py)校验词句采用、撤回、续写与提交，
 后者用任务拥有的回环 HTTP 服务单独检查 503 和实际请求超时。
 
-[离线包词句回归](../../tests/offline_pack_quality.rs)在自有注册表中同时启用十一个包，
+[离线包词句回归](../../tests/offline_pack_quality.rs)在自有注册表中同时启用十四个包，
 检查新增 240 个英文词形可索引、144 条中文读音可选，以及独立编写的 32 / 32 个中英
 词句场景（中文四种拼写）、长短草稿与字面空白、下一词、大小写/撇号和半截拼音。
 模型不可用/缺失/超时/503 是类型化合成错误，不冒充真实网络或大模型质量验收。
 原生包专项另检查数字采用/撤回、Space 续写、词句精确提交和启动快照。
+三个 `family_pack_*` 回归用独立新进程检查家庭包的完整词句、拼写变体、采用后继续、
+撤回/精确提交、类型化模型失败及可选启停；目录浏览不会安装到个人注册表。
+静态发包清单回归拒绝目录、源码、打包和内容检查列表中的缺漏/重复/未知包，
+它不替代实际 `.deb` / `.tar.gz` 构建及干净容器安装验收。

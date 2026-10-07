@@ -24,6 +24,22 @@ use suzaku_map::platform::voice_host::open_voice_permission_settings;
 use wgpu::SurfaceError;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
+/// Only the lightweight hit geometry of an actually presented frame survives
+/// ordinary draft-cache invalidation. Candidate identities never use this fallback.
+pub(super) struct PresentedPointerScene {
+    size: winit::dpi::PhysicalSize<u32>,
+    scale_factor: f64,
+    window_scale: f32,
+    targets: Vec<suzaku_map::ime::gpu::InteractiveTarget>,
+}
+
+/// Permission for one already-acquired completion release, not a new hit target.
+pub(super) struct HeldCompletion {
+    edit: suzaku_map::panel_support::NextTokenCompletion,
+    language: String,
+    truncated: bool,
+}
+
 fn upload_vertex_data(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -154,11 +170,21 @@ impl PanelState {
 
     pub(super) fn move_candidate_selection(&mut self, delta: isize) {
         if self.native.showing {
-            if let Some(frame) = &self.native.frame {
-                let index = (frame.selected as isize + delta)
-                    .clamp(0, frame.candidates.len().saturating_sub(1) as isize)
-                    as usize;
-                self.native_action(suzaku_map::ime::companion::NativeOperation::Select(index));
+            if let Some(frame) = self
+                .native
+                .frame
+                .as_ref()
+                .filter(|frame| frame.visible() && !frame.candidates.is_empty())
+            {
+                let index = frame
+                    .selected
+                    .saturating_add_signed(delta)
+                    .min(frame.candidates.len() - 1);
+                // Do not translate a relative boundary into an absolute choice:
+                // that would lock predictions and discard the host's adoption undo.
+                if index != frame.selected {
+                    self.native_action(suzaku_map::ime::companion::NativeOperation::Select(index));
+                }
             }
             return;
         }
@@ -754,11 +780,13 @@ impl PanelState {
 
     pub(super) fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
+            self.invalidate_pointer_scene();
             return;
         }
         if self.size.width == width && self.size.height == height {
             return;
         }
+        self.invalidate_pointer_scene();
         let external_resize =
             self.is_external_window_resize(winit::dpi::PhysicalSize::new(width, height));
         if self.kind == PanelWindowKind::Main && !self.chrome.compact_mode {
@@ -793,6 +821,8 @@ impl PanelState {
     pub(super) fn render(&mut self) -> Result<(), SurfaceError> {
         // A failed surface acquisition/presentation must relinquish the popup.
         self.native.presented = None;
+        self.last_scene = None;
+        self.presented_pointer_scene = None;
         if self.defer_bottom_render() {
             // An empty keyboard can gain a full candidate page in one event.
             // Do not present zero-height choices in the old viewport while
@@ -984,10 +1014,33 @@ impl PanelState {
                     serde_json::json!(self.window.outer_position().ok().map(|p| [p.x, p.y]));
                 let size = self.window.inner_size();
                 frame["size"] = serde_json::json!([size.width, size.height]);
+                // Private no-WM fixtures must not click a transitional frame
+                // whose follow-caret fit will resize it in about_to_wait.
+                // This is QA readiness, not a production compositor policy.
+                let fitted = if self.kind == PanelWindowKind::Settings {
+                    scene
+                        .settings_scroll_metadata
+                        .is_some_and(|metadata| self.size == self.fitted_settings_size(metadata))
+                } else {
+                    self.chrome.compact_mode
+                        || self.bottom_layout_enabled()
+                        || self.size == self.fitted_size_for_width(self.size.width)
+                };
+                frame["viewport_settled"] = (fitted
+                    && self.pointer_geometry_is_current()
+                    && !self.window_resize_state.awaiting_size(size, Instant::now()))
+                .into();
                 frame["native_revision"] =
                     serde_json::json!(self.native.frame.as_ref().map(|f| f.revision));
                 frame["native_context"] =
                     serde_json::json!(self.native.frame.as_ref().map(|f| f.context));
+                frame["native_cursor"] =
+                    serde_json::json!(self.native.frame.as_ref().and_then(|f| f.cursor).map(
+                        |cursor| {
+                            serde_json::json!({"x": cursor.x, "y": cursor.y,
+                            "width": cursor.width, "height": cursor.height})
+                        }
+                    ));
                 frame["native_page"] = serde_json::Value::Null;
                 if self.native.showing
                     && let (Some(page), Some(native)) =
@@ -1029,8 +1082,65 @@ impl PanelState {
                 self.last_frame_diagnostic = Some(frame);
             }
         }
+        self.presented_pointer_scene = Some(PresentedPointerScene {
+            size: self.size,
+            scale_factor: self.window.scale_factor(),
+            window_scale: self.window_scale,
+            targets: scene.interactive_targets.clone(),
+        });
         self.last_scene = Some(scene);
         Ok(())
+    }
+
+    pub(super) fn invalidate_pointer_scene(&mut self) {
+        self.last_scene = None;
+        self.presented_pointer_scene = None;
+        // A geometry acknowledgement must not terminate a drag that owns it.
+        // Ordinary clicks, including touches, cannot survive a changed viewport.
+        if !self.interaction.panel_dragging
+            && !self.interaction.scale_dragging
+            && !self.interaction.settings_scroll_dragging
+        {
+            self.finish_handwriting_stroke();
+            self.clear_pressed_interaction();
+            self.interaction.touch_tap_pending = false;
+            self.interaction.touch_start_position = None;
+        }
+    }
+
+    fn pointer_geometry_is_current(&self) -> bool {
+        self.size.width > 0
+            && self.size.height > 0
+            && self.config.width == self.size.width
+            && self.config.height == self.size.height
+            && self.window.inner_size() == self.size
+    }
+
+    fn stable_presented_keyboard_target(
+        &mut self,
+        x: f32,
+        y: f32,
+    ) -> Option<suzaku_map::ime::gpu::InteractiveTarget> {
+        let presented = self.presented_pointer_scene.as_ref()?;
+        if presented.size != self.size
+            || presented.scale_factor != self.window.scale_factor()
+            || presented.window_scale != self.window_scale
+        {
+            return None;
+        }
+        let target = presented
+            .targets
+            .iter()
+            .rev()
+            .find(|target| point_in_rect(x, y, target.rect))
+            .copied()?;
+        if !matches!(target.kind, InteractionKind::VirtualKeyboardKey(_)) {
+            return None;
+        }
+        // A draft update can dirty the scene between rapid taps. Keep a key
+        // usable only if its already-visible meaning and rectangle are unchanged;
+        // never turn a measurement of a new layout into a new clickable target.
+        (self.current_scene().hit_interactive_target(x, y) == Some(target)).then_some(target)
     }
 
     fn interaction_target_at(
@@ -1038,6 +1148,9 @@ impl PanelState {
         x: f32,
         y: f32,
     ) -> (Option<InteractionKind>, Option<[f32; 4]>) {
+        if !self.pointer_geometry_is_current() {
+            return (None, None);
+        }
         let read_target = |scene: &RenderScene| {
             let target = scene.hit_interactive_target(x, y);
             (
@@ -1048,8 +1161,11 @@ impl PanelState {
         if let Some(scene) = self.last_scene.as_ref() {
             read_target(scene)
         } else {
-            let scene = self.current_scene();
-            read_target(&scene)
+            let target = self.stable_presented_keyboard_target(x, y);
+            (
+                target.map(|target| target.kind),
+                target.map(|target| target.rect),
+            )
         }
     }
 
@@ -1058,6 +1174,9 @@ impl PanelState {
     }
 
     fn selectable_interaction_at(&mut self, x: f32, y: f32) -> Option<(InteractionKind, bool)> {
+        if !self.pointer_geometry_is_current() {
+            return None;
+        }
         let read_interaction = |scene: &RenderScene| {
             let kind = scene.hit_interaction(x, y)?;
             let is_truncated = match kind {
@@ -1077,8 +1196,8 @@ impl PanelState {
         if let Some(scene) = self.last_scene.as_ref() {
             read_interaction(scene)
         } else {
-            let scene = self.current_scene();
-            read_interaction(&scene)
+            self.stable_presented_keyboard_target(x, y)
+                .map(|target| (target.kind, false))
         }
     }
 
@@ -1102,7 +1221,10 @@ impl PanelState {
             return;
         };
 
-        if let Some((kind, interaction_is_truncated)) = self.selectable_interaction_at(x, y) {
+        if let Some((kind, interaction_is_truncated)) = self
+            .selectable_interaction_at(x, y)
+            .or_else(|| self.stable_held_completion_at(x, y))
+        {
             self.chrome.settings_keyboard_focus = None;
             if !matches!(
                 kind,
@@ -1207,6 +1329,7 @@ impl PanelState {
             InteractionKind::SettingsToggle => {
                 self.chrome.settings_open = !self.chrome.settings_open;
                 if self.chrome.settings_open {
+                    self.suspend_native_keyboard();
                     self.chrome.settings_scroll_offset = 0.0;
                 }
             }
@@ -1818,6 +1941,7 @@ impl PanelState {
     }
 
     pub(super) fn update_pressed_interaction(&mut self) {
+        self.interaction.held_completion = None;
         let Some((x, y)) = self.cursor_position else {
             self.interaction.pressed_interaction = None;
             self.interaction.press_target_rect = None;
@@ -1830,6 +1954,18 @@ impl PanelState {
         self.interaction.press_target_rect = press_target_rect;
         self.interaction.press_start_cursor = Some((x, y));
         self.interaction.press_start_instant = Some(Instant::now());
+        self.interaction.held_completion = match pressed_interaction {
+            Some(InteractionKind::SelectNextToken(index)) => self
+                .last_scene
+                .as_ref()
+                .zip(self.next_token_completions.get(index))
+                .map(|(scene, edit)| HeldCompletion {
+                    edit: edit.clone(),
+                    language: self.engine.snapshot().active_language,
+                    truncated: scene.next_token_candidate_truncated.contains(&index),
+                }),
+            _ => None,
+        };
     }
 
     pub(super) fn begin_primary_press(&mut self, is_touch: bool) {
@@ -2040,6 +2176,50 @@ impl PanelState {
             }
         }
         self.hit_interaction_at(x, y) == Some(expected)
+            || self
+                .stable_held_completion_at(x, y)
+                .is_some_and(|(kind, _)| kind == expected)
+    }
+
+    fn stable_held_completion_at(&mut self, x: f32, y: f32) -> Option<(InteractionKind, bool)> {
+        // An identical async refresh dirties the scene without replacing the
+        // acquired completion. Only its release may use this permission: press
+        // and hover still cannot acquire an unpresented candidate.
+        if self.last_scene.is_some() || !self.pointer_geometry_is_current() {
+            return None;
+        }
+        let kind @ InteractionKind::SelectNextToken(index) = self.interaction.pressed_interaction?
+        else {
+            return None;
+        };
+        let held = self.interaction.held_completion.as_ref()?;
+        if self.next_token_completions.get(index) != Some(&held.edit)
+            || self.chrome.seed_text != held.edit.seed_before
+            || self.engine.snapshot().active_language != held.language
+        {
+            return None;
+        }
+        let truncated = held.truncated;
+        let presented = self.presented_pointer_scene.as_ref()?;
+        if presented.size != self.size
+            || presented.scale_factor != self.window.scale_factor()
+            || presented.window_scale != self.window_scale
+        {
+            return None;
+        }
+        let target = presented
+            .targets
+            .iter()
+            .rev()
+            .find(|target| point_in_rect(x, y, target.rect))
+            .copied()?;
+        if target.kind != kind || Some(target.rect) != self.interaction.press_target_rect {
+            return None;
+        }
+        let measured = self.current_scene();
+        (measured.hit_interactive_target(x, y) == Some(target)
+            && measured.next_token_candidate_truncated.contains(&index) == truncated)
+            .then_some((kind, truncated))
     }
 
     fn effective_tap_slop_tenths(&self) -> f32 {
@@ -2068,6 +2248,7 @@ impl PanelState {
     }
 
     pub(super) fn clear_pressed_interaction(&mut self) {
+        self.interaction.held_completion = None;
         self.interaction.pressed_interaction = None;
         self.interaction.press_target_rect = None;
         self.interaction.press_start_cursor = None;

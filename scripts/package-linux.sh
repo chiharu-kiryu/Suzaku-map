@@ -123,6 +123,7 @@ install -m 644 -- data/offline-packs/en-outdoors.json data/offline-packs/zh-Hans
   data/offline-packs/en-cooking.json data/offline-packs/zh-Hans-cooking.json \
   data/offline-packs/en-travel.json data/offline-packs/zh-Hans-travel.json \
   data/offline-packs/en-work.json data/offline-packs/zh-Hans-work.json \
+  data/offline-packs/en-family.json data/offline-packs/zh-Hans-family.json data/offline-packs/ja-family.json \
   "$suzaku_package_tree/share/suzaku/offline-packs/"
 # Every guide also appears outside docs/. Resolve sibling documentation from
 # the canonical docs directory in both flat layouts, including model audits.
@@ -135,8 +136,9 @@ for suzaku_package_guide in linux-packaging-data.md model-providers.md ibus-cand
     "docs/$suzaku_package_guide" > "$suzaku_package_tree/$suzaku_package_root_guide"
 done
 
-# Include declared licenses and the license/notice files supplied by locked Cargo dependencies.
-# This inventory covers the resolved lockfile, including other-platform dependencies.
+# Include declared licenses and the license/notice files supplied by all Cargo dependencies.
+# This includes patched path dependencies, not just crates with a registry source.
+# The inventory covers the resolved lockfile, including other-platform dependencies.
 jq '[.packages[] | {name, version, license, source}]' "$suzaku_package_tmp/metadata.json" > "$suzaku_package_tree/share/doc/suzaku/dependencies.json"
 while IFS=$'\t' read -r suzaku_package_crate suzaku_package_crate_version suzaku_package_manifest; do
   suzaku_package_crate_dir=$(dirname -- "$suzaku_package_manifest")
@@ -145,7 +147,7 @@ while IFS=$'\t' read -r suzaku_package_crate suzaku_package_crate_version suzaku
   while IFS= read -r -d '' suzaku_package_license; do
     cp -R -- "$suzaku_package_license" "$suzaku_package_licenses/"
   done < <(find "$suzaku_package_crate_dir" -maxdepth 1 \( -iname 'license*' -o -iname 'copying*' -o -iname 'notice*' \) -print0)
-done < <(jq -r '.packages[] | select(.source != null) | [.name, .version, .manifest_path] | @tsv' "$suzaku_package_tmp/metadata.json")
+done < <(jq -r '.packages[] | select(.name != "suzaku-map") | [.name, .version, .manifest_path] | @tsv' "$suzaku_package_tmp/metadata.json")
 
 suzaku_package_epoch=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 [[ $suzaku_package_epoch =~ ^[0-9]+$ ]] || { printf 'Invalid SOURCE_DATE_EPOCH.\n' >&2; exit 1; }
