@@ -3,7 +3,7 @@
 Historical implementation notes, including earlier behavior and experimental platforms.
 Start with the [README](README.md) and [known limitations](docs/known-limitations.md).
 
-Current source version: **0.8.4 — Continuous input reliability and everyday fallback**.
+Current source version: **0.8.5 — Readable long sentence candidates**.
 
 ## Current priority: Chinese and English input on Linux
 
@@ -41,6 +41,41 @@ checks and clean-container installation checks to pass before publication. Other
 are added only after their own acceptance, not implied by the shared version number.
 This is a release requirement, not a claim that automatic publication is implemented or
 that existing 0.7.x tags already have assets. See [Linux packaging](docs/linux-packaging-data.md).
+
+### 0.8.5 release preparation (2026-10-08)
+
+- Collect the native long-candidate display fixes into a patch release. Only
+  English/Chinese full-text labels with a verified shared prefix use bounded
+  previews; the renderer measures the actual numbered card before shortening
+  that prefix further. Full candidate text, frame state, absolute paging indices,
+  adoption and exact-once submission remain unchanged. Short/custom labels,
+  Japanese and uncertain Unicode boundaries retain their previous display.
+- Keep the changing suffix visible and protect the final printable ASCII token,
+  including one directly following Han text. This is conservative display logic,
+  not general Unicode word segmentation or a replacement for the model protocol.
+  Vocabulary data, dependency versions and candidate ranking are unchanged.
+- Development checks pass 105 Rust testcase executions: 21 candidate-mix units,
+  27 GPU units, 54 long-draft/language regressions and three private native UI
+  cases. The candidate action case contains a 252-scenario pure-layout matrix
+  across widths, font sizes, layouts and pages; these are not 252 additional
+  Rust tests or acceptance on every physical desktop/font. Strict all-target
+  Clippy and formatting pass. Logs and both original failed attempts remain in
+  `/tmp/suzaku-native-responsive-qa.fI6gsp`; no personal input session is used.
+- Synchronize the Rust root package/lock entry, two macOS plist versions,
+  Android version name and current guides to 0.8.5; platform build number is 35.
+  Keep historical 0.8.4 notes and dependency lock entries unchanged. Require
+  fresh all-feature regression checks and the exact committed source's full CI,
+  Ubuntu 24.04 package-content and clean-container installation gates before
+  attaching the four Linux Release assets. The deferred upstream IBus daemon
+  abort and unqualified platforms are not declared fixed by this release.
+- After the version update, the full all-feature suite passes 1,341 testcase
+  executions with zero failures and 29 dedicated skips across 88 result entries;
+  strict all-target Clippy passes (22.82s). Formatting, version/build consistency,
+  all unchanged dependency entries, 21 tensor checks and 81 Python fixture checks
+  pass. The 242 audit links here are source-tree checks, not package acceptance.
+  Pinned Gitleaks 8.30.1 finds no leaks in staged changes or existing 126-commit
+  history. Release logs are in `/tmp/suzaku-release-0.8.5.GOJlIn`; local native
+  development receipts above do not substitute for the committed source's CI.
 
 ### 0.8.4 release preparation (2026-10-07)
 

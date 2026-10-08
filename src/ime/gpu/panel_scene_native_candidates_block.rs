@@ -16,12 +16,31 @@
         let number_w = 65.0 * responsive_scale;
         let controls_x = panel_x + panel_width - button_w * 2.0 - number_w - gap * 2.0;
         let mut add_text = |text: String, rect: [f32; 4], px: f32, color: [f32; 4],
-                            align: TextAlign, role: TextRole, max_lines: usize| {
-            let layout = TextBlock {
+                            align: TextAlign, role: TextRole, max_lines: usize,
+                            native_preview: Option<(usize, &str)>| {
+            let mut block = TextBlock {
                 text, origin: [0.0; 2], max_width: rect[2], pixel_size: px,
                 letter_spacing: heading_tracking, line_gap: 2.0 * responsive_scale,
                 max_lines, color, align, role,
-            }.layout_in_rect(rect, [7.0 * responsive_scale, 3.0 * responsive_scale]);
+            };
+            let padding = [7.0 * responsive_scale, 3.0 * responsive_scale];
+            let mut layout = block.layout_in_rect(rect, padding);
+            if layout.truncated
+                && let Some((index, preview)) = native_preview
+                && let Some(original) = snapshot.candidate_labels.get(index)
+            {
+                // Measure with the same font scope, number, padding and actual
+                // row height. Only a verified native shared-prefix preview is
+                // eligible; custom labels and unrelated long cards stay intact.
+                crate::ime::candidate_mix::fit_native_display_label_for_seed(
+                    &snapshot.active_language, &snapshot.seed_text, original, preview,
+                    |label| {
+                        block.text = format!("{}  {}", index % NativeCandidatePage::SIZE + 1, label);
+                        let measured = block.layout_in_rect(rect, padding);
+                        if measured.truncated { false } else { layout = measured; true }
+                    },
+                );
+            }
             let truncated = layout.truncated;
             text_quads.extend(layout.quads.iter().copied());
             atlas_glyphs.extend(layout.atlas_glyphs.iter().cloned());
@@ -30,10 +49,10 @@
         };
         add_text("1–6 · PageUp / PageDown".into(),
             [panel_x, suggestions_y, (controls_x - panel_x - gap).max(0.0), button_h],
-            micro_px, text_secondary, TextAlign::Left, TextRole::HeaderStatus, 1);
+            micro_px, text_secondary, TextAlign::Left, TextRole::HeaderStatus, 1, None);
         add_text(format!("{} / {}", page.start / NativeCandidatePage::SIZE + 1, page.count()),
             [controls_x + button_w + gap, suggestions_y, number_w, button_h],
-            micro_px, text_secondary, TextAlign::Center, TextRole::HeaderStatus, 1);
+            micro_px, text_secondary, TextAlign::Center, TextRole::HeaderStatus, 1, None);
         for (forward, x, label) in [
             (false, controls_x, "‹"),
             (true, controls_x + button_w + number_w + gap * 2.0, "›"),
@@ -51,7 +70,7 @@
                 6.0 * responsive_scale, 0.8 * responsive_scale));
             add_text(label.into(), rect, chip_px,
                 if enabled { accent_text } else { text_muted }, TextAlign::Center,
-                TextRole::HeaderStatus, 1);
+                TextRole::HeaderStatus, 1, None);
             if enabled {
                 interactive_targets.push(InteractiveTarget { kind, rect });
             }
@@ -89,7 +108,7 @@
             } * responsive_scale;
             if add_text(text, rect, px,
                 if !enabled { text_muted } else if selected { accent_text } else { text_primary },
-                TextAlign::Left, TextRole::CandidatePrimary, 2)
+                TextAlign::Left, TextRole::CandidatePrimary, 2, Some((*source_index, &display_label)))
             {
                 sentence_candidate_truncated.push(*source_index);
             }

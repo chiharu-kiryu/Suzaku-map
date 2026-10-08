@@ -735,10 +735,14 @@ fn native_candidate_actions_preserve_followup_input() {
             let mut failures = Vec::new();
             for language in ["en", "zh-Hans"] {
                 for touch in [false, true] {
+                    check_shared_prefix_native_cards(&mut app, events, language, touch);
                     check_truncated_native_commit(&mut app, events, language, touch);
                     check_truncated_standalone_preview(&mut app, events, language, touch);
                 }
+                check_native_card_display_exceptions(&mut app, events, language);
             }
+            check_native_card_display_exceptions(&mut app, events, "ja");
+            check_native_card_layout_matrix(&mut app, events);
             for touch in [false, true] {
                 for boundary in [
                     "normal",
@@ -802,6 +806,12 @@ fn native_candidate_actions_preserve_followup_input() {
             );
             println!(
                 "PASS: truncated English/Chinese native cards commit once on the first mouse/touch click, cancel stale presses, and leave standalone first-click previews intact"
+            );
+            println!(
+                "PASS: long native cards render distinct English tails, preserve full host payloads and page-two commit indices, and retain custom/replacement/Japanese displays"
+            );
+            println!(
+                "PASS: 252 pure-layout native page cases retain all six English/Han tails with cached atlas metrics across text sizes, FollowCaret/expanded BottomDock, narrow scene widths and both pages"
             );
             println!(
                 "PASS: production wheel/pinch dispatch ignores horizontal, zero and nonfinite deltas, including settings scroll; finite vertical events still page, zoom or scroll settings"
@@ -1161,6 +1171,326 @@ fn long_candidate(language: &str) -> String {
         format!("{}.", "candidate ".repeat(200))
     } else {
         format!("{}。", "候选".repeat(1000))
+    }
+}
+
+fn native_candidate_primary_lines(state: &PanelState) -> Vec<String> {
+    use suzaku_map::ime::gpu::TextRole;
+    state
+        .last_scene
+        .as_ref()
+        .expect("candidate assertions require the presented scene")
+        .text_sections
+        .iter()
+        .filter(|section| section.role == TextRole::CandidatePrimary)
+        .flat_map(|section| &section.layouts)
+        .map(|layout| layout.lines.concat())
+        .collect()
+}
+
+fn check_shared_prefix_native_cards(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    language: &str,
+    touch: bool,
+) {
+    use suzaku_map::ime::{candidate_mix::CandidateKind, companion::NativeCandidate};
+    let receiver = prepare(app, events);
+    let seed = format!(
+        "{} please send me the details",
+        "已经写好的中文长稿。".repeat(120)
+    );
+    let mut frame = keyboard_frame("hel", 11);
+    frame.language = language.into();
+    frame.seed = seed.clone();
+    // Mouse covers the first page; touch also checks absolute indices on page two.
+    let start = if touch { 6 } else { 0 };
+    frame.selected = start;
+    frame.candidates = (0..start)
+        .map(|index| NativeCandidate {
+            text: format!("earlier candidate {index}"),
+            label: format!("earlier candidate {index}"),
+            ..Default::default()
+        })
+        .chain(["", "."].into_iter().map(|suffix| {
+            let text = format!("{seed}{suffix}");
+            NativeCandidate {
+                label: text.clone(),
+                text,
+                kind: if suffix.is_empty() {
+                    CandidateKind::Literal
+                } else {
+                    CandidateKind::Sentence
+                },
+                ..Default::default()
+            }
+        }))
+        .collect();
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    let state = app.panel.as_mut().unwrap();
+    super::tests::present_test_frame(state);
+    assert_eq!(state.chrome.native_candidate_page.unwrap().start, start);
+    assert_eq!(
+        state.chrome.sentence_candidate_source_indices,
+        vec![start, start + 1]
+    );
+    let lines = native_candidate_primary_lines(state);
+    assert_eq!(lines.len(), 2);
+    for (line, tail) in lines.iter().zip(["details", "details."]) {
+        assert!(
+            line.ends_with(tail),
+            "the actual rendered {language}/{touch} card must retain its English tail and punctuation: {line:?}"
+        );
+    }
+    assert_eq!(
+        state.native.frame.as_ref(),
+        Some(&frame),
+        "display elision must leave every full host candidate text and label intact"
+    );
+
+    click(state, InteractionKind::Candidate(start + 1), touch);
+    let request = receiver.try_recv().unwrap();
+    assert_eq!(
+        request.command,
+        suzaku_map::platform::linux_ime_sync::action_command(
+            &frame,
+            &NativeOperation::Commit(start + 1)
+        )
+        .unwrap()
+    );
+    assert_eq!(state.native.frame.as_ref(), Some(&frame));
+    assert!(state.interaction.sentence_candidate_scroll_index.is_none());
+    assert!(
+        receiver.try_recv().is_err(),
+        "a card click commits only once"
+    );
+    acknowledge(app, events, request);
+    frame.revision += 1;
+    frame.context += 1;
+    frame.seed.clear();
+    frame.candidates.clear();
+    publish_wake_frames(app, events, [Some(frame)]);
+    app.panel.as_mut().unwrap().complete_primary_release(touch);
+    assert!(receiver.try_recv().is_err());
+}
+
+fn check_native_card_display_exceptions(
+    app: &mut PanelApp,
+    events: &ActiveEventLoop,
+    language: &str,
+) {
+    use suzaku_map::ime::{candidate_mix::CandidateKind, companion::NativeCandidate};
+    let receiver = prepare(app, events);
+    let seed = format!("{} please send", "已经写好的中文长稿。".repeat(120));
+    let text = format!("{seed} alpha");
+    let custom_label = format!(
+        "Custom label {} CUSTOM-END",
+        "editorial wording ".repeat(120)
+    );
+    let rewritten = format!(
+        "Rewritten opening {} REWRITE-END",
+        "different text ".repeat(120)
+    );
+    let mut frame = keyboard_frame("hel", 11);
+    frame.language = language.into();
+    frame.seed = seed;
+    frame.candidates = vec![
+        NativeCandidate {
+            text: text.clone(),
+            label: custom_label.clone(),
+            kind: CandidateKind::Sentence,
+            ..Default::default()
+        },
+        NativeCandidate {
+            text: rewritten.clone(),
+            label: rewritten.clone(),
+            kind: CandidateKind::Sentence,
+            ..Default::default()
+        },
+        NativeCandidate {
+            text: "short choice".into(),
+            label: "short choice".into(),
+            ..Default::default()
+        },
+    ];
+    if language == "ja" {
+        frame.candidates.push(NativeCandidate {
+            text: text.clone(),
+            label: text,
+            kind: CandidateKind::Sentence,
+            ..Default::default()
+        });
+    }
+    publish_wake_frames(app, events, [Some(frame.clone())]);
+    let state = app.panel.as_mut().unwrap();
+    super::tests::present_test_frame(state);
+    assert_eq!(
+        state.chrome.sentence_candidates,
+        frame
+            .candidates
+            .iter()
+            .map(|candidate| candidate.label.clone())
+            .collect::<Vec<_>>()
+    );
+    let lines = native_candidate_primary_lines(state);
+    assert_eq!(lines.len(), frame.candidates.len());
+    assert!(lines[0].contains("Custom label"));
+    assert!(!lines[0].contains("CUSTOM-END") && !lines[0].contains("alpha"));
+    assert!(lines[1].contains("Rewritten opening"));
+    assert!(!lines[1].contains("REWRITE-END"));
+    assert!(lines[2].contains("short choice"));
+    if language == "ja" {
+        assert!(lines[3].contains("已经写好的中文"));
+        assert!(!lines[3].contains("alpha"));
+    }
+    assert_eq!(state.native.frame.as_ref(), Some(&frame));
+    assert!(receiver.try_recv().is_err());
+}
+
+fn check_native_card_layout_matrix(app: &mut PanelApp, events: &ActiveEventLoop) {
+    use suzaku_map::ime::{
+        candidate_mix::CandidateKind,
+        companion::NativeCandidate,
+        gpu::{
+            DisplayTextScale, PanelLayoutMode, TextRole, WgpuCandidateRenderer, with_font_metrics,
+        },
+    };
+    for (language, han_tail) in [("en", false), ("zh-Hans", false), ("zh-Hans", true)] {
+        let prefix = "已经写好的中文长稿。".repeat(120);
+        let seed = if han_tail {
+            format!("{prefix}现在处理")
+        } else {
+            format!("{prefix} please send me the details")
+        };
+        let (suffixes, expected_tails) = if han_tail {
+            (
+                ["甲", "乙", "丙", "丁", "戊", "己"],
+                ["甲", "乙", "丙", "丁", "戊", "己"],
+            )
+        } else {
+            (
+                ["", ".", " today", " tomorrow", " later", " soon"],
+                ["details", "details.", "today", "tomorrow", "later", "soon"],
+            )
+        };
+        for start in [0, 6] {
+            let receiver = prepare(app, events);
+            let mut frame = keyboard_frame("hel", 11);
+            frame.language = language.into();
+            frame.seed = seed.clone();
+            frame.selected = start;
+            frame.candidates = (0..start)
+                .map(|index| NativeCandidate {
+                    text: format!("earlier candidate {index}"),
+                    label: format!("earlier candidate {index}"),
+                    ..Default::default()
+                })
+                .chain(suffixes.into_iter().map(|suffix| {
+                    let text = format!("{seed}{suffix}");
+                    NativeCandidate {
+                        label: text.clone(),
+                        text,
+                        kind: if suffix.is_empty() {
+                            CandidateKind::Literal
+                        } else {
+                            CandidateKind::Sentence
+                        },
+                        ..Default::default()
+                    }
+                }))
+                .collect();
+            publish_wake_frames(app, events, [Some(frame.clone())]);
+            let state = app.panel.as_ref().unwrap();
+            let snapshot = state.view_snapshot();
+            let indices = (start..start + 6).collect::<Vec<_>>();
+            assert_eq!(state.chrome.native_candidate_page.unwrap().start, start);
+            assert_eq!(state.chrome.sentence_candidate_source_indices, indices);
+            let mut chrome = state.chrome.clone();
+            // These are production scene-layout widths, not assertions that
+            // the private window accepted a size or supports a 320px viewport.
+            // Pointer cases above present their actual viewport separately.
+            // Only the current atlas cache supplies runtime font advances;
+            // this does not claim coverage of every resolved/selectable font.
+            for panel_layout in [PanelLayoutMode::FollowCaret, PanelLayoutMode::BottomDock] {
+                chrome.panel_layout_mode = panel_layout;
+                chrome.input_modes_expanded = panel_layout == PanelLayoutMode::BottomDock;
+                for width in [320.0, 420.0, 442.0, 480.0, 640.0, 670.0, 900.0] {
+                    for text_scale in [
+                        DisplayTextScale::Small,
+                        DisplayTextScale::Medium,
+                        DisplayTextScale::Large,
+                    ] {
+                        chrome.text_scale = text_scale;
+                        let (scene, height) =
+                            with_font_metrics(state.font_atlas.layout_metrics.clone(), || {
+                                let mut renderer = WgpuCandidateRenderer::new(width, 1.0);
+                                renderer.scene_height =
+                                    renderer.preferred_input_panel_height(&chrome);
+                                (
+                                    renderer.build_panel_scene(
+                                        &snapshot, &chrome, None, None, None, None,
+                                    ),
+                                    renderer.scene_height,
+                                )
+                            });
+                        assert_eq!(
+                            scene
+                                .hit_targets
+                                .iter()
+                                .map(|target| target.index)
+                                .collect::<Vec<_>>(),
+                            indices,
+                            "six native slots: {language}/{han_tail}/{start}/{panel_layout:?}/{width}/{text_scale:?}"
+                        );
+                        for target in &scene.hit_targets {
+                            let [x, y, w, h] = target.rect;
+                            assert!(
+                                w > 0.0
+                                    && h >= 25.0
+                                    && x >= 0.0
+                                    && y >= 0.0
+                                    && x + w <= width + 0.01
+                                    && y + h <= height + 0.01,
+                                "visible native card: {language}/{han_tail}/{start}/{panel_layout:?}/{width}/{text_scale:?} {target:?}"
+                            );
+                            assert_eq!(
+                                scene.hit_interaction(x + w / 2.0, y + h / 2.0),
+                                Some(InteractionKind::Candidate(target.index))
+                            );
+                        }
+                        let layouts = scene
+                            .text_sections
+                            .iter()
+                            .filter(|section| section.role == TextRole::CandidatePrimary)
+                            .flat_map(|section| &section.layouts)
+                            .collect::<Vec<_>>();
+                        assert_eq!(layouts.len(), 6);
+                        for (slot, (layout, tail)) in layouts.iter().zip(expected_tails).enumerate()
+                        {
+                            let lines = layout.lines.concat();
+                            let number = (slot + 1).to_string();
+                            assert!(
+                                layout.lines.first().is_some_and(|line| {
+                                    line.strip_prefix(number.as_str()).is_some_and(|rest| {
+                                        rest.is_empty() || rest.starts_with(' ')
+                                    })
+                                }),
+                                "native slot number: language={language} han_tail={han_tail} page_start={start} layout={panel_layout:?} width={width} text_scale={text_scale:?} font={:?} slot={} lines={:?}",
+                                chrome.font_face,
+                                slot + 1,
+                                layout.lines,
+                            );
+                            assert!(
+                                !layout.truncated && lines.ends_with(tail),
+                                "complete native tail: {language}/{han_tail}/{start}/{panel_layout:?}/{width}/{text_scale:?} expected {tail:?}, rendered {lines:?}"
+                            );
+                        }
+                    }
+                }
+            }
+            assert_eq!(state.native.frame.as_ref(), Some(&frame));
+            assert!(receiver.try_recv().is_err());
+        }
     }
 }
 

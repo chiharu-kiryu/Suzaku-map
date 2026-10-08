@@ -4,7 +4,7 @@
     "date": "2026-10-07",
     "head": "1bf93e14db17ffee7d5eab07d05035e87a596db7",
     "dirty": true,
-    "source_sha256": "046e6f042447db011d5076ee1c955ee2369e6a1ad88addd01dba944d5d4f69b7",
+    "source_sha256": "632fe3334f9f6b2497f4cf523d047e740fc874587b940a2d63672cf939032389",
     "note": "工作区能力盘点；含未提交文件。评分是有边界的人工序数评估，不是质量概率。后续修复执行范围见 E-pointer-preference、E-window-boundary、E-recovery-fixture、E-prose-paging、E-chinese-partial-spacing；词库扩充见 E-daily-objects、E-daily-choices、E-japanese-choices；10-04崩溃及10-07有界sender诊断见E-daemon-abort，探测清理顺序修复见E-daemon-probe，非已确认修复上游根因；当前未提交快照未核验远端 CI 或更新个人安装；源指纹仅覆盖 implementations.paths/tests。"
   },
   "architectures": [

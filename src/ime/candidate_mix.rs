@@ -508,25 +508,152 @@ pub fn display_label_for_seed(
     format!("{preview}{suffix}")
 }
 
+/// Native cards keep custom labels and unrelated replacements intact. Only a
+/// verified shared prefix may be hidden, and the remaining tail must fit whole.
+/// This changes presentation, never the candidate's replacement/commit text.
+pub fn native_display_label_for_seed(
+    language: &str,
+    seed: &str,
+    text: &str,
+    label: &str,
+) -> String {
+    if label != text {
+        return label.into();
+    }
+    let start = match language {
+        "en" => english_preview_start(seed, text, PREVIEW_CHARS),
+        "zh-Hans" => chinese_preview_start(seed, text, PREVIEW_CHARS),
+        _ => None,
+    };
+    let Some(mut start) = start else {
+        return label.into();
+    };
+    if let Some(word) = last_native_word_start(language, text)
+        && start > word
+    {
+        start = word;
+    }
+    let tail = &text[start..];
+    if !seed.starts_with(&text[..start])
+        || !native_preview_cut_is_safe(text, start)
+        || tail.chars().count() >= PREVIEW_CHARS
+    {
+        return label.into();
+    }
+    format!("…{tail}")
+}
+
+fn native_preview_cut_is_safe(text: &str, start: usize) -> bool {
+    // The existing IBus preview is scalar-safe, not a grapheme segmenter. At
+    // native card cuts, accept only ordinary ASCII/Han on both sides. Marks,
+    // emoji modifiers, joiners and non-zero-width Prepend characters must not
+    // continue a cluster from the hidden prefix.
+    let plain_character = |ch: char| {
+        (ch.is_ascii() && !ch.is_ascii_control())
+            || matches!(ch, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}')
+    };
+    let plain_start = text[start..].chars().next().is_some_and(plain_character);
+    let plain_end = text[..start].chars().last().is_some_and(|ch| {
+        plain_character(ch) && unicode_width::UnicodeWidthChar::width(ch) != Some(0)
+    });
+    plain_start && plain_end
+}
+
+fn last_native_word_start(language: &str, text: &str) -> Option<usize> {
+    let (end, last) = text.char_indices().rfind(|(_, ch)| ch.is_alphanumeric())?;
+    if last.is_ascii() {
+        // A Latin token can immediately follow Han without a space. Its
+        // punctuation/identifier spelling belongs to the same visible token.
+        Some(
+            text[..end]
+                .char_indices()
+                .rfind(|(_, ch)| !ch.is_ascii() || ch.is_whitespace() || ch.is_ascii_control())
+                .map_or(0, |(index, ch)| index + ch.len_utf8()),
+        )
+    } else if language == "en" {
+        Some(
+            text[..end]
+                .char_indices()
+                .rfind(|(_, ch)| ch.is_whitespace())
+                .map_or(0, |(index, ch)| index + ch.len_utf8()),
+        )
+    } else {
+        None
+    }
+}
+
+/// Fit an already verified native preview against the caller's real layout.
+/// Only shared context within its bounded tail is retried; every changed scalar
+/// and the final whole English word survive. No fit keeps the original preview.
+pub fn fit_native_display_label_for_seed(
+    language: &str,
+    seed: &str,
+    text: &str,
+    preview: &str,
+    mut fits: impl FnMut(&str) -> bool,
+) -> String {
+    if preview == text
+        || native_display_label_for_seed(language, seed, text, text) != preview
+        || fits(preview)
+    {
+        return preview.into();
+    }
+    let tail = preview.strip_prefix('…').unwrap();
+    let hidden = text.len() - tail.len();
+    let shared: usize = seed
+        .chars()
+        .zip(text.chars())
+        .take_while(|(a, b)| a == b)
+        .map(|(_, ch)| ch.len_utf8())
+        .sum();
+    let final_word = last_native_word_start(language, text);
+    for (offset, ch) in tail.char_indices().skip(1) {
+        let start = hidden + offset;
+        if start > shared || final_word.is_some_and(|last| start > last) {
+            break;
+        }
+        let previous = text[..start].chars().next_back().unwrap();
+        let han = |ch| matches!(ch, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}');
+        let word_boundary = previous.is_whitespace() && !ch.is_whitespace();
+        if !native_preview_cut_is_safe(text, start)
+            || !(word_boundary || language == "zh-Hans" && (han(ch) || han(previous)))
+        {
+            continue;
+        }
+        let candidate = format!("…{}", &text[start..]);
+        if fits(&candidate) {
+            return candidate;
+        }
+    }
+    preview.into()
+}
+
 fn chinese_preview(seed: &str, text: &str, room: usize) -> String {
+    match chinese_preview_start(seed, text, room) {
+        Some(start) => format!(
+            "…{}",
+            bounded_preview(&text[start..], room.saturating_sub(1))
+        ),
+        None => bounded_preview(text, room),
+    }
+}
+
+fn chinese_preview_start(seed: &str, text: &str, room: usize) -> Option<usize> {
     let shared = seed
         .chars()
         .zip(text.chars())
         .take_while(|(a, b)| a == b)
         .count();
     if text.chars().count() <= room || shared <= room / 2 {
-        return bounded_preview(text, room);
+        return None;
     }
     // Han text need not contain whitespace. Retain a little shared context,
     // then the differing conversion/continuation; never elide a rewritten start.
-    let start = text
-        .char_indices()
-        .skip(shared.saturating_sub(room / 2))
-        .find(|(_, ch)| unicode_width::UnicodeWidthChar::width(*ch) != Some(0))
-        .map_or(text.len(), |(index, _)| index);
-    format!(
-        "…{}",
-        bounded_preview(&text[start..], room.saturating_sub(1))
+    Some(
+        text.char_indices()
+            .skip(shared.saturating_sub(room / 2))
+            .find(|(_, ch)| unicode_width::UnicodeWidthChar::width(*ch) != Some(0))
+            .map_or(text.len(), |(index, _)| index),
     )
 }
 
@@ -544,6 +671,16 @@ fn bounded_preview(text: &str, room: usize) -> String {
 }
 
 fn english_preview(seed: &str, text: &str, room: usize) -> String {
+    match english_preview_start(seed, text, room) {
+        Some(start) => format!(
+            "…{}",
+            bounded_preview(&text[start..], room.saturating_sub(1))
+        ),
+        None => bounded_preview(text, room),
+    }
+}
+
+fn english_preview_start(seed: &str, text: &str, room: usize) -> Option<usize> {
     let characters: Vec<_> = text.char_indices().collect();
     let shared = seed
         .chars()
@@ -551,7 +688,7 @@ fn english_preview(seed: &str, text: &str, room: usize) -> String {
         .take_while(|(a, b)| a == b)
         .count();
     if characters.len() <= room || shared <= room / 2 {
-        return bounded_preview(text, room);
+        return None;
     }
     let starts: Vec<_> = characters
         .iter()
@@ -568,19 +705,219 @@ fn english_preview(seed: &str, text: &str, room: usize) -> String {
         .iter()
         .find(|&&index| characters.len() - index < room)
         .or_else(|| starts.last());
-    match start {
-        Some(&index) => format!(
-            "…{}",
-            bounded_preview(&text[characters[index].0..], room.saturating_sub(1))
-        ),
-        None => bounded_preview(text, room),
-    }
+    start.map(|&index| characters[index].0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ime::{CommitOptions, EngineConfig, XRTabletImeEngine};
+
+    #[test]
+    fn native_long_labels_show_complete_changed_tails_only() {
+        let seed = format!(
+            "{} please send me the details",
+            "你好，很高兴认识你。".repeat(28)
+        );
+        let sentence = format!("{seed}.");
+        for language in ["en", "zh-Hans"] {
+            let word_label = native_display_label_for_seed(language, &seed, &seed, &seed);
+            let sentence_label =
+                native_display_label_for_seed(language, &seed, &sentence, &sentence);
+            assert!(word_label.starts_with('…') && word_label.ends_with("details"));
+            assert!(sentence_label.starts_with('…') && sentence_label.ends_with("details."));
+            assert_ne!(word_label, sentence_label);
+            assert!(word_label.chars().count() <= PREVIEW_CHARS);
+            assert!(sentence_label.chars().count() <= PREVIEW_CHARS);
+            assert!(seed.ends_with(word_label.trim_start_matches('…')));
+            assert!(sentence.ends_with(sentence_label.trim_start_matches('…')));
+        }
+
+        // A repeated opening is shared only up to the first changed word.
+        let prefix = "note ".repeat(59);
+        let seed = format!("{prefix}note please sen");
+        let text = format!("{prefix}changed note please send");
+        let label = native_display_label_for_seed("en", &seed, &text, &text);
+        assert_eq!(label, "…note note note changed note please send");
+    }
+
+    #[test]
+    fn native_measured_previews_keep_the_whole_final_word_and_changed_tail() {
+        let prefix = "已经写好的中文长稿。".repeat(120);
+        let seed = format!("{prefix} please send me the details");
+        for language in ["en", "zh-Hans"] {
+            for suffix in ["", "."] {
+                let text = format!("{seed}{suffix}");
+                let preview = native_display_label_for_seed(language, &seed, &text, &text);
+                let fitted =
+                    fit_native_display_label_for_seed(language, &seed, &text, &preview, |label| {
+                        label.chars().count() <= 9
+                    });
+                assert_eq!(fitted, format!("…details{suffix}"));
+                let mut attempts = 0;
+                let unchanged =
+                    fit_native_display_label_for_seed(language, &seed, &text, &preview, |_| {
+                        attempts += 1;
+                        false
+                    });
+                assert_eq!(unchanged, preview);
+                assert!(
+                    attempts <= PREVIEW_CHARS,
+                    "only the bounded preview tail is measured"
+                );
+                assert_eq!(
+                    fit_native_display_label_for_seed(language, &seed, &text, &preview, |label| {
+                        label.chars().count() <= 2
+                    }),
+                    preview,
+                    "cannot fit only the dot or a fragment of the final word"
+                );
+            }
+        }
+        let seed = format!("{prefix}现在处理");
+        let text = format!("{seed}甲");
+        let preview = native_display_label_for_seed("zh-Hans", &seed, &text, &text);
+        assert_eq!(
+            fit_native_display_label_for_seed("zh-Hans", &seed, &text, &preview, |label| label
+                .chars()
+                .count()
+                <= 2),
+            "…甲"
+        );
+        let seed = format!("{prefix} please sen");
+        let text = format!("{prefix} please send two boxes tomorrow.");
+        let preview = native_display_label_for_seed("en", &seed, &text, &text);
+        assert_eq!(
+            fit_native_display_label_for_seed("en", &seed, &text, &preview, |label| label
+                == "…tomorrow."),
+            preview,
+            "a callback cannot discard earlier changed words to show only the ending"
+        );
+    }
+
+    #[test]
+    fn native_measured_previews_reject_unverified_and_custom_labels() {
+        let seed = format!("{} please send", "长稿".repeat(120));
+        let text = format!("{seed} alpha");
+        for language in ["en", "zh-Hans", "ja", "unknown"] {
+            for label in [&text, "Custom label", "…fake ending"] {
+                let mut attempts = 0;
+                assert_eq!(
+                    fit_native_display_label_for_seed(language, &seed, &text, label, |_| {
+                        attempts += 1;
+                        true
+                    }),
+                    label
+                );
+                assert_eq!(
+                    attempts, 0,
+                    "unverified cards must not enter measured elision"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_chinese_previews_preserve_glued_latin_tokens() {
+        for token in ["details", &"a".repeat(30), &"a".repeat(60)] {
+            let seed = format!("{}{token}", "文".repeat(60));
+            let preview = native_display_label_for_seed("zh-Hans", &seed, &seed, &seed);
+            assert!(
+                preview.ends_with(token),
+                "initial preview must keep the whole token"
+            );
+            let fitted =
+                fit_native_display_label_for_seed("zh-Hans", &seed, &seed, &preview, |label| {
+                    label.chars().count() <= token.chars().count() + 1
+                });
+            if token.len() < PREVIEW_CHARS {
+                assert_eq!(fitted, format!("…{token}"));
+            } else {
+                assert_eq!(fitted, seed, "over-budget Latin words stay whole");
+            }
+        }
+    }
+
+    #[test]
+    fn native_labels_preserve_custom_short_unrelated_and_unsupported_text() {
+        let seed = format!("{}please sen", "note ".repeat(60));
+        let text = format!("{seed}d");
+        let custom = format!("{text} · AI");
+        assert_eq!(
+            native_display_label_for_seed("en", &seed, &text, &custom),
+            custom
+        );
+        for language in ["en", "zh-Hans"] {
+            for replacement in [
+                "short choice".into(),
+                format!("Different opening {}", "candidate ".repeat(200)),
+                format!("…{}", "opening ".repeat(100)),
+            ] {
+                assert_eq!(
+                    native_display_label_for_seed(language, &seed, &replacement, &replacement),
+                    replacement
+                );
+            }
+        }
+        for language in ["ja", "", "unknown"] {
+            assert_eq!(
+                native_display_label_for_seed(language, &seed, &text, &text),
+                text
+            );
+        }
+        let seed = "a".repeat(100);
+        let text = format!("{seed}b");
+        assert_eq!(
+            native_display_label_for_seed("en", &seed, &text, &text),
+            text
+        );
+    }
+
+    #[test]
+    fn native_labels_do_not_cut_long_differences_or_uncertain_clusters() {
+        let seed = format!("{}please sen", "note ".repeat(60));
+        let text = format!("{seed}d {}", "an extended new continuation ".repeat(10));
+        for language in ["en", "zh-Hans"] {
+            assert_eq!(
+                native_display_label_for_seed(language, &seed, &text, &text),
+                text,
+                "an over-budget tail stays whole rather than hiding its differences"
+            );
+        }
+        for cluster in ["e\u{301}", "👩🏽", "👩🏽‍💻", "👨‍👩‍👧‍👦"] {
+            let seed = format!("{} {cluster}ta", "note ".repeat(60));
+            let text = format!("{seed}il");
+            let label = native_display_label_for_seed("en", &seed, &text, &text);
+            assert!(label.starts_with('…'));
+            assert!(
+                label.ends_with(&format!("{cluster}tail")),
+                "a complete combining/emoji cluster after whitespace is retained: {label:?}"
+            );
+            assert!(text.ends_with(label.trim_start_matches('…')));
+            let seed = format!("{}{cluster}{}", "文".repeat(60), "a".repeat(20));
+            let text = format!("{seed}b");
+            assert_eq!(
+                native_display_label_for_seed("zh-Hans", &seed, &text, &text),
+                text,
+                "a scalar cut inside or directly after a marked/emoji cluster stays whole"
+            );
+        }
+        // A non-zero-width Prepend character still belongs to the next base.
+        let seed = format!("{}\u{600}{}", "文".repeat(60), "a".repeat(21));
+        let text = format!("{seed}b");
+        assert_eq!(
+            native_display_label_for_seed("zh-Hans", &seed, &text, &text),
+            text
+        );
+        // Parsed native frames reject controls; the public helper is defensive
+        // too, and must not split CRLF when called directly.
+        let seed = format!("{}\r\n{}", "文".repeat(60), "a".repeat(20));
+        let text = format!("{seed}b");
+        assert_eq!(
+            native_display_label_for_seed("zh-Hans", &seed, &text, &text),
+            text
+        );
+    }
 
     #[test]
     fn english_long_previews_show_the_changed_tail_without_changing_payloads() {

@@ -9,6 +9,7 @@ use std::sync::{
 use std::thread::JoinHandle;
 use suzaku_map::ime::{
     Mode, Snapshot,
+    candidate_mix::native_display_label_for_seed,
     companion::{NativeComposition, NativeOperation},
     gpu::{InputMode, InteractionKind, NativeCandidatePage, PanelLayoutMode},
 };
@@ -817,7 +818,20 @@ impl PanelState {
             .enumerate()
             .skip(page.start)
             .take(NativeCandidatePage::SIZE)
-            .map(|(index, candidate)| (index, candidate.label.clone()))
+            .map(|(index, candidate)| {
+                let label = self.native.frame.as_ref().map_or_else(
+                    || candidate.label.clone(),
+                    |frame| {
+                        native_display_label_for_seed(
+                            &frame.language,
+                            &frame.seed,
+                            &candidate.text,
+                            &candidate.label,
+                        )
+                    },
+                );
+                (index, label)
+            })
             .unzip();
         self.chrome.native_candidate_page = Some(page);
         self.clear_sentence_candidate_scroll();
